@@ -24,6 +24,7 @@ numpy>=1.26.0
 pyyaml>=6.0
 mediapipe>=0.10.20
 onnxruntime>=1.18.0
+onnx>=1.16.0             # INT8 quantisation in tools/benchmark.py
 
 # DriverGuard backend (FastAPI / pydantic / uvicorn listed above)
 pyjwt>=2.8.0
