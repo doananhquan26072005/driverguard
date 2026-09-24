@@ -1,0 +1,199 @@
+# All tunable thresholds for DriverGuard. Logic modules must read from here,
+# never hardcode values.
+
+# Block 1 - Frame camera
+capture:
+  # Requested camera settings (the driver may ignore them).
+  camera_width: 1280
+  camera_height: 720
+  camera_fps: 30
+  # Play video files at their native FPS to simulate a live camera.
+  # false = decode as fast as possible (useful for offline eval).
+  video_realtime: true
+  # Fallback FPS when the video file reports 0 / invalid FPS.
+  video_fallback_fps: 30.0
+  # Stop the camera thread after this many consecutive failed reads.
+  max_consecutive_failures: 30
+
+# Block 2 - Preprocessing
+preprocess:
+  # Output width in pixels, aspect ratio preserved. Frames are only downscaled.
+  target_width: 640
+  # A 3-channel frame counts as IR/grayscale when the mean absolute difference
+  # between its channels is below this value (0-255 scale).
+  ir_channel_diff_max: 2.0
+  clahe:
+    enabled: true
+    clip_limit: 2.0
+    tile_grid: 8
+
+# Block 3 - Face landmarks (MediaPipe Face Landmarker)
+landmarks:
+  # Relative to project root. Download with: python tools/download_models.py
+  model_path: models/face_landmarker.task
+  # Track up to 2 faces; the largest one is taken as the driver.
+  num_faces: 2
+  min_face_detection_confidence: 0.5
+  min_face_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+# Block 5 - Eye-state CNN (Open Model Zoo open-closed-eye-0001, Apache-2.0, 46 KB)
+# Only called when EAR is not reliable; otherwise EAR alone decides (block 7).
+eye_state:
+  enabled: true
+  model_path: models/open_closed_eye.onnx   # python tools/download_models.py
+  input_size: 32
+  crop_scale: 1.8               # crop side = 1.8 x eye-corner distance (as in Intel's demo)
+  mean: 127.0                   # input = (BGR - mean) / scale
+  scale: 255.0
+  closed_index: 0               # softmax index of "closed" (Intel demo: out[0] < out[1] = open)
+  run_on_ir: true               # infrared / grayscale camera: call the CNN
+  low_light_brightness: 60      # mean luminance 0-255 below this: call the CNN
+  ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / mean above this (glare, occlusion): call the CNN
+  always_run: false             # true = every frame (debug, evaluation)
+
+# Block 6 - Feature extractor
+features:
+  # Focal length in pixels = focal_length_scale * image width (uncalibrated camera).
+  focal_length_scale: 1.0
+
+# Block 4 - Phone detector (YOLOv8n ONNX, runs on its own thread)
+phone:
+  model_path: models/yolov8n.onnx
+  input_size: 640          # must match the ONNX export size
+  class_id: 67             # COCO "cell phone"
+  conf_threshold: 0.35
+  iou_threshold: 0.45
+  target_fps: 5            # YOLO runs ~5x/s, main loop reuses the latest result
+  num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe
+  max_result_age_s: 0.6    # older results count as "unknown"
+  # Driver zone = face box grown by these factors (x face width, y face height).
+  # Covers a phone at the ear (call) and in front of the chest (texting);
+  # a passenger's phone outside this zone is ignored.
+  zone_expand_x: 1.0
+  zone_expand_up: 0.5
+  zone_expand_down: 1.5
+
+
+# Block 7 - Drowsiness branch
+drowsiness:
+  max_gap_s: 0.5                # face dropouts shorter than this do not break an episode
+  eye:
+    # Eye closed = EAR below close_ratio x the driver's own open-eye EAR
+    # (percentile of recent EAR), reopened above open_ratio x (hysteresis).
+    baseline_init: 0.28         # used until baseline_min_data_s of data
+    baseline_percentile: 90
+    baseline_window_s: 120
+    baseline_min_data_s: 10
+    baseline_min: 0.18
+    baseline_max: 0.42
+    close_ratio: 0.65
+    open_ratio: 0.75
+    # EAR is unreliable when the head is turned / tilted down: eye state unknown.
+    max_yaw_deg: 35
+    max_pitch_down_deg: 25
+    # When the eye-state CNN (block 5) ran, eye closed = p_closed >= cnn_closed,
+    # reopened when p_closed <= cnn_open (hysteresis).
+    cnn_closed: 0.6
+    cnn_open: 0.4
+  blink_max_s: 0.5              # closures up to this long are blinks
+  blink_window_s: 60
+  microsleep_min_s: 1.0         # closure at least this long = microsleep event
+  perclos_window_s: 60
+  perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
+  perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
+  perclos_rearm: 0.12           # must drop below this before the next event
+  yawn:
+    mar_open: 0.6
+    mar_close: 0.45
+    min_s: 1.5                  # talking / laughing open the mouth for shorter
+    window_s: 600
+  nod:
+    pitch_down_deg: 15          # dip below the driver's usual pitch (rolling median)
+    return_deg: 7
+    min_s: 0.2
+    max_s: 2.0                  # longer = sustained head down, not a nod
+    require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
+    eyes_closed_min_frac: 0.3
+    window_s: 300
+  pose_baseline_window_s: 60
+
+# Block 8 - Distraction branch
+distraction:
+  min_speed_kmh: 5                  # branch off below this speed (stopped / parked)
+  assume_moving_when_speed_unknown: true
+  yaw_off_road_deg: 30              # |yaw - baseline| above this = off road
+  pitch_down_off_road_deg: 20       # looking down (lap, phone)
+  pitch_up_off_road_deg: 25
+  on_road_confirm_s: 0.3            # must look back this long before the timer resets
+  phone_window_s: 2.0               # window for phone_ratio_2s
+  baseline:                         # "looking at the road" head pose, per camera mount
+    adapt: true                     # learn slowly from on-road samples
+    tau_s: 30
+    max_deg: 20                     # baseline never drifts beyond +-20 deg
+    yaw_deg: 0.0
+    pitch_deg: 0.0
+
+# Block 10 - Vehicle context (from CAN, simulated by edge_agent/context/can_sim.py)
+context:
+  min_speed_kmh: 5              # below this the vehicle counts as stopped
+  high_speed_kmh: 80            # off-road threshold tightens above this
+  long_drive_s: 7200            # 2 h of driving = long drive
+  night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
+  turn_signal_grace_s: 2.0      # looking sideways stays expected this long after the blinker stops
+
+# Block 9 - Risk engine (rule table: docs/workflow/workflow_full_4.jpg)
+risk:
+  microsleep_l3_s: 1.5          # closed_duration >= this -> L3 at once
+  drowsy:
+    # drowsy_score = sum(weight x term), each term normalised to 0..1, total 0..100
+    weight_perclos: 40
+    weight_microsleep: 25
+    weight_yawn: 15
+    weight_nod: 20
+    perclos_low: 0.05           # PERCLOS term ramps 0 -> 1 between low and high
+    perclos_high: 0.20
+    perclos_min_coverage_s: 30  # no PERCLOS term before this much eye data
+    yawn_full: 3                # yawn_count_10min for a full yawn term
+    nod_full: 2                 # nod_count_5min for a full nod term
+    microsleep_memory_s: 300    # a microsleep in the last 5 min = full microsleep term
+    l1: 40
+    l2: 70
+    night_factor: 1.2           # score multipliers from context
+    long_drive_factor: 1.2
+    active_when_stopped: true   # drowsiness rules also when stopped
+  distraction:
+    off_road_s: 2.0
+    off_road_high_speed_s: 1.5
+    phone_ratio: 0.6
+  trend:
+    level: 1                    # early warning: suggest a break
+    min_points: 5               # minutes of history needed
+    slope_per_min: 2.0          # drowsy_score points per minute
+    min_score: 20               # ignore a rising trend while the score is still low
+  blink:
+    normal_min: 10              # blinks / min outside [min, max] = early fatigue sign
+    normal_max: 30
+    min_observed_s: 60
+    level: 0                    # 0 = note only (blink rate varies a lot between people)
+
+# Block 11 - Trip memory
+trip_memory:
+  bin_s: 60                     # one drowsy_score point per minute
+  trend_window_bins: 15         # trend over the last 15 minutes
+
+# Block 12 - Alert manager
+alert:
+  rise_confirm_s: {1: 1.0, 2: 0.5, 3: 0.0}   # a level must hold this long before it is raised
+  fall_hold_s: 3.0                           # and stay lower this long before it is dropped
+  cooldown_s: {1: 120, 2: 30, 3: 10}         # no repeated alert of the same level within this
+
+# Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
+publisher:
+  batch_size: 20                # events per POST
+  flush_interval_s: 5.0         # send at least this often while events are waiting
+  timeout_s: 5.0
+  outbox_path: data/outbox.db   # offline queue on the device: metadata JSON only
+  max_queue: 10000              # oldest events dropped beyond this
+  backoff_initial_s: 1.0        # retry delay after a failure, doubling up to backoff_max_s
+  backoff_max_s: 60.0

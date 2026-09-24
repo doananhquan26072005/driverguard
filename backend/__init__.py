@@ -1,0 +1,1 @@
+"""DriverGuard backend (FastAPI + SQLite)."""

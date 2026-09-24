@@ -58,3 +58,7 @@ out/
 # AI logs — tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
+push ai log phoenix.txt
+# Downloaded pretrained models (python tools/download_models.py)
+models/*.task
+models/*.onnx

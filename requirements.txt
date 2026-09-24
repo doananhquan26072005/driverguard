@@ -18,6 +18,17 @@ langgraph>=0.2.0
 # Vector Store (uncomment as needed)
 # chromadb>=0.5.0
 
+# Edge agent (DriverGuard)
+opencv-python>=4.9.0
+numpy>=1.26.0
+pyyaml>=6.0
+mediapipe>=0.10.20
+onnxruntime>=1.18.0
+onnx>=1.16.0             # INT8 quantisation in tools/benchmark.py
+
+# DriverGuard backend (FastAPI / pydantic / uvicorn listed above)
+pyjwt>=2.8.0
+
 # Dev tools
 ruff>=0.8.0
 pytest>=8.0.0

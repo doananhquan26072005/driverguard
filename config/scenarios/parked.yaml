@@ -1,0 +1,7 @@
+# Vehicle parked: distraction rules must stay silent.
+name: parked
+start_clock: "12:00"
+loop: true
+timeline:
+  - {t: 0, speed_kmh: 0}
+  - {t: 60, speed_kmh: 0}

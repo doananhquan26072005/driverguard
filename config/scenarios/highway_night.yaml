@@ -1,0 +1,13 @@
+# Night highway after a long drive: high speed (tighter off-road threshold),
+# night + long-drive factors raise the drowsy score.
+name: highway_night
+start_clock: "02:30"
+initial_drive_time_s: 7000
+loop: true
+timeline:
+  - {t: 0,   speed_kmh: 60}
+  - {t: 20,  speed_kmh: 100}
+  - {t: 240, speed_kmh: 100}
+  - {t: 250, speed_kmh: 100, turn_signal: right}
+  - {t: 255, speed_kmh: 100, turn_signal: off}
+  - {t: 300, speed_kmh: 90}
