@@ -26,3 +26,18 @@ preprocess:
     enabled: true
     clip_limit: 2.0
     tile_grid: 8
+
+# Block 3 - Face landmarks (MediaPipe Face Landmarker)
+landmarks:
+  # Relative to project root. Download with: python tools/download_models.py
+  model_path: models/face_landmarker.task
+  # Track up to 2 faces; the largest one is taken as the driver.
+  num_faces: 2
+  min_face_detection_confidence: 0.5
+  min_face_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+
+# Block 6 - Feature extractor
+features:
+  # Focal length in pixels = focal_length_scale * image width (uncalibrated camera).
+  focal_length_scale: 1.0

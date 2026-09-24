@@ -1,12 +1,16 @@
-"""Debug viewer for M0: capture (block 1) + preprocessing (block 2).
+"""Debug viewer for M0-M1: capture (1) + preprocessing (2) + landmarks (3) + features (6).
 
-Shows the preprocessed stream in a window with FPS, brightness and IR flag.
+Shows the preprocessed stream with face landmarks, head pose axis, EAR / MAR /
+pitch / yaw / roll, and prints EAR for every frame to the terminal.
+On-screen numbers are smoothed (--smooth) and refreshed 5x/s; the graphs below the
+video show the raw per-frame values of the last few seconds.
 Display only - frames are never written to disk.
 
     python tools/debug_view.py --source 0                # webcam
     python tools/debug_view.py --source path/to/video.mp4 --loop
+    python tools/debug_view.py --source 0 --quiet        # no per-frame terminal output
 
-Keys: q / ESC quit, r toggle raw vs processed, s toggle side-by-side, space pause.
+Keys: q / ESC quit, r raw vs processed, s side-by-side, l landmarks, g graphs, space pause.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -24,8 +29,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
+from edge_agent.perception.features import (  # noqa: E402
+    LEFT_EYE,
+    MOUTH_CORNERS,
+    MOUTH_VERTICAL_PAIRS,
+    POSE_LANDMARKS,
+    RIGHT_EYE,
+    FeatureConfig,
+    FeatureExtractor,
+    FrameFeatures,
+    camera_matrix,
+)
+from edge_agent.perception.landmarks import FaceLandmarkDetector, FaceLandmarks, LandmarkConfig  # noqa: E402
 
-WINDOW = "DriverGuard debug (M0)"
+WINDOW = "DriverGuard debug (M1)"
+MOUTH_POINTS = MOUTH_CORNERS + tuple(i for pair in MOUTH_VERTICAL_PAIRS for i in pair)
 
 
 def to_bgr(image: np.ndarray) -> np.ndarray:
@@ -35,10 +53,125 @@ def to_bgr(image: np.ndarray) -> np.ndarray:
 
 
 def draw_overlay(image: np.ndarray, lines: list[str]) -> None:
+    # Dark box behind single-stroke text: in OpenCV 5 glyph width depends on thickness,
+    # so the usual thick-outline + thin-text trick no longer lines up.
+    font, scale, line_h = cv2.FONT_HERSHEY_SIMPLEX, 0.5, 20
+    width = max(cv2.getTextSize(t, font, scale, 1)[0][0] for t in lines)
+    box = image[4 : 10 + line_h * len(lines), 4 : 16 + width]
+    box[:] = (box * 0.35).astype(np.uint8)
     for i, text in enumerate(lines):
-        y = 22 + i * 22
-        cv2.putText(image, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
-        cv2.putText(image, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.putText(image, text, (10, 20 + i * line_h), font, scale, (0, 255, 0), 1, cv2.LINE_AA)
+
+
+def draw_landmarks(image: np.ndarray, lm: FaceLandmarks, extractor: FeatureExtractor) -> None:
+    pts = lm.points[:, :2].astype(np.int32)
+    for x, y in pts:
+        cv2.circle(image, (int(x), int(y)), 1, (160, 160, 160), -1)
+    for idx, color in ((RIGHT_EYE, (0, 255, 255)), (LEFT_EYE, (0, 255, 255)), (MOUTH_POINTS, (255, 0, 255))):
+        for i in idx:
+            cv2.circle(image, tuple(int(v) for v in pts[i]), 2, color, -1)
+    for i in POSE_LANDMARKS:
+        cv2.circle(image, tuple(int(v) for v in pts[i]), 3, (0, 0, 255), -1)
+
+    # Head pose axes from the last solvePnP result: x red, y green, z (facing direction) blue.
+    pose = extractor.pose_vectors
+    if pose is None:
+        return
+    rvec, tvec = pose
+    cam = camera_matrix(lm.image_width, lm.image_height, extractor.config.focal_length_scale)
+    axes = np.float64([[0, 0, 0], [5, 0, 0], [0, 5, 0], [0, 0, -5]])  # model units ~cm
+    proj, _ = cv2.projectPoints(axes, rvec, tvec, cam, np.zeros(4))
+    o, *ends = [tuple(int(v) for v in p.ravel()) for p in proj]
+    for end, color in zip(ends, ((0, 0, 255), (0, 255, 0), (255, 0, 0)), strict=True):
+        cv2.line(image, o, end, color, 2, cv2.LINE_AA)
+
+
+def fmt(value: float | None, spec: str = "6.3f") -> str:
+    return "  --  " if value is None else format(value, spec)
+
+
+SIGNALS = ("ear", "ear_left", "ear_right", "mar", "pitch", "yaw", "roll")
+
+
+class DisplaySmoother:
+    """Exponential moving average for on-screen numbers only (FrameFeatures stays raw)."""
+
+    def __init__(self, tau: float) -> None:
+        self.tau = tau
+        self.values: dict[str, float] = {}
+        self._last_t: float | None = None
+
+    def update(self, f: FrameFeatures) -> dict[str, float]:
+        if not f.face_found or self.tau <= 0:
+            self.values, self._last_t = {}, None
+            if f.face_found:
+                self.values = {k: getattr(f, k) for k in SIGNALS if getattr(f, k) is not None}
+            return self.values
+        dt = 0.0 if self._last_t is None else f.timestamp - self._last_t
+        self._last_t = f.timestamp
+        alpha = 1.0 - np.exp(-dt / self.tau)
+        for k in SIGNALS:
+            v = getattr(f, k)
+            if v is None:
+                continue
+            prev = self.values.get(k)
+            self.values[k] = v if prev is None else prev + alpha * (v - prev)
+        return self.values
+
+
+# (label, field, color BGR, y min, y max) per plot panel; dashed guide lines at `guides`.
+PLOTS = (
+    ("EAR", (("ear", (0, 255, 255)),), 0.0, 0.5, (0.2,)),
+    ("MAR", (("mar", (255, 0, 255)),), 0.0, 1.0, (0.5,)),
+    ("pitch/yaw/roll", (("pitch", (0, 0, 255)), ("yaw", (0, 255, 0)), ("roll", (255, 128, 0))), -45.0, 45.0, (0.0,)),
+)
+
+
+def draw_plots(width: int, history: deque[FrameFeatures], window_s: float, panel_h: int = 80) -> np.ndarray:
+    """Scrolling graphs of the last `window_s` seconds of raw features, stacked vertically."""
+    panels = []
+    now = history[-1].timestamp if history else 0.0
+    for label, series, lo, hi, guides in PLOTS:
+        panel = np.full((panel_h, width, 3), 25, dtype=np.uint8)
+
+        def to_y(v: float, lo: float = lo, hi: float = hi) -> int:
+            return int(round((1.0 - (min(max(v, lo), hi) - lo) / (hi - lo)) * (panel_h - 1)))
+
+        for g in guides:
+            y = to_y(g)
+            for x in range(0, width, 8):
+                cv2.line(panel, (x, y), (x + 3, y), (90, 90, 90), 1)
+        for field, color in series:
+            segment: list[tuple[int, int]] = []
+            for f in history:
+                v = getattr(f, field)
+                if v is None:  # no face: break the line
+                    if len(segment) > 1:
+                        cv2.polylines(panel, [np.array(segment, np.int32)], False, color, 1, cv2.LINE_AA)
+                    segment = []
+                    continue
+                x = int((1.0 - (now - f.timestamp) / window_s) * (width - 1))
+                segment.append((x, to_y(v)))
+            if len(segment) > 1:
+                cv2.polylines(panel, [np.array(segment, np.int32)], False, color, 1, cv2.LINE_AA)
+        names = "  ".join(field for field, _ in series) if len(series) > 1 else label
+        cv2.putText(
+            panel, f"{names}  range {lo:g} to {hi:g}", (6, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1
+        )
+        panel[0, :] = 70
+        panels.append(panel)
+    return np.vstack(panels)
+
+
+def feature_lines(values: dict[str, float], f: FrameFeatures, num_faces: int) -> list[str]:
+    if not f.face_found:
+        return ["NO FACE"]
+    v = values.get
+    return [
+        f"EAR {fmt(v('ear'), '.3f')}  (L {fmt(v('ear_left'), '.3f')}  R {fmt(v('ear_right'), '.3f')})",
+        f"MAR {fmt(v('mar'), '.3f')}  face_conf {f.face_conf:.2f}  faces {num_faces}",
+        f"pitch {fmt(v('pitch'), '+.0f')}  yaw {fmt(v('yaw'), '+.0f')}  roll {fmt(v('roll'), '+.0f')}  deg",
+    ]
 
 
 def main() -> int:
@@ -46,21 +179,32 @@ def main() -> int:
     parser.add_argument("--source", default="0", help="camera index (e.g. 0) or video file path")
     parser.add_argument("--loop", action="store_true", help="loop the video file")
     parser.add_argument("--config", default=None, help="path to thresholds.yaml")
+    parser.add_argument("--quiet", action="store_true", help="do not print EAR every frame")
+    parser.add_argument("--smooth", type=float, default=0.3, help="display smoothing time constant in s (0 = raw)")
+    parser.add_argument("--plot-seconds", type=float, default=5.0, help="time span of the graphs")
     args = parser.parse_args()
 
     thresholds = load_thresholds(args.config)
     preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
+    detector = FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks")))
+    extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
     source = FrameSource(args.source, CaptureConfig.from_dict(thresholds.get("capture")), loop=args.loop)
 
     show_raw = False
     side_by_side = False
+    show_landmarks = True
+    show_plots = True
     paused = False
     fps = 0.0
     last_t = time.monotonic()
     shown = None
+    smoother = DisplaySmoother(args.smooth)
+    history: deque[FrameFeatures] = deque()
+    text_lines: list[str] = []
+    last_text_t = 0.0
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-    with source:
+    with source, detector:
         print(f"Source: {args.source}  camera={source.is_camera}  source_fps={source.source_fps:.1f}")
         while True:
             if not paused:
@@ -73,7 +217,11 @@ def main() -> int:
 
                 t0 = time.perf_counter()
                 pre = preprocessor(frame)
-                pre_ms = (time.perf_counter() - t0) * 1000.0
+                t1 = time.perf_counter()
+                lm = detector.detect(pre)
+                t2 = time.perf_counter()
+                feats = extractor(lm, pre.frame_id, pre.timestamp)
+                t3 = time.perf_counter()
 
                 now = time.monotonic()
                 dt = now - last_t
@@ -81,24 +229,47 @@ def main() -> int:
                 if dt > 0:
                     fps = 1.0 / dt if fps == 0 else 0.9 * fps + 0.1 / dt
 
+                if not args.quiet:
+                    if feats.face_found:
+                        print(
+                            f"frame {feats.frame_id:6d}  EAR {fmt(feats.ear)}  MAR {fmt(feats.mar)}  "
+                            f"pitch {fmt(feats.pitch, '6.1f')}  yaw {fmt(feats.yaw, '6.1f')}  "
+                            f"roll {fmt(feats.roll, '6.1f')}"
+                        )
+                    else:
+                        print(f"frame {feats.frame_id:6d}  no face")
+
                 raw = to_bgr(frame.image)
                 if pre.scale != 1.0:
                     raw = cv2.resize(raw, (pre.image.shape[1], pre.image.shape[0]), interpolation=cv2.INTER_AREA)
+                processed = pre.image.copy()
+                target = processed if (side_by_side or not show_raw) else raw.copy()
+                if show_landmarks and lm is not None:
+                    draw_landmarks(target, lm, extractor)
                 if side_by_side:
-                    shown = np.hstack([raw, pre.image])
+                    shown = np.hstack([raw, target])
                 else:
-                    shown = (raw if show_raw else pre.image).copy()
+                    shown = target
 
-                h, w = pre.image.shape[:2]
-                draw_overlay(
-                    shown,
-                    [
-                        f"FPS {fps:5.1f}  preprocess {pre_ms:4.1f} ms",
-                        f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}",
-                        f"frame {pre.frame_id}  dropped {source.dropped_frames}  {w}x{h}",
-                        "view: " + ("raw | processed" if side_by_side else ("raw" if show_raw else "processed")),
-                    ],
-                )
+                values = smoother.update(feats)
+                history.append(feats)
+                while history and feats.timestamp - history[0].timestamp > args.plot_seconds:
+                    history.popleft()
+
+                # Refresh the text 5x per second so the digits are readable.
+                if now - last_text_t >= 0.2 or not feats.face_found:
+                    last_text_t = now
+                    h, w = pre.image.shape[:2]
+                    text_lines = [
+                        f"FPS {fps:5.1f}  pre {(t1 - t0) * 1e3:4.1f} ms  mesh {(t2 - t1) * 1e3:4.1f} ms"
+                        f"  feat {(t3 - t2) * 1e3:4.1f} ms",
+                        f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
+                        f"frame {pre.frame_id}  dropped {source.dropped_frames}",
+                        *feature_lines(values, feats, lm.num_faces if lm else 0),
+                    ]
+                draw_overlay(shown, text_lines)
+                if show_plots:
+                    shown = np.vstack([shown, draw_plots(shown.shape[1], history, args.plot_seconds)])
 
             if shown is not None:
                 cv2.imshow(WINDOW, shown)
@@ -109,6 +280,10 @@ def main() -> int:
                 show_raw = not show_raw
             elif key == ord("s"):
                 side_by_side = not side_by_side
+            elif key == ord("l"):
+                show_landmarks = not show_landmarks
+            elif key == ord("g"):
+                show_plots = not show_plots
             elif key == ord(" "):
                 paused = not paused
             if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:

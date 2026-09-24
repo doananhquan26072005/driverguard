@@ -5,7 +5,8 @@ from typing import Any
 
 import yaml
 
-DEFAULT_THRESHOLDS_PATH = Path(__file__).resolve().parent.parent / "config" / "thresholds.yaml"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_THRESHOLDS_PATH = PROJECT_ROOT / "config" / "thresholds.yaml"
 
 
 def load_thresholds(path: str | Path | None = None) -> dict[str, Any]:
