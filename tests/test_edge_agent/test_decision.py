@@ -1,0 +1,236 @@
+"""Blocks 9, 11, 12: risk engine rule table, trip memory trend, alert manager."""
+
+from dataclasses import replace
+
+import pytest
+
+from edge_agent.analysis.distraction import DistractionState
+from edge_agent.analysis.drowsiness import DrowsinessState
+from edge_agent.context.vehicle_context import VehicleContext
+from edge_agent.decision.alert_manager import AlertConfig, AlertManager
+from edge_agent.decision.risk_engine import RiskAssessment, RiskConfig, RiskEngine, RuleHit
+from edge_agent.decision.trip_memory import TripMemory, TripMemoryConfig, linear_slope
+
+D0 = DrowsinessState(
+    timestamp=100.0,
+    eye_closed=False,
+    closed_duration=0.0,
+    microsleep=False,
+    perclos_60s=0.0,
+    perclos_coverage_s=60.0,
+    blink_rate=15.0,
+    yawning=False,
+    yawn_count_10min=0,
+    nod_count_5min=0,
+    ear_open_baseline=0.3,
+    ear_closed_threshold=0.195,
+)
+X0 = DistractionState(100.0, True, False, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+C0 = VehicleContext(100.0, 50.0, True, False, False, False, False, 1000.0, 15.0)
+ENGINE = RiskEngine()
+
+
+def assess(d=D0, x=X0, c=C0, trip=None, engine=ENGINE):
+    return engine.assess(d, x, c, trip)
+
+
+# ---------------------------------------------------------------- risk engine (rule table)
+
+
+def test_alert_driver_is_l0():
+    r = assess()
+    assert r.level == 0 and r.drowsy_score == 0 and r.distraction_score == 0 and r.reasons == ()
+
+
+@pytest.mark.parametrize(("closed", "level"), [(1.4, 0), (1.5, 3), (3.0, 3)])
+def test_microsleep_is_l3_at_1_5_s(closed, level):
+    r = assess(d=replace(D0, closed_duration=closed))
+    assert r.level == level
+    if level:
+        assert r.reasons == ("microsleep",)
+
+
+def test_drowsy_score_formula():
+    # PERCLOS 12.5 % -> term 0.5 (ramp 5..20 %), 2 yawns -> 2/3, 1 nod -> 1/2, no microsleep
+    d = replace(D0, perclos_60s=0.125, yawn_count_10min=2, nod_count_5min=1)
+    r = assess(d=d)
+    assert r.drowsy_terms == pytest.approx((0.5, 0.0, 2 / 3, 0.5))
+    assert r.drowsy_score == pytest.approx(40 * 0.5 + 15 * 2 / 3 + 20 * 0.5)  # 40 -> L1
+    assert r.level == 1 and r.reasons == ("drowsy_score",)
+
+
+def test_drowsy_score_l2_and_capped():
+    d = replace(D0, perclos_60s=0.3, yawn_count_10min=5, nod_count_5min=3)
+    r = assess(d=d)
+    assert r.drowsy_score == pytest.approx(75)  # 40 + 15 + 20
+    assert r.level == 2
+    r = assess(d=d, c=replace(C0, night=True, long_drive=True))
+    assert r.drowsy_score == 100.0  # 75 * 1.44 capped
+
+
+def test_perclos_needs_coverage():
+    r = assess(d=replace(D0, perclos_60s=0.3, perclos_coverage_s=10.0))
+    assert r.drowsy_terms[0] == 0.0 and r.level == 0
+
+
+def test_recent_microsleep_adds_score_from_trip_memory():
+    trip = TripMemory().update(0.0, 0.0, ("microsleep",))
+    r = assess(trip=trip)
+    assert r.drowsy_terms[1] == 1.0 and r.drowsy_score == 25
+    later = replace(D0, timestamp=400.0)
+    assert assess(d=later, trip=trip).drowsy_terms[1] == 0.0  # older than 5 min
+
+
+def test_night_factor_needs_evidence():
+    r = assess(c=replace(C0, night=True, long_drive=True))
+    assert r.drowsy_score == 0 and r.level == 0  # multipliers never create an alert alone
+
+
+@pytest.mark.parametrize(
+    ("off_road", "high_speed", "level"),
+    [(1.9, False, 0), (2.0, False, 2), (1.5, True, 2), (1.4, True, 0)],
+)
+def test_off_road_threshold_depends_on_speed(off_road, high_speed, level):
+    r = assess(x=replace(X0, off_road=True, off_road_duration=off_road), c=replace(C0, high_speed=high_speed))
+    assert r.level == level
+
+
+def test_turn_signal_suppresses_off_road():
+    r = assess(x=replace(X0, off_road=True, off_road_duration=5.0), c=replace(C0, turning=True))
+    assert r.level == 0
+
+
+@pytest.mark.parametrize(("ratio", "level"), [(0.59, 0), (0.6, 2)])
+def test_phone_ratio_60_percent_is_l2(ratio, level):
+    assert assess(x=replace(X0, phone_ratio_2s=ratio)).level == level
+
+
+def test_distraction_silent_when_stopped():
+    x = replace(X0, active=False, off_road_duration=0.0, phone_ratio_2s=0.0)
+    r = assess(x=x, c=replace(C0, speed_kmh=0.0, moving=False))
+    assert r.level == 0 and r.distraction_score == 0
+
+
+def test_highest_rule_wins_and_all_hits_kept():
+    d = replace(D0, closed_duration=2.0, perclos_60s=0.2)
+    x = replace(X0, phone_ratio_2s=0.9)
+    r = assess(d=d, x=x)
+    assert r.level == 3
+    assert {h.reason for h in r.hits} == {"microsleep", "drowsy_score", "phone"}
+    assert r.reasons == ("microsleep",)
+
+
+def test_blink_rate_is_a_note_by_default():
+    trip = TripMemory().update(0.0, 0.0)
+    trip = replace(trip, elapsed_s=120.0)
+    r = assess(d=replace(D0, blink_rate=40.0), trip=trip)
+    assert r.level == 0 and any(h.reason == "blink_rate" for h in r.hits)
+    strict = RiskEngine(RiskConfig(blink_level=1))
+    assert assess(d=replace(D0, blink_rate=40.0), trip=trip, engine=strict).level == 1
+
+
+def test_rising_trend_is_early_warning():
+    mem = TripMemory(TripMemoryConfig(bin_s=60))
+    trip = None
+    for minute in range(8):  # drowsy_score climbs 5 points per minute: 0, 5, ..., 35
+        for s in range(0, 60, 5):
+            trip = mem.update(minute * 60 + s, minute * 5.0)
+    trip = mem.update(8 * 60, 35.0)
+    assert trip.trend_15min == pytest.approx(5.0)
+    r = assess(d=replace(D0, timestamp=480.0), trip=trip)
+    assert r.level == 1 and r.reasons == ("trend",)
+
+
+# ---------------------------------------------------------------- trip memory
+
+
+def test_trip_memory_bins_and_window():
+    mem = TripMemory(TripMemoryConfig(bin_s=60, trend_window_bins=15))
+    state = None
+    for minute in range(20):
+        for s in range(0, 60, 10):
+            state = mem.update(minute * 60 + s, float(minute))
+    assert len(state.minute_scores) == 15
+    assert state.minute_scores[0] == 4.0 and state.minute_scores[-1] == 18.0
+    assert state.trend_15min == pytest.approx(1.0)
+
+
+def test_linear_slope():
+    assert linear_slope([]) is None and linear_slope([3.0]) is None
+    assert linear_slope([1.0, 1.0, 1.0]) == pytest.approx(0.0)
+    assert linear_slope([10.0, 8.0, 6.0]) == pytest.approx(-2.0)
+
+
+def test_trip_memory_counts_alerts():
+    mem = TripMemory()
+    mem.record_alert(2)
+    mem.record_alert(2)
+    assert mem.update(0.0, 0.0).alerts_by_level == (0, 0, 2, 0)
+
+
+# ---------------------------------------------------------------- alert manager
+
+
+def risk(t, level):
+    hits = (RuleHit(level, "x", 1.0),) if level > 0 else ()
+    return RiskAssessment(t, level, hits, 0.0, 0.0, (0, 0, 0, 0))
+
+
+def run(manager, levels, t0=0.0, dt=0.1):
+    """Feed a list of levels, one per dt. Returns list of AlertOutput."""
+    return [manager.update(risk(t0 + i * dt, lv)) for i, lv in enumerate(levels)]
+
+
+CFG = AlertConfig(rise_confirm_s={1: 1.0, 2: 0.5, 3: 0.0}, fall_hold_s=3.0, cooldown_s={1: 120, 2: 30, 3: 10})
+
+
+def emitted(outputs):
+    return [(round(o.t, 1), o.new_alert.level) for o in outputs if o.new_alert is not None]
+
+
+def test_level_must_hold_before_alert():
+    m = AlertManager(CFG)
+    out = run(m, [2] * 4 + [0] * 20)  # 0.3 s of L2: below the 0.5 s confirmation
+    assert emitted(out) == [] and m.active_level == 0
+    out = run(AlertManager(CFG), [2] * 10)
+    assert emitted(out) == [(0.5, 2)]
+
+
+def test_l3_is_immediate():
+    out = run(AlertManager(CFG), [0, 0, 3])
+    assert emitted(out) == [(0.2, 3)]
+
+
+def test_flicker_does_not_repeat_alerts():
+    m = AlertManager(CFG)
+    out = run(m, ([2] * 6 + [0] * 2) * 10)  # L2 with 0.2 s gaps for 8 s
+    assert emitted(out) == [(0.5, 2)]
+    assert all(o.active_level == 2 for o in out[5:])  # fall hold keeps it up
+
+
+def test_level_drops_after_fall_hold():
+    m = AlertManager(CFG)
+    out = run(m, [2] * 10 + [0] * 40)
+    drop = next(o.t for o in out[10:] if o.active_level == 0)
+    assert drop == pytest.approx(1.0 + 3.0, abs=0.11)
+
+
+def test_cooldown_suppresses_same_level():
+    m = AlertManager(CFG)
+    out = run(m, [2] * 10 + [0] * 40 + [2] * 10)  # second L2 episode after 5 s
+    assert emitted(out) == [(0.5, 2)]
+    assert out[-1].active_level == 2 and any(o.suppressed for o in out)
+    out = run(m, [0] * 40 + [2] * 10, t0=40.0)  # after the 30 s cooldown
+    assert emitted(out) == [(44.5, 2)]
+
+
+def test_escalation_bypasses_lower_cooldown():
+    m = AlertManager(CFG)
+    out = run(m, [1] * 15 + [2] * 10 + [3])
+    assert emitted(out) == [(1.0, 1), (2.0, 2), (2.5, 3)]
+
+
+def test_alert_config_from_yaml_dict():
+    cfg = AlertConfig.from_dict({"rise_confirm_s": {"2": 0.8}, "cooldown_s": {3: 5}})
+    assert cfg.rise_confirm_s[2] == 0.8 and cfg.rise_confirm_s[1] == 1.0
+    assert cfg.cooldown_s[3] == 5.0

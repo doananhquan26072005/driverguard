@@ -1,0 +1,16 @@
+# City drive in the afternoon: stop-and-go, lane changes with the turn signal.
+name: city_day
+start_clock: "15:00"
+initial_drive_time_s: 600
+loop: true
+timeline:
+  - {t: 0,   speed_kmh: 0}
+  - {t: 10,  speed_kmh: 40}
+  - {t: 60,  speed_kmh: 45}
+  - {t: 70,  speed_kmh: 45, turn_signal: left}
+  - {t: 75,  speed_kmh: 45, turn_signal: off}
+  - {t: 100, speed_kmh: 0}                       # red light
+  - {t: 130, speed_kmh: 0}
+  - {t: 140, speed_kmh: 35, turn_signal: right}
+  - {t: 146, speed_kmh: 35, turn_signal: off}
+  - {t: 180, speed_kmh: 50}

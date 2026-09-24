@@ -114,3 +114,57 @@ distraction:
     max_deg: 20                     # baseline never drifts beyond +-20 deg
     yaw_deg: 0.0
     pitch_deg: 0.0
+
+# Block 10 - Vehicle context (from CAN, simulated by edge_agent/context/can_sim.py)
+context:
+  min_speed_kmh: 5              # below this the vehicle counts as stopped
+  high_speed_kmh: 80            # off-road threshold tightens above this
+  long_drive_s: 7200            # 2 h of driving = long drive
+  night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
+  turn_signal_grace_s: 2.0      # looking sideways stays expected this long after the blinker stops
+
+# Block 9 - Risk engine (rule table: docs/workflow/workflow_full_4.jpg)
+risk:
+  microsleep_l3_s: 1.5          # closed_duration >= this -> L3 at once
+  drowsy:
+    # drowsy_score = sum(weight x term), each term normalised to 0..1, total 0..100
+    weight_perclos: 40
+    weight_microsleep: 25
+    weight_yawn: 15
+    weight_nod: 20
+    perclos_low: 0.05           # PERCLOS term ramps 0 -> 1 between low and high
+    perclos_high: 0.20
+    perclos_min_coverage_s: 30  # no PERCLOS term before this much eye data
+    yawn_full: 3                # yawn_count_10min for a full yawn term
+    nod_full: 2                 # nod_count_5min for a full nod term
+    microsleep_memory_s: 300    # a microsleep in the last 5 min = full microsleep term
+    l1: 40
+    l2: 70
+    night_factor: 1.2           # score multipliers from context
+    long_drive_factor: 1.2
+    active_when_stopped: true   # drowsiness rules also when stopped
+  distraction:
+    off_road_s: 2.0
+    off_road_high_speed_s: 1.5
+    phone_ratio: 0.6
+  trend:
+    level: 1                    # early warning: suggest a break
+    min_points: 5               # minutes of history needed
+    slope_per_min: 2.0          # drowsy_score points per minute
+    min_score: 20               # ignore a rising trend while the score is still low
+  blink:
+    normal_min: 10              # blinks / min outside [min, max] = early fatigue sign
+    normal_max: 30
+    min_observed_s: 60
+    level: 0                    # 0 = note only (blink rate varies a lot between people)
+
+# Block 11 - Trip memory
+trip_memory:
+  bin_s: 60                     # one drowsy_score point per minute
+  trend_window_bins: 15         # trend over the last 15 minutes
+
+# Block 12 - Alert manager
+alert:
+  rise_confirm_s: {1: 1.0, 2: 0.5, 3: 0.0}   # a level must hold this long before it is raised
+  fall_hold_s: 3.0                           # and stay lower this long before it is dropped
+  cooldown_s: {1: 120, 2: 30, 3: 10}         # no repeated alert of the same level within this
