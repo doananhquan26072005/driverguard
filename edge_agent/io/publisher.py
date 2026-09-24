@@ -1,6 +1,11 @@
 """Block 14 - Metadata publisher.
 
-Sends alert metadata (never images) to the backend in batches, with an offline queue:
+Sends metadata (never images) to the backend in batches, with an offline queue. Three
+kinds of records share the queue and the batches:
+- events:   one per emitted alert (`build_event`)
+- feedback: the driver pressed "false alarm" on the HUD for an event (`publish_feedback`)
+- samples:  one fatigue-timeline point per minute of driving (`build_sample`)
+
 - `publish()` only checks the event and appends it to a persistent outbox (SQLite file,
   metadata JSON only), so the main loop never waits on the network.
 - A background thread flushes up to `batch_size` events every `flush_interval_s`
@@ -45,6 +50,7 @@ BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
 
 # body (JSON-ready dict) -> HTTP status code; raises OSError when the backend is unreachable
 Transport = Callable[[dict[str, Any]], int]
+KINDS = {"event": "events", "feedback": "feedback", "sample": "samples"}  # record kind -> batch field
 
 
 @dataclass(frozen=True)
@@ -119,11 +125,37 @@ def build_event(alert: Alert, r: DecisionResult, trip_id: str, now: datetime | N
     }
 
 
+def build_sample(
+    minute_score: float, perclos: float | None, max_level: int, trip_id: str, now: datetime | None = None
+) -> dict[str, Any]:
+    """One fatigue-timeline point: drowsy_score averaged over the minute that just ended."""
+    return {
+        "sample_id": str(uuid.uuid4()),
+        "ts": (now or datetime.now(UTC)).isoformat(),
+        "trip_id": trip_id,
+        "drowsy_score": _round(min(max(minute_score, 0.0), 100.0), 1),
+        "perclos_60s": _round(perclos),
+        "max_level": max_level,
+    }
+
+
+def build_feedback(event_id: str, now: datetime | None = None) -> dict[str, Any]:
+    return {"event_id": event_id, "verdict": "false_alarm", "ts": (now or datetime.now(UTC)).isoformat()}
+
+
+def batch_body(device_id: str, records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Queue records ({"kind", "data"}) -> POST /api/v1/events body; empty lists are left out."""
+    body: dict[str, Any] = {"device_id": device_id}
+    for rec in records:
+        body.setdefault(KINDS[rec["kind"]], []).append(rec["data"])
+    return body
+
+
 # --------------------------------------------------------------------------- persistent outbox
 
 
 class Outbox:
-    """FIFO of event JSON in SQLite. Thread-safe."""
+    """FIFO of {"kind", "data"} records as JSON in SQLite. Thread-safe."""
 
     def __init__(self, path: str) -> None:
         if path != ":memory:":
@@ -150,7 +182,13 @@ class Outbox:
     def peek(self, n: int) -> list[tuple[int, dict[str, Any]]]:
         with self._lock:
             rows = self._conn.execute("SELECT id, event FROM outbox ORDER BY id LIMIT ?", (n,)).fetchall()
-        return [(i, json.loads(e)) for i, e in rows]
+        out = []
+        for i, raw in rows:
+            rec = json.loads(raw)
+            if "kind" not in rec:  # queued by the M5 version: a bare event
+                rec = {"kind": "event", "data": rec}
+            out.append((i, rec))
+        return out
 
     def delete(self, ids: list[int]) -> None:
         if not ids:
@@ -223,8 +261,18 @@ class MetadataPublisher:
 
     # ------------------------------------------------------------------ API for the main loop
     def publish(self, event: dict[str, Any]) -> None:
-        check_metadata_only(event)
-        overflow = self._outbox.put(event, self.config.max_queue)
+        self._enqueue("event", event)
+
+    def publish_feedback(self, event_id: str) -> None:
+        """The driver marked this alert as a false alarm."""
+        self._enqueue("feedback", build_feedback(event_id))
+
+    def publish_sample(self, sample: dict[str, Any]) -> None:
+        self._enqueue("sample", sample)
+
+    def _enqueue(self, kind: str, data: dict[str, Any]) -> None:
+        check_metadata_only(data)
+        overflow = self._outbox.put({"kind": kind, "data": data}, self.config.max_queue)
         if overflow:
             self.dropped += overflow
             log.warning("outbox full: dropped %d oldest events", overflow)
@@ -262,9 +310,9 @@ class MetadataPublisher:
         self.stop()
 
     # ------------------------------------------------------------------ sending
-    def _send(self, events: list[dict[str, Any]]) -> int | None:
+    def _send(self, records: list[dict[str, Any]]) -> int | None:
         try:
-            return self._transport({"device_id": self.device_id, "events": events})
+            return self._transport(batch_body(self.device_id, records))
         except OSError as e:
             log.info("backend unreachable: %s", e)
             return None
@@ -277,7 +325,7 @@ class MetadataPublisher:
             rows = self._outbox.peek(self.config.batch_size)
             if not rows:
                 return 0
-            status = self._send([e for _, e in rows])
+            status = self._send([rec for _, rec in rows])
             if status is not None and 200 <= status < 300:
                 self._outbox.delete([i for i, _ in rows])
                 self._succeeded(len(rows))
@@ -289,18 +337,18 @@ class MetadataPublisher:
 
     def _send_one_by_one(self, rows: list[tuple[int, dict[str, Any]]]) -> int:
         accepted = 0
-        for event_id, event in rows:
-            status = self._send([event])
+        for row_id, rec in rows:
+            status = self._send([rec])
             if status is not None and 200 <= status < 300:
                 accepted += 1
             elif status in DROP_STATUSES:
                 self.dropped += 1
-                log.error("backend refused event %s (HTTP %s): dropped", event.get("event_id"), status)
+                log.error("backend refused a %s record (HTTP %s): dropped", rec["kind"], status)
             else:
                 self.sent += accepted
                 self._failed(status)
                 return accepted  # network went away mid-way: keep the rest for later
-            self._outbox.delete([event_id])
+            self._outbox.delete([row_id])
         self._succeeded(accepted)
         return accepted
 

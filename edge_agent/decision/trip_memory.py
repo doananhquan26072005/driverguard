@@ -36,6 +36,7 @@ class TripState:
     trend_15min: float | None  # drowsy_score points per minute, None until 2 bins exist
     last_microsleep_t: float | None
     alerts_by_level: tuple[int, int, int, int]
+    bins_completed: int = 0  # grows by one each time a minute closes (fatigue timeline samples)
 
 
 def linear_slope(values: list[float] | tuple[float, ...]) -> float | None:
@@ -57,6 +58,7 @@ class TripMemory:
         self._scores: deque[float] = deque(maxlen=self.config.trend_window_bins)
         self._last_microsleep_t: float | None = None
         self._alerts = [0, 0, 0, 0]
+        self._bins_completed = 0
 
     def record_alert(self, level: int) -> None:
         self._alerts[level] += 1
@@ -68,6 +70,7 @@ class TripMemory:
         if index != self._bin_index:
             if self._bin_count:
                 self._scores.append(self._bin_sum / self._bin_count)
+                self._bins_completed += 1
             # Bins with no frames at all (camera stalled) are skipped, not filled with zeros.
             self._bin_index, self._bin_sum, self._bin_count = index, 0.0, 0
         self._bin_sum += drowsy_score
@@ -82,4 +85,5 @@ class TripMemory:
             trend_15min=linear_slope(scores),
             last_microsleep_t=self._last_microsleep_t,
             alerts_by_level=tuple(self._alerts),  # type: ignore[arg-type]
+            bins_completed=self._bins_completed,
         )

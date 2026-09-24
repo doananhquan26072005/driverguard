@@ -1,6 +1,7 @@
 """Bootstrap accounts without the API (the first admin has to come from somewhere).
 
 python -m backend.manage create-user admin --role admin
+python -m backend.manage create-user kysu --role engineer
 python -m backend.manage create-user an --role driver --driver-id drv-001
 python -m backend.manage create-device cam-001 --driver-id drv-001   # prints the key once
 """
@@ -24,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     u = sub.add_parser("create-user")
     u.add_argument("username")
-    u.add_argument("--role", required=True, choices=["admin", "manager", "driver"])
+    u.add_argument("--role", required=True, choices=["admin", "engineer", "manager", "driver"])
     u.add_argument("--driver-id", default=None)
     u.add_argument("--password", default=None, help="omit to be prompted (keeps it out of shell history)")
     d = sub.add_parser("create-device")

@@ -4,10 +4,12 @@
     python -m backend.manage create-user admin --role admin
 
 Roles:
-- admin:   manage users and devices, read all events
-- manager: read all events (fleet)
-- driver:  read only the events of their own driver_id
-Edge devices are not users: they post events with their X-Device-Key.
+- admin:    manage users and devices, everything below
+- engineer: read all events / timelines / stats, tune thresholds
+- manager:  read all events / timelines / stats (fleet), thresholds read-only
+- driver:   read only their own events and timeline
+Edge devices are not users: they post events, false-alarm feedback and fatigue samples with
+their X-Device-Key, and fetch the tuned thresholds.
 """
 
 from __future__ import annotations
@@ -30,13 +32,20 @@ from pydantic import ValidationError
 
 from backend import db
 from backend.schemas import (
+    THRESHOLD_SPECS,
     BatchResult,
     DeviceIn,
     DeviceOut,
     EventBatch,
     EventOut,
     LoginIn,
+    StatsOut,
+    ThresholdsIn,
+    ThresholdsOut,
+    ThresholdSpec,
+    TimelineOut,
     TokenOut,
+    TripOut,
     UserIn,
     UserOut,
 )
@@ -53,6 +62,31 @@ from backend.settings import BackendSettings
 
 log = logging.getLogger("driverguard.backend")
 bearer = HTTPBearer(auto_error=False)
+
+
+ID_PATTERN = r"^[A-Za-z0-9_.-]{1,48}$"
+READ_ROLES = ("admin", "engineer", "manager", "driver")
+
+
+def utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC).isoformat()
+
+
+def scoped(user: dict[str, Any], driver_id: str | None, device_id: str | None) -> dict[str, str | None]:
+    """Drivers only ever see their own data, whatever filters they pass."""
+    if user["role"] == "driver":
+        return {"driver_id": user.get("driver_id") or "__none__", "device_id": None}
+    return {"driver_id": driver_id, "device_id": device_id}
+
+
+def thresholds_out(conn: sqlite3.Connection) -> ThresholdsOut:
+    latest = db.latest_thresholds(conn)
+    specs = {k: ThresholdSpec(min=lo, max=hi, unit=unit) for k, (lo, hi, unit) in THRESHOLD_SPECS.items()}
+    if latest is None:
+        return ThresholdsOut(version=0, values={}, updated_by=None, updated_at=None, specs=specs)
+    return ThresholdsOut(**latest, specs=specs)
 
 
 def safe_errors(exc: ValidationError) -> list[dict[str, Any]]:
@@ -121,7 +155,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["Authorization", "Content-Type", "X-Device-Key"],
     )
 
@@ -169,36 +203,116 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "device_id does not match the device key")
 
         def store() -> BatchResult:
-            accepted = 0
-            for e in batch.events:
+            dev, drv = device["device_id"], device["driver_id"]
+            accepted = feedback = samples = 0
+            for e in batch.events:  # events first: feedback in the same batch may refer to them
                 row = e.model_dump(mode="json")
                 row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
-                accepted += db.insert_event(conn, device["device_id"], device["driver_id"], row)
-            return BatchResult(accepted=accepted, duplicates=len(batch.events) - accepted)
+                accepted += db.insert_event(conn, dev, drv, row)
+            for f in batch.feedback:
+                feedback += db.apply_feedback(conn, dev, str(f.event_id), f.verdict, f.ts.astimezone(UTC).isoformat())
+            for smp in batch.samples:
+                row = smp.model_dump(mode="json")
+                row["ts"] = smp.ts.astimezone(UTC).isoformat()
+                samples += db.insert_sample(conn, dev, drv, row)
+            return BatchResult(
+                accepted=accepted,
+                duplicates=len(batch.events) - accepted,
+                feedback_applied=feedback,
+                samples_accepted=samples,
+            )
 
         return await run_in_threadpool(store)
 
     @app.get("/api/v1/events", response_model=list[EventOut])
     def get_events(
-        user: Annotated[dict[str, Any], Depends(require_roles("admin", "manager", "driver"))],
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
         conn: Conn,
         min_level: Annotated[int, Query(ge=0, le=3)] = 0,
         since: datetime | None = None,
-        driver_id: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9_.-]{1,48}$")] = None,
-        device_id: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9_.-]{1,48}$")] = None,
+        until: datetime | None = None,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        device_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        trip_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        false_alarm_only: bool = False,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     ) -> list[dict[str, Any]]:
-        if user["role"] == "driver":
-            driver_id = user.get("driver_id") or "__none__"  # drivers only ever see their own events
-            device_id = None
         return db.query_events(
             conn,
-            driver_id=driver_id,
-            device_id=device_id,
+            **scoped(user, driver_id, device_id),
+            trip_id=trip_id,
             min_level=min_level,
-            since=(since if since.tzinfo else since.replace(tzinfo=UTC)).astimezone(UTC).isoformat() if since else None,
+            since=utc_iso(since),
+            until=utc_iso(until),
+            feedback="false_alarm" if false_alarm_only else None,
             limit=limit,
         )
+
+    @app.get("/api/v1/trips", response_model=list[TripOut])
+    def get_trips(
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        since: datetime | None = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> list[dict[str, Any]]:
+        return db.query_trips(conn, **scoped(user, driver_id, None), since=utc_iso(since), limit=limit)
+
+    @app.get("/api/v1/timeline", response_model=TimelineOut)
+    def get_timeline(
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+        trip_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> TimelineOut:
+        """Per-minute drowsy_score samples plus the alerts of the same period, oldest first."""
+        filters = {
+            **scoped(user, driver_id, None),
+            "trip_id": trip_id,
+            "since": utc_iso(since),
+            "until": utc_iso(until),
+        }
+        events = db.query_events(conn, **filters, limit=1000)
+        return TimelineOut(samples=db.query_samples(conn, **filters), events=list(reversed(events)))
+
+    @app.get("/api/v1/stats", response_model=StatsOut)
+    def get_stats(
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        since: datetime | None = None,
+    ) -> dict[str, Any]:
+        return db.event_stats(conn, **scoped(user, driver_id, None), since=utc_iso(since))
+
+    @app.get("/api/v1/thresholds", response_model=ThresholdsOut)
+    def get_thresholds(
+        _: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))], conn: Conn
+    ) -> ThresholdsOut:
+        return thresholds_out(conn)
+
+    @app.put("/api/v1/thresholds", response_model=ThresholdsOut)
+    def put_thresholds(
+        body: ThresholdsIn,
+        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer"))],
+        conn: Conn,
+    ) -> ThresholdsOut:
+        """Store a new version: the previous overrides updated with the given keys."""
+        current = db.latest_thresholds(conn)
+        merged = {**(current["values"] if current else {}), **body.values}
+        l1, l2 = merged.get("risk.drowsy.l1"), merged.get("risk.drowsy.l2")
+        if l1 is not None and l2 is not None and l1 >= l2:
+            raise HTTPException(422, "risk.drowsy.l1 must be lower than risk.drowsy.l2")
+        city, fast = merged.get("risk.distraction.off_road_s"), merged.get("risk.distraction.off_road_high_speed_s")
+        if city is not None and fast is not None and fast > city:
+            raise HTTPException(422, "off_road_high_speed_s must not exceed off_road_s")
+        db.save_thresholds(conn, merged, user["sub"])
+        return thresholds_out(conn)
+
+    @app.get("/api/v1/device/thresholds", response_model=ThresholdsOut)
+    def get_device_thresholds(_: Annotated[dict[str, Any], Depends(current_device)], conn: Conn) -> ThresholdsOut:
+        return thresholds_out(conn)
 
     @app.get("/api/v1/users", response_model=list[UserOut])
     def get_users(_: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn) -> list[dict[str, Any]]:

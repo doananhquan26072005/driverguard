@@ -56,14 +56,15 @@ def test_password_hash_roundtrip():
 def test_device_posts_batch(client):
     events = [make_event(), make_event(level=3, reasons=["microsleep"], type="drowsiness")]
     r = post_events(client, events)
-    assert r.status_code == 200 and r.json() == {"accepted": 2, "duplicates": 0}
+    assert r.status_code == 200
+    assert r.json() == {"accepted": 2, "duplicates": 0, "feedback_applied": 0, "samples_accepted": 0}
 
 
 def test_retry_is_idempotent(client):
     events = [make_event(), make_event()]
     post_events(client, events)
     r = post_events(client, events)
-    assert r.json() == {"accepted": 0, "duplicates": 2}
+    assert (r.json()["accepted"], r.json()["duplicates"]) == (0, 2)
     assert len(client.get("/api/v1/events", headers=login(client, "admin")).json()) == 2
 
 

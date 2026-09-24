@@ -6,7 +6,15 @@ import uuid
 import numpy as np
 import pytest
 
-from edge_agent.io.publisher import MetadataPublisher, Outbox, PublisherConfig, build_event, check_metadata_only
+from edge_agent.io.publisher import (
+    MetadataPublisher,
+    Outbox,
+    PublisherConfig,
+    batch_body,
+    build_event,
+    build_sample,
+    check_metadata_only,
+)
 
 
 def event(i=0, **extra):
@@ -144,7 +152,7 @@ def test_queue_is_capped(outbox_path):
     for i in range(8):
         pub.publish(event(i))
     assert pub.queued == 5 and pub.dropped == 3
-    assert [e["seq"] for _, e in pub._outbox.peek(10)] == [3, 4, 5, 6, 7]  # oldest dropped
+    assert [r["data"]["seq"] for _, r in pub._outbox.peek(10)] == [3, 4, 5, 6, 7]  # oldest dropped
 
 
 def test_background_thread_flushes(outbox_path):
@@ -202,11 +210,36 @@ def test_real_events_pass_the_guard():
 def test_outbox_fifo(tmp_path):
     ob = Outbox(str(tmp_path / "o.db"))
     for i in range(3):
-        ob.put({"i": i}, max_queue=10)
+        ob.put({"kind": "event", "data": {"i": i}}, max_queue=10)
     rows = ob.peek(2)
-    assert [e["i"] for _, e in rows] == [0, 1]
+    assert [r["data"]["i"] for _, r in rows] == [0, 1]
     ob.delete([rows[0][0]])
-    assert [e["i"] for _, e in ob.peek(5)] == [1, 2] and ob.count() == 2
+    assert [r["data"]["i"] for _, r in ob.peek(5)] == [1, 2] and ob.count() == 2
+
+
+def test_m5_queue_rows_are_read_as_events(tmp_path):
+    ob = Outbox(str(tmp_path / "o.db"))
+    ob.put({"event_id": "x", "level": 2}, max_queue=10)  # an M5 row: bare event, no kind
+    assert ob.peek(1)[0][1] == {"kind": "event", "data": {"event_id": "x", "level": 2}}
+
+
+def test_feedback_and_samples_share_the_batches(outbox_path):
+    backend = FakeBackend()
+    pub = make(outbox_path, backend, batch_size=10)
+    e = event(0)
+    pub.publish(e)
+    pub.publish_feedback(e["event_id"])
+    pub.publish_sample(build_sample(42.123, 0.08, 1, "trip-1"))
+    assert pub.flush_once() == 3
+    body = backend.batches[0]
+    assert [x["event_id"] for x in body["events"]] == [e["event_id"]]
+    assert body["feedback"][0]["event_id"] == e["event_id"] and body["feedback"][0]["verdict"] == "false_alarm"
+    assert body["samples"][0]["drowsy_score"] == 42.1 and body["samples"][0]["max_level"] == 1
+
+
+def test_batch_body_leaves_out_empty_kinds():
+    body = batch_body("cam-001", [{"kind": "sample", "data": {"x": 1}}])
+    assert body == {"device_id": "cam-001", "samples": [{"x": 1}]}
 
 
 # ---------------------------------------------------------------- end to end with the backend

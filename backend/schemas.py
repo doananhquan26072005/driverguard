@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-Role = Literal["admin", "manager", "driver"]
+Role = Literal["admin", "engineer", "manager", "driver"]
 Reason = Literal["microsleep", "drowsy_score", "off_road", "phone", "trend", "blink_rate"]
 EventType = Literal["drowsiness", "distraction"]
 # Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
@@ -107,9 +107,30 @@ class EventIn(StrictModel):
     metrics: EventMetrics = Field(default_factory=EventMetrics)
 
 
+class FeedbackIn(StrictModel):
+    """Driver pressed "false alarm" on the in-car HUD for an alert."""
+
+    event_id: UUID
+    verdict: Literal["false_alarm"]
+    ts: AwareDatetime
+
+
+class SampleIn(StrictModel):
+    """One point of the fatigue timeline: drowsy_score averaged over one minute."""
+
+    sample_id: UUID
+    ts: AwareDatetime  # end of the minute
+    trip_id: str = Identifier
+    drowsy_score: float = Field(ge=0, le=100)
+    perclos_60s: float | None = Field(default=None, ge=0, le=1)
+    max_level: int = Field(ge=0, le=3)
+
+
 class EventBatch(StrictModel):
     device_id: str = Identifier
-    events: list[EventIn] = Field(min_length=1, max_length=MAX_EVENTS_PER_BATCH)
+    events: list[EventIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
+    feedback: list[FeedbackIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
+    samples: list[SampleIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
 
     @model_validator(mode="before")
     @classmethod
@@ -119,10 +140,18 @@ class EventBatch(StrictModel):
             raise ValueError(f"image or base64 data is not accepted ({problem})")
         return data
 
+    @model_validator(mode="after")
+    def not_empty(self) -> EventBatch:
+        if not (self.events or self.feedback or self.samples):
+            raise ValueError("batch is empty")
+        return self
+
 
 class BatchResult(BaseModel):
     accepted: int
     duplicates: int
+    feedback_applied: int = 0
+    samples_accepted: int = 0
 
 
 class EventOut(BaseModel):
@@ -139,6 +168,45 @@ class EventOut(BaseModel):
     speed_kmh: float | None
     metrics: dict[str, Any]
     received_at: datetime
+    feedback: str | None = None
+    feedback_at: datetime | None = None
+
+
+class SampleOut(BaseModel):
+    ts: datetime
+    trip_id: str
+    device_id: str
+    driver_id: str | None
+    drowsy_score: float
+    perclos_60s: float | None
+    max_level: int
+
+
+class TimelineOut(BaseModel):
+    samples: list[SampleOut]
+    events: list[EventOut]
+
+
+class TripOut(BaseModel):
+    trip_id: str
+    device_id: str
+    driver_id: str | None
+    start: datetime
+    end: datetime
+    events: int
+    max_level: int
+
+
+class ReasonStats(BaseModel):
+    total: int
+    false_alarms: int
+
+
+class StatsOut(BaseModel):
+    total: int
+    false_alarms: int
+    by_level: dict[int, int]
+    by_reason: dict[str, ReasonStats]
 
 
 class LoginIn(StrictModel):
@@ -181,3 +249,51 @@ class DeviceOut(BaseModel):
     device_id: str
     driver_id: str | None
     device_key: str | None = None  # only returned once, at creation
+
+
+# --------------------------------------------------------------------------- thresholds
+# Engineers may tune only these keys (dotted paths into config/thresholds.yaml), within bounds.
+THRESHOLD_SPECS: dict[str, tuple[float, float, str]] = {
+    "risk.microsleep_l3_s": (0.5, 5.0, "s"),
+    "risk.drowsy.l1": (5.0, 100.0, "score"),
+    "risk.drowsy.l2": (5.0, 100.0, "score"),
+    "risk.distraction.off_road_s": (0.5, 10.0, "s"),
+    "risk.distraction.off_road_high_speed_s": (0.5, 10.0, "s"),
+    "risk.distraction.phone_ratio": (0.1, 1.0, "ratio"),
+    "drowsiness.microsleep_min_s": (0.3, 5.0, "s"),
+    "drowsiness.perclos_drowsy": (0.05, 0.5, "ratio"),
+    "drowsiness.yawn.min_s": (0.5, 6.0, "s"),
+    "drowsiness.nod.max_s": (0.5, 5.0, "s"),
+    "distraction.yaw_off_road_deg": (10.0, 90.0, "deg"),
+    "alert.fall_hold_s": (0.0, 30.0, "s"),
+    "alert.cooldown_s.1": (0.0, 3600.0, "s"),
+    "alert.cooldown_s.2": (0.0, 3600.0, "s"),
+    "alert.cooldown_s.3": (0.0, 3600.0, "s"),
+}
+ThresholdKey = Literal[tuple(THRESHOLD_SPECS)]  # type: ignore[valid-type]
+
+
+class ThresholdsIn(StrictModel):
+    values: dict[ThresholdKey, float] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def within_bounds(self) -> ThresholdsIn:
+        for key, value in self.values.items():
+            lo, hi, _ = THRESHOLD_SPECS[key]
+            if not lo <= value <= hi:
+                raise ValueError(f"{key} must be between {lo} and {hi}")
+        return self
+
+
+class ThresholdSpec(BaseModel):
+    min: float
+    max: float
+    unit: str
+
+
+class ThresholdsOut(BaseModel):
+    version: int  # 0 = no override yet, the device uses its own thresholds.yaml
+    values: dict[str, float]
+    updated_by: str | None
+    updated_at: datetime | None
+    specs: dict[str, ThresholdSpec]
