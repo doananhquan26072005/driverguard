@@ -68,14 +68,16 @@ def in_frame_ratio(points: np.ndarray, width: int, height: int) -> float:
 
 
 class FaceLandmarkDetector:
-    def __init__(self, config: LandmarkConfig | None = None) -> None:
+    def __init__(self, config: LandmarkConfig | None = None, image_mode: bool = False) -> None:
+        """image_mode: unrelated still images (dataset evaluation), no tracking between calls."""
         self.config = config or LandmarkConfig()
+        self.image_mode = image_mode
         model = self.config.resolved_model_path()
         if not model.exists():
             raise FileNotFoundError(f"Model not found: {model}. Run: python tools/download_models.py")
         options = vision.FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model)),
-            running_mode=vision.RunningMode.VIDEO,
+            running_mode=vision.RunningMode.IMAGE if image_mode else vision.RunningMode.VIDEO,
             num_faces=self.config.num_faces,
             min_face_detection_confidence=self.config.min_face_detection_confidence,
             min_face_presence_confidence=self.config.min_face_presence_confidence,
@@ -103,7 +105,10 @@ class FaceLandmarkDetector:
         h, w = frame.image.shape[:2]
         rgb = cv2.cvtColor(frame.image, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result = self._landmarker.detect_for_video(mp_image, self._next_timestamp_ms(frame.timestamp))
+        if self.image_mode:
+            result = self._landmarker.detect(mp_image)
+        else:
+            result = self._landmarker.detect_for_video(mp_image, self._next_timestamp_ms(frame.timestamp))
         if not result.face_landmarks:
             return None
 

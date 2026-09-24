@@ -20,7 +20,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 Role = Literal["admin", "engineer", "manager", "driver"]
-Reason = Literal["microsleep", "drowsy_score", "off_road", "phone", "trend", "blink_rate"]
+Reason = Literal["microsleep", "drowsy_score", "off_road", "phone", "no_face", "trend", "blink_rate"]
 EventType = Literal["drowsiness", "distraction"]
 # Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
 Identifier = Field(pattern=r"^[A-Za-z0-9_.-]{1,48}$")

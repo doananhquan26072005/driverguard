@@ -5,6 +5,7 @@ import pytest
 
 from edge_agent.perception.phone_detector import (
     AsyncPhoneDetector,
+    FaceBoxMemory,
     PhoneDetection,
     PhoneDetectorConfig,
     decode_yolov8,
@@ -83,6 +84,16 @@ def test_phone_near_face(dets, expected):
 
 def test_no_face_means_no_phone_near_face():
     assert phone_near_face((det(350, 160),), None, CFG) is False
+
+
+def test_face_memory_keeps_zone_when_phone_hides_face():
+    mem = FaceBoxMemory(3.0)
+    assert mem.update(None, 0.0) is None  # no face seen yet
+    assert mem.update(FACE, 1.0) == FACE
+    # Phone in front of the face: MediaPipe loses it, the zone is still known.
+    face = mem.update(None, 3.5)
+    assert face == FACE and phone_near_face((det(350, 160),), face, CFG) is True
+    assert mem.update(None, 4.1) is None  # too old
 
 
 def make_frame(i, t):

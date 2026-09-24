@@ -3,8 +3,9 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# This image runs the course template app (src.main), not DriverGuard.
+COPY requirements-template.txt .
+RUN pip install --no-cache-dir --user -r requirements-template.txt
 
 # ---- Stage 2: Production ----
 FROM python:3.11-slim

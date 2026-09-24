@@ -1,0 +1,6 @@
+# DriverGuard runtime + lint / test tools (CI and local development).
+-r requirements.txt
+
+ruff>=0.8.0
+pytest>=8.0.0
+httpx>=0.28.0            # FastAPI TestClient (tests/test_backend)

@@ -4,6 +4,8 @@ Per frame, from head pose + phone flag + vehicle speed, computes:
 - off_road_duration: seconds the head has been continuously turned away from the road.
 - phone_ratio_2s: fraction of recent samples (window `phone_window_s`) with a phone
   in the driver zone.
+- no_face_duration: seconds without any face while moving (driver slumped out of
+  view, camera covered). The risk engine turns a long one into an alert.
 
 Anti false-positive rules:
 - The branch is disabled below `min_speed_kmh` (parked / red light: looking around
@@ -11,6 +13,12 @@ Anti false-positive rules:
 - Head angles are compared to an adaptive "looking at the road" baseline, so a camera
   that is not mounted straight in front of the driver does not look like distraction.
   The baseline only learns from on-road samples, so looking away never shifts it.
+- Start-up calibration: during the first `baseline_calibrate_s` of driving with a face,
+  the baseline is set to the median head pose (clamped to +-`baseline_calibrate_max_deg`)
+  and nothing counts as off road. Without it, a camera mounted more than
+  `yaw_off_road_deg` to the side looks "off road" on every frame, so the baseline never
+  gets an on-road sample to learn from. Adaptation then stays within
+  +-`baseline_max_deg` of the calibrated pose.
 - Returning to the road must last `on_road_confirm_s` before the off-road timer resets,
   so a quick glance back does not hide a long distraction; a single noisy frame
   cannot reset it either.
@@ -26,6 +34,8 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
+
+import numpy as np
 
 from edge_agent.perception.features import FrameFeatures
 
@@ -44,6 +54,8 @@ class DistractionConfig:
     baseline_max_deg: float = 20.0
     baseline_yaw_deg: float = 0.0
     baseline_pitch_deg: float = 0.0
+    baseline_calibrate_s: float = 0.0  # 0 = no start-up calibration
+    baseline_calibrate_max_deg: float = 45.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DistractionConfig:
@@ -65,6 +77,8 @@ class DistractionState:
     pitch_offset: float | None
     baseline_yaw: float
     baseline_pitch: float
+    no_face_duration: float = 0.0
+    calibrating: bool = False  # start-up baseline calibration, off road not judged yet
 
 
 class DistractionAnalyzer:
@@ -72,6 +86,10 @@ class DistractionAnalyzer:
         self.config = config or DistractionConfig()
         self.baseline_yaw = self.config.baseline_yaw_deg
         self.baseline_pitch = self.config.baseline_pitch_deg
+        # Adaptation is clamped around this pose (the calibrated one once calibration is done).
+        self._center_yaw, self._center_pitch = self.baseline_yaw, self.baseline_pitch
+        self.calibrated = self.config.baseline_calibrate_s <= 0
+        self._calib: list[tuple[float, float, float]] = []  # (t, yaw, pitch)
         self.reset()
 
     def reset(self) -> None:
@@ -79,6 +97,7 @@ class DistractionAnalyzer:
         self._off_road = False
         self._off_road_since: float | None = None
         self._on_road_since: float | None = None
+        self._no_face_since: float | None = None
         self._phone: deque[tuple[float, bool]] = deque()
         self._last_t: float | None = None
 
@@ -101,8 +120,24 @@ class DistractionAnalyzer:
             return
         alpha = 1.0 - math.exp(-dt / cfg.baseline_tau_s)
         lim = cfg.baseline_max_deg
-        self.baseline_yaw = min(max(self.baseline_yaw + alpha * (yaw - self.baseline_yaw), -lim), lim)
-        self.baseline_pitch = min(max(self.baseline_pitch + alpha * (pitch - self.baseline_pitch), -lim), lim)
+        yaw_new = self.baseline_yaw + alpha * (yaw - self.baseline_yaw)
+        pitch_new = self.baseline_pitch + alpha * (pitch - self.baseline_pitch)
+        self.baseline_yaw = min(max(yaw_new, self._center_yaw - lim), self._center_yaw + lim)
+        self.baseline_pitch = min(max(pitch_new, self._center_pitch - lim), self._center_pitch + lim)
+
+    def _calibrate(self, t: float, yaw: float, pitch: float) -> None:
+        """Collect start-up samples; once `baseline_calibrate_s` is covered, set the baseline."""
+        cfg = self.config
+        self._calib.append((t, yaw, pitch))
+        if t - self._calib[0][0] < cfg.baseline_calibrate_s:
+            return
+        lim = cfg.baseline_calibrate_max_deg
+        yaw_med = float(np.median([y for _, y, _ in self._calib]))
+        pitch_med = float(np.median([p for _, _, p in self._calib]))
+        self.baseline_yaw = self._center_yaw = min(max(yaw_med, -lim), lim)
+        self.baseline_pitch = self._center_pitch = min(max(pitch_med, -lim), lim)
+        self.calibrated = True
+        self._calib = []
 
     def _phone_ratio(self, t: float, phone_near_face: bool | None) -> float:
         if phone_near_face is not None:  # None = no fresh detector result: not counted
@@ -130,7 +165,12 @@ class DistractionAnalyzer:
 
         yaw_off = pitch_off = None
         has_pose = features.face_found and features.yaw is not None and features.pitch is not None
-        if has_pose:
+        if has_pose and not self.calibrated:
+            self._calibrate(t, features.yaw, features.pitch)
+        calibrating = not self.calibrated
+        if calibrating:
+            head_off = False  # baseline not known yet: never off road
+        elif has_pose:
             yaw_off = features.yaw - self.baseline_yaw
             pitch_off = features.pitch - self.baseline_pitch
             head_off = self._head_off_road(yaw_off, pitch_off)
@@ -138,6 +178,10 @@ class DistractionAnalyzer:
                 self._adapt_baseline(features.yaw, features.pitch, dt)
         else:
             head_off = self._off_road  # face lost: hold previous state
+        if features.face_found:
+            self._no_face_since = None
+        elif self._no_face_since is None:
+            self._no_face_since = t
 
         if head_off:
             self._on_road_since = None
@@ -163,4 +207,6 @@ class DistractionAnalyzer:
             pitch_offset=pitch_off,
             baseline_yaw=self.baseline_yaw,
             baseline_pitch=self.baseline_pitch,
+            no_face_duration=t - self._no_face_since if self._no_face_since is not None else 0.0,
+            calibrating=calibrating,
         )

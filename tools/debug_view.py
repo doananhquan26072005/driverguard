@@ -54,6 +54,8 @@ from edge_agent.perception.features import (  # noqa: E402
 from edge_agent.perception.landmarks import FaceLandmarkDetector, FaceLandmarks, LandmarkConfig  # noqa: E402
 from edge_agent.perception.phone_detector import (  # noqa: E402
     AsyncPhoneDetector,
+    BBox,
+    FaceBoxMemory,
     PhoneDetectorConfig,
     PhoneResult,
     driver_zone,
@@ -87,11 +89,8 @@ def draw_overlay(image: np.ndarray, lines: list[Line]) -> None:
         cv2.putText(image, text, (10, 20 + i * line_h), font, scale, color, 1, cv2.LINE_AA)
 
 
-def draw_phone(
-    image: np.ndarray, result: PhoneResult | None, lm: FaceLandmarks | None, cfg: PhoneDetectorConfig
-) -> None:
+def draw_phone(image: np.ndarray, result: PhoneResult | None, face: BBox | None, cfg: PhoneDetectorConfig) -> None:
     """Driver zone (thin) and phone boxes: orange inside the zone, gray outside."""
-    face = face_bbox(lm.points) if lm is not None else None
     if face is not None:
         zx1, zy1, zx2, zy2 = (int(v) for v in driver_zone(face, cfg))
         cv2.rectangle(image, (zx1, zy1), (zx2, zy2), (90, 90, 90), 1)
@@ -301,6 +300,7 @@ def main() -> int:
     last_t = time.monotonic()
     shown = None
     smoother = DisplaySmoother(args.smooth)
+    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
     history: deque[FrameFeatures] = deque()
     text_lines: list[Line] = []
     last_text_t = 0.0
@@ -331,7 +331,7 @@ def main() -> int:
                 if phone_detector is not None:
                     phone_detector.submit(pre)  # YOLO runs on its own thread at ~5 FPS
                     phone = phone_detector.latest()
-                face = face_bbox(lm.points) if lm is not None else None
+                face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                 phone_flag = None if phone is None else phone_near_face(phone.detections, face, phone_cfg)
                 dstate = distraction.update(feats, phone_flag, speed)
                 drowsy = drowsiness.update(feats)
@@ -362,7 +362,7 @@ def main() -> int:
                 target = processed if (side_by_side or not show_raw) else raw.copy()
                 if show_landmarks and lm is not None:
                     draw_landmarks(target, lm, extractor)
-                draw_phone(target, phone, lm, phone_cfg)
+                draw_phone(target, phone, face, phone_cfg)
                 if side_by_side:
                     shown = np.hstack([raw, target])
                 else:

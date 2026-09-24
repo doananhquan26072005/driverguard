@@ -1,36 +1,22 @@
-# Core
+# DriverGuard runtime: edge agent (edge_agent/, tools/) + backend (backend/).
+# Python >= 3.11 (datetime.UTC). Dev tools: requirements-dev.txt.
+# The course template (src/, LangGraph / LangChain) is in requirements-template.txt.
+
+# Edge agent
+opencv-python>=4.9.0
+numpy>=1.26.0
+pyyaml>=6.0
+# MediaPipe 1.0.x crashes on recent macOS ("Metal ... Service is unavailable"),
+# also in the VIDEO mode used by edge_agent.main. 0.10.21 works there.
+mediapipe==0.10.21; sys_platform == "darwin"
+mediapipe>=0.10.20; sys_platform != "darwin"
+onnxruntime>=1.18.0
+onnx>=1.16.0             # INT8 quantisation in tools/benchmark.py
+kagglehub>=0.3.0         # public datasets for tools/dataset.py
+
+# Backend (FastAPI)
 fastapi>=0.115.0
 uvicorn[standard]>=0.34.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
-python-dotenv>=1.0.0
-
-# AI / LangChain
-langchain>=0.3.0
-langchain-openai>=0.3.0
-langgraph>=0.2.0
-
-# Database (uncomment as needed)
-# sqlalchemy>=2.0.0
-# alembic>=1.14.0
-# psycopg2-binary>=2.9.0
-
-# Vector Store (uncomment as needed)
-# chromadb>=0.5.0
-
-# Edge agent (DriverGuard)
-opencv-python>=4.9.0
-numpy>=1.26.0
-pyyaml>=6.0
-mediapipe>=0.10.20
-onnxruntime>=1.18.0
-onnx>=1.16.0             # INT8 quantisation in tools/benchmark.py
-
-# DriverGuard backend (FastAPI / pydantic / uvicorn listed above)
 pyjwt>=2.8.0
-
-# Dev tools
-ruff>=0.8.0
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
-httpx>=0.28.0

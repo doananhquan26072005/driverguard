@@ -48,6 +48,8 @@ Env overrides:
   ANTIGRAVITY_BRAIN_DIR  point at a different brain/ directory
   AI_LOG_DIR             where session.jsonl is written (default: .ai-log)
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os

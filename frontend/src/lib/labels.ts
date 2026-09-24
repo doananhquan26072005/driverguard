@@ -13,6 +13,7 @@ export const REASONS: Record<Reason, string> = {
   drowsy_score: "Dấu hiệu buồn ngủ",
   off_road: "Nhìn lệch khỏi đường",
   phone: "Dùng điện thoại",
+  no_face: "Không thấy mặt tài xế",
   trend: "Mệt mỏi tăng dần",
   blink_rate: "Nhịp chớp mắt bất thường",
 };

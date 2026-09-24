@@ -55,7 +55,7 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 
 | Hành vi | Dấu hiệu dùng | Cách phát hiện |
 |---|---|---|
-| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, tối, lóa kính) thì CNN trạng thái mắt | Mắt nhắm liên tục ≥ 1,5 s → L3 ngay |
+| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, tối, lóa kính) thì CNN trạng thái mắt | Mắt nhắm liên tục ≥ 1,5 s → L3 ngay. Thời gian nhắm lúc đang ngáp / đang nói (và 1,5 s sau đó) không được tính |
 | **Buồn ngủ tích lũy** | PERCLOS 60 s, ngáp, gục đầu | `drowsy_score` 0–100 → L1 (≥ 40) / L2 (≥ 70) |
 | **Ngáp** | MAR (độ mở miệng) | Miệng mở rộng đủ lâu (nói chuyện không tính) |
 | **Gục đầu** | Góc pitch + mắt nhắm | Cúi xuống rồi ngẩng lại nhanh, kèm mắt nhắm |
@@ -159,9 +159,12 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 P-135/
 ├── CLAUDE.md                  Ràng buộc và quy ước dự án
 ├── HowToUse.md                Tài liệu này
-├── requirements.txt           Thư viện Python
+├── requirements.txt           Thư viện Python để chạy DriverGuard
+├── requirements-dev.txt       + ruff, pytest (CI, phát triển)
+├── requirements-template.txt  Template khóa học (src/, LangChain), DriverGuard không cần
 ├── config/
 │   ├── thresholds.yaml        TẤT CẢ ngưỡng (không hardcode trong code)
+│   ├── datasets.yaml          Preset dataset Kaggle cho tools/dataset.py
 │   └── scenarios/             Kịch bản CAN giả lập: city_day, highway_night, parked
 ├── edge_agent/                Chạy trong xe (khối 1–14)
 │   ├── capture/               1  đọc camera / video, luồng riêng, giữ frame mới nhất
@@ -186,6 +189,7 @@ P-135/
 │   ├── debug_view.py          Xem camera + landmark + chỉ số + đồ thị (debug)
 │   ├── download_models.py     Tải / tạo model
 │   ├── eval.py                Precision / recall / F1 / FP mỗi giờ so với nhãn
+│   ├── dataset.py             Tải dataset Kaggle và đo từng tín hiệu (EAR, CNN mắt, MAR, YOLO)
 │   └── benchmark.py           FPS, latency p50/p95, FP32 vs INT8
 ├── models/                    Model (KHÔNG có trong git, tải bằng tools/download_models.py)
 ├── data/                      DB backend, hàng đợi offline, video (KHÔNG có trong git)
@@ -206,7 +210,7 @@ P-135/
 | Node.js | **20.19 trở lên** (cho frontend) |
 | Hệ điều hành | Windows 10/11, Linux, macOS |
 | Camera | Webcam bất kỳ (camera IR cũng được: ảnh 1 kênh được chuyển sang 3 kênh) |
-| CPU | Không cần GPU. Máy thử (Intel, 18 luồng): vòng lặp chính > 150 FPS với frame tổng hợp |
+| CPU | Không cần GPU. Máy thử (Mac ARM, 10 luồng), trên clip YawDD có mặt thật: vòng lặp chính ~146 FPS, MediaPipe ~5,7 ms/frame (`eval/results/benchmark.md`) |
 
 ---
 
@@ -216,11 +220,19 @@ Các lệnh dưới đây dùng **PowerShell trên Windows**. Trên Linux/macOS,
 
 ### 6.1 Môi trường Python
 
+Cần **Python ≥ 3.11** (code dùng `datetime.UTC`). Khuyên dùng [uv](https://docs.astral.sh/uv/) với Python 3.12:
+
 ```powershell
-python -m venv .venv
+uv venv -p 3.12 --seed .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements-dev.txt      # hoặc: pip install -r requirements-dev.txt
 ```
+
+- `requirements.txt`: chỉ những gì DriverGuard cần để chạy (edge agent + backend).
+- `requirements-dev.txt`: thêm ruff, pytest, httpx để kiểm tra code và chạy test.
+- `requirements-template.txt`: phần template của khóa học (`src/`, LangGraph/LangChain, Dockerfile). DriverGuard không cần; khi chưa cài, `tests/test_agents` và `tests/test_api` được tự bỏ qua.
+- macOS: `requirements.txt` ghim `mediapipe==0.10.21`, vì bản 1.0.x bị crash (Metal).
+- Trên Linux/macOS có sẵn `make venv`.
 
 ### 6.2 Model (bắt buộc)
 
@@ -436,7 +448,34 @@ python tools\eval.py convert-frames --frames 001_mouth.txt --video 001.mp4 --fps
 
 Kết quả gồm precision, recall, F1, độ trễ phát hiện và **FP mỗi giờ lái** cho từng hành vi, cộng thêm một dòng tính cho **mọi cảnh báo**.
 
-### 9.2 Tốc độ: `tools/benchmark.py`
+### 9.2 Dataset Kaggle: `tools/dataset.py`
+
+Phần lớn dataset công khai trên Kaggle là **ảnh chia theo thư mục lớp** hoặc **clip gắn nhãn theo tên file**, không phải video có nhãn theo thời gian như `eval.py` cần. `tools/dataset.py` tải dataset về `data/kaggle/` (không có trong git) và đo từng tín hiệu trên đó.
+
+```powershell
+pip install kagglehub                                  # dataset công khai: không cần tài khoản Kaggle
+python tools\dataset.py list                           # các preset có sẵn
+python tools\dataset.py eval yawn_eye_mouth --out eval\results\dataset_yawn_eye_mouth.md
+python tools\dataset.py eval state_farm --limit 200    # tối đa 200 ảnh mỗi lớp, chạy nhanh
+python tools\dataset.py eval mrl_eye --root D:\datasets\mrl   # dataset đã giải nén sẵn
+python tools\dataset.py labels yawdd --out data\yawdd_labels.csv   # clip -> nhãn cho eval.py
+```
+
+| Preset | Dataset Kaggle | Đo gì |
+|---|---|---|
+| `mrl_eye` | `prasadvpatil/mrl-dataset` (23 MB) | CNN mắt (khối 5) trên ảnh mắt IR. CNN học trên MRL nên số sẽ lạc quan |
+| `yawn_eye_eyes` | `serenaraju/yawn-eye-dataset-new` (169 MB) | CNN mắt trên ảnh mắt màu |
+| `yawn_eye_mouth` | như trên | MAR (khối 6) so với ngưỡng ngáp `yawn.mar_open` |
+| `ddd` | `ismailnasri20/driver-drowsiness-dataset-ddd` (2,7 GB) | Chỉ số gần đúng trên từng ảnh: mắt nhắm hoặc ngáp (EAR, CNN, MAR) |
+| `state_farm` | `rightway11/state-farm-distracted-driver-detection` (550 MB) | YOLO điện thoại (khối 4): c1–c4 có điện thoại, c0 và c5–c9 là mẫu âm khó. Cần `yolov8n.onnx` |
+| `yawdd` | `enider/yawdd-dataset` (5 GB) | Toàn bộ pipeline (khối 2–12) trên clip: Yawning là dương, Normal / Talking là âm |
+
+- Báo cáo có accuracy / precision / recall / F1 **ở ngưỡng hiện tại trong `thresholds.yaml`**, kèm **ngưỡng cho F1 tốt nhất** trên dataset đó. Với State Farm, báo cáo có thêm tỉ lệ báo dương theo từng lớp c0–c9.
+- Ảnh tĩnh chưa có baseline riêng của từng tài xế và luật thời gian của khối 7–8. Vì vậy ngưỡng tốt hơn ở đây chỉ là **gợi ý**. Hãy kiểm tra lại bằng video (`yawdd`, `eval.py`) trước khi sửa `thresholds.yaml`.
+- Thêm dataset Kaggle khác: khai báo một preset trong `config/datasets.yaml` (slug, task, thư mục → nhãn), **không cần sửa code**.
+- Ảnh chỉ được đọc vào RAM, tool chỉ ghi file metric.
+
+### 9.3 Tốc độ: `tools/benchmark.py`
 
 ```powershell
 python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\benchmark.md
@@ -445,6 +484,8 @@ python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\ben
 - Đo FPS và độ trễ p50/p95 của từng khối, rồi của cả vòng lặp chính.
 - Đo kích thước model và so YOLO **FP32 với INT8**. Lần đầu chạy sẽ tự tạo `models/yolov8n_int8.onnx`.
 - Nên dùng **video có mặt người**. Không có `--source` thì dùng frame tổng hợp không có mặt, nên thời gian đo của MediaPipe sẽ thấp hơn thực tế.
+- `eval/results/benchmark.md` hiện đo trên clip Dash của YawDD (`python tools/dataset.py` tải về `data/kaggle/`), ví dụ `--source "data/kaggle/datasets/enider/yawdd-dataset/versions/4/Dash/Dash/Female/1-FemaleNoGlasses.avi"`.
+- Lần chạy đầu tạo `yolov8n_int8.onnx`, hiệu chỉnh INT8 bằng chính các frame của `--source`. Đừng chạy lần đầu với frame tổng hợp; nếu lỡ chạy thì thêm `--requantize`.
 
 ---
 
@@ -488,12 +529,14 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 
 - **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược).
 - Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. PERCLOS **chưa loại** các frame có `face_conf` thấp.
-- Ngưỡng MAR của ngáp (0,6) là giá trị ước lượng. Hãy kiểm tra trên đồ thị MAR của `debug_view`.
+- Ngưỡng MAR của ngáp đã hạ từ 0,6 xuống 0,45 (đóng lại dưới 0,34), kiểm chứng trên `yawn_eye_mouth` và video YawDD.
+- Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s) hoặc đang nói. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa; PERCLOS vẫn tính các frame này.
 - YOLO **INT8** nhanh hơn khoảng 2 lần và nhỏ hơn khoảng 3,6 lần, nhưng **chưa được đo độ chính xác**, nên hệ thống vẫn dùng FP32.
-- **Chưa có số precision/recall thật**: cần dataset có nhãn (xem mục 9.1).
+- **Chưa có precision/recall trên video có nhãn theo thời gian** (mục 9.1). Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
+- **macOS:** MediaPipe 1.0.1 bị crash (`graph_service.h ... Service is unavailable`, Metal) trên macOS mới, kể cả ở chế độ VIDEO. `requirements.txt` đã ghim `mediapipe==0.10.21` cho macOS.
 - CAN đang là **giả lập**. Tín hiệu thật từ xe sẽ thay `CanSimulator`, còn phần xử lý ngữ cảnh giữ nguyên.
 - **Giấy phép:** YOLOv8 (Ultralytics) dùng **AGPL-3.0**, còn repo dùng MIT. Cần xem lại nếu phân phối sản phẩm.
-- CI (`.github/workflows/ci.yml`) chỉ chạy test Python, chưa chạy test frontend.
+- CI (`.github/workflows/ci.yml`) có 3 job: `python` (ruff check + format trên `edge_agent/ backend/ tools/ tests/`, rồi pytest), `frontend` (typecheck, vitest, build) và `template` (phần `src/` của khóa học, tách riêng).
 
 ---
 
@@ -529,6 +572,6 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | M4 | Khối 9–12: risk engine, CAN giả lập, cooldown | Xong |
 | M5 | Khối 14 + backend FastAPI | Xong |
 | M6 | Dashboard React + HUD | Xong |
-| M7 | Script eval + benchmark FPS | Công cụ xong, bảng FPS có số; chờ dataset có nhãn |
+| M7 | Script eval + benchmark FPS + dataset Kaggle | Công cụ xong, bảng FPS có số, số theo từng ảnh trên Kaggle; chờ video có nhãn thời gian |
 
 Chi tiết từng mốc: `docs/roadmap.md`. Quy ước làm việc: `CLAUDE.md`.

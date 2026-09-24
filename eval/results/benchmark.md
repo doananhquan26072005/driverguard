@@ -1,15 +1,15 @@
 # DriverGuard - speed benchmark
 
-- Machine: Intel64 Family 6 Model 170 Stepping 4, GenuineIntel, 18 logical cores, Windows 11
-- Software: Python 3.13.13, onnxruntime 1.30.0, OpenCV 5.0.0, MediaPipe 1.0.1
-- Input: synthetic noise 1280x720, 300 frames (NO FACE: MediaPipe timings are optimistic); face found in 0/300 frames; first 20 frames of each measurement are warm-up
+- Machine: arm, 10 logical cores, Darwin 27.0.0
+- Software: Python 3.12.14, onnxruntime 1.30.0, OpenCV 4.11.0, MediaPipe 0.10.21
+- Input: data/kaggle/datasets/enider/yawdd-dataset/versions/4/Dash/Dash/Female/1-FemaleNoGlasses.avi (640x480, 300 frames); face found in 300/300 frames; first 20 frames of each measurement are warm-up
 
 ## Main loop (blocks 2-12, YOLO on its own thread)
 
 | YOLO model | FPS | p50 ms | p95 ms | max ms | YOLO runs/s | ≥ 15 FPS |
 |---|---:|---:|---:|---:|---:|:---:|
-| FP32 | 166.9 | 5.8 | 8.3 | 11.1 | 4.8 | ✅ |
-| INT8 | 203.5 | 4.8 | 6.4 | 8.1 | 4.9 | ✅ |
+| FP32 | 146.3 | 6.7 | 7.5 | 8.0 | 5.3 | ✅ |
+| INT8 | 146.6 | 6.7 | 7.2 | 7.6 | 5.4 | ✅ |
 
 Frames are processed back to back (no camera pacing), so FPS is the loop's capacity; a 30 FPS camera leaves the difference as headroom.
 
@@ -17,12 +17,13 @@ Frames are processed back to back (no camera pacing), so FPS is the loop's capac
 
 | Block | mean ms | p50 ms | p95 ms | max ms | FPS alone |
 |---|---:|---:|---:|---:|---:|
-| 2 preprocess | 2.79 | 2.73 | 3.74 | 5.47 | 358 |
-| 3 face landmarks (MediaPipe) | 4.30 | 4.09 | 6.48 | 10.01 | 233 |
-| 6 features (EAR, MAR, solvePnP) | 0.00 | 0.00 | 0.00 | 0.03 | 354341 |
-| 7-12 decision chain | 0.03 | 0.03 | 0.05 | 0.38 | 29379 |
-| 4 YOLOv8n FP32 (2 threads) | 123.10 | 126.80 | 144.68 | 192.13 | 8 |
-| 4 YOLOv8n INT8 (2 threads) | 61.30 | 62.22 | 73.80 | 210.86 | 16 |
+| 2 preprocess | 1.00 | 0.95 | 1.36 | 1.46 | 1002 |
+| 3 face landmarks (MediaPipe) | 5.65 | 5.65 | 5.77 | 6.21 | 177 |
+| 6 features (EAR, MAR, solvePnP) | 0.04 | 0.04 | 0.04 | 0.09 | 25753 |
+| 5 eye-state CNN (when called) | 0.10 | 0.10 | 0.10 | 0.17 | 10166 |
+| 7-12 decision chain | 0.01 | 0.01 | 0.01 | 0.12 | 89875 |
+| 4 YOLOv8n FP32 (2 threads) | 22.16 | 22.97 | 23.68 | 44.36 | 45 |
+| 4 YOLOv8n INT8 (2 threads) | 19.24 | 19.24 | 19.45 | 19.60 | 52 |
 
 ## Models
 

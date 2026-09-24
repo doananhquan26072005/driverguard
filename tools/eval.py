@@ -253,7 +253,13 @@ def run_video(
     from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
     from edge_agent.perception.features import FeatureConfig, FeatureExtractor
     from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
-    from edge_agent.perception.phone_detector import PhoneDetectorConfig, YoloPhoneModel, face_bbox, phone_near_face
+    from edge_agent.perception.phone_detector import (
+        FaceBoxMemory,
+        PhoneDetectorConfig,
+        YoloPhoneModel,
+        face_bbox,
+        phone_near_face,
+    )
 
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
@@ -271,6 +277,7 @@ def run_video(
     preds: list[Prediction] = []
     detections: tuple = ()
     last_yolo_t = -1e9
+    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
     i = 0
     with FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks"))) as landmarks:
         while True:
@@ -283,8 +290,9 @@ def run_video(
             if yolo is not None and i % yolo_every == 0:
                 detections, last_yolo_t = yolo(pre.image), t
             phone_flag = None
+            face = face_memory.update(face_bbox(lm.points) if lm else None, t)
             if yolo is not None and t - last_yolo_t <= phone_cfg.max_result_age_s:
-                phone_flag = phone_near_face(detections, face_bbox(lm.points) if lm else None, phone_cfg)
+                phone_flag = phone_near_face(detections, face, phone_cfg)
             feats = extractor(lm, i, t)
             if eye_state is not None:
                 feats = eye_state(pre, lm, feats)

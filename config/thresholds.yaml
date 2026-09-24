@@ -73,6 +73,9 @@ phone:
   zone_expand_x: 1.0
   zone_expand_up: 0.5
   zone_expand_down: 1.5
+  # A phone in front of the face often hides the face: keep using the last face box
+  # for this long, so the driver zone (and phone_near_face) is still known.
+  face_memory_s: 3.0
 
 
 # Block 7 - Drowsiness branch
@@ -96,16 +99,35 @@ drowsiness:
     # reopened when p_closed <= cnn_open (hysteresis).
     cnn_closed: 0.6
     cnn_open: 0.4
-  blink_max_s: 0.5              # closures up to this long are blinks
+  # Eyes closed, then the head drops past eye.max_pitch_down_deg (eye state unknown):
+  # keep counting the closure while the head stays down / the face is lost, so the
+  # microsleep L3 rule still fires. The eyes must have been closed this long before the
+  # drop (a blink followed by a glance at the dashboard is not carried).
+  head_drop:
+    carry_min_closed_s: 0.5
+  blink_max_s: 0.5             # closures up to this long are blinks
   blink_window_s: 60
   microsleep_min_s: 1.0         # closure at least this long = microsleep event
+  # Eyes squeeze shut while yawning: closed-eye time is not counted in closed_duration
+  # while the mouth is wide open (yawn.mar_open .. yawn.mar_close) and for hold_s after.
+  # Stops after the mouth has been open max_open_s (slack jaw in sleep is not a yawn).
+  # Talking masks the same way: eyes narrow / close in short spells while the mouth keeps
+  # moving (>= talk_min_swings MAR reversals of >= talk_swing within talk_window_s). A still
+  # mouth has none; one jump (yawn ending, jaw dropping in sleep) makes at most two.
+  # PERCLOS still counts these frames.
+  microsleep_mask:
+    hold_s: 1.5
+    max_open_s: 8.0
+    talk_window_s: 2.0
+    talk_swing: 0.08
+    talk_min_swings: 3          # 0 = no talking mask
   perclos_window_s: 60
   perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
   perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
   perclos_rearm: 0.12           # must drop below this before the next event
   yawn:
-    mar_open: 0.6
-    mar_close: 0.45
+    mar_open: 0.45              # yawn_eye_mouth + YawDD: recall 73% -> 84% of Yawning clips, no new FP
+    mar_close: 0.34
     min_s: 1.5                  # talking / laughing open the mouth for shorter
     window_s: 600
   nod:
@@ -116,7 +138,10 @@ drowsiness:
     require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
     eyes_closed_min_frac: 0.3
     window_s: 300
+  # Usual head pose = rolling median of yaw / pitch, learnt only from eyes-open frames
+  # (nods with closed eyes do not drag it down). The first min_data_s are all taken.
   pose_baseline_window_s: 60
+  pose_baseline_min_data_s: 5
 
 # Block 8 - Distraction branch
 distraction:
@@ -133,6 +158,12 @@ distraction:
     max_deg: 20                     # baseline never drifts beyond +-20 deg
     yaw_deg: 0.0
     pitch_deg: 0.0
+    # Start-up calibration: the first calibrate_s of driving with a face set the baseline
+    # to the median head pose (clamped to +-calibrate_max_deg); off road is not judged
+    # meanwhile. Handles a camera mounted far to the side (> yaw_off_road_deg).
+    # Adaptation then stays within +-max_deg of the calibrated pose. 0 = off.
+    calibrate_s: 5.0
+    calibrate_max_deg: 45
 
 # Block 10 - Vehicle context (from CAN, simulated by edge_agent/context/can_sim.py)
 context:
@@ -166,6 +197,7 @@ risk:
     off_road_s: 2.0
     off_road_high_speed_s: 1.5
     phone_ratio: 0.6
+    no_face_s: 3.0              # no face this long while moving -> L2 (slumped / camera covered)
   trend:
     level: 1                    # early warning: suggest a break
     min_points: 5               # minutes of history needed
@@ -186,7 +218,9 @@ trip_memory:
 alert:
   rise_confirm_s: {1: 1.0, 2: 0.5, 3: 0.0}   # a level must hold this long before it is raised
   fall_hold_s: 3.0                           # and stay lower this long before it is dropped
-  cooldown_s: {1: 120, 2: 30, 3: 10}         # no repeated alert of the same level within this
+  # No repeated alert of the same (level, reason) within this. A new reason at the
+  # active level (L2 off_road, then L2 phone) is emitted after rise_confirm_s.
+  cooldown_s: {1: 120, 2: 30, 3: 10}
 
 # Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
 publisher:

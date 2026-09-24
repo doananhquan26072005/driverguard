@@ -27,24 +27,27 @@ def constant_speed(kmh, clock="15:00", drive_s=600, turn=None):
     )
 
 
-def drive(seconds, scenario, ear=None, mar=None, yaw=None, pitch=None, phone=None):
+def drive(seconds, scenario, ear=None, mar=None, yaw=None, pitch=None, phone=None, face=None):
     """Run the decision pipeline. Each signal is a function of t. Returns (alerts, results)."""
     pipeline = DecisionPipeline(load_thresholds())
     can = CanSimulator(scenario)
     alerts, results = [], []
     for i in range(round(seconds * FPS)):
         t = i / FPS
-        f = FrameFeatures(
-            i,
-            t,
-            True,
-            1.0,
-            ear=ear(t) if ear else OPEN_EAR,
-            mar=mar(t) if mar else 0.05,
-            pitch=pitch(t) if pitch else 0.0,
-            yaw=yaw(t) if yaw else 0.0,
-            roll=0.0,
-        )
+        if face is not None and not face(t):
+            f = FrameFeatures(i, t, False, 0.0)
+        else:
+            f = FrameFeatures(
+                i,
+                t,
+                True,
+                1.0,
+                ear=ear(t) if ear else OPEN_EAR,
+                mar=mar(t) if mar else 0.05,
+                pitch=pitch(t) if pitch else 0.0,
+                yaw=yaw(t) if yaw else 0.0,
+                roll=0.0,
+            )
         r = pipeline.step(f, phone(t) if phone else False, can.sample(t))
         results.append(r)
         if r.alert.new_alert is not None:
@@ -151,3 +154,51 @@ def test_same_drowsiness_is_l2_at_night_but_l1_by_day():
     assert max(lv for _, lv, _ in night) == 2
     assert max(lv for _, lv, _ in day) == 1
     assert rn[-1].risk.drowsy_score == pytest.approx(rd[-1].risk.drowsy_score * 1.44, abs=0.5)
+
+
+# ---------------------------------------------------------------- safety gaps (head drop, no face, new reason)
+
+
+def test_eyes_close_then_head_drops_is_l3():
+    # Eyes close at 10 s, the head drops 0.7 s later (eye state unknown from then on).
+    alerts, results = drive(
+        20, constant_speed(80), ear=between(10, 16, 0.08, OPEN_EAR), pitch=between(10.7, 16, 40.0, 0.0)
+    )
+    assert alerts[0][1:] == (3, ("microsleep",))
+    assert alerts[0][0] == pytest.approx(11.5, abs=0.1)
+    assert any(r.drowsiness.head_drop for r in results)
+
+
+def test_glance_at_dashboard_after_blink_is_not_l3():
+    # A blink, then looking down at the dashboard for 3 s with lids low: not a microsleep.
+    alerts, _ = drive(
+        20, constant_speed(50), ear=between(10, 13.2, 0.08, OPEN_EAR), pitch=between(10.2, 13.2, 32.0, 0.0)
+    )
+    assert all(level < 3 for _, level, _ in alerts)
+
+
+def test_face_lost_while_moving_is_l2():
+    alerts, _ = drive(15, constant_speed(60), face=between(5, 10, False, True))
+    assert [(lv, r) for _, lv, r in alerts] == [(2, ("no_face",))]
+    assert alerts[0][0] == pytest.approx(8.5, abs=0.1)  # 3 s without a face + 0.5 s confirmation
+
+
+def test_face_lost_short_or_parked_no_alert():
+    alerts, _ = drive(15, constant_speed(60), face=between(5, 7, False, True))
+    assert alerts == []
+    alerts, _ = drive(15, constant_speed(0), face=between(5, 12, False, True))
+    assert alerts == []
+
+
+def test_off_road_then_phone_gives_second_l2_alert():
+    alerts, _ = drive(20, constant_speed(50), yaw=between(5, 14, 50.0, 0.0), phone=between(9, 14, True, False))
+    assert [(lv, r[0]) for _, lv, r in alerts] == [(2, "off_road"), (2, "phone")]
+
+
+def test_camera_mounted_35_deg_to_the_side():
+    # The driver looks at the road, which is 35 deg off the camera axis: no alert.
+    alerts, _ = drive(60, constant_speed(60), ear=normal_blinks, yaw=lambda t: 35.0)
+    assert alerts == []
+    # Looking a further 50 deg away for 3 s is still an L2.
+    alerts, _ = drive(20, constant_speed(60), yaw=lambda t: 85.0 if 10 <= t < 13 else 35.0)
+    assert [(lv, r) for _, lv, r in alerts] == [(2, ("off_road",))]

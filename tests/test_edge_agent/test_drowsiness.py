@@ -125,6 +125,128 @@ def test_short_face_dropout_keeps_closure_long_dropout_ends_it():
     assert not events(s, "blink")
 
 
+def test_closure_carried_through_head_drop():
+    # Eyes closed 0.8 s, then the head drops (eye state unknown): the closure keeps counting.
+    a, _ = simulate(20)
+    ear = lambda t: 0.08  # noqa: E731
+    pitch = lambda t: 40.0 if t >= 20.8 else 0.0  # noqa: E731
+    _, s = simulate(3.0, ear=ear, pitch=pitch, analyzer=a, t0=20.0)
+    assert s[-1].head_drop and s[-1].eye_closed is None
+    assert s[-1].closed_duration == pytest.approx(3.0 - DT, abs=2 * DT)
+    assert events(s, "microsleep")
+    # Head drop, then the face is lost (slumped out of view): still counting.
+    _, s = simulate(1.0, face=const(False), analyzer=a, t0=23.0)
+    assert s[-1].closed_duration == pytest.approx(4.0 - DT, abs=2 * DT)
+    # Head back up with the eyes open: the episode ends, no blink.
+    _, s = simulate(1.0, analyzer=a, t0=24.0)
+    assert s[-1].closed_duration == 0.0 and not s[-1].head_drop
+    assert not events(s, "blink")
+
+
+def test_blink_then_head_down_is_not_carried():
+    # 0.2 s closure (blink / lids lowering), then looking down at the dashboard.
+    a, _ = simulate(20)
+    pitch = lambda t: 35.0 if t >= 20.2 else 0.0  # noqa: E731
+    _, s = simulate(3.0, ear=const(0.08), pitch=pitch, analyzer=a, t0=20.0)
+    assert not any(x.head_drop for x in s)
+    assert s[-1].closed_duration == 0.0 and not events(s, "microsleep")
+
+
+def test_carried_closure_ends_when_head_comes_up_unjudged():
+    # Head drop carried, then head up but turned far (eyes still unknown): stop counting.
+    a, _ = simulate(20)
+    pitch = lambda t: 40.0 if 20.8 <= t < 22.0 else 0.0  # noqa: E731
+    yaw = lambda t: 60.0 if t >= 22.0 else 0.0  # noqa: E731
+    _, s = simulate(3.0, ear=const(0.08), pitch=pitch, yaw=yaw, analyzer=a, t0=20.0)
+    assert any(x.head_drop for x in s)
+    assert s[-1].closed_duration == 0.0 and not s[-1].head_drop
+
+
+def test_head_drop_config_from_yaml_dict():
+    cfg = DrowsinessConfig.from_dict({"head_drop": {"carry_min_closed_s": 0.8}})
+    assert cfg.head_drop_carry_min_closed_s == 0.8
+
+
+# ---------------------------------------------------------------- microsleep mask (yawn / talking)
+
+CLOSED = 0.08
+WIDE = 0.8  # mouth wide open (yawn)
+
+
+def test_eyes_shut_during_yawn_is_not_a_microsleep():
+    # Yawn 3-7 s with the eyes squeezed shut 3.5-7.5 s (reopen inside the hold time).
+    a, _ = simulate(20)
+    _, s = simulate(
+        12,
+        ear=lambda t: CLOSED if 23.5 <= t < 27.5 else OPEN,
+        mar=lambda t: WIDE if 23.0 <= t < 27.0 else 0.05,
+        analyzer=a,
+        t0=20.0,
+    )
+    assert not events(s, "microsleep")
+    assert max(x.closed_duration for x in s) < 0.5
+    assert any(x.closure_masked for x in s)
+    assert len(events(s, "yawn")) == 1  # the yawn itself still counts
+    assert s[-1].perclos_60s > 0.1  # and PERCLOS still sees the closed eyes
+
+
+def test_eyes_stay_closed_after_yawn_counts_from_end_of_hold():
+    # Yawn 23-26 s, eyes closed from 24 s and never reopen: counting starts after the
+    # 1.5 s hold (27.5 s), microsleep at 28.5 s.
+    a, _ = simulate(20)
+    _, s = simulate(
+        12,
+        ear=lambda t: CLOSED if t >= 24.0 else OPEN,
+        mar=lambda t: WIDE if 23.0 <= t < 26.0 else 0.05,
+        analyzer=a,
+        t0=20.0,
+    )
+    assert events(s, "microsleep")[0] == pytest.approx(28.5, abs=3 * DT)
+    assert s[-1].closed_duration == pytest.approx(32.0 - 27.5, abs=3 * DT)
+    assert not events(s, "blink")
+
+
+def test_slack_jaw_in_sleep_is_not_masked_forever():
+    # Mouth hangs open (no yawn end) with the eyes closed: the mask stops after
+    # max_open_s (8 s) + hold (1.5 s), then the microsleep fires.
+    a, _ = simulate(20)
+    _, s = simulate(15, ear=const(CLOSED), mar=const(WIDE), analyzer=a, t0=20.0)
+    ms = events(s, "microsleep")
+    assert len(ms) == 1
+    assert ms[0] == pytest.approx(20.0 + 8.0 + 1.5 + 1.0, abs=3 * DT)
+
+
+def test_talking_with_short_eye_closures_is_masked():
+    # Talking: MAR keeps moving; the eyes close 2 s while talking.
+    talk = pulses(0.4, 0.2, 0.35, 0.05)
+    a, _ = simulate(20, mar=talk)
+    _, s = simulate(6, ear=lambda t: CLOSED if 22.0 <= t < 24.0 else OPEN, mar=talk, analyzer=a, t0=20.0)
+    assert not events(s, "microsleep")
+    assert all(x.closed_duration == 0.0 for x in s)
+
+
+def test_still_mouth_microsleep_is_not_masked():
+    # Asleep: mouth still (tiny MAR noise), eyes closed 2 s -> microsleep as usual.
+    a, _ = simulate(20)
+    _, s = simulate(
+        5,
+        ear=lambda t: CLOSED if 21.0 <= t < 23.0 else OPEN,
+        mar=lambda t: 0.05 + 0.01 * ((t * FPS) % 2),
+        analyzer=a,
+        t0=20.0,
+    )
+    assert len(events(s, "microsleep")) == 1
+    assert not any(x.closure_masked for x in s)
+
+
+def test_talking_mask_can_be_turned_off():
+    cfg = DrowsinessConfig.from_dict({"microsleep_mask": {"talk_min_swings": 0}})
+    talk = pulses(0.4, 0.2, 0.35, 0.05)
+    a, _ = simulate(20, mar=talk, analyzer=DrowsinessAnalyzer(cfg))
+    _, s = simulate(6, ear=lambda t: CLOSED if 22.0 <= t < 24.0 else OPEN, mar=talk, analyzer=a, t0=20.0)
+    assert len(events(s, "microsleep")) == 1
+
+
 # ---------------------------------------------------------------- yawn
 
 
@@ -187,6 +309,29 @@ def test_camera_pitch_offset_does_not_fake_nods():
 
 
 # ---------------------------------------------------------------- misc
+
+
+def test_pitch_baseline_not_dragged_by_frequent_nods():
+    # Very drowsy: head 18 deg down with the eyes closed 60 % of the time. The usual pitch
+    # must stay at the eyes-open pose (a plain median would move to 18 deg).
+    a, _ = simulate(10)
+    down = lambda t: (t % 2.5) < 1.5  # noqa: E731
+    _, s = simulate(
+        60,
+        ear=lambda t: 0.08 if down(t) else OPEN,
+        pitch=lambda t: 18.0 if down(t) else 0.0,
+        analyzer=a,
+        t0=10.0,
+    )
+    assert abs(s[-1].pitch_baseline) < 1.0
+
+
+def test_pose_baseline_bootstraps_and_follows_posture_with_open_eyes():
+    # Starts learning at once, then follows a lasting posture change made with the eyes open.
+    a, s = simulate(1.0, pitch=const(8.0))
+    assert s[-1].pitch_baseline == pytest.approx(8.0)
+    _, s = simulate(80, pitch=const(-5.0), analyzer=a, t0=1.0)
+    assert s[-1].pitch_baseline == pytest.approx(-5.0)
 
 
 def test_config_from_yaml_dict():

@@ -6,6 +6,7 @@ Rule table (docs/workflow/workflow_full_4.jpg):
   >= l1 -> L1, >= l2 -> L2; multiplied by night / long-drive factors from context
 - off_road_duration >= off_road_s (off_road_high_speed_s at high speed) -> L2
 - phone_ratio_2s >= phone_ratio                          -> L2
+- no_face_duration >= no_face_s (moving)                 -> L2 (driver slumped / camera covered)
 - trend_15min >= slope_per_min (enough history, score not trivial) -> trend.level (early warning)
 - blink_rate outside [normal_min, normal_max]            -> blink.level (0 = note only)
 The final level is the highest level among the rules that fire.
@@ -47,6 +48,7 @@ class RiskConfig:
     distraction_off_road_s: float = 2.0
     distraction_off_road_high_speed_s: float = 1.5
     distraction_phone_ratio: float = 0.6
+    distraction_no_face_s: float = 3.0
     trend_level: int = 1
     trend_min_points: int = 5
     trend_slope_per_min: float = 2.0
@@ -65,7 +67,7 @@ class RiskConfig:
 @dataclass(frozen=True)
 class RuleHit:
     level: int
-    reason: str  # microsleep, drowsy_score, off_road, phone, trend, blink_rate
+    reason: str  # microsleep, drowsy_score, off_road, phone, no_face, trend, blink_rate
     value: float  # the measurement that fired the rule
 
 
@@ -163,11 +165,17 @@ class RiskEngine:
         off_road = 0.0 if ctx.turning else x.off_road_duration
         distraction = 0.0
         if x.active and ctx.moving:
-            distraction = 100.0 * min(max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio), 1.0)
+            no_face_term = x.no_face_duration / cfg.distraction_no_face_s if cfg.distraction_no_face_s > 0 else 0.0
+            distraction = 100.0 * min(
+                max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio, no_face_term), 1.0
+            )
             if off_road >= off_road_thr:
                 hits.append(RuleHit(2, "off_road", off_road))
             if x.phone_ratio_2s >= cfg.distraction_phone_ratio:
                 hits.append(RuleHit(2, "phone", x.phone_ratio_2s))
+            # Not muted by the turn signal: a shoulder check never hides the face this long.
+            if cfg.distraction_no_face_s > 0 and x.no_face_duration >= cfg.distraction_no_face_s:
+                hits.append(RuleHit(2, "no_face", x.no_face_duration))
 
         hits.sort(key=lambda h: -h.level)
         level = max((h.level for h in hits), default=0)

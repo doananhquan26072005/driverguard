@@ -141,3 +141,53 @@ def test_config_from_yaml_dict():
     assert cfg.min_speed_kmh == 8
     assert cfg.baseline_adapt is False and cfg.baseline_yaw_deg == 12.0
     assert DistractionAnalyzer(cfg).baseline_yaw == 12.0
+
+
+def test_no_face_duration_while_moving():
+    a = no_adapt()
+    _, t = run(a, 0.0, 1.0)
+    s, t = run(a, t, 3.0, face=False)
+    assert s.no_face_duration == pytest.approx(3.0 - DT, abs=DT)
+    s, t = run(a, t, DT)  # one frame with a face resets it
+    assert s.no_face_duration == 0.0
+    s, _ = run(a, t, 3.0, face=False, speed=0.0)  # stopped: branch off
+    assert s.no_face_duration == 0.0
+
+
+def calibrating(**kw):
+    return DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=5.0, **kw))
+
+
+def test_camera_mounted_far_to_the_side_is_calibrated():
+    # Camera 35 deg to the side: without calibration every frame is off road.
+    s, _ = run(no_adapt(), 0.0, 10.0, yaw=35.0)
+    assert s.off_road and s.off_road_duration > 9.0
+    a = calibrating()
+    s, t = run(a, 0.0, 10.0, yaw=35.0, pitch=8.0)
+    assert not s.off_road and not s.calibrating
+    assert (a.baseline_yaw, a.baseline_pitch) == pytest.approx((35.0, 8.0), abs=0.5)
+    s, _ = run(a, t, 3.0, yaw=35.0 + 45.0)  # a real look away is still caught
+    assert s.off_road and s.off_road_duration > 2.5
+
+
+def test_no_off_road_while_calibrating_and_median_ignores_glances():
+    a = calibrating(baseline_adapt=False)
+    s, t = run(a, 0.0, 1.0, yaw=60.0)  # glance during calibration
+    assert s.calibrating and not s.off_road
+    s, t = run(a, t, 4.5, yaw=0.0)
+    assert not s.calibrating and a.baseline_yaw == pytest.approx(0.0)
+
+
+def test_calibration_waits_for_driving_and_is_clamped():
+    a = calibrating(baseline_adapt=False)
+    run(a, 0.0, 10.0, speed=0.0, yaw=70.0)  # parked: nothing learnt
+    assert not a.calibrated
+    run(a, 10.0, 6.0, yaw=70.0)
+    assert a.calibrated and a.baseline_yaw == pytest.approx(45.0)
+
+
+def test_adaptation_stays_around_calibrated_pose():
+    a = calibrating(baseline_tau_s=1.0, baseline_max_deg=10.0)
+    _, t = run(a, 0.0, 6.0, yaw=35.0)
+    run(a, t, 30.0, yaw=35.0 + 25.0)  # 25 deg: on road (< 30), adapts but only by 10
+    assert a.baseline_yaw == pytest.approx(45.0, abs=0.1)

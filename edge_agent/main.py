@@ -40,7 +40,13 @@ from edge_agent.perception import PreprocessConfig, Preprocessor
 from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
 from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
-from edge_agent.perception.phone_detector import AsyncPhoneDetector, PhoneDetectorConfig, face_bbox, phone_near_face
+from edge_agent.perception.phone_detector import (
+    AsyncPhoneDetector,
+    FaceBoxMemory,
+    PhoneDetectorConfig,
+    face_bbox,
+    phone_near_face,
+)
 
 WINDOW = "DriverGuard"
 DEFAULT_SCENARIO = PROJECT_ROOT / "config" / "scenarios" / "city_day.yaml"
@@ -123,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         phone.start()
 
     fps, last_t, last_status = 0.0, time.monotonic(), 0.0
+    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)  # driver zone survives a phone hiding the face
     t0: float | None = None
     bins_sent, minute_max_level = 0, 0
     try:
@@ -140,11 +147,11 @@ def main(argv: list[str] | None = None) -> int:
                 pre = preprocessor(frame)  # 2
                 lm = landmarks.detect(pre)  # 3
                 phone_flag = None
+                face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                 if phone is not None:  # 4, own thread; reuse the latest result
                     phone.submit(pre)
                     result = phone.latest()
                     if result is not None:
-                        face = face_bbox(lm.points) if lm is not None else None
                         phone_flag = phone_near_face(result.detections, face, phone_cfg)
                 features = extractor(lm, pre.frame_id, pre.timestamp)  # 6
                 if eye_state is not None:  # 5, only when EAR is not reliable

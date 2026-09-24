@@ -3,7 +3,7 @@
 
 export type Role = "admin" | "engineer" | "manager" | "driver";
 export type Level = 0 | 1 | 2 | 3;
-export type Reason = "microsleep" | "drowsy_score" | "off_road" | "phone" | "trend" | "blink_rate";
+export type Reason = "microsleep" | "drowsy_score" | "off_road" | "phone" | "no_face" | "trend" | "blink_rate";
 
 export interface Session {
   token: string;

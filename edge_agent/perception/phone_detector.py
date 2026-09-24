@@ -7,6 +7,8 @@ older than `max_result_age_s` are treated as unknown.
 
 `phone_near_face()` decides whether a detected phone is in the driver's zone
 (around the face and down to the chest), so a passenger's phone does not count.
+A phone held in front of the face often hides it from MediaPipe, so `FaceBoxMemory`
+keeps the last face box for `face_memory_s` and the zone is still known.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ class PhoneDetectorConfig:
     zone_expand_x: float = 1.0
     zone_expand_up: float = 0.5
     zone_expand_down: float = 1.5
+    face_memory_s: float = 3.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PhoneDetectorConfig:
@@ -98,6 +101,26 @@ def phone_near_face(detections: tuple[PhoneDetection, ...], face: BBox | None, c
         if zx1 <= cx <= zx2 and zy1 <= cy <= zy2:
             return True
     return False
+
+
+class FaceBoxMemory:
+    """Last seen face box, reused for up to `max_age_s` after the face is lost.
+
+    Call `update()` every frame with the current face box (None when no face).
+    """
+
+    def __init__(self, max_age_s: float) -> None:
+        self.max_age_s = max_age_s
+        self._face: BBox | None = None
+        self._seen_at: float | None = None
+
+    def update(self, face: BBox | None, t: float) -> BBox | None:
+        if face is not None:
+            self._face, self._seen_at = face, t
+            return face
+        if self._seen_at is not None and t - self._seen_at <= self.max_age_s:
+            return self._face
+        return None
 
 
 # --------------------------------------------------------------------------- YOLO model

@@ -105,6 +105,18 @@ def test_phone_ratio_60_percent_is_l2(ratio, level):
     assert assess(x=replace(X0, phone_ratio_2s=ratio)).level == level
 
 
+@pytest.mark.parametrize(("no_face", "level"), [(2.9, 0), (3.0, 2)])
+def test_no_face_3s_while_moving_is_l2(no_face, level):
+    r = assess(x=replace(X0, no_face_duration=no_face))
+    assert r.level == level
+    assert r.reasons == (("no_face",) if level else ())
+
+
+def test_no_face_not_muted_by_turn_signal():
+    r = assess(x=replace(X0, no_face_duration=4.0), c=replace(C0, turning=True))
+    assert r.reasons == ("no_face",)
+
+
 def test_distraction_silent_when_stopped():
     x = replace(X0, active=False, off_road_duration=0.0, phone_ratio_2s=0.0)
     r = assess(x=x, c=replace(C0, speed_kmh=0.0, moving=False))
@@ -234,3 +246,54 @@ def test_alert_config_from_yaml_dict():
     cfg = AlertConfig.from_dict({"rise_confirm_s": {"2": 0.8}, "cooldown_s": {3: 5}})
     assert cfg.rise_confirm_s[2] == 0.8 and cfg.rise_confirm_s[1] == 1.0
     assert cfg.cooldown_s[3] == 5.0
+
+
+def risk_reasons(t, level, reasons):
+    hits = tuple(RuleHit(level, x, 1.0) for x in reasons)
+    return RiskAssessment(t, level, hits, 0.0, 0.0, (0, 0, 0, 0))
+
+
+def run_reasons(manager, steps, t0=0.0, dt=0.1):
+    """steps: list of (level, reasons), one per dt."""
+    return [manager.update(risk_reasons(t0 + i * dt, lv, rs)) for i, (lv, rs) in enumerate(steps)]
+
+
+def emitted_reasons(outputs):
+    return [(round(o.t, 1), o.new_alert.level, o.new_alert.reasons) for o in outputs if o.new_alert is not None]
+
+
+def test_new_reason_at_same_level_is_a_new_alert():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("off_road", "phone"))] * 10
+    out = run_reasons(m, steps)
+    # phone joins at 2.0 s, holds the 0.5 s L2 confirmation, new reason listed first
+    assert emitted_reasons(out) == [(0.5, 2, ("off_road",)), (2.5, 2, ("phone", "off_road"))]
+
+
+def test_new_reason_must_hold_before_alert():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("off_road", "phone"))] * 3 + [(2, ("off_road",))] * 10
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",))]
+
+
+def test_reason_switch_at_same_level_is_alerted():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("phone",))] * 10
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",)), (2.5, 2, ("phone",))]
+
+
+def test_cooldown_is_per_reason():
+    m = AlertManager(CFG)
+    # off_road alert, back to L0, off_road again within 30 s: suppressed; phone: emitted.
+    steps = [(2, ("off_road",))] * 10 + [(0, ())] * 40 + [(2, ("off_road",))] * 10
+    out = run_reasons(m, steps)
+    assert emitted_reasons(out) == [(0.5, 2, ("off_road",))] and any(o.suppressed for o in out)
+    steps = [(0, ())] * 40 + [(2, ("phone",))] * 10
+    assert emitted_reasons(run_reasons(m, steps, t0=6.0)) == [(10.5, 2, ("phone",))]
+
+
+def test_dropping_a_level_is_not_a_new_alert():
+    m = AlertManager(CFG)
+    steps = [(3, ("microsleep",))] * 5 + [(2, ("phone",))] * 60
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.0, 3, ("microsleep",))]
+    assert m.active_level == 2
