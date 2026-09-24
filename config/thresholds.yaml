@@ -168,3 +168,13 @@ alert:
   rise_confirm_s: {1: 1.0, 2: 0.5, 3: 0.0}   # a level must hold this long before it is raised
   fall_hold_s: 3.0                           # and stay lower this long before it is dropped
   cooldown_s: {1: 120, 2: 30, 3: 10}         # no repeated alert of the same level within this
+
+# Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
+publisher:
+  batch_size: 20                # events per POST
+  flush_interval_s: 5.0         # send at least this often while events are waiting
+  timeout_s: 5.0
+  outbox_path: data/outbox.db   # offline queue on the device: metadata JSON only
+  max_queue: 10000              # oldest events dropped beyond this
+  backoff_initial_s: 1.0        # retry delay after a failure, doubling up to backoff_max_s
+  backoff_max_s: 60.0

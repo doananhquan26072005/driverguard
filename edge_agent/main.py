@@ -1,12 +1,13 @@
-"""DriverGuard edge agent: blocks 1-13 in one loop.
+"""DriverGuard edge agent: blocks 1-14 in one loop (block 5 excluded).
 
     python -m edge_agent.main --source 0 --scenario config/scenarios/highway_night.yaml
     python -m edge_agent.main --source clip.mp4 --no-window     # headless, terminal only
+    DG_DEVICE_KEY=dgk_... python -m edge_agent.main --source 0 --backend http://localhost:8100 --device-id cam-001
 
 1 FrameSource -> 2 Preprocessor -> 3 FaceLandmarkDetector / 4 AsyncPhoneDetector (own thread)
 -> 6 FeatureExtractor -> 7 drowsiness + 8 distraction (+ 10 CAN / context, 11 trip memory)
--> 9 risk engine -> 12 alert manager -> 13 HUD.
-Block 5 (eye-state CNN) and 14 (metadata publisher) are later milestones.
+-> 9 risk engine -> 12 alert manager -> 13 HUD + 14 metadata publisher (alerts only, batched,
+offline queue; enabled with --backend). Block 5 (eye-state CNN) is a later milestone.
 
 Frames live in RAM only: nothing here writes images to disk.
 """
@@ -14,8 +15,10 @@ Frames live in RAM only: nothing here writes images to disk.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -25,6 +28,7 @@ from edge_agent.config import PROJECT_ROOT, load_thresholds
 from edge_agent.context.can_sim import CanSimulator, load_scenario
 from edge_agent.decision.pipeline import DecisionPipeline
 from edge_agent.hud.hud import alert_line, draw_hud, status_line
+from edge_agent.io.publisher import MetadataPublisher, PublisherConfig, build_event, http_transport
 from edge_agent.perception import PreprocessConfig, Preprocessor
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
 from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
@@ -43,6 +47,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-window", action="store_true", help="no preview window, terminal output only")
     p.add_argument("--no-phone", action="store_true", help="disable the YOLO phone detector")
     p.add_argument("--status-every", type=float, default=5.0, help="seconds between status lines (0 = off)")
+    p.add_argument("--backend", default=None, help="backend base URL, e.g. http://localhost:8100 (off if omitted)")
+    p.add_argument("--device-id", default="cam-001", help="this device's id, registered in the backend")
+    p.add_argument("--device-key", default=None, help="device key (default: env DG_DEVICE_KEY)")
     return p.parse_args(argv)
 
 
@@ -65,6 +72,17 @@ def main(argv: list[str] | None = None) -> int:
     scenario = load_scenario(args.scenario)
     can = CanSimulator(scenario, moving_kmh=float((th.get("context") or {}).get("min_speed_kmh", 5.0)))
     decisions = DecisionPipeline(th)
+    trip_id = datetime.now().strftime("trip-%Y%m%d-%H%M%S")
+    publisher = None
+    if args.backend:
+        key = args.device_key or os.environ.get("DG_DEVICE_KEY", "")
+        if not key:
+            print("[publisher] disabled: no --device-key / DG_DEVICE_KEY")
+        else:
+            pub_cfg = PublisherConfig.from_dict(th.get("publisher"))
+            publisher = MetadataPublisher(args.device_id, http_transport(args.backend, key, pub_cfg.timeout_s), pub_cfg)
+            publisher.start()
+            print(f"[publisher] {args.backend} as {args.device_id}, trip {trip_id}, {publisher.queued} queued")
     print(f"[main] source={args.source} scenario={scenario.name} ({Path(args.scenario).name})")
 
     if not args.no_window:
@@ -104,11 +122,18 @@ def main(argv: list[str] | None = None) -> int:
                 if dt > 0:
                     fps = 1.0 / dt if fps == 0 else 0.9 * fps + 0.1 / dt
 
-                if r.alert.new_alert is not None:  # 13
+                if r.alert.new_alert is not None:  # 13, 14
                     print(f"t={signals.t:7.1f}s  {alert_line(r.alert.new_alert)}")
+                    if publisher is not None:
+                        publisher.publish(build_event(r.alert.new_alert, r, trip_id))
                 if args.status_every > 0 and now - last_status >= args.status_every:
                     last_status = now
-                    print(f"t={signals.t:7.1f}s  {status_line(r, fps)}")
+                    net = ""
+                    if publisher is not None:
+                        net = f" | sent {publisher.sent} queued {publisher.queued}" + (
+                            " OFFLINE" if publisher.online is False else ""
+                        )
+                    print(f"t={signals.t:7.1f}s  {status_line(r, fps)}{net}")
                 if not args.no_window:
                     cv2.imshow(WINDOW, draw_hud(pre.image, r, fps))
                     key = cv2.waitKey(1) & 0xFF
@@ -119,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         if phone is not None:
             phone.stop()
+        if publisher is not None:
+            publisher.stop()  # final flush; anything unsent stays in the outbox for next start
+            print(f"[publisher] sent {publisher.sent}, still queued {publisher.queued}, dropped {publisher.dropped}")
         if not args.no_window:
             cv2.destroyAllWindows()
     return 0
