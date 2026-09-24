@@ -1,7 +1,8 @@
 """Block 7 - Drowsiness branch.
 
 Per frame, from FrameFeatures (EAR, MAR, head pose), computes:
-- eye_closed: per-frame eye state (None when it cannot be judged).
+- eye_closed: per-frame eye state (None when it cannot be judged). From EAR, or from the
+  eye-state CNN (block 5, `p_closed`) on frames where EAR is not reliable.
 - closed_duration: seconds of the current eye-closure episode.
 - perclos_60s: fraction of time the eyes were closed over the last `perclos_window_s`.
 - blink_rate: blinks per minute (closures shorter than `blink_max_s`).
@@ -51,6 +52,9 @@ class DrowsinessConfig:
     eye_open_ratio: float = 0.75
     eye_max_yaw_deg: float = 35.0
     eye_max_pitch_down_deg: float = 25.0
+    # Eye-state CNN (block 5) probabilities, with hysteresis
+    eye_cnn_closed: float = 0.6
+    eye_cnn_open: float = 0.4
     # Closure episodes
     blink_max_s: float = 0.5
     blink_window_s: float = 60.0
@@ -97,6 +101,7 @@ class DrowsinessState:
     ear_open_baseline: float
     ear_closed_threshold: float
     events: tuple[str, ...] = ()
+    eye_source: str | None = None  # "ear" or "cnn": what decided eye_closed on this frame
 
 
 class RollingWindow:
@@ -194,19 +199,28 @@ class DrowsinessAnalyzer:
         pose_ok = (
             yaw_off is not None and abs(yaw_off) <= cfg.eye_max_yaw_deg and pitch_off <= cfg.eye_max_pitch_down_deg
         )
-        eye_known = f.face_found and f.ear is not None and pose_ok
-        if eye_known:
-            self._ear.add(t, f.ear)
+        # Block 5 (eye-state CNN) decides when it ran: EAR was judged unreliable on this frame.
+        use_cnn = f.face_found and f.p_closed is not None
+        eye_known = f.face_found and pose_ok and (use_cnn or f.ear is not None)
+        if eye_known and f.ear is not None and (not use_cnn or f.p_closed <= cfg.eye_cnn_open):
+            self._ear.add(t, f.ear)  # an unreliable EAR must not become the driver's "open eye" value
         baseline = self.ear_baseline(t)
         close_thr = baseline * cfg.eye_close_ratio
         open_thr = baseline * cfg.eye_open_ratio
-        ear_low = None if f.ear is None else f.ear < close_thr  # raw, ignores pose (used by nod)
+        if use_cnn:
+            ear_low = f.p_closed >= cfg.eye_cnn_closed  # raw, ignores pose (used by nod)
+        else:
+            ear_low = None if f.ear is None else f.ear < close_thr
 
         eye_closed: bool | None = None
         if eye_known:
-            if self._eye_closed and f.ear > open_thr:
+            if use_cnn:
+                closing, opening = f.p_closed >= cfg.eye_cnn_closed, f.p_closed <= cfg.eye_cnn_open
+            else:
+                closing, opening = f.ear < close_thr, f.ear > open_thr
+            if self._eye_closed and opening:
                 self._eye_closed = False
-            elif not self._eye_closed and f.ear < close_thr:
+            elif not self._eye_closed and closing:
                 self._eye_closed = True
             eye_closed = self._eye_closed
 
@@ -226,6 +240,7 @@ class DrowsinessAnalyzer:
         return DrowsinessState(
             timestamp=t,
             eye_closed=eye_closed,
+            eye_source=None if eye_closed is None else ("cnn" if use_cnn else "ear"),
             closed_duration=closed_duration,
             microsleep=closed_duration >= cfg.microsleep_min_s,
             perclos_60s=perclos,

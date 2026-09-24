@@ -1,4 +1,4 @@
-"""Debug viewer: blocks 1-4, 6-8 (capture to drowsiness / distraction).
+"""Debug viewer: blocks 1-8 (capture to drowsiness / distraction).
 
 Shows the preprocessed stream with face landmarks, head pose axis, EAR / MAR /
 pitch / yaw / roll, and prints EAR for every frame to the terminal.
@@ -39,6 +39,7 @@ from edge_agent.analysis.drowsiness import (  # noqa: E402
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
+from edge_agent.perception.eye_state import EyeStateConfig, make_estimator  # noqa: E402
 from edge_agent.perception.features import (  # noqa: E402
     LEFT_EYE,
     MOUTH_CORNERS,
@@ -119,8 +120,12 @@ def distraction_lines(
     ]
 
 
-def drowsiness_lines(d: DrowsinessState, min_coverage_s: float) -> list[Line]:
+def drowsiness_lines(d: DrowsinessState, min_coverage_s: float, f: FrameFeatures) -> list[Line]:
     eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
+    if d.eye_source == "cnn":  # block 5 decided: show its probability and why it was called
+        eyes += f" [CNN p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
+    elif d.eye_source == "ear":
+        eyes += " [EAR]"
     warming = "" if d.perclos_coverage_s >= min_coverage_s else f" (warming up {d.perclos_coverage_s:.0f}s)"
     return [
         (
@@ -272,6 +277,7 @@ def main() -> int:
     preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
     detector = FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks")))
     extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
+    eye_state = make_estimator(EyeStateConfig.from_dict(thresholds.get("eye_state")))
     source = FrameSource(args.source, CaptureConfig.from_dict(thresholds.get("capture")), loop=args.loop)
     phone_cfg = PhoneDetectorConfig.from_dict(thresholds.get("phone"))
     phone_detector = None
@@ -319,6 +325,8 @@ def main() -> int:
                 lm = detector.detect(pre)
                 t2 = time.perf_counter()
                 feats = extractor(lm, pre.frame_id, pre.timestamp)
+                if eye_state is not None:  # block 5, only when EAR is not reliable
+                    feats = eye_state(pre, lm, feats)
                 phone = None
                 if phone_detector is not None:
                     phone_detector.submit(pre)  # YOLO runs on its own thread at ~5 FPS
@@ -375,7 +383,7 @@ def main() -> int:
                         f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
                         f"frame {pre.frame_id}  dropped {source.dropped_frames}",
                         *feature_lines(values, feats, lm.num_faces if lm else 0),
-                        *drowsiness_lines(drowsy, drowsiness.config.perclos_min_coverage_s),
+                        *drowsiness_lines(drowsy, drowsiness.config.perclos_min_coverage_s, feats),
                         *distraction_lines(dstate, phone_flag, phone, speed),
                     ]
                 draw_overlay(shown, text_lines)

@@ -78,6 +78,9 @@ class FrameFeatures:
     pitch: float | None = None
     yaw: float | None = None
     roll: float | None = None
+    # Block 5 (eye-state CNN), only set on frames where EAR is not reliable.
+    p_closed: float | None = None
+    eye_cnn_reason: str | None = None
 
 
 def _dist(a: np.ndarray, b: np.ndarray) -> float:

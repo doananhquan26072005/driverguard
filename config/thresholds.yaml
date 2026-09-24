@@ -37,6 +37,21 @@ landmarks:
   min_face_presence_confidence: 0.5
   min_tracking_confidence: 0.5
 
+# Block 5 - Eye-state CNN (Open Model Zoo open-closed-eye-0001, Apache-2.0, 46 KB)
+# Only called when EAR is not reliable; otherwise EAR alone decides (block 7).
+eye_state:
+  enabled: true
+  model_path: models/open_closed_eye.onnx   # python tools/download_models.py
+  input_size: 32
+  crop_scale: 1.8               # crop side = 1.8 x eye-corner distance (as in Intel's demo)
+  mean: 127.0                   # input = (BGR - mean) / scale
+  scale: 255.0
+  closed_index: 0               # softmax index of "closed" (Intel demo: out[0] < out[1] = open)
+  run_on_ir: true               # infrared / grayscale camera: call the CNN
+  low_light_brightness: 60      # mean luminance 0-255 below this: call the CNN
+  ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / mean above this (glare, occlusion): call the CNN
+  always_run: false             # true = every frame (debug, evaluation)
+
 # Block 6 - Feature extractor
 features:
   # Focal length in pixels = focal_length_scale * image width (uncalibrated camera).
@@ -77,6 +92,10 @@ drowsiness:
     # EAR is unreliable when the head is turned / tilted down: eye state unknown.
     max_yaw_deg: 35
     max_pitch_down_deg: 25
+    # When the eye-state CNN (block 5) ran, eye closed = p_closed >= cnn_closed,
+    # reopened when p_closed <= cnn_open (hysteresis).
+    cnn_closed: 0.6
+    cnn_open: 0.4
   blink_max_s: 0.5              # closures up to this long are blinks
   blink_window_s: 60
   microsleep_min_s: 1.0         # closure at least this long = microsleep event

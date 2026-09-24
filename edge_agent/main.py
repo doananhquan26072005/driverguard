@@ -7,7 +7,7 @@
 1 FrameSource -> 2 Preprocessor -> 3 FaceLandmarkDetector / 4 AsyncPhoneDetector (own thread)
 -> 6 FeatureExtractor -> 7 drowsiness + 8 distraction (+ 10 CAN / context, 11 trip memory)
 -> 9 risk engine -> 12 alert manager -> 13 HUD + 14 metadata publisher (enabled with --backend).
-Block 5 (eye-state CNN) is a later milestone.
+5 Eye-state CNN runs between 6 and 7, only on frames where EAR is not reliable (IR, dark, glare).
 
 13 HUD: preview window, plus a local server on 127.0.0.1:--hud-port for the in-car HUD screen
     (frontend #/hud) with the "false alarm" button.
@@ -37,6 +37,7 @@ from edge_agent.hud.server import HudServer, HudState
 from edge_agent.io.publisher import MetadataPublisher, PublisherConfig, build_event, build_sample, http_transport
 from edge_agent.io.remote_config import apply_overrides, fetch_thresholds
 from edge_agent.perception import PreprocessConfig, Preprocessor
+from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
 from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
 from edge_agent.perception.phone_detector import AsyncPhoneDetector, PhoneDetectorConfig, face_bbox, phone_near_face
@@ -77,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     preprocessor = Preprocessor(PreprocessConfig.from_dict(th.get("preprocess")))
     landmarks = FaceLandmarkDetector(LandmarkConfig.from_dict(th.get("landmarks")))
     extractor = FeatureExtractor(FeatureConfig.from_dict(th.get("features")))
+    eye_state = make_estimator(EyeStateConfig.from_dict(th.get("eye_state")))
     phone_cfg = PhoneDetectorConfig.from_dict(th.get("phone"))
     phone = None
     if not args.no_phone:
@@ -145,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
                         face = face_bbox(lm.points) if lm is not None else None
                         phone_flag = phone_near_face(result.detections, face, phone_cfg)
                 features = extractor(lm, pre.frame_id, pre.timestamp)  # 6
+                if eye_state is not None:  # 5, only when EAR is not reliable
+                    features = eye_state(pre, lm, features)
                 signals = can.sample(frame.timestamp - t0)  # 10 (CAN)
                 r = decisions.step(features, phone_flag, signals)  # 7, 8, 10, 11, 9, 12
 
