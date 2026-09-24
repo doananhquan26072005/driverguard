@@ -1,7 +1,8 @@
-"""Debug viewer: capture (1), preprocessing (2), landmarks (3), phone (4), features (6), distraction (8).
+"""Debug viewer: blocks 1-4, 6-8 (capture to drowsiness / distraction).
 
 Shows the preprocessed stream with face landmarks, head pose axis, EAR / MAR /
 pitch / yaw / roll, and prints EAR for every frame to the terminal.
+Drowsiness events ([DROWSY] ...) are always printed, also with --quiet.
 On-screen numbers are smoothed (--smooth) and refreshed 5x/s; the graphs below the
 video show the raw per-frame values of the last few seconds.
 Display only - frames are never written to disk.
@@ -29,6 +30,12 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from edge_agent.analysis.distraction import DistractionAnalyzer, DistractionConfig, DistractionState  # noqa: E402
+from edge_agent.analysis.drowsiness import (  # noqa: E402
+    DrowsinessAnalyzer,
+    DrowsinessConfig,
+    DrowsinessState,
+    describe_events,
+)
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
@@ -112,6 +119,22 @@ def distraction_lines(
     ]
 
 
+def drowsiness_lines(d: DrowsinessState, min_coverage_s: float) -> list[Line]:
+    eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
+    warming = "" if d.perclos_coverage_s >= min_coverage_s else f" (warming up {d.perclos_coverage_s:.0f}s)"
+    return [
+        (
+            f"eyes {eyes} {d.closed_duration:3.1f}s  PERCLOS {d.perclos_60s:.2f}{warming}  blinks {d.blink_rate:.0f}/min",
+            RED if d.microsleep else GREEN,
+        ),
+        (
+            f"yawns {d.yawn_count_10min}/10min  nods {d.nod_count_5min}/5min  "
+            f"EAR open {d.ear_open_baseline:.3f} closed<{d.ear_closed_threshold:.3f}",
+            ORANGE if d.yawning else GREEN,
+        ),
+    ]
+
+
 def draw_landmarks(image: np.ndarray, lm: FaceLandmarks, extractor: FeatureExtractor) -> None:
     pts = lm.points[:, :2].astype(np.int32)
     for x, y in pts:
@@ -176,11 +199,21 @@ PLOTS = (
 )
 
 
-def draw_plots(width: int, history: deque[FrameFeatures], window_s: float, panel_h: int = 80) -> np.ndarray:
-    """Scrolling graphs of the last `window_s` seconds of raw features, stacked vertically."""
+def draw_plots(
+    width: int,
+    history: deque[FrameFeatures],
+    window_s: float,
+    guides_override: dict[str, tuple[float, ...]] | None = None,
+    panel_h: int = 80,
+) -> np.ndarray:
+    """Scrolling graphs of the last `window_s` seconds of raw features, stacked vertically.
+
+    `guides_override` replaces a panel's guide lines by label, e.g. the live EAR threshold.
+    """
     panels = []
     now = history[-1].timestamp if history else 0.0
-    for label, series, lo, hi, guides in PLOTS:
+    for label, series, lo, hi, default_guides in PLOTS:
+        guides = (guides_override or {}).get(label, default_guides)
         panel = np.full((panel_h, width, 3), 25, dtype=np.uint8)
 
         def to_y(v: float, lo: float = lo, hi: float = hi) -> int:
@@ -247,6 +280,8 @@ def main() -> int:
             phone_detector = AsyncPhoneDetector(phone_cfg)
         except FileNotFoundError as e:
             print(f"[phone] disabled: {e}")
+    drowsiness = DrowsinessAnalyzer(DrowsinessConfig.from_dict(thresholds.get("drowsiness")))
+    yawn_mar = drowsiness.config.yawn_mar_open
     distraction = DistractionAnalyzer(DistractionConfig.from_dict(thresholds.get("distraction")))
     moving_speed = args.speed if args.speed else 50.0
     speed: float | None = args.speed
@@ -291,6 +326,7 @@ def main() -> int:
                 face = face_bbox(lm.points) if lm is not None else None
                 phone_flag = None if phone is None else phone_near_face(phone.detections, face, phone_cfg)
                 dstate = distraction.update(feats, phone_flag, speed)
+                drowsy = drowsiness.update(feats)
                 t3 = time.perf_counter()
 
                 now = time.monotonic()
@@ -299,6 +335,8 @@ def main() -> int:
                 if dt > 0:
                     fps = 1.0 / dt if fps == 0 else 0.9 * fps + 0.1 / dt
 
+                for line in describe_events(drowsy):
+                    print(f"frame {feats.frame_id:6d}  {line}")
                 if not args.quiet:
                     if feats.face_found:
                         print(
@@ -337,11 +375,22 @@ def main() -> int:
                         f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
                         f"frame {pre.frame_id}  dropped {source.dropped_frames}",
                         *feature_lines(values, feats, lm.num_faces if lm else 0),
+                        *drowsiness_lines(drowsy, drowsiness.config.perclos_min_coverage_s),
                         *distraction_lines(dstate, phone_flag, phone, speed),
                     ]
                 draw_overlay(shown, text_lines)
                 if show_plots:
-                    shown = np.vstack([shown, draw_plots(shown.shape[1], history, args.plot_seconds)])
+                    shown = np.vstack(
+                        [
+                            shown,
+                            draw_plots(
+                                shown.shape[1],
+                                history,
+                                args.plot_seconds,
+                                {"EAR": (drowsy.ear_closed_threshold,), "MAR": (yawn_mar,)},
+                            ),
+                        ]
+                    )
 
             if shown is not None:
                 cv2.imshow(WINDOW, shown)

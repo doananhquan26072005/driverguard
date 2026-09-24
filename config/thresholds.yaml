@@ -59,6 +59,46 @@ phone:
   zone_expand_up: 0.5
   zone_expand_down: 1.5
 
+
+# Block 7 - Drowsiness branch
+drowsiness:
+  max_gap_s: 0.5                # face dropouts shorter than this do not break an episode
+  eye:
+    # Eye closed = EAR below close_ratio x the driver's own open-eye EAR
+    # (percentile of recent EAR), reopened above open_ratio x (hysteresis).
+    baseline_init: 0.28         # used until baseline_min_data_s of data
+    baseline_percentile: 90
+    baseline_window_s: 120
+    baseline_min_data_s: 10
+    baseline_min: 0.18
+    baseline_max: 0.42
+    close_ratio: 0.65
+    open_ratio: 0.75
+    # EAR is unreliable when the head is turned / tilted down: eye state unknown.
+    max_yaw_deg: 35
+    max_pitch_down_deg: 25
+  blink_max_s: 0.5              # closures up to this long are blinks
+  blink_window_s: 60
+  microsleep_min_s: 1.0         # closure at least this long = microsleep event
+  perclos_window_s: 60
+  perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
+  perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
+  perclos_rearm: 0.12           # must drop below this before the next event
+  yawn:
+    mar_open: 0.6
+    mar_close: 0.45
+    min_s: 1.5                  # talking / laughing open the mouth for shorter
+    window_s: 600
+  nod:
+    pitch_down_deg: 15          # dip below the driver's usual pitch (rolling median)
+    return_deg: 7
+    min_s: 0.2
+    max_s: 2.0                  # longer = sustained head down, not a nod
+    require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
+    eyes_closed_min_frac: 0.3
+    window_s: 300
+  pose_baseline_window_s: 60
+
 # Block 8 - Distraction branch
 distraction:
   min_speed_kmh: 5                  # branch off below this speed (stopped / parked)
