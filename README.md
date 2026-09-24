@@ -75,7 +75,6 @@ Codex CLI, Gemini CLI, Antigravity hoặc GitHub Copilot, và cài pre-push hook
 đẩy log lên server.
 
 ### 5. Chạy server
-
 ```bash
 uvicorn src.main:app --reload --port 8000
 ```

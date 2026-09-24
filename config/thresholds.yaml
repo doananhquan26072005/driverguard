@@ -1,0 +1,28 @@
+# All tunable thresholds for DriverGuard. Logic modules must read from here,
+# never hardcode values.
+
+# Block 1 - Frame camera
+capture:
+  # Requested camera settings (the driver may ignore them).
+  camera_width: 1280
+  camera_height: 720
+  camera_fps: 30
+  # Play video files at their native FPS to simulate a live camera.
+  # false = decode as fast as possible (useful for offline eval).
+  video_realtime: true
+  # Fallback FPS when the video file reports 0 / invalid FPS.
+  video_fallback_fps: 30.0
+  # Stop the camera thread after this many consecutive failed reads.
+  max_consecutive_failures: 30
+
+# Block 2 - Preprocessing
+preprocess:
+  # Output width in pixels, aspect ratio preserved. Frames are only downscaled.
+  target_width: 640
+  # A 3-channel frame counts as IR/grayscale when the mean absolute difference
+  # between its channels is below this value (0-255 scale).
+  ir_channel_diff_max: 2.0
+  clahe:
+    enabled: true
+    clip_limit: 2.0
+    tile_grid: 8
