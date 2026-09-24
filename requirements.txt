@@ -23,6 +23,7 @@ opencv-python>=4.9.0
 numpy>=1.26.0
 pyyaml>=6.0
 mediapipe>=0.10.20
+onnxruntime>=1.18.0
 
 # Dev tools
 ruff>=0.8.0

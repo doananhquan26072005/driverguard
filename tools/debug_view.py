@@ -1,4 +1,4 @@
-"""Debug viewer for M0-M1: capture (1) + preprocessing (2) + landmarks (3) + features (6).
+"""Debug viewer: capture (1), preprocessing (2), landmarks (3), phone (4), features (6), distraction (8).
 
 Shows the preprocessed stream with face landmarks, head pose axis, EAR / MAR /
 pitch / yaw / roll, and prints EAR for every frame to the terminal.
@@ -9,8 +9,10 @@ Display only - frames are never written to disk.
     python tools/debug_view.py --source 0                # webcam
     python tools/debug_view.py --source path/to/video.mp4 --loop
     python tools/debug_view.py --source 0 --quiet        # no per-frame terminal output
+    python tools/debug_view.py --source 0 --speed 50     # simulated vehicle speed (km/h)
 
-Keys: q / ESC quit, r raw vs processed, s side-by-side, l landmarks, g graphs, space pause.
+Keys: q / ESC quit, r raw vs processed, s side-by-side, l landmarks, g graphs,
+      m toggle moving / stopped (speed gating), space pause.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from edge_agent.analysis.distraction import DistractionAnalyzer, DistractionConfig, DistractionState  # noqa: E402
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
@@ -41,8 +44,16 @@ from edge_agent.perception.features import (  # noqa: E402
     camera_matrix,
 )
 from edge_agent.perception.landmarks import FaceLandmarkDetector, FaceLandmarks, LandmarkConfig  # noqa: E402
+from edge_agent.perception.phone_detector import (  # noqa: E402
+    AsyncPhoneDetector,
+    PhoneDetectorConfig,
+    PhoneResult,
+    driver_zone,
+    face_bbox,
+    phone_near_face,
+)
 
-WINDOW = "DriverGuard debug (M1)"
+WINDOW = "DriverGuard debug"
 MOUTH_POINTS = MOUTH_CORNERS + tuple(i for pair in MOUTH_VERTICAL_PAIRS for i in pair)
 
 
@@ -52,15 +63,53 @@ def to_bgr(image: np.ndarray) -> np.ndarray:
     return image
 
 
-def draw_overlay(image: np.ndarray, lines: list[str]) -> None:
+GREEN, RED, ORANGE, GRAY = (0, 255, 0), (0, 0, 255), (0, 165, 255), (150, 150, 150)
+Line = str | tuple[str, tuple[int, int, int]]  # text, or (text, BGR color)
+
+
+def draw_overlay(image: np.ndarray, lines: list[Line]) -> None:
     # Dark box behind single-stroke text: in OpenCV 5 glyph width depends on thickness,
     # so the usual thick-outline + thin-text trick no longer lines up.
     font, scale, line_h = cv2.FONT_HERSHEY_SIMPLEX, 0.5, 20
-    width = max(cv2.getTextSize(t, font, scale, 1)[0][0] for t in lines)
-    box = image[4 : 10 + line_h * len(lines), 4 : 16 + width]
+    items = [(ln, GREEN) if isinstance(ln, str) else ln for ln in lines]
+    width = max(cv2.getTextSize(t, font, scale, 1)[0][0] for t, _ in items)
+    box = image[4 : 10 + line_h * len(items), 4 : 16 + width]
     box[:] = (box * 0.35).astype(np.uint8)
-    for i, text in enumerate(lines):
-        cv2.putText(image, text, (10, 20 + i * line_h), font, scale, (0, 255, 0), 1, cv2.LINE_AA)
+    for i, (text, color) in enumerate(items):
+        cv2.putText(image, text, (10, 20 + i * line_h), font, scale, color, 1, cv2.LINE_AA)
+
+
+def draw_phone(
+    image: np.ndarray, result: PhoneResult | None, lm: FaceLandmarks | None, cfg: PhoneDetectorConfig
+) -> None:
+    """Driver zone (thin) and phone boxes: orange inside the zone, gray outside."""
+    face = face_bbox(lm.points) if lm is not None else None
+    if face is not None:
+        zx1, zy1, zx2, zy2 = (int(v) for v in driver_zone(face, cfg))
+        cv2.rectangle(image, (zx1, zy1), (zx2, zy2), (90, 90, 90), 1)
+    if result is None:
+        return
+    for det in result.detections:
+        inside = phone_near_face((det,), face, cfg)
+        x1, y1, x2, y2 = (int(v) for v in det.bbox)
+        color = ORANGE if inside else GRAY
+        cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(image, f"phone {det.score:.2f}", (x1, max(12, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
+
+
+def distraction_lines(
+    d: DistractionState, phone_flag: bool | None, phone: PhoneResult | None, speed: float | None
+) -> list[Line]:
+    speed_txt = "unknown" if speed is None else f"{speed:.0f} km/h"
+    if not d.active:
+        return [(f"DISTRACTION OFF (stopped, speed {speed_txt})", GRAY)]
+    yolo = "YOLO off" if phone is None else f"YOLO {phone.inference_ms:4.0f} ms"
+    flag = "--" if phone_flag is None else str(phone_flag)
+    return [
+        (f"off_road {d.off_road_duration:4.1f} s" + ("  OFF ROAD" if d.off_road else ""), RED if d.off_road else GREEN),
+        (f"phone_ratio_2s {d.phone_ratio_2s:.2f}  phone_near_face {flag}", ORANGE if phone_flag else GREEN),
+        f"speed {speed_txt}  baseline yaw {d.baseline_yaw:+.0f} pitch {d.baseline_pitch:+.0f}  {yolo}",
+    ]
 
 
 def draw_landmarks(image: np.ndarray, lm: FaceLandmarks, extractor: FeatureExtractor) -> None:
@@ -182,6 +231,8 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true", help="do not print EAR every frame")
     parser.add_argument("--smooth", type=float, default=0.3, help="display smoothing time constant in s (0 = raw)")
     parser.add_argument("--plot-seconds", type=float, default=5.0, help="time span of the graphs")
+    parser.add_argument("--speed", type=float, default=None, help="simulated speed in km/h (default: unknown)")
+    parser.add_argument("--no-phone", action="store_true", help="disable the YOLO phone detector")
     args = parser.parse_args()
 
     thresholds = load_thresholds(args.config)
@@ -189,6 +240,16 @@ def main() -> int:
     detector = FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks")))
     extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
     source = FrameSource(args.source, CaptureConfig.from_dict(thresholds.get("capture")), loop=args.loop)
+    phone_cfg = PhoneDetectorConfig.from_dict(thresholds.get("phone"))
+    phone_detector = None
+    if not args.no_phone:
+        try:
+            phone_detector = AsyncPhoneDetector(phone_cfg)
+        except FileNotFoundError as e:
+            print(f"[phone] disabled: {e}")
+    distraction = DistractionAnalyzer(DistractionConfig.from_dict(thresholds.get("distraction")))
+    moving_speed = args.speed if args.speed else 50.0
+    speed: float | None = args.speed
 
     show_raw = False
     side_by_side = False
@@ -200,10 +261,12 @@ def main() -> int:
     shown = None
     smoother = DisplaySmoother(args.smooth)
     history: deque[FrameFeatures] = deque()
-    text_lines: list[str] = []
+    text_lines: list[Line] = []
     last_text_t = 0.0
 
     cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
+    if phone_detector is not None:
+        phone_detector.start()
     with source, detector:
         print(f"Source: {args.source}  camera={source.is_camera}  source_fps={source.source_fps:.1f}")
         while True:
@@ -221,6 +284,13 @@ def main() -> int:
                 lm = detector.detect(pre)
                 t2 = time.perf_counter()
                 feats = extractor(lm, pre.frame_id, pre.timestamp)
+                phone = None
+                if phone_detector is not None:
+                    phone_detector.submit(pre)  # YOLO runs on its own thread at ~5 FPS
+                    phone = phone_detector.latest()
+                face = face_bbox(lm.points) if lm is not None else None
+                phone_flag = None if phone is None else phone_near_face(phone.detections, face, phone_cfg)
+                dstate = distraction.update(feats, phone_flag, speed)
                 t3 = time.perf_counter()
 
                 now = time.monotonic()
@@ -246,6 +316,7 @@ def main() -> int:
                 target = processed if (side_by_side or not show_raw) else raw.copy()
                 if show_landmarks and lm is not None:
                     draw_landmarks(target, lm, extractor)
+                draw_phone(target, phone, lm, phone_cfg)
                 if side_by_side:
                     shown = np.hstack([raw, target])
                 else:
@@ -266,6 +337,7 @@ def main() -> int:
                         f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
                         f"frame {pre.frame_id}  dropped {source.dropped_frames}",
                         *feature_lines(values, feats, lm.num_faces if lm else 0),
+                        *distraction_lines(dstate, phone_flag, phone, speed),
                     ]
                 draw_overlay(shown, text_lines)
                 if show_plots:
@@ -284,11 +356,16 @@ def main() -> int:
                 show_landmarks = not show_landmarks
             elif key == ord("g"):
                 show_plots = not show_plots
+            elif key == ord("m"):
+                speed = 0.0 if (speed is None or speed > 0) else moving_speed
+                print(f"[speed] {speed} km/h")
             elif key == ord(" "):
                 paused = not paused
             if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
                 break
 
+    if phone_detector is not None:
+        phone_detector.stop()
     cv2.destroyAllWindows()
     return 0
 

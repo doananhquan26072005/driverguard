@@ -41,3 +41,36 @@ landmarks:
 features:
   # Focal length in pixels = focal_length_scale * image width (uncalibrated camera).
   focal_length_scale: 1.0
+
+# Block 4 - Phone detector (YOLOv8n ONNX, runs on its own thread)
+phone:
+  model_path: models/yolov8n.onnx
+  input_size: 640          # must match the ONNX export size
+  class_id: 67             # COCO "cell phone"
+  conf_threshold: 0.35
+  iou_threshold: 0.45
+  target_fps: 5            # YOLO runs ~5x/s, main loop reuses the latest result
+  num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe
+  max_result_age_s: 0.6    # older results count as "unknown"
+  # Driver zone = face box grown by these factors (x face width, y face height).
+  # Covers a phone at the ear (call) and in front of the chest (texting);
+  # a passenger's phone outside this zone is ignored.
+  zone_expand_x: 1.0
+  zone_expand_up: 0.5
+  zone_expand_down: 1.5
+
+# Block 8 - Distraction branch
+distraction:
+  min_speed_kmh: 5                  # branch off below this speed (stopped / parked)
+  assume_moving_when_speed_unknown: true
+  yaw_off_road_deg: 30              # |yaw - baseline| above this = off road
+  pitch_down_off_road_deg: 20       # looking down (lap, phone)
+  pitch_up_off_road_deg: 25
+  on_road_confirm_s: 0.3            # must look back this long before the timer resets
+  phone_window_s: 2.0               # window for phone_ratio_2s
+  baseline:                         # "looking at the road" head pose, per camera mount
+    adapt: true                     # learn slowly from on-road samples
+    tau_s: 30
+    max_deg: 20                     # baseline never drifts beyond +-20 deg
+    yaw_deg: 0.0
+    pitch_deg: 0.0
