@@ -84,6 +84,19 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 
 Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam giác → bát giác (như biển báo), luôn kèm chữ L0–L3. Khi có nhiều lý do, tiêu đề lấy lý do nguy hiểm nhất (`frontend/src/hud/hudModel.ts`: microsleep > no_face > phone > off_road > drowsy_score > trend > blink_rate). Thứ tự này chỉ dùng để hiển thị, không đổi mức cảnh báo.
 
+**Âm thanh trên HUD** (`frontend/src/hud/chime.ts`, tổng hợp bằng WebAudio, không có file âm thanh): mỗi loại cảnh báo có tiếng riêng để tài xế biết chuyện gì xảy ra mà không cần nhìn màn hình. Mức cảnh báo quyết định độ to.
+
+| Loại | Tiếng |
+|---|---|
+| Buồn ngủ (`drowsy_score`, `blink_rate`) | Nốt sine trầm dần, êm (L1: 2 nốt, L2: 3 nốt) |
+| Mệt mỏi tăng dần (`trend`) | Một nốt dài, nhẹ |
+| Nhắm mắt khi xe đứng yên (`microsleep` mức L1) | Hai nhịp trầm "tỉnh dậy" |
+| Nhìn lệch (`off_road`) | Hai nốt đi lên, lặp 2 lần ("nhìn phía trước") |
+| Điện thoại (`phone`) | Ba tiếng bíp cao, nhanh |
+| Không thấy mặt (`no_face`) | Ba nhịp rè trầm |
+| **L3** (nhắm mắt kéo dài) | Còi hú cao/thấp xen kẽ, **lặp mỗi 1,5 s cho tới khi tài xế mở mắt** |
+| Mất camera / có lại | Tiếng rè đi xuống / hai nốt đi lên |
+
 ### 2.3 Chống cảnh báo sai
 
 - Ngưỡng mắt **theo từng tài xế** (người mắt hẹp không bị báo "nhắm mắt" liên tục).
@@ -366,7 +379,7 @@ cd frontend
 npm run dev
 ```
 
-- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo.
+- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo. Bấm **"Bật âm thanh"** (trình duyệt chỉ cho phát âm thanh sau một lần bấm): vòng mô phỏng 90 s lần lượt phát đủ các loại cảnh báo, nên nghe được tiếng của từng loại.
 - **Xem trước giao diện HUD:** http://localhost:5173/#/hud-preview. Chọn từng trạng thái (L0–L3, mất camera, mất kết nối, ngày / đêm) ở thanh dưới cùng, không cần edge agent. Mở thẳng một trạng thái: `#/hud-preview?s=l3&night=0`.
 - **Dashboard:** http://localhost:5173/#/dashboard. Đăng nhập bằng tài khoản ở bước 7.2.
 
@@ -389,7 +402,7 @@ Mọi ngưỡng nằm ở đây, mỗi dòng có chú thích. Mỗi ngưỡng ch
 
 | Mục | Khối | Ví dụ |
 |---|---|---|
-| `capture`, `preprocess` | 1, 2 | độ phân giải camera, kích thước resize, CLAHE |
+| `capture`, `preprocess` | 1, 2 | độ phân giải camera, kích thước resize, CLAHE (trên kênh Y của YCrCb) |
 | `landmarks`, `features` | 3, 6 | độ tin cậy MediaPipe, tiêu cự camera |
 | `eye_state` | 5 | model, cách cắt mắt, khi nào gọi CNN (IR, độ sáng, lệch EAR hai mắt) |
 | `phone` | 4 | model, ngưỡng tin cậy, tần suất YOLO, vùng tài xế |
@@ -539,15 +552,17 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 - **Mất camera** (rút dây, lỗi driver): sau `capture.max_consecutive_failures` lần đọc lỗi, hoặc `capture.frame_timeout_s` (3 s) không có frame, edge agent coi là mất camera. HUD hiện "Mất camera", backend nhận sự kiện `camera_lost` (loại `system`, mức 0, không tính vào thống kê cảnh báo), và camera được mở lại mỗi `capture.reconnect_interval_s` (2 s). Có hình trở lại thì gửi `camera_restored`. Video file vẫn kết thúc bình thường.
 - Ngưỡng liên quan nhau được kiểm tra chéo (`edge_agent/config.py`, `CONSISTENCY_RULES`, ví dụ L1 < L2, sự kiện microsleep không muộn hơn luật L3): YAML sai thì agent không khởi động, ngưỡng từ dashboard sai thì backend trả 422 khi lưu và thiết bị bỏ qua.
 - Khi xe dừng (dưới `context.min_speed_kmh` = 5 km/h), nhánh mất tập trung tắt. Nếu không có tín hiệu tốc độ (`speed_kmh = None`), hệ thống mặc định coi xe đang chạy (`context.assume_moving_when_speed_unknown`) nhưng không coi là tốc độ cao; cả risk engine lẫn nhánh 8 đều theo quy tắc này.
+- Nhánh buồn ngủ khi xe **đứng yên** (dưới `context.stationary_kmh` = 1 km/h; xe bò 2–4 km/h lúc kẹt xe vẫn tính là đang đi): cảnh báo buồn ngủ tối đa **L1** (`risk.drowsy.stationary_max_level`), nên microsleep ở đèn đỏ vẫn có chime, còn tài xế đỗ xe nhắm mắt nghỉ không bị báo động mạnh L3. Đứng yên từ `context.rest_after_s` (120 s) trở lên thì coi là **nghỉ**: không cảnh báo buồn ngủ, không đưa vào timeline mệt mỏi. Khi xe chạy lại, dữ liệu buồn ngủ gom từ lúc dừng (PERCLOS, microsleep, ngáp, gật đầu, mốc mắt mở) bị xoá, để giấc nghỉ không gây cảnh báo ở những giây đầu của lần lái tiếp. Đánh đổi: tài xế ngủ gật ở đèn đỏ chỉ nhận chime L1, và đèn đỏ dài hơn 120 s thì bị coi là nghỉ. Key cũ `risk.drowsy.active_when_stopped` đã bỏ (đặt `stationary_max_level: 0` để tắt hẳn khi đứng yên).
 - Lệnh đặt biến môi trường trên PowerShell: `$env:DG_DEVICE_KEY = "..."`. Trên bash: `export DG_DEVICE_KEY=...`.
 
 ### Giới hạn hiện tại
 
-- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược).
+- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược). Khi được gọi vì **trời tối hoặc camera IR**, CNN được giữ thêm `eye_state.hold_s` (2 s) sau khi điều kiện hết, để nguồn EAR/CNN không đổi qua lại từng frame lúc chạng vạng (chuỗi giả: không giữ thì PERCLOS 0,36 và 599 lần chớp giả trong 40 s; giữ 2 s thì cả hai về 0). Khi được gọi vì **hai mắt lệch EAR** (kính, chói) thì không giữ: CNN yếu với người đeo kính, giữ thêm làm microsleep sai trên YawDD tăng 6 → 18, toàn ở clip đeo kính.
 - Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. Frame có `face_conf` < `features.min_face_conf` (0,9: mặt ra ngoài khung một phần) không được tính vào PERCLOS, mốc mắt mở, ngáp, gật đầu và góc nhìn lệch; pitch của frame đó chỉ dùng để nhận ra gục đầu.
 - Ngưỡng MAR của ngáp đã hạ từ 0,6 xuống 0,45 (đóng lại dưới 0,34), kiểm chứng trên `yawn_eye_mouth` và video YawDD.
 - Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s) hoặc đang nói. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa. PERCLOS cũng bỏ qua các frame này (`drowsiness.perclos_use_mask`), nên khi tài xế nói liên tục thì PERCLOS gần như không được tính (trên YawDD, 82% thời gian của clip Talking bị che).
-- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở (hoặc CNN p_closed ≥ 0,8). Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep.
+- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở (hoặc CNN p_closed ≥ 0,8). Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
+- PERCLOS xét **từng frame** (`drowsiness.perclos_close_ratio` = 0,65 × mốc mắt mở), không dùng trạng thái có hysteresis của mắt. Trước đây, sau mỗi lần chớp, hysteresis giữ trạng thái "nhắm" suốt lúc mắt nheo (0,65–0,75 × mốc, ví dụ nheo vì nắng) nên PERCLOS lên gần 100% và ra L1 sau khoảng 11 s. Đánh đổi: mắt hé ở khoảng 0,65–0,75 × mốc không còn được tính vào PERCLOS.
 - YOLO **INT8** nhanh hơn khoảng 2 lần và nhỏ hơn khoảng 3,6 lần, nhưng **chưa được đo độ chính xác**, nên hệ thống vẫn dùng FP32.
 - **Chưa có precision/recall trên video có nhãn theo thời gian** (mục 9.1). Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
 - **macOS:** MediaPipe 1.0.1 bị crash (`graph_service.h ... Service is unavailable`, Metal) trên macOS mới, kể cả ở chế độ VIDEO. `requirements.txt` đã ghim `mediapipe==0.10.21` cho macOS.
