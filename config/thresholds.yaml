@@ -55,7 +55,7 @@ eye_state:
   run_on_ir: true               # infrared / grayscale camera: call the CNN
   low_light_brightness: 60      # mean luminance 0-255 below this: call the CNN
   ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / mean above this (glare, occlusion): call the CNN
-  hold_s: 2.0                   # keep the CNN this long after the trigger clears: no EAR <-> CNN flicker at dusk
+  hold_s: 2.0                   # keep the CNN this long after an ir / low_light trigger clears (no EAR <-> CNN flicker at dusk); not after ear_asymmetry (glasses: CNN weak)
   always_run: false             # true = every frame (debug, evaluation)
 
 # Block 6 - Feature extractor

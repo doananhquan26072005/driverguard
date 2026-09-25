@@ -12,10 +12,11 @@ centred on their midpoint and rotated so the eye line is horizontal.
 EAR stays the primary signal (block 6). The CNN only runs when EAR is likely wrong:
 - infrared / grayscale image or a dark cabin (night),
 - the two eyes' EAR disagree a lot (glare on glasses or one eye occluded).
-Once called, the CNN stays on for `hold_s` after the trigger clears: at dusk the brightness
-wobbles around `low_light_brightness` (and the EAR asymmetry around `ear_asymmetry_max` with a
-slightly turned head), and switching EAR <-> CNN frame by frame lets the unreliable EAR frames
-fake closures (PERCLOS, blinks) in between the CNN ones.
+Once called for the whole scene (infrared, dark cabin), the CNN stays on for `hold_s` after the
+trigger clears: at dusk the brightness wobbles around `low_light_brightness`, and switching
+EAR <-> CNN frame by frame lets the unreliable EAR frames fake closures (PERCLOS, blinks) in
+between the CNN ones. An EAR asymmetry is not held: it comes from glasses / glare, where the
+CNN is weak (YawDD: holding it there raised false microsleeps 6 -> 18, all in glasses clips).
 The crops live in RAM only.
 """
 
@@ -37,6 +38,8 @@ from edge_agent.perception.preprocess import PreprocessedFrame
 # MediaPipe eye corners (outer, inner) per eye.
 RIGHT_EYE_CORNERS = (33, 133)
 LEFT_EYE_CORNERS = (263, 362)
+# Triggers about the whole scene, held for hold_s (see module doc); ear_asymmetry is not.
+HELD_REASONS = ("ir", "low_light")
 
 
 @dataclass(frozen=True)
@@ -52,7 +55,7 @@ class EyeStateConfig:
     run_on_ir: bool = True
     low_light_brightness: float = 60.0  # mean luminance (0-255) below this = night
     ear_asymmetry_max: float = 0.35  # |L - R| / mean EAR above this = one eye unreliable
-    hold_s: float = 2.0  # keep the CNN on this long after the trigger clears (no flicker)
+    hold_s: float = 2.0  # keep the CNN on this long after an ir / low_light trigger clears (no flicker)
     always_run: bool = False  # debug / evaluation
 
     @classmethod
@@ -143,12 +146,12 @@ class EyeStateEstimator:
             return None
         cfg = self.config
         reason = trigger_reason(pre, f, cfg)
-        if reason is not None:
+        if reason in HELD_REASONS:
             self._hold_until, self._hold_reason = pre.timestamp + cfg.hold_s, reason
-        elif pre.timestamp <= self._hold_until:
-            reason = self._hold_reason  # EAR was unreliable a moment ago: keep the same source
-        else:
-            return None
+        elif reason is None:
+            if pre.timestamp > self._hold_until:
+                return None
+            reason = self._hold_reason  # the scene was too dark a moment ago: keep the same source
         crops = np.stack(
             [
                 eye_crop(pre.image, lm.points[a, :2], lm.points[b, :2], cfg.crop_scale, cfg.input_size)

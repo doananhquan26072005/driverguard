@@ -200,3 +200,11 @@ def test_dusk_flicker_does_not_fake_perclos():
         t = 15 + i / 30
         s = a.update(est(frame(dusk(i), t=t), landmarks(), feats(0.10, 0.10, t=t)))
     assert s.perclos_60s < 0.05
+
+
+def test_ear_asymmetry_is_not_held():
+    # Glasses / glare: the CNN is weak there (YawDD glasses clips), so it only runs on the
+    # asymmetric frames themselves; holding it raised false microsleeps 6 -> 18.
+    est = EyeStateEstimator(CFG, classifier=FakeClassifier(p=0.1))
+    assert est(frame(t=0.0), landmarks(), feats(0.1, 0.3, t=0.0)).eye_cnn_reason == "ear_asymmetry"
+    assert est(frame(t=0.1), landmarks(), feats(0.3, 0.3, t=0.1)).p_closed is None
