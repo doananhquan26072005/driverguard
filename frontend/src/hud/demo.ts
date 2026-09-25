@@ -1,7 +1,8 @@
-// Scripted HUD states for demos without a running edge agent (a 60 s loop).
+// Scripted HUD states for demos without a running edge agent (a 90 s loop). Every kind of
+// alert appears once, so each alert sound (chime.ts) can be heard with "Bật âm thanh".
 import type { HudAlert, HudSnapshot, Level, Reason } from "../lib/types";
 
-export const DEMO_CYCLE_S = 60;
+export const DEMO_CYCLE_S = 90;
 
 interface Episode {
   start: number;
@@ -11,9 +12,12 @@ interface Episode {
 }
 
 export const DEMO_SCRIPT: Episode[] = [
-  { start: 10, end: 20, level: 1, reasons: ["drowsy_score"] },
-  { start: 26, end: 34, level: 2, reasons: ["phone"] },
-  { start: 40, end: 46, level: 3, reasons: ["microsleep"] },
+  { start: 8, end: 16, level: 1, reasons: ["drowsy_score"] },
+  { start: 22, end: 28, level: 2, reasons: ["off_road"] },
+  { start: 34, end: 40, level: 2, reasons: ["phone"] },
+  { start: 46, end: 52, level: 2, reasons: ["no_face"] },
+  { start: 58, end: 64, level: 3, reasons: ["microsleep"] },
+  { start: 72, end: 78, level: 1, reasons: ["trend"] },
 ];
 
 /** HUD snapshot `elapsed` seconds after the demo started. `flagged` = event ids marked false alarm. */
@@ -34,14 +38,14 @@ export function demoSnapshot(elapsed: number, flagged: ReadonlySet<string>, nowE
       };
     })
     .reverse(); // newest first, like the edge server
-  const drowsy = active?.reasons.includes("drowsy_score") ? 48 : active?.level === 3 ? 62 : 12;
+  const drowsy = active?.level === 1 ? 48 : active?.level === 3 ? 62 : 12;
   return {
     connected: true,
     updated_at: nowEpoch,
     level: active?.level ?? 0,
     reasons: active?.reasons ?? [],
     drowsy_score: drowsy,
-    distraction_score: active?.reasons.includes("phone") ? 100 : 0,
+    distraction_score: active?.level === 2 ? 100 : 0,
     speed_kmh: 68 + 6 * Math.sin(elapsed / 9),
     clock_hour: 2.5 + elapsed / 3600,
     night: true,

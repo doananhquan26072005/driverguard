@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ago, clockText, formatNumber } from "../lib/format";
 import { LEVELS, reasonText } from "../lib/labels";
 import type { HudAlert, HudSnapshot } from "../lib/types";
-import { playAlert, unlock } from "./chime";
+import { ALARM_REPEAT_S, play, playAlert, systemSound, unlock } from "./chime";
 import { demoSnapshot } from "./demo";
 import { EDGE_URL, fetchState, sendFalseAlarm } from "./edge";
 
@@ -65,13 +65,13 @@ export default function HudScreen() {
     };
   }, [mode]);
 
-  // Sound for alerts not heard yet.
+  // Sound for alerts not heard yet: its own sound per kind of alert (chime.ts).
   useEffect(() => {
     const newest = snap?.alerts[0];
     if (!newest || seenAlerts.current.has(newest.event_id)) return;
     const firstLoad = seenAlerts.current.size === 0 && (snap?.alerts.length ?? 0) > 1;
     snap?.alerts.forEach((a) => seenAlerts.current.add(a.event_id));
-    if (sound && !firstLoad) playAlert(newest.level);
+    if (sound && !firstLoad) playAlert(newest.level, newest.reasons);
   }, [snap, sound]);
 
   useEffect(() => {
@@ -106,6 +106,23 @@ export default function HudScreen() {
   const info = LEVELS[level];
   const cameraLost = mode === "live" && link === "ok" && snap?.camera_lost === true;
   const showPanel = link === "ok" && snap?.connected && !stale && !cameraLost;
+
+  // L3 is a strong alarm: one siren is easy to sleep through, so repeat it while the
+  // eyes are still closed (closed_duration > 0), and stop as soon as they open.
+  const alarmOn = sound && !!showPanel && level === 3 && (snap?.eyes_closed_s ?? 0) > 0;
+  useEffect(() => {
+    if (!alarmOn) return;
+    const id = setInterval(() => playAlert(3, []), ALARM_REPEAT_S * 1000);
+    return () => clearInterval(id);
+  }, [alarmOn]);
+
+  // Camera lost / back: its own sound, the driver is not monitored meanwhile.
+  const wasCameraLost = useRef(false);
+  useEffect(() => {
+    if (cameraLost === wasCameraLost.current) return;
+    wasCameraLost.current = cameraLost;
+    if (sound) play(systemSound(cameraLost ? "camera_lost" : "camera_restored"));
+  }, [cameraLost, sound]);
 
   return (
     <div className="hud" data-level={showPanel ? level : "off"}>

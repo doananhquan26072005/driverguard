@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
+import { ALARM_REPEAT_S, alertSound, systemSound } from "../hud/chime";
+import { DEMO_CYCLE_S, demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
 import { ago, changedValues, clockText, formatPercent, query, rangeStart } from "./format";
 import { linearScale, nearestIndex, niceTicks, timeTicks } from "./scale";
 
@@ -73,13 +74,56 @@ describe("HUD demo script", () => {
       expect(s.reasons).toEqual(ep.reasons);
       expect(s.alerts[0].level).toBe(ep.level); // newest alert first
     }
-    expect(demoSnapshot(65, none).alerts).toEqual([]); // new cycle, no alerts yet
+    expect(demoSnapshot(DEMO_CYCLE_S + 5, none).alerts).toEqual([]); // new cycle, no alerts yet
   });
 
   it("marks flagged alerts", () => {
-    const s = demoSnapshot(27, new Set(["demo-0-1"]));
+    const s = demoSnapshot(25, new Set(["demo-0-1"]));
     expect(s.alerts[0].event_id).toBe("demo-0-1");
     expect(s.alerts[0].feedback).toBe("false_alarm");
     expect(s.alerts[1].feedback).toBeNull();
+  });
+});
+
+describe("HUD alert sounds", () => {
+  const signature = (level: 0 | 1 | 2 | 3, reason: Parameters<typeof alertSound>[1][number]) => {
+    const s = alertSound(level, [reason]);
+    return s && JSON.stringify(s.notes);
+  };
+
+  it("gives each kind of alert its own sound", () => {
+    const kinds = ["drowsy_score", "trend", "microsleep", "off_road", "phone", "no_face"] as const;
+    const l2 = kinds.map((r) => signature(2, r));
+    expect(new Set(l2).size).toBe(kinds.length);
+    expect(alertSound(2, ["phone"])?.kind).toBe("phone");
+    expect(alertSound(1, ["microsleep"])?.kind).toBe("microsleep"); // red light: capped at L1
+    expect(alertSound(2, ["blink_rate"])?.kind).toBe("drowsy");
+  });
+
+  it("uses the reason that raised the alert and the level for volume", () => {
+    // L2 off_road active, then phone: the alert manager puts the new reason first.
+    expect(alertSound(2, ["phone", "off_road"])?.kind).toBe("phone");
+    const gains = ([1, 2, 3] as const).map((lv) => alertSound(lv, ["drowsy_score"])!.gain);
+    expect(gains[0]).toBeLessThan(gains[1]);
+    expect(gains[1]).toBeLessThan(gains[2]);
+    expect(alertSound(0, ["phone"])).toBeNull();
+  });
+
+  it("makes L3 a siren, whatever the reason", () => {
+    const s = alertSound(3, ["microsleep", "drowsy_score"])!;
+    expect(s.kind).toBe("alarm");
+    const end = Math.max(...s.notes.map((n) => n.at + n.dur));
+    expect(end).toBeLessThan(ALARM_REPEAT_S); // one siren ends before the next repeat
+  });
+
+  it("has distinct system sounds for the camera", () => {
+    expect(systemSound("camera_lost").kind).toBe("camera_lost");
+    expect(JSON.stringify(systemSound("camera_lost").notes)).not.toBe(JSON.stringify(systemSound("camera_restored").notes));
+  });
+
+  it("demo plays every kind of alert", () => {
+    const reasons = new Set(DEMO_SCRIPT.flatMap((e) => e.reasons));
+    for (const r of ["drowsy_score", "off_road", "phone", "no_face", "microsleep", "trend"]) expect(reasons.has(r as never)).toBe(true);
+    expect(Math.max(...DEMO_SCRIPT.map((e) => e.end))).toBeLessThanOrEqual(DEMO_CYCLE_S);
   });
 });
