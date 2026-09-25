@@ -72,6 +72,18 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 | **L2** | Cảnh báo | Âm thanh + rung ghế |
 | **L3** | Nguy hiểm | Cảnh báo mạnh, gợi ý dừng xe nghỉ |
 
+**Giao diện HUD** (`frontend/src/hud/HudView.tsx`, luôn nền tối): thiết kế để liếc 0,5 s là hiểu. Khối trạng thái lớn bên trái (gần tầm mắt tài xế ở xe tay lái thuận) có màu theo mức, icon theo lý do và một câu **hành động** ("Nhìn về phía trước", "Bỏ điện thoại xuống"); lý do cụ thể nằm ở dòng nhỏ bên dưới. Mức càng cao, màn hình càng ít chữ:
+
+| Mức | HUD hiển thị |
+|---|---|
+| **L0** | Nền tối, khiên xanh "Tỉnh táo". Ban đêm giảm sáng 20 % cho đỡ chói |
+| **L1** | Viền và icon vàng |
+| **L2** | Cả khối trạng thái tô cam, chữ tối |
+| **L3** | Đỏ toàn màn hình, nhấp nháy 1 Hz (tắt nếu hệ điều hành bật "giảm chuyển động"). Chỉ còn "Mở mắt! Dừng xe nghỉ ngay" và số giây mắt nhắm; thông số và nút "Cảnh báo sai" bị ẩn |
+| Mất camera / kết nối | Thẻ viền xanh dương: lỗi thiết bị, không phải lỗi tài xế |
+
+Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam giác → bát giác (như biển báo), luôn kèm chữ L0–L3. Khi có nhiều lý do, tiêu đề lấy lý do nguy hiểm nhất (`frontend/src/hud/hudModel.ts`: microsleep > no_face > phone > off_road > drowsy_score > trend > blink_rate). Thứ tự này chỉ dùng để hiển thị, không đổi mức cảnh báo.
+
 ### 2.3 Chống cảnh báo sai
 
 - Ngưỡng mắt **theo từng tài xế** (người mắt hẹp không bị báo "nhắm mắt" liên tục).
@@ -355,6 +367,7 @@ npm run dev
 ```
 
 - **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo.
+- **Xem trước giao diện HUD:** http://localhost:5173/#/hud-preview. Chọn từng trạng thái (L0–L3, mất camera, mất kết nối, ngày / đêm) ở thanh dưới cùng, không cần edge agent. Mở thẳng một trạng thái: `#/hud-preview?s=l3&night=0`.
 - **Dashboard:** http://localhost:5173/#/dashboard. Đăng nhập bằng tài khoản ở bước 7.2.
 
 ### 7.4 Kịch bản demo gợi ý
@@ -495,7 +508,7 @@ python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\ben
 ```powershell
 pytest tests\test_edge_agent tests\test_backend -q       # 359 test, không cần camera hay video
 ruff check edge_agent backend tools tests
-cd frontend; npm test; npm run build                     # 10 test frontend
+cd frontend; npm test; npm run build                     # 18 test frontend
 ```
 
 Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả**, không cần video (quy ước của `CLAUDE.md`).

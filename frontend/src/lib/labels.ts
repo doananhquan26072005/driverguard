@@ -66,3 +66,24 @@ export const THRESHOLD_GROUPS: { title: string; keys: { key: string; label: stri
 ];
 
 export const UNITS: Record<string, string> = { s: "giây", score: "điểm", ratio: "tỉ lệ", deg: "độ" };
+
+// HUD headline: what the driver should do (an action is read faster than a diagnosis).
+export const REASON_ACTIONS: Record<Reason, string> = {
+  microsleep: "Mở mắt! Dừng xe nghỉ ngay",
+  drowsy_score: "Hãy tìm chỗ dừng nghỉ",
+  trend: "Nên nghỉ ở trạm dừng tới",
+  blink_rate: "Nên nghỉ ngơi sớm",
+  off_road: "Nhìn về phía trước",
+  phone: "Bỏ điện thoại xuống",
+  no_face: "Ngồi đúng vị trí lái",
+  camera_lost: "Kiểm tra camera",
+  camera_restored: "Camera đã hoạt động lại",
+};
+
+// HUD screens when the driver is not being monitored (hud/hudModel.ts SystemState).
+export const SYSTEM_TEXT: Record<"down" | "camera_lost" | "stale" | "connecting", { title: string; detail: string }> = {
+  down: { title: "Không kết nối được thiết bị", detail: "HUD không nhận được trạng thái từ edge agent." },
+  camera_lost: { title: "Mất camera", detail: "Hệ thống đang KHÔNG giám sát tài xế. Đang kết nối lại…" },
+  stale: { title: "Không nhận dữ liệu từ camera", detail: "Vòng xử lý camera đã ngừng cập nhật." },
+  connecting: { title: "Đang kết nối thiết bị…", detail: "Chờ khung hình đầu tiên từ camera." },
+};
