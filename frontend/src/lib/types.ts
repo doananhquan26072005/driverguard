@@ -3,7 +3,16 @@
 
 export type Role = "admin" | "engineer" | "manager" | "driver";
 export type Level = 0 | 1 | 2 | 3;
-export type Reason = "microsleep" | "drowsy_score" | "off_road" | "phone" | "no_face" | "trend" | "blink_rate";
+export type Reason =
+  | "microsleep"
+  | "drowsy_score"
+  | "off_road"
+  | "phone"
+  | "no_face"
+  | "trend"
+  | "blink_rate"
+  | "camera_lost" // system events: the device stopped / resumed monitoring
+  | "camera_restored";
 
 export interface Session {
   token: string;
@@ -19,7 +28,7 @@ export interface EventRecord {
   driver_id: string | null;
   trip_id: string;
   ts: string;
-  type: "drowsiness" | "distraction";
+  type: "drowsiness" | "distraction" | "system";
   level: Level;
   reasons: Reason[];
   drowsy_score: number;
@@ -98,5 +107,7 @@ export interface HudSnapshot {
   eyes_closed_s?: number;
   perclos_60s?: number;
   fps?: number;
+  camera_lost?: boolean; // camera unplugged: driver not monitored, device reconnecting
+  feedback_window_s?: number; // "false alarm" button hidden this long after an alert
   alerts: HudAlert[];
 }

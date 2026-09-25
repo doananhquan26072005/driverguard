@@ -23,7 +23,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from edge_agent.config import PROJECT_ROOT
+from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 BBox = tuple[float, float, float, float]  # x1, y1, x2, y2 in pixels of the preprocessed image
@@ -46,8 +46,7 @@ class PhoneDetectorConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PhoneDetectorConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "phone")
 
     def resolved_model_path(self) -> Path:
         p = Path(self.model_path)

@@ -22,7 +22,7 @@ from typing import Any
 
 from edge_agent.analysis.distraction import DistractionState
 from edge_agent.analysis.drowsiness import DrowsinessState
-from edge_agent.config import flatten
+from edge_agent.config import config_from_dict
 from edge_agent.context.vehicle_context import VehicleContext
 from edge_agent.decision.trip_memory import TripState
 
@@ -36,7 +36,6 @@ class RiskConfig:
     drowsy_weight_nod: float = 20.0
     drowsy_perclos_low: float = 0.05
     drowsy_perclos_high: float = 0.20
-    drowsy_perclos_min_coverage_s: float = 30.0
     drowsy_yawn_full: float = 3.0
     drowsy_nod_full: float = 2.0
     drowsy_microsleep_memory_s: float = 300.0
@@ -60,8 +59,7 @@ class RiskConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> RiskConfig:
-        flat = flatten(d)
-        return cls(**{k: flat[k] for k in cls.__dataclass_fields__ if k in flat})
+        return config_from_dict(cls, d, "risk")
 
 
 @dataclass(frozen=True)
@@ -100,7 +98,7 @@ class RiskEngine:
     ) -> tuple[float, tuple[float, float, float, float]]:
         cfg = self.config
         perclos = 0.0
-        if d.perclos_coverage_s >= cfg.drowsy_perclos_min_coverage_s:
+        if d.perclos_ready:  # enough eye data: drowsiness.perclos_min_coverage_s (single source)
             perclos = ramp(d.perclos_60s, cfg.drowsy_perclos_low, cfg.drowsy_perclos_high)
         recent = "microsleep" in d.events or (
             trip is not None

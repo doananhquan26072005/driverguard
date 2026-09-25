@@ -3,6 +3,11 @@
 Turns raw vehicle signals (speed, turn signal, drive time, time of day) into the
 flags the risk engine uses: moving, high speed, night, long drive, and whether
 looking sideways is expected right now (turn signal on, plus a short grace period).
+
+This is the only place that decides whether the vehicle is moving: the distraction
+branch (block 8) and the risk engine (block 9) both use `VehicleContext.moving`.
+No speed signal (speed_kmh None, e.g. CAN not connected) counts as moving when
+`assume_moving_when_speed_unknown` is set, and never as high speed.
 """
 
 from __future__ import annotations
@@ -10,12 +15,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from edge_agent.config import check_keys
 from edge_agent.context.can_sim import VehicleSignals
 
 
 @dataclass(frozen=True)
 class ContextConfig:
     min_speed_kmh: float = 5.0
+    assume_moving_when_speed_unknown: bool = True
     high_speed_kmh: float = 80.0
     long_drive_s: float = 7200.0
     night_hours: tuple[tuple[float, float], ...] = ((0.0, 5.0),)
@@ -24,9 +31,15 @@ class ContextConfig:
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> ContextConfig:
         d = dict(d or {})
+        check_keys("context", {k: k for k in d}, cls.__dataclass_fields__)
         if "night_hours" in d:
             d["night_hours"] = tuple((float(a), float(b)) for a, b in d["night_hours"])
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return cls(**d)
+
+    def is_moving(self, speed_kmh: float | None) -> bool:
+        if speed_kmh is None:
+            return self.assume_moving_when_speed_unknown
+        return speed_kmh >= self.min_speed_kmh
 
 
 @dataclass(frozen=True)
@@ -65,8 +78,8 @@ class ContextTracker:
         return VehicleContext(
             t=s.t,
             speed_kmh=s.speed_kmh,
-            moving=s.speed_kmh >= cfg.min_speed_kmh,
-            high_speed=s.speed_kmh >= cfg.high_speed_kmh,
+            moving=cfg.is_moving(s.speed_kmh),
+            high_speed=s.speed_kmh is not None and s.speed_kmh >= cfg.high_speed_kmh,
             night=in_hours(s.clock_hour, cfg.night_hours),
             long_drive=s.drive_time_s >= cfg.long_drive_s,
             turning=turning,

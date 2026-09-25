@@ -44,7 +44,7 @@ class DecisionPipeline:
     def step(self, features: FrameFeatures, phone_near_face: bool | None, signals: VehicleSignals) -> DecisionResult:
         ctx = self.context.update(signals)
         drowsy = self.drowsiness.update(features)
-        distraction = self.distraction.update(features, phone_near_face, ctx.speed_kmh)
+        distraction = self.distraction.update(features, phone_near_face, ctx.moving)
         risk = self.risk.assess(drowsy, distraction, ctx, self._trip_state)
         alert = self.alerts.update(risk)
         if alert.new_alert is not None:

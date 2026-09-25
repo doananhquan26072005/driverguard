@@ -59,6 +59,8 @@ from backend.security import (
     verify_password,
 )
 from backend.settings import BackendSettings
+from edge_agent.config import load_thresholds
+from edge_agent.io.remote_config import apply_overrides
 
 log = logging.getLogger("driverguard.backend")
 bearer = HTTPBearer(auto_error=False)
@@ -301,12 +303,11 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         """Store a new version: the previous overrides updated with the given keys."""
         current = db.latest_thresholds(conn)
         merged = {**(current["values"] if current else {}), **body.values}
-        l1, l2 = merged.get("risk.drowsy.l1"), merged.get("risk.drowsy.l2")
-        if l1 is not None and l2 is not None and l1 >= l2:
-            raise HTTPException(422, "risk.drowsy.l1 must be lower than risk.drowsy.l2")
-        city, fast = merged.get("risk.distraction.off_road_s"), merged.get("risk.distraction.off_road_high_speed_s")
-        if city is not None and fast is not None and fast > city:
-            raise HTTPException(422, "off_road_high_speed_s must not exceed off_road_s")
+        # Same rules as the device, on the repo's thresholds.yaml + all overrides: a version
+        # the device would ignore (e.g. microsleep event after the L3 rule) is refused here.
+        _, problems = apply_overrides(load_thresholds(), merged)
+        if problems:
+            raise HTTPException(422, "; ".join(problems))
         db.save_thresholds(conn, merged, user["sub"])
         return thresholds_out(conn)
 

@@ -1,5 +1,6 @@
 # All tunable thresholds for DriverGuard. Logic modules must read from here,
-# never hardcode values.
+# never hardcode values. Each threshold lives in exactly one place, and an unknown
+# (e.g. mistyped) key stops the agent at startup instead of silently using a default.
 
 # Block 1 - Frame camera
 capture:
@@ -12,8 +13,12 @@ capture:
   video_realtime: true
   # Fallback FPS when the video file reports 0 / invalid FPS.
   video_fallback_fps: 30.0
-  # Stop the camera thread after this many consecutive failed reads.
+  # Camera lost after this many consecutive failed reads: release it and reopen it every
+  # reconnect_interval_s (0 = stop instead). No frame for frame_timeout_s also counts as
+  # lost. While lost, the HUD shows it and a camera_lost event goes to the backend.
   max_consecutive_failures: 30
+  reconnect_interval_s: 2.0
+  frame_timeout_s: 3.0
 
 # Block 2 - Preprocessing
 preprocess:
@@ -56,6 +61,10 @@ eye_state:
 features:
   # Focal length in pixels = focal_length_scale * image width (uncalibrated camera).
   focal_length_scale: 1.0
+  # face_conf = fraction of the 478 landmarks inside the image. Below this, the face is
+  # partly out of frame and its landmarks are extrapolated: blocks 7 and 8 treat the frame
+  # as not measurable (no EAR / PERCLOS / eye baseline, no head pose, no MAR).
+  min_face_conf: 0.9
 
 # Block 4 - Phone detector (YOLOv8n ONNX, runs on its own thread)
 phone:
@@ -107,14 +116,23 @@ drowsiness:
     carry_min_closed_s: 0.5
   blink_max_s: 0.5             # closures up to this long are blinks
   blink_window_s: 60
+  blink_rate_min_span_s: 10     # blinks/min divides by at least this: 1 blink in the first 2 s is not 30/min
   microsleep_min_s: 1.0         # closure at least this long = microsleep event
+  # Only a deep closure counts toward closed_duration (microsleep event + L3 rule): on at
+  # least deep_min_frac of its eye frames EAR <= deep_ear_ratio x open-eye baseline (or CNN
+  # p_closed >= deep_cnn). Narrowed eyes (looking down, sun, smiling) stay at 0.55-0.75 x
+  # baseline for seconds; YawDD: most false microsleeps were such. PERCLOS / blinks unchanged.
+  microsleep_deep:
+    ear_ratio: 0.5
+    cnn: 0.8
+    min_frac: 0.5
   # Eyes squeeze shut while yawning: closed-eye time is not counted in closed_duration
   # while the mouth is wide open (yawn.mar_open .. yawn.mar_close) and for hold_s after.
   # Stops after the mouth has been open max_open_s (slack jaw in sleep is not a yawn).
   # Talking masks the same way: eyes narrow / close in short spells while the mouth keeps
   # moving (>= talk_min_swings MAR reversals of >= talk_swing within talk_window_s). A still
   # mouth has none; one jump (yawn ending, jaw dropping in sleep) makes at most two.
-  # PERCLOS still counts these frames.
+  # PERCLOS skips these frames too when perclos_use_mask is true.
   microsleep_mask:
     hold_s: 1.5
     max_open_s: 8.0
@@ -125,6 +143,7 @@ drowsiness:
   perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
   perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
   perclos_rearm: 0.12           # must drop below this before the next event
+  perclos_use_mask: true        # skip frames masked for yawning / talking (squinting is not fatigue)
   yawn:
     mar_open: 0.45              # yawn_eye_mouth + YawDD: recall 73% -> 84% of Yawning clips, no new FP
     mar_close: 0.34
@@ -144,9 +163,8 @@ drowsiness:
   pose_baseline_min_data_s: 5
 
 # Block 8 - Distraction branch
+# Off while the vehicle is not moving: context.min_speed_kmh (block 10) decides that.
 distraction:
-  min_speed_kmh: 5                  # branch off below this speed (stopped / parked)
-  assume_moving_when_speed_unknown: true
   yaw_off_road_deg: 30              # |yaw - baseline| above this = off road
   pitch_down_off_road_deg: 20       # looking down (lap, phone)
   pitch_up_off_road_deg: 25
@@ -167,7 +185,8 @@ distraction:
 
 # Block 10 - Vehicle context (from CAN, simulated by edge_agent/context/can_sim.py)
 context:
-  min_speed_kmh: 5              # below this the vehicle counts as stopped
+  min_speed_kmh: 5              # below this the vehicle counts as stopped (risk engine + distraction branch)
+  assume_moving_when_speed_unknown: true   # no speed signal (CAN missing) = moving
   high_speed_kmh: 80            # off-road threshold tightens above this
   long_drive_s: 7200            # 2 h of driving = long drive
   night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
@@ -184,7 +203,7 @@ risk:
     weight_nod: 20
     perclos_low: 0.05           # PERCLOS term ramps 0 -> 1 between low and high
     perclos_high: 0.20
-    perclos_min_coverage_s: 30  # no PERCLOS term before this much eye data
+    # No PERCLOS term before drowsiness.perclos_min_coverage_s of eye data.
     yawn_full: 3                # yawn_count_10min for a full yawn term
     nod_full: 2                 # nod_count_5min for a full nod term
     microsleep_memory_s: 300    # a microsleep in the last 5 min = full microsleep term
@@ -221,6 +240,10 @@ alert:
   # No repeated alert of the same (level, reason) within this. A new reason at the
   # active level (L2 off_road, then L2 phone) is emitted after rise_confirm_s.
   cooldown_s: {1: 120, 2: 30, 3: 10}
+
+# Block 13 - In-car HUD server
+hud:
+  feedback_window_s: 120        # the driver can press "false alarm" on an alert for this long
 
 # Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
 publisher:

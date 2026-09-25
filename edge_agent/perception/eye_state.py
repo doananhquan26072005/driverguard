@@ -25,7 +25,7 @@ from typing import Any, Protocol
 import cv2
 import numpy as np
 
-from edge_agent.config import PROJECT_ROOT
+from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.landmarks import FaceLandmarks
 from edge_agent.perception.preprocess import PreprocessedFrame
@@ -52,8 +52,7 @@ class EyeStateConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EyeStateConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "eye_state")
 
     def resolved_model_path(self) -> Path:
         p = Path(self.model_path)

@@ -175,6 +175,8 @@ def test_engineer_saves_versions(client, engineer):
         {"risk.drowsy.l1": 150},  # out of bounds
         {"risk.drowsy.l1": 80, "risk.drowsy.l2": 70},  # l1 must stay below l2
         {"risk.distraction.off_road_s": 1.0, "risk.distraction.off_road_high_speed_s": 2.0},
+        {"drowsiness.microsleep_min_s": 5.0, "risk.microsleep_l3_s": 0.5},  # event after the L3 rule
+        {"risk.drowsy.l1": 75},  # above the YAML l2 of 70 (not overridden)
         {"capture.camera_fps": 5},  # not a tunable key
         {},
     ],
@@ -235,3 +237,15 @@ def test_manage_cli_creates_engineer(tmp_path):
     assert manage.main(["--db", path, "create-user", "kysu", "--role", "engineer", "--password", "long-enough-1"]) == 0
     with db.closing(path) as conn:
         assert db.get_user(conn, "kysu")["role"] == "engineer"
+
+
+def test_camera_lost_event_is_listed_but_not_counted_as_an_alert(client, engineer):
+    from edge_agent.io.publisher import build_system_event
+
+    lost = build_system_event("camera_lost", "trip-20260924-150000", 52.0)
+    assert batch(client, events=[make_event(), lost]).status_code == 200
+    events = client.get("/api/v1/events", headers=engineer).json()
+    assert {e["type"] for e in events} == {"distraction", "system"}
+    assert next(e for e in events if e["type"] == "system")["reasons"] == ["camera_lost"]
+    stats = client.get("/api/v1/stats", headers=engineer).json()
+    assert stats["total"] == 1 and "camera_lost" not in stats["by_reason"]

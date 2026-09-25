@@ -18,6 +18,7 @@ D0 = DrowsinessState(
     microsleep=False,
     perclos_60s=0.0,
     perclos_coverage_s=60.0,
+    perclos_ready=True,
     blink_rate=15.0,
     yawning=False,
     yawn_count_10min=0,
@@ -69,7 +70,7 @@ def test_drowsy_score_l2_and_capped():
 
 
 def test_perclos_needs_coverage():
-    r = assess(d=replace(D0, perclos_60s=0.3, perclos_coverage_s=10.0))
+    r = assess(d=replace(D0, perclos_60s=0.3, perclos_coverage_s=10.0, perclos_ready=False))
     assert r.drowsy_terms[0] == 0.0 and r.level == 0
 
 

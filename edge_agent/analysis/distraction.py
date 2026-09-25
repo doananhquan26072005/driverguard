@@ -1,6 +1,6 @@
 """Block 8 - Distraction branch.
 
-Per frame, from head pose + phone flag + vehicle speed, computes:
+Per frame, from head pose + phone flag + whether the vehicle is moving, computes:
 - off_road_duration: seconds the head has been continuously turned away from the road.
 - phone_ratio_2s: fraction of recent samples (window `phone_window_s`) with a phone
   in the driver zone.
@@ -8,8 +8,9 @@ Per frame, from head pose + phone flag + vehicle speed, computes:
   view, camera covered). The risk engine turns a long one into an alert.
 
 Anti false-positive rules:
-- The branch is disabled below `min_speed_kmh` (parked / red light: looking around
-  or using the phone is fine). All state is reset.
+- The branch is disabled while the vehicle is not moving (parked / red light: looking
+  around or using the phone is fine). All state is reset. "Moving" comes from block 10
+  (context.min_speed_kmh), so this branch and the risk engine always agree.
 - Head angles are compared to an adaptive "looking at the road" baseline, so a camera
   that is not mounted straight in front of the driver does not look like distraction.
   The baseline only learns from on-road samples, so looking away never shifts it.
@@ -22,6 +23,8 @@ Anti false-positive rules:
 - Returning to the road must last `on_road_confirm_s` before the off-road timer resets,
   so a quick glance back does not hide a long distraction; a single noisy frame
   cannot reset it either.
+- Face partly out of frame (FrameFeatures.face_reliable False): head pose is not trusted,
+  handled like a lost pose (previous state kept), but it is not "no face".
 - Face lost: keep the previous state (turning far away often loses the face, while an
   occlusion when looking forward should not start the timer).
 
@@ -37,13 +40,12 @@ from typing import Any
 
 import numpy as np
 
+from edge_agent.config import config_from_dict
 from edge_agent.perception.features import FrameFeatures
 
 
 @dataclass(frozen=True)
 class DistractionConfig:
-    min_speed_kmh: float = 5.0
-    assume_moving_when_speed_unknown: bool = True
     yaw_off_road_deg: float = 30.0
     pitch_down_off_road_deg: float = 20.0
     pitch_up_off_road_deg: float = 25.0
@@ -59,11 +61,7 @@ class DistractionConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DistractionConfig:
-        d = d or {}
-        baseline = d.get("baseline") or {}
-        flat = {k: v for k, v in d.items() if k != "baseline"}
-        flat.update({f"baseline_{k}": v for k, v in baseline.items()})
-        return cls(**{k: flat[k] for k in cls.__dataclass_fields__ if k in flat})
+        return config_from_dict(cls, d, "distraction")
 
 
 @dataclass(frozen=True)
@@ -100,11 +98,6 @@ class DistractionAnalyzer:
         self._no_face_since: float | None = None
         self._phone: deque[tuple[float, bool]] = deque()
         self._last_t: float | None = None
-
-    def is_moving(self, speed_kmh: float | None) -> bool:
-        if speed_kmh is None:
-            return self.config.assume_moving_when_speed_unknown
-        return speed_kmh >= self.config.min_speed_kmh
 
     def _head_off_road(self, yaw_off: float, pitch_off: float) -> bool:
         cfg = self.config
@@ -152,19 +145,21 @@ class DistractionAnalyzer:
         self,
         features: FrameFeatures,
         phone_near_face: bool | None,
-        speed_kmh: float | None,
+        moving: bool,
     ) -> DistractionState:
         t = features.timestamp
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         self._last_t = t
 
-        if not self.is_moving(speed_kmh):
+        if not moving:
             self.reset()
             self._last_t = t
             return DistractionState(t, False, False, 0.0, 0.0, None, None, self.baseline_yaw, self.baseline_pitch)
 
         yaw_off = pitch_off = None
-        has_pose = features.face_found and features.yaw is not None and features.pitch is not None
+        has_pose = (
+            features.face_found and features.face_reliable and features.yaw is not None and features.pitch is not None
+        )
         if has_pose and not self.calibrated:
             self._calibrate(t, features.yaw, features.pitch)
         calibrating = not self.calibrated

@@ -16,6 +16,8 @@ export const REASONS: Record<Reason, string> = {
   no_face: "Không thấy mặt tài xế",
   trend: "Mệt mỏi tăng dần",
   blink_rate: "Nhịp chớp mắt bất thường",
+  camera_lost: "Mất camera: ngừng giám sát",
+  camera_restored: "Camera hoạt động lại",
 };
 
 export const ROLES: Record<Role, string> = {

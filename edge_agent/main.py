@@ -1,4 +1,4 @@
-"""DriverGuard edge agent: blocks 1-14 in one loop (block 5 excluded).
+"""DriverGuard edge agent: blocks 1-14 in one loop.
 
     python -m edge_agent.main --source 0 --scenario config/scenarios/highway_night.yaml
     python -m edge_agent.main --source clip.mp4 --no-window     # headless, terminal only
@@ -13,6 +13,9 @@
     (frontend #/hud) with the "false alarm" button.
 14: alerts, false-alarm feedback and one fatigue sample per minute go to the backend (batched,
     offline queue). Thresholds tuned by engineers are fetched from the backend at startup.
+Camera lost: block 1 keeps reopening it; meanwhile the HUD shows it and a camera_lost event
+(camera_restored when frames come back) goes to the backend, so the dashboard knows this
+vehicle is not monitored.
 
 Frames live in RAM only: nothing here writes images to disk.
 """
@@ -31,10 +34,18 @@ import cv2
 from edge_agent.capture import CaptureConfig, FrameSource
 from edge_agent.config import PROJECT_ROOT, load_thresholds
 from edge_agent.context.can_sim import CanSimulator, load_scenario
+from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.decision.pipeline import DecisionPipeline
 from edge_agent.hud.hud import alert_line, draw_hud, status_line
-from edge_agent.hud.server import HudServer, HudState
-from edge_agent.io.publisher import MetadataPublisher, PublisherConfig, build_event, build_sample, http_transport
+from edge_agent.hud.server import HudConfig, HudServer, HudState
+from edge_agent.io.publisher import (
+    MetadataPublisher,
+    PublisherConfig,
+    build_event,
+    build_sample,
+    build_system_event,
+    http_transport,
+)
 from edge_agent.io.remote_config import apply_overrides, fetch_thresholds
 from edge_agent.perception import PreprocessConfig, Preprocessor
 from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
@@ -94,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[phone] disabled: {e}")
 
     scenario = load_scenario(args.scenario)
-    can = CanSimulator(scenario, moving_kmh=float((th.get("context") or {}).get("min_speed_kmh", 5.0)))
+    can = CanSimulator(scenario, moving_kmh=ContextConfig.from_dict(th.get("context")).min_speed_kmh)
     decisions = DecisionPipeline(th)
     trip_id = datetime.now().strftime("trip-%Y%m%d-%H%M%S")
     publisher = None
@@ -113,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         if publisher is not None:
             publisher.publish_feedback(event_id)
 
-    hud_state = HudState()
+    hud_state = HudState(HudConfig.from_dict(th.get("hud")))
     hud_server = None
     if args.hud_port:
         try:
@@ -132,10 +143,24 @@ def main(argv: list[str] | None = None) -> int:
     face_memory = FaceBoxMemory(phone_cfg.face_memory_s)  # driver zone survives a phone hiding the face
     t0: float | None = None
     bins_sent, minute_max_level = 0, 0
+    camera_lost, last_speed = False, None
+
+    def report_camera(lost: bool) -> None:
+        reason = "camera_lost" if lost else "camera_restored"
+        print(
+            f"[camera] {'LOST: driver not monitored, reconnecting' if lost else 'back'} ({source.reconnects} reconnects)"
+        )
+        hud_state.set_camera_lost(lost)
+        if publisher is not None:
+            publisher.publish(build_system_event(reason, trip_id, last_speed))
+
     try:
         with source, landmarks:
             while True:
-                frame = source.read(timeout=2.0)
+                frame = source.read(timeout=0.5)
+                if source.lost != camera_lost:  # 1: camera unplugged / back
+                    camera_lost = not camera_lost
+                    report_camera(camera_lost)
                 if frame is None:
                     if source.ended:
                         print("[main] end of stream")
@@ -157,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                 if eye_state is not None:  # 5, only when EAR is not reliable
                     features = eye_state(pre, lm, features)
                 signals = can.sample(frame.timestamp - t0)  # 10 (CAN)
+                last_speed = signals.speed_kmh
                 r = decisions.step(features, phone_flag, signals)  # 7, 8, 10, 11, 9, 12
 
                 now = time.monotonic()

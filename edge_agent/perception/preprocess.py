@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from edge_agent.capture.frame_source import Frame
+from edge_agent.config import config_from_dict
 
 
 @dataclass(frozen=True)
@@ -28,15 +29,13 @@ class PreprocessConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PreprocessConfig:
-        d = d or {}
-        clahe = d.get("clahe") or {}
-        default = cls()
+        c = config_from_dict(cls, d, "preprocess")
         return cls(
-            target_width=int(d.get("target_width", default.target_width)),
-            ir_channel_diff_max=float(d.get("ir_channel_diff_max", default.ir_channel_diff_max)),
-            clahe_enabled=bool(clahe.get("enabled", default.clahe_enabled)),
-            clahe_clip_limit=float(clahe.get("clip_limit", default.clahe_clip_limit)),
-            clahe_tile_grid=int(clahe.get("tile_grid", default.clahe_tile_grid)),
+            target_width=int(c.target_width),
+            ir_channel_diff_max=float(c.ir_channel_diff_max),
+            clahe_enabled=bool(c.clahe_enabled),
+            clahe_clip_limit=float(c.clahe_clip_limit),
+            clahe_tile_grid=int(c.clahe_tile_grid),
         )
 
 

@@ -187,7 +187,19 @@ def test_eyes_shut_during_yawn_is_not_a_microsleep():
     assert max(x.closed_duration for x in s) < 0.5
     assert any(x.closure_masked for x in s)
     assert len(events(s, "yawn")) == 1  # the yawn itself still counts
-    assert s[-1].perclos_60s > 0.1  # and PERCLOS still sees the closed eyes
+    assert s[-1].perclos_60s == 0.0  # squeezing the eyes while yawning is not fatigue
+
+
+def test_perclos_mask_can_be_turned_off():
+    a, _ = simulate(20, analyzer=DrowsinessAnalyzer(DrowsinessConfig(perclos_use_mask=False)))
+    _, s = simulate(
+        12,
+        ear=lambda t: CLOSED if 23.5 <= t < 27.5 else OPEN,
+        mar=lambda t: WIDE if 23.0 <= t < 27.0 else 0.05,
+        analyzer=a,
+        t0=20.0,
+    )
+    assert s[-1].perclos_60s > 0.1
 
 
 def test_eyes_stay_closed_after_yawn_counts_from_end_of_hold():
@@ -389,3 +401,94 @@ def test_face_lost_mid_sentence_is_no_microsleep():
     _, s = simulate(4, ear=const(CLOSED), mar=talk, face=lambda t: t < 22.3, analyzer=a, t0=22.0)
     assert not events(s, "microsleep")
     assert all(x.closed_duration == 0.0 for x in s)
+
+
+# ---------------------------------------------------------------- PERCLOS mask, deep closure, face_conf
+
+
+def talking_mar(t):
+    return 0.1 + 0.2 * ((t * 3) % 1.0 < 0.5)  # mouth opens / closes 3x per second
+
+
+def test_perclos_skips_squinting_while_talking():
+    a, _ = simulate(15)
+    _, s = simulate(40, ear=pulses(2.0, 0.6, CLOSED, OPEN), mar=talking_mar, analyzer=a, t0=15.0)
+    assert all(x.closure_masked for x in s[60:])
+    assert s[-1].perclos_60s < 0.05 and not events(s, "perclos_high")
+
+
+def test_perclos_still_counts_closures_with_a_still_mouth():
+    a, _ = simulate(15)
+    _, s = simulate(40, ear=pulses(2.0, 0.6, CLOSED, OPEN), analyzer=a, t0=15.0)
+    assert s[-1].perclos_60s > 0.2 and events(s, "perclos_high")
+
+
+def test_narrowed_eyes_are_not_a_microsleep():
+    # Baseline 0.30: close below 0.195, reopen above 0.225. Looking down / squinting: one dip
+    # to 0.19, then EAR stays at 0.21 (0.7 x baseline) for 4 s, inside the hysteresis band.
+    a, _ = simulate(15)
+    _, s = simulate(6, ear=lambda t: 0.19 if 16 <= t < 16.2 else (0.21 if 16 <= t < 20 else OPEN), analyzer=a, t0=15.0)
+    assert any(x.eye_closed for x in s)  # still eye closure for PERCLOS
+    assert not events(s, "microsleep") and max(x.closed_duration for x in s) == 0.0
+
+
+def test_deep_closure_after_narrowing_counts_from_its_start():
+    # Eyes narrow for 0.6 s, then shut: once deep enough, the whole closure counts.
+    a, _ = simulate(15)
+    ear = lambda t: 0.19 if 16 <= t < 16.6 else (CLOSED if 16.6 <= t < 19 else OPEN)  # noqa: E731
+    _, s = simulate(5, ear=ear, analyzer=a, t0=15.0)
+    ms = events(s, "microsleep")
+    assert len(ms) == 1 and ms[0] == pytest.approx(17.2, abs=0.1)  # 16 + 1.0 s, shallow half included
+    assert max(x.closed_duration for x in s) == pytest.approx(3.0, abs=0.1)
+
+
+def test_cnn_uncertain_closure_is_not_a_microsleep():
+    def run(p):
+        a = DrowsinessAnalyzer()
+        for i in range(round(4 * FPS)):
+            t = i * DT
+            closed = 1.0 <= t < 3.5
+            f = FrameFeatures(i, t, True, 1.0, ear=0.1 if closed else OPEN, mar=0.05, pitch=0.0, yaw=0.0, roll=0.0)
+            if closed:
+                f = FrameFeatures(**{**f.__dict__, "p_closed": p})
+            s = a.update(f)
+            if s.events and "microsleep" in s.events:
+                return True
+        return False
+
+    assert run(0.95)  # sure: microsleep
+    assert not run(0.65)  # above cnn_closed (0.6) but not firmly shut
+
+
+def test_partial_face_is_not_measured():
+    a, _ = simulate(15)
+    before = a.ear_baseline(15.0)
+    for i in range(round(40 * FPS)):  # 40 s of "closed" eyes on a face half out of frame
+        t = 15.0 + i * DT
+        s = a.update(
+            FrameFeatures(i, t, True, 0.6, face_reliable=False, ear=CLOSED, mar=WIDE, pitch=0.0, yaw=0.0, roll=0.0)
+        )
+    assert s.eye_closed is None and not s.events and s.perclos_60s == 0.0
+    assert s.yawn_count_10min == 0 and a.ear_baseline(t) == pytest.approx(before)
+
+
+def test_head_drop_carry_goes_on_when_the_face_slides_out_of_frame():
+    a, _ = simulate(10)
+    s = None
+    for i in range(round(3 * FPS)):
+        t = 10.0 + i * DT
+        if t < 11.0:  # eyes shut, head still up
+            f = FrameFeatures(i, t, True, 1.0, ear=CLOSED, mar=0.05, pitch=0.0, yaw=0.0, roll=0.0)
+        else:  # slumps: face partly out of frame
+            f = FrameFeatures(i, t, True, 0.5, face_reliable=False, ear=0.3, mar=0.05, pitch=40.0, yaw=0.0, roll=0.0)
+        s = a.update(f)
+    assert s.head_drop and s.closed_duration >= 1.9
+
+
+def test_blink_rate_min_span_from_config():
+    # One blink in the first 2 s: divided by the configured minimum span, not by 2 s.
+    ear = lambda t: CLOSED if 1.0 <= t < 1.2 else OPEN  # noqa: E731
+    _, s = simulate(2, ear=ear)
+    assert s[-1].blink_rate == pytest.approx(6.0)  # 1 / 10 s * 60
+    _, s = simulate(2, ear=ear, analyzer=DrowsinessAnalyzer(DrowsinessConfig(blink_rate_min_span_s=20.0)))
+    assert s[-1].blink_rate == pytest.approx(3.0)

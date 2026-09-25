@@ -8,14 +8,14 @@ import { EDGE_URL, fetchState, sendFalseAlarm } from "./edge";
 
 const POLL_MS = 300;
 const STALE_S = 3; // no update from the camera loop for this long = frozen
-const FEEDBACK_WINDOW_S = 120; // same as edge_agent/hud/server.py
 
 type Mode = "live" | "demo";
 type Link = "connecting" | "ok" | "down";
 
-function feedbackTarget(alerts: HudAlert[], now: number): HudAlert | null {
+// windowS comes from the device (thresholds.yaml hud.feedback_window_s); without it the device decides.
+function feedbackTarget(alerts: HudAlert[], now: number, windowS: number | undefined): HudAlert | null {
   const newest = alerts[0];
-  if (!newest || newest.feedback || now - newest.at > FEEDBACK_WINDOW_S) return null;
+  if (!newest || newest.feedback || (windowS != null && now - newest.at > windowS)) return null;
   return newest;
 }
 
@@ -80,7 +80,7 @@ export default function HudScreen() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const target = snap ? feedbackTarget(snap.alerts, now) : null;
+  const target = snap ? feedbackTarget(snap.alerts, now, snap.feedback_window_s) : null;
 
   const onFalseAlarm = useCallback(async () => {
     if (!target) return;
@@ -104,7 +104,8 @@ export default function HudScreen() {
   const stale = mode === "live" && snap?.updated_at != null && now - snap.updated_at > STALE_S;
   const level = snap?.connected ? snap.level : 0;
   const info = LEVELS[level];
-  const showPanel = link === "ok" && snap?.connected && !stale;
+  const cameraLost = mode === "live" && link === "ok" && snap?.camera_lost === true;
+  const showPanel = link === "ok" && snap?.connected && !stale && !cameraLost;
 
   return (
     <div className="hud" data-level={showPanel ? level : "off"}>
@@ -188,7 +189,11 @@ export default function HudScreen() {
       ) : (
         <main className="hud-offline">
           <p className="hud-offline-title">
-            {stale ? "Không nhận dữ liệu từ camera" : link === "down" ? "Không kết nối được thiết bị" : "Đang kết nối thiết bị…"}
+            {cameraLost
+              ? "Mất camera: hệ thống đang không giám sát, đang kết nối lại…"
+              : stale
+                ? "Không nhận dữ liệu từ camera"
+                : link === "down" ? "Không kết nối được thiết bị" : "Đang kết nối thiết bị…"}
           </p>
           <p className="muted">
             HUD đọc trạng thái từ edge agent tại <code>{EDGE_URL}</code>. Chạy{" "}

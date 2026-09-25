@@ -38,6 +38,7 @@ from edge_agent.analysis.drowsiness import (  # noqa: E402
 )
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
+from edge_agent.context.vehicle_context import ContextConfig  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
 from edge_agent.perception.eye_state import EyeStateConfig, make_estimator  # noqa: E402
 from edge_agent.perception.features import (  # noqa: E402
@@ -119,13 +120,13 @@ def distraction_lines(
     ]
 
 
-def drowsiness_lines(d: DrowsinessState, min_coverage_s: float, f: FrameFeatures) -> list[Line]:
+def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
     eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
     if d.eye_source == "cnn":  # block 5 decided: show its probability and why it was called
         eyes += f" [CNN p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
     elif d.eye_source == "ear":
         eyes += " [EAR]"
-    warming = "" if d.perclos_coverage_s >= min_coverage_s else f" (warming up {d.perclos_coverage_s:.0f}s)"
+    warming = "" if d.perclos_ready else f" (warming up {d.perclos_coverage_s:.0f}s)"
     return [
         (
             f"eyes {eyes} {d.closed_duration:3.1f}s  PERCLOS {d.perclos_60s:.2f}{warming}  blinks {d.blink_rate:.0f}/min",
@@ -288,6 +289,7 @@ def main() -> int:
     drowsiness = DrowsinessAnalyzer(DrowsinessConfig.from_dict(thresholds.get("drowsiness")))
     yawn_mar = drowsiness.config.yawn_mar_open
     distraction = DistractionAnalyzer(DistractionConfig.from_dict(thresholds.get("distraction")))
+    context_cfg = ContextConfig.from_dict(thresholds.get("context"))
     moving_speed = args.speed if args.speed else 50.0
     speed: float | None = args.speed
 
@@ -333,7 +335,7 @@ def main() -> int:
                     phone = phone_detector.latest()
                 face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                 phone_flag = None if phone is None else phone_near_face(phone.detections, face, phone_cfg)
-                dstate = distraction.update(feats, phone_flag, speed)
+                dstate = distraction.update(feats, phone_flag, context_cfg.is_moving(speed))
                 drowsy = drowsiness.update(feats)
                 t3 = time.perf_counter()
 
@@ -383,7 +385,7 @@ def main() -> int:
                         f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
                         f"frame {pre.frame_id}  dropped {source.dropped_frames}",
                         *feature_lines(values, feats, lm.num_faces if lm else 0),
-                        *drowsiness_lines(drowsy, drowsiness.config.perclos_min_coverage_s, feats),
+                        *drowsiness_lines(drowsy, feats),
                         *distraction_lines(dstate, phone_flag, phone, speed),
                     ]
                 draw_overlay(shown, text_lines)

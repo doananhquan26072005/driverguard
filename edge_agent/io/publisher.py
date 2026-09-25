@@ -2,7 +2,8 @@
 
 Sends metadata (never images) to the backend in batches, with an offline queue. Three
 kinds of records share the queue and the batches:
-- events:   one per emitted alert (`build_event`)
+- events:   one per emitted alert (`build_event`), plus system events such as the camera
+            being lost / back (`build_system_event`: type "system", level 0)
 - feedback: the driver pressed "false alarm" on the HUD for an event (`publish_feedback`)
 - samples:  one fatigue-timeline point per minute of driving (`build_sample`)
 
@@ -37,7 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from edge_agent.config import PROJECT_ROOT
+from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.decision.alert_manager import Alert
 from edge_agent.decision.pipeline import DecisionResult
 
@@ -65,8 +66,7 @@ class PublisherConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PublisherConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "publisher")
 
     def resolved_outbox_path(self) -> str:
         if self.outbox_path == ":memory:":
@@ -136,6 +136,24 @@ def build_sample(
         "drowsy_score": _round(min(max(minute_score, 0.0), 100.0), 1),
         "perclos_60s": _round(perclos),
         "max_level": max_level,
+    }
+
+
+def build_system_event(
+    reason: str, trip_id: str, speed_kmh: float | None = None, now: datetime | None = None
+) -> dict[str, Any]:
+    """Device status change (camera_lost / camera_restored): the driver is (not) monitored from now on."""
+    return {
+        "event_id": str(uuid.uuid4()),
+        "ts": (now or datetime.now(UTC)).isoformat(),
+        "trip_id": trip_id,
+        "type": "system",
+        "level": 0,  # not a driver risk level; the dashboard shows it by its reason
+        "reasons": [reason],
+        "drowsy_score": 0.0,
+        "distraction_score": 0.0,
+        "speed_kmh": _round(speed_kmh, 1),
+        "metrics": {},
     }
 
 

@@ -92,3 +92,41 @@ def test_context_flags_and_turn_grace():
     assert ctx[26.5].turning  # 1.5 s after the blinker stopped: still in grace
     assert not ctx[27.5].turning
     assert ctx[29.0].long_drive  # 100 s initial + ~20 s moving >= 120 s
+
+
+def signals(speed_kmh, t=1.0):
+    from edge_agent.context.can_sim import VehicleSignals
+
+    return VehicleSignals(t=t, speed_kmh=speed_kmh, turn_signal=None, drive_time_s=0.0, clock_hour=12.0)
+
+
+def test_unknown_speed_does_not_crash_and_follows_config():
+    ctx = ContextTracker(ContextConfig()).update(signals(None))
+    assert ctx.moving and not ctx.high_speed and ctx.speed_kmh is None
+    ctx = ContextTracker(ContextConfig(assume_moving_when_speed_unknown=False)).update(signals(None))
+    assert not ctx.moving
+
+
+def test_pipeline_runs_without_speed_signal():
+    """Real CAN may drop the speed: the whole chain must keep working, distraction still on."""
+    from edge_agent.decision.pipeline import DecisionPipeline
+    from edge_agent.perception.features import FrameFeatures
+
+    pipe = DecisionPipeline()
+    r = None
+    for i in range(90):
+        t = i / 30
+        f = FrameFeatures(i, t, True, 1.0, ear=0.3, mar=0.0, pitch=0.0, yaw=0.0, roll=0.0)
+        r = pipe.step(f, False, signals(None, t))
+    assert r.context.moving and r.distraction.active
+
+
+def test_one_min_speed_for_risk_engine_and_distraction():
+    """context.min_speed_kmh alone decides 'moving' for block 8 and block 9."""
+    from edge_agent.decision.pipeline import DecisionPipeline
+    from edge_agent.perception.features import FrameFeatures
+
+    pipe = DecisionPipeline({"context": {"min_speed_kmh": 20}})
+    f = FrameFeatures(0, 0.0, True, 1.0, ear=0.3, mar=0.0, pitch=0.0, yaw=0.0, roll=0.0)
+    r = pipe.step(f, False, signals(10.0))
+    assert not r.context.moving and not r.distraction.active

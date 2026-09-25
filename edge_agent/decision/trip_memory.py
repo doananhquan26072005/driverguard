@@ -16,6 +16,8 @@ from typing import Any
 
 import numpy as np
 
+from edge_agent.config import config_from_dict
+
 
 @dataclass(frozen=True)
 class TripMemoryConfig:
@@ -24,8 +26,7 @@ class TripMemoryConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> TripMemoryConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "trip_memory")
 
 
 @dataclass(frozen=True)

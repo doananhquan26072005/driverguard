@@ -15,6 +15,17 @@ Anti false-positive rules:
   EAR), so narrow eyes are not "always closed". Hysteresis between close / reopen.
 - Eye state is not judged when the head is turned far or tilted down (EAR collapses
   in those poses): no PERCLOS accumulation from looking at the dashboard.
+- A face partly out of frame (FrameFeatures.face_reliable False, block 6) is handled like
+  a lost face: its EAR / MAR / pose feed neither PERCLOS, the eye baseline, yawns nor nods.
+  Its pitch is only used to see a head drop (a driver slumping forward often slides out
+  of frame), so the head-drop carry below still starts.
+- Deep closure: closed_duration (microsleep event + L3 rule) only counts a closure whose
+  eye frames are mostly "firmly shut": EAR <= `microsleep_deep_ear_ratio` x the open-eye
+  baseline (or CNN p_closed >= `microsleep_deep_cnn`) on at least `microsleep_deep_min_frac`
+  of them. Narrowed eyes (looking down, squinting in sunlight, smiling) sit around 0.55-0.75
+  x baseline and stay inside the close / reopen hysteresis for seconds; a real closure drops
+  well below. Once the closure is deep, its whole length counts (no added delay). PERCLOS
+  and blinks keep the looser close_ratio.
 - A yawn needs the mouth wide open for `yawn_min_s` (talking / laughing are shorter).
 - A nod is a head dip relative to the driver's usual pitch that comes back within
   `nod_max_s` AND has the eyes closed for part of it (a glance at the speedometer
@@ -39,7 +50,9 @@ Anti false-positive rules:
   (at least `microsleep_mask_talk_min_swings` MAR reversals of `microsleep_mask_talk_swing`
   within `microsleep_mask_talk_window_s`). A still mouth has none, and a single jump (a
   yawn ending, the jaw dropping in sleep) makes at most two.
-  PERCLOS still counts these frames.
+  With `perclos_use_mask`, PERCLOS skips the masked frames too (eye state treated as
+  unknown there): squinting while talking / yawning is not eye closure from fatigue.
+  Yawns are counted by their own rule.
 
 Pure logic on timestamps: no image, no clock, testable with fake sequences.
 """
@@ -52,7 +65,7 @@ from typing import Any
 
 import numpy as np
 
-from edge_agent.config import flatten
+from edge_agent.config import config_from_dict
 from edge_agent.perception.features import FrameFeatures
 
 
@@ -78,7 +91,12 @@ class DrowsinessConfig:
     # Closure episodes
     blink_max_s: float = 0.5
     blink_window_s: float = 60.0
+    blink_rate_min_span_s: float = 10.0  # blink rate divides by at least this (first seconds of a trip)
     microsleep_min_s: float = 1.0
+    # Only a deep closure counts toward closed_duration (see module doc)
+    microsleep_deep_ear_ratio: float = 0.5
+    microsleep_deep_cnn: float = 0.8
+    microsleep_deep_min_frac: float = 0.5
     # Closed-eye time does not count toward microsleep while yawning (see module doc)
     microsleep_mask_hold_s: float = 1.5
     microsleep_mask_max_open_s: float = 8.0
@@ -90,6 +108,7 @@ class DrowsinessConfig:
     perclos_min_coverage_s: float = 30.0
     perclos_drowsy: float = 0.15
     perclos_rearm: float = 0.12
+    perclos_use_mask: bool = True  # skip yawn / talking-masked frames (see module doc)
     # Yawn
     yawn_mar_open: float = 0.45
     yawn_mar_close: float = 0.34
@@ -109,8 +128,7 @@ class DrowsinessConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DrowsinessConfig:
-        flat = flatten(d)
-        return cls(**{k: flat[k] for k in cls.__dataclass_fields__ if k in flat})
+        return config_from_dict(cls, d, "drowsiness")
 
 
 @dataclass(frozen=True)
@@ -132,6 +150,7 @@ class DrowsinessState:
     head_drop: bool = False  # closure carried through a head drop (eye state unknown)
     pitch_baseline: float | None = None  # the driver's usual pitch (eyes-open median)
     closure_masked: bool = False  # yawn mask: closed-eye time is not counted on this frame
+    perclos_ready: bool = False  # perclos_coverage_s >= perclos_min_coverage_s: PERCLOS is meaningful
 
 
 class RollingWindow:
@@ -178,6 +197,8 @@ class DrowsinessAnalyzer:
         self._count_since: float | None = None  # start of the counted part (closed_duration)
         self._microsleep_fired = False
         self._head_drop = False
+        self._deep_frames = 0  # eye frames of the counted closure that are firmly shut
+        self._eye_frames = 0
         self._blinks: deque[float] = deque()
         self._perclos: deque[tuple[float, float, bool]] = deque()  # (t, dt, closed)
         self._perclos_closed = 0.0
@@ -223,22 +244,24 @@ class DrowsinessAnalyzer:
         dt = 0.0 if self._last_t is None else min(max(0.0, t - self._last_t), cfg.max_gap_s)
         self._last_t = t
         events: list[str] = []
+        face_ok = f.face_found and f.face_reliable  # partial face: landmarks are extrapolated
+        mar = f.mar if face_ok else None
 
         # Raw eye reading, before pose is known. Block 5 (eye-state CNN) decides when it ran:
         # EAR was judged unreliable on this frame.
-        use_cnn = f.face_found and f.p_closed is not None
+        use_cnn = face_ok and f.p_closed is not None
         baseline = self.ear_baseline(t)
         close_thr = baseline * cfg.eye_close_ratio
         open_thr = baseline * cfg.eye_open_ratio
         if use_cnn:
             ear_low = f.p_closed >= cfg.eye_cnn_closed  # raw, ignores pose (used by nod)
         else:
-            ear_low = None if f.ear is None or not f.face_found else f.ear < close_thr
+            ear_low = None if f.ear is None or not face_ok else f.ear < close_thr
 
         # Head pose relative to the driver's usual pose (rolling median of eyes-open frames).
         yaw_off = pitch_off = None
         pitch_ref = None
-        if f.face_found and f.yaw is not None and f.pitch is not None:
+        if face_ok and f.yaw is not None and f.pitch is not None:
             if ear_low is False or self._pitch.span < cfg.pose_baseline_min_data_s:
                 self._yaw.add(t, f.yaw)
                 self._pitch.add(t, f.pitch)
@@ -253,7 +276,7 @@ class DrowsinessAnalyzer:
         pose_ok = (
             yaw_off is not None and abs(yaw_off) <= cfg.eye_max_yaw_deg and pitch_off <= cfg.eye_max_pitch_down_deg
         )
-        eye_known = f.face_found and pose_ok and (use_cnn or f.ear is not None)
+        eye_known = face_ok and pose_ok and (use_cnn or f.ear is not None)
         if eye_known and f.ear is not None and (not use_cnn or f.p_closed <= cfg.eye_cnn_open):
             self._ear.add(t, f.ear)  # an unreliable EAR must not become the driver's "open eye" value
 
@@ -269,22 +292,35 @@ class DrowsinessAnalyzer:
                 self._eye_closed = True
             eye_closed = self._eye_closed
 
-        head_down = pitch_off is not None and pitch_off > cfg.eye_max_pitch_down_deg
+        if pitch_off is None and f.face_found and f.pitch is not None and pitch_ref is not None:
+            head_off = f.pitch - pitch_ref  # partial face: good enough to see a head drop
+        else:
+            head_off = pitch_off
+        head_down = head_off is not None and head_off > cfg.eye_max_pitch_down_deg
         self._update_closure(t, eye_closed, head_down, pitch_off is None, events)
-        masked = self._update_mask(t, f.mar)
+        masked = self._update_mask(t, mar)
         if masked and self._closed_since is not None and not self._head_drop:
             # Yawning / talking: restart the counted part of the closure. Not once the head
             # has dropped (a head drop is not a yawn), or falling asleep right after a yawn
             # would never reach the microsleep rules.
             self._count_since = t
-        closed_duration = t - self._count_since if self._count_since is not None else 0.0
+            self._deep_frames = self._eye_frames = 0
+        if eye_closed and self._count_since is not None:
+            self._eye_frames += 1
+            if use_cnn:
+                self._deep_frames += f.p_closed >= cfg.microsleep_deep_cnn
+            else:
+                self._deep_frames += f.ear <= baseline * cfg.microsleep_deep_ear_ratio
+        deep = self._eye_frames > 0 and self._deep_frames >= cfg.microsleep_deep_min_frac * self._eye_frames
+        closed_duration = t - self._count_since if self._count_since is not None and deep else 0.0
         if closed_duration >= cfg.microsleep_min_s and not self._microsleep_fired:
             self._microsleep_fired = True
             events.append("microsleep")
 
-        perclos, coverage = self._update_perclos(t, dt, eye_closed, events)
+        perclos_eye = None if masked and cfg.perclos_use_mask else eye_closed
+        perclos, coverage = self._update_perclos(t, dt, perclos_eye, events)
         blink_rate = self._blink_rate(t)
-        yawning = self._update_yawn(t, f.mar, events)
+        yawning = self._update_yawn(t, mar, events)
         self._update_nod(t, dt, pitch_off, ear_low, events)
 
         self._expire(self._yawns, t, cfg.yawn_window_s)
@@ -300,6 +336,7 @@ class DrowsinessAnalyzer:
             microsleep=closed_duration >= cfg.microsleep_min_s,
             perclos_60s=perclos,
             perclos_coverage_s=coverage,
+            perclos_ready=coverage >= cfg.perclos_min_coverage_s,
             blink_rate=blink_rate,
             yawning=yawning,
             yawn_count_10min=len(self._yawns),
@@ -315,6 +352,7 @@ class DrowsinessAnalyzer:
         self._count_since = None
         self._microsleep_fired = False
         self._head_drop = False
+        self._deep_frames = self._eye_frames = 0
 
     def _update_closure(
         self, t: float, eye_closed: bool | None, head_down: bool, face_lost: bool, events: list[str]
@@ -411,7 +449,7 @@ class DrowsinessAnalyzer:
         cfg = self.config
         self._expire(self._blinks, t, cfg.blink_window_s)
         observed = min(t - self._start_t, cfg.blink_window_s)
-        return len(self._blinks) / max(observed, 10.0) * 60.0
+        return len(self._blinks) / max(observed, cfg.blink_rate_min_span_s) * 60.0
 
     def _update_yawn(self, t: float, mar: float | None, events: list[str]) -> bool:
         cfg = self.config

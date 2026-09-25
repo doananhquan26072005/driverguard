@@ -19,7 +19,7 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 
-from edge_agent.config import PROJECT_ROOT
+from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 
@@ -33,8 +33,7 @@ class LandmarkConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> LandmarkConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "landmarks")
 
     def resolved_model_path(self) -> Path:
         p = Path(self.model_path)

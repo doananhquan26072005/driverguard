@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from edge_agent.config import check_keys
 from edge_agent.decision.risk_engine import RiskAssessment
 
 LEVEL_ACTIONS = {
@@ -47,6 +48,7 @@ class AlertConfig:
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:
         d = d or {}
+        check_keys("alert", {k: k for k in d}, cls.__dataclass_fields__)
         default = cls()
         return cls(
             rise_confirm_s=_levels(d.get("rise_confirm_s"), default.rise_confirm_s),
