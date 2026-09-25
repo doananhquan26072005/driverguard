@@ -5,6 +5,10 @@ thread at ~`target_fps`. The main loop calls `submit()` every frame (only the ne
 frame is kept) and reads `latest()`, which returns the most recent result. Results
 older than `max_result_age_s` are treated as unknown.
 
+A result is already `now - frame timestamp` old when inference finishes. On a CPU where
+YOLO takes longer than `max_result_age_s`, every result would be unknown and phone detection
+silently off: such results are counted (`stale_results`) and a warning is printed once.
+
 `phone_near_face()` decides whether a detected phone is in the driver's zone
 (around the face and down to the chest), so a passenger's phone does not count.
 A phone held in front of the face often hides it from MediaPipe, so `FaceBoxMemory`
@@ -179,6 +183,9 @@ class YoloPhoneModel:
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = self.config.num_threads  # leave CPU for the main loop
         opts.inter_op_num_threads = 1
+        # YOLO runs ~5x/s: idle pool threads must sleep, not busy-wait on cores MediaPipe needs
+        # (measured: -22% CPU of this thread, same latency).
+        opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
         self._session = ort.InferenceSession(str(model), opts, providers=["CPUExecutionProvider"])
         self._input_name = self._session.get_inputs()[0].name
 
@@ -210,6 +217,7 @@ class AsyncPhoneDetector:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.runs = 0
+        self.stale_results = 0  # results already older than max_result_age_s when they arrived
 
     def start(self) -> AsyncPhoneDetector:
         if self._thread is None:
@@ -272,4 +280,14 @@ class AsyncPhoneDetector:
                 finished_at=time.monotonic(),
             )
             self.runs += 1
+            age_s = self._result.finished_at - frame.timestamp
+            if age_s > self.config.max_result_age_s:
+                self.stale_results += 1
+                if self.stale_results == 1:
+                    print(
+                        f"[phone] WARNING: result arrived {age_s * 1000:.0f} ms after its frame "
+                        f"(inference {infer_ms:.0f} ms) > phone.max_result_age_s "
+                        f"({self.config.max_result_age_s * 1000:.0f} ms): it counts as unknown. If this "
+                        "keeps happening, phone detection is effectively off: use a smaller / INT8 model"
+                    )
             next_run = max(next_run + period, time.monotonic())

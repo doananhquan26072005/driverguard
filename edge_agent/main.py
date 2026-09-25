@@ -212,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
                         net = f" | sent {publisher.sent} queued {publisher.queued}" + (
                             " OFFLINE" if publisher.online is False else ""
                         )
+                    if phone is not None and phone.stale_results:  # phone detection too slow to count
+                        net += f" | phone stale {phone.stale_results}/{phone.runs}"
                     print(f"t={signals.t:7.1f}s  {status_line(r, fps)}{net}")
                 if not args.no_window:
                     cv2.imshow(WINDOW, draw_hud(pre.image, r, fps))
