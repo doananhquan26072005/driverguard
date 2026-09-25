@@ -428,8 +428,42 @@ def test_narrowed_eyes_are_not_a_microsleep():
     # to 0.19, then EAR stays at 0.21 (0.7 x baseline) for 4 s, inside the hysteresis band.
     a, _ = simulate(15)
     _, s = simulate(6, ear=lambda t: 0.19 if 16 <= t < 16.2 else (0.21 if 16 <= t < 20 else OPEN), analyzer=a, t0=15.0)
-    assert any(x.eye_closed for x in s)  # still eye closure for PERCLOS
+    assert any(x.eye_closed for x in s)  # the hysteresis still holds the closure episode
     assert not events(s, "microsleep") and max(x.closed_duration for x in s) == 0.0
+
+
+def test_narrowed_eyes_after_blinks_are_not_perclos():
+    # Squinting into the sun: EAR 0.74 x baseline (never below close_ratio 0.65) with normal
+    # blinks. After each blink the hysteresis holds "closed" (0.74 < open_ratio 0.75), but
+    # PERCLOS judges each frame on its own: only the blinks count.
+    a, _ = simulate(15)
+    _, s = simulate(60, ear=pulses(4.0, 0.15, CLOSED, 0.74 * OPEN), analyzer=a, t0=15.0)
+    assert sum(1 for x in s if x.eye_closed) > 0.8 * len(s)
+    assert s[-1].perclos_60s == pytest.approx(0.15 / 4.0, abs=0.01)
+    assert not events(s, "perclos_high")
+
+
+def test_cnn_unsure_after_blinks_is_not_perclos():
+    # CNN p_closed 0.5 (between cnn_open 0.4 and cnn_closed 0.6) after each blink.
+    a = DrowsinessAnalyzer()
+    for i in range(round(60 * FPS)):
+        t = i * DT
+        p = 0.95 if (t % 4.0) < 0.15 else 0.5
+        f = FrameFeatures(i, t, True, 1.0, ear=OPEN, mar=0.05, pitch=0.0, yaw=0.0, roll=0.0, p_closed=p)
+        s = a.update(f)
+    assert s.perclos_60s == pytest.approx(0.15 / 4.0, abs=0.01)
+
+
+def test_forget_since_drops_the_rest_and_keeps_what_came_before():
+    a, _ = simulate(60, mar=lambda t: WIDE if 10 <= t < 13 else 0.05)  # driving: one yawn
+    rest_yawn = lambda t: WIDE if 100 <= t < 103 else 0.05  # noqa: E731
+    _, s = simulate(150, ear=const(CLOSED), mar=rest_yawn, analyzer=a, t0=60.0)  # parked, eyes closed
+    assert s[-1].perclos_60s > 0.9 and s[-1].closed_duration > 60 and s[-1].yawn_count_10min == 2
+    a.forget_since(60.0)
+    _, s = simulate(2, analyzer=a, t0=210.0)
+    assert s[-1].perclos_60s == 0.0 and s[-1].closed_duration == 0.0
+    assert s[-1].yawn_count_10min == 1  # the yawn while driving stays
+    assert s[-1].ear_open_baseline == pytest.approx(0.28)  # closed-eye EAR of the rest is gone
 
 
 def test_deep_closure_after_narrowing_counts_from_its_start():

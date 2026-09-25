@@ -22,9 +22,9 @@ from edge_agent.perception.preprocess import PreprocessedFrame
 CFG = EyeStateConfig()
 
 
-def frame(brightness=120.0, is_ir=False, image=None):
+def frame(brightness=120.0, is_ir=False, image=None, t=0.0):
     img = image if image is not None else np.full((360, 640, 3), 120, np.uint8)
-    return PreprocessedFrame(img, img[..., 0], brightness, is_ir, 1.0, 0, 0.0)
+    return PreprocessedFrame(img, img[..., 0], brightness, is_ir, 1.0, 0, t)
 
 
 def feats(ear_l=0.3, ear_r=0.3, t=0.0):
@@ -173,3 +173,30 @@ def test_unreliable_ear_does_not_shift_the_baseline():
 def test_ear_path_unchanged_without_cnn():
     s = run(DrowsinessAnalyzer(), 5, 0.30)
     assert s[-1].eye_source == "ear" and s[-1].eye_closed is False
+
+
+# ---------------------------------------------------------------- no EAR <-> CNN flicker
+
+
+def dusk(i):
+    return 59.0 if i % 2 == 0 else 61.0  # brightness wobbling around low_light_brightness (60)
+
+
+def test_cnn_is_held_so_the_eye_source_does_not_flicker():
+    est = EyeStateEstimator(CFG, classifier=FakeClassifier(p=0.1))
+    used = [est(frame(dusk(i), t=i / 30), landmarks(), feats(t=i / 30)).p_closed is not None for i in range(60)]
+    assert all(used)  # CNN on every frame once triggered, not every other frame
+    t = 2.0 + CFG.hold_s + 0.1  # bright again for longer than hold_s: back to EAR
+    assert est(frame(120.0, t=t), landmarks(), feats(t=t)).p_closed is None
+
+
+def test_dusk_flicker_does_not_fake_perclos():
+    # In the dark EAR collapses (0.10) although the CNN sees open eyes. Switching source every
+    # frame counted the EAR frames as closed: PERCLOS ~ 1/3 over the window, drowsy L1.
+    est = EyeStateEstimator(CFG, classifier=FakeClassifier(p=0.1))
+    a = DrowsinessAnalyzer()
+    run(a, 15, 0.30)
+    for i in range(40 * 30):
+        t = 15 + i / 30
+        s = a.update(est(frame(dusk(i), t=t), landmarks(), feats(0.10, 0.10, t=t)))
+    assert s.perclos_60s < 0.05

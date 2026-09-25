@@ -80,6 +80,11 @@ def test_duplicated_keys_were_removed_and_point_to_their_new_place(section, d, m
         CONFIGS[section].from_dict(d)
 
 
+def test_replaced_key_says_what_to_use_instead():
+    with pytest.raises(ConfigError, match=r"replaced by risk\.drowsy\.stationary_max_level"):
+        RiskConfig.from_dict({"drowsy": {"active_when_stopped": True}})
+
+
 def test_unknown_section_raises(tmp_path):
     p = tmp_path / "th.yaml"
     p.write_text(yaml.safe_dump({"drowsines": {"perclos_drowsy": 0.2}}))

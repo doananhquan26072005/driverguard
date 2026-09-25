@@ -12,7 +12,10 @@ Rule table (docs/workflow/workflow_full_4.jpg):
 The final level is the highest level among the rules that fire.
 
 Context: distraction rules only while moving; off-road is expected while the turn
-signal is on. Stateless: same inputs -> same output.
+signal is on. Drowsiness rules while standing still (block 10) are capped at
+`drowsy.stationary_max_level`: a microsleep at a red light still gets a chime, a driver
+closing the eyes to rest after parking gets no strong alarm. Once the stop is a rest
+(context.rest_after_s) they are off. Stateless: same inputs -> same output.
 """
 
 from __future__ import annotations
@@ -43,7 +46,7 @@ class RiskConfig:
     drowsy_l2: float = 70.0
     drowsy_night_factor: float = 1.2
     drowsy_long_drive_factor: float = 1.2
-    drowsy_active_when_stopped: bool = True
+    drowsy_stationary_max_level: int = 1  # 0 = off while standing still, 3 = no cap
     distraction_off_road_s: float = 2.0
     distraction_off_road_high_speed_s: float = 1.5
     distraction_phone_ratio: float = 0.6
@@ -120,6 +123,14 @@ class RiskEngine:
             score *= cfg.drowsy_long_drive_factor
         return min(score, 100.0), (perclos, microsleep, yawn, nod)
 
+    def drowsy_level_cap(self, ctx: VehicleContext) -> int:
+        """Highest level the drowsiness rules may raise: none during a rest, capped at a stop."""
+        if ctx.resting:
+            return 0
+        if ctx.stationary:
+            return self.config.drowsy_stationary_max_level
+        return 3
+
     def off_road_threshold(self, ctx: VehicleContext) -> float:
         cfg = self.config
         return cfg.distraction_off_road_high_speed_s if ctx.high_speed else cfg.distraction_off_road_s
@@ -136,8 +147,8 @@ class RiskEngine:
 
         # Drowsiness branch
         drowsy, terms = self.drowsy_score(d, ctx, trip)
-        drowsy_on = ctx.moving or cfg.drowsy_active_when_stopped
-        if drowsy_on:
+        cap = self.drowsy_level_cap(ctx)
+        if cap > 0:
             if d.closed_duration >= cfg.microsleep_l3_s:
                 hits.append(RuleHit(3, "microsleep", d.closed_duration))
             if drowsy >= cfg.drowsy_l2:
@@ -157,6 +168,7 @@ class RiskEngine:
                 cfg.blink_normal_min <= d.blink_rate <= cfg.blink_normal_max
             ):
                 hits.append(RuleHit(cfg.blink_level, "blink_rate", d.blink_rate))
+            hits = [RuleHit(min(h.level, cap), h.reason, h.value) for h in hits]
 
         # Distraction branch: only while moving (block 8 already resets when stopped).
         off_road_thr = self.off_road_threshold(ctx)

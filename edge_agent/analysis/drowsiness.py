@@ -24,8 +24,13 @@ Anti false-positive rules:
   baseline (or CNN p_closed >= `microsleep_deep_cnn`) on at least `microsleep_deep_min_frac`
   of them. Narrowed eyes (looking down, squinting in sunlight, smiling) sit around 0.55-0.75
   x baseline and stay inside the close / reopen hysteresis for seconds; a real closure drops
-  well below. Once the closure is deep, its whole length counts (no added delay). PERCLOS
-  and blinks keep the looser close_ratio.
+  well below. Once the closure is deep, its whole length counts (no added delay). Blinks
+  keep the looser close_ratio.
+- PERCLOS judges every frame on its own (EAR < `perclos_close_ratio` x the open-eye
+  baseline, or CNN p_closed >= `eye_cnn_closed`), not with the close / reopen hysteresis:
+  after a blink, the hysteresis keeps narrowed eyes (squinting in sunlight, 0.65-0.75 x
+  baseline) "closed" until they open wide again, which reads as PERCLOS near 100 %.
+  Hysteresis is for episodes (blinks, microsleep); PERCLOS is a time fraction.
 - A yawn needs the mouth wide open for `yawn_min_s` (talking / laughing are shorter).
 - A nod is a head dip relative to the driver's usual pitch that comes back within
   `nod_max_s` AND has the eyes closed for part of it (a glance at the speedometer
@@ -53,6 +58,9 @@ Anti false-positive rules:
   With `perclos_use_mask`, PERCLOS skips the masked frames too (eye state treated as
   unknown there): squinting while talking / yawning is not eye closure from fatigue.
   Yawns are counted by their own rule.
+- After a rest (the vehicle parked, block 10), `forget_since` drops what was gathered
+  since the vehicle stopped: eyes closed to rest and waking-up yawns say nothing about the
+  next drive. Events from before the stop stay.
 
 Pure logic on timestamps: no image, no clock, testable with fake sequences.
 """
@@ -109,6 +117,7 @@ class DrowsinessConfig:
     perclos_drowsy: float = 0.15
     perclos_rearm: float = 0.12
     perclos_use_mask: bool = True  # skip yawn / talking-masked frames (see module doc)
+    perclos_close_ratio: float = 0.65  # per-frame closed test for PERCLOS (see module doc)
     # Yawn
     yawn_mar_open: float = 0.45
     yawn_mar_close: float = 0.34
@@ -166,6 +175,12 @@ class RollingWindow:
         self._buf.append((t, value))
         while self._buf and t - self._buf[0][0] > self.window_s:
             self._buf.popleft()
+
+    def drop_since(self, t0: float) -> None:
+        """Forget the samples taken at or after t0."""
+        while self._buf and self._buf[-1][0] >= t0:
+            self._buf.pop()
+        self._cache.clear()
 
     @property
     def span(self) -> float:
@@ -234,6 +249,23 @@ class DrowsinessAnalyzer:
     def _expire(events: deque[float], t: float, window: float) -> None:
         while events and t - events[0] > window:
             events.popleft()
+
+    def forget_since(self, t0: float) -> None:
+        """Drop what was gathered from t0 on (the vehicle stopped for a rest, block 10): the
+        closure episode, PERCLOS samples, blinks, yawns, nods and baseline samples."""
+        self._end_closure()
+        while self._perclos and self._perclos[-1][0] >= t0:
+            _, dt, closed = self._perclos.pop()
+            self._perclos_known -= dt
+            self._perclos_closed -= dt if closed else 0.0
+        self._perclos_armed = True
+        for events in (self._blinks, self._yawns, self._nods):
+            while events and events[-1] >= t0:
+                events.pop()
+        for window in (self._ear, self._yaw, self._pitch):
+            window.drop_since(t0)
+        if self._dip_start is not None and self._dip_start >= t0:
+            self._dip_start = None
 
     # ------------------------------------------------------------------ main update
     def update(self, f: FrameFeatures) -> DrowsinessState:
@@ -317,7 +349,13 @@ class DrowsinessAnalyzer:
             self._microsleep_fired = True
             events.append("microsleep")
 
-        perclos_eye = None if masked and cfg.perclos_use_mask else eye_closed
+        # Per frame, not the hysteresis state: narrowed eyes after a blink are not closed.
+        perclos_eye: bool | None = None
+        if eye_known and not (masked and cfg.perclos_use_mask):
+            if use_cnn:
+                perclos_eye = f.p_closed >= cfg.eye_cnn_closed
+            else:
+                perclos_eye = f.ear < baseline * cfg.perclos_close_ratio
         perclos, coverage = self._update_perclos(t, dt, perclos_eye, events)
         blink_rate = self._blink_rate(t)
         yawning = self._update_yawn(t, mar, events)

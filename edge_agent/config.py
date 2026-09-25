@@ -43,6 +43,10 @@ MOVED_KEYS = {
     "distraction.assume_moving_when_speed_unknown": "context.assume_moving_when_speed_unknown",
     "risk.drowsy.perclos_min_coverage_s": "drowsiness.perclos_min_coverage_s",
 }
+# Keys replaced by a different setting: the hint says what to use instead.
+REPLACED_KEYS = {
+    "risk.drowsy.active_when_stopped": "risk.drowsy.stationary_max_level (0 = off while standing still)",
+}
 
 
 # (a, op, b, why): the value at dotted path a must be `op` the value at b.
@@ -59,11 +63,13 @@ CONSISTENCY_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("drowsiness.eye.cnn_open", "<", "drowsiness.eye.cnn_closed", "eye CNN hysteresis"),
     ("drowsiness.eye.baseline_min", "<", "drowsiness.eye.baseline_max", "open-eye baseline range"),
     ("drowsiness.microsleep_deep.ear_ratio", "<=", "drowsiness.eye.close_ratio", "deep closure is closed"),
+    ("drowsiness.perclos_close_ratio", "<=", "drowsiness.eye.close_ratio", "PERCLOS counts closed, not narrowed eyes"),
     ("drowsiness.eye.cnn_closed", "<=", "drowsiness.microsleep_deep.cnn", "deep closure is closed (CNN)"),
     ("drowsiness.yawn.mar_close", "<", "drowsiness.yawn.mar_open", "yawn hysteresis"),
     ("drowsiness.nod.min_s", "<", "drowsiness.nod.max_s", "nod duration range"),
     ("drowsiness.nod.return_deg", "<", "drowsiness.nod.pitch_down_deg", "nod hysteresis"),
     ("context.min_speed_kmh", "<", "context.high_speed_kmh", "moving before high speed"),
+    ("context.stationary_kmh", "<=", "context.min_speed_kmh", "standing still is not moving"),
 )
 _OPS = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b}
 
@@ -125,7 +131,12 @@ def check_keys(section: str, keys: dict[str, str], known: Any) -> None:
     parts = []
     for path in unknown:
         full = f"{section}.{path}"
-        hint = f" (moved to {MOVED_KEYS[full]})" if full in MOVED_KEYS else ""
+        if full in MOVED_KEYS:
+            hint = f" (moved to {MOVED_KEYS[full]})"
+        elif full in REPLACED_KEYS:
+            hint = f" (replaced by {REPLACED_KEYS[full]})"
+        else:
+            hint = ""
         parts.append(full + hint)
     raise ConfigError(f"thresholds: unknown key(s) {', '.join(parts)}")
 

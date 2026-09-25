@@ -8,6 +8,11 @@ This is the only place that decides whether the vehicle is moving: the distracti
 branch (block 8) and the risk engine (block 9) both use `VehicleContext.moving`.
 No speed signal (speed_kmh None, e.g. CAN not connected) counts as moving when
 `assume_moving_when_speed_unknown` is set, and never as high speed.
+
+Standing still (speed below `stationary_kmh`, not just below `min_speed_kmh`: crawling in a
+jam is not a stop) is what the drowsiness side uses: a short stop (red light) caps the
+drowsiness level, and standing still for `rest_after_s` is a rest (parked), when the
+driver may close the eyes on purpose. No speed signal is never standing still.
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ class ContextConfig:
     long_drive_s: float = 7200.0
     night_hours: tuple[tuple[float, float], ...] = ((0.0, 5.0),)
     turn_signal_grace_s: float = 2.0
+    stationary_kmh: float = 1.0
+    rest_after_s: float = 120.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> ContextConfig:
@@ -53,6 +60,9 @@ class VehicleContext:
     turning: bool  # turn signal on, or switched off less than turn_signal_grace_s ago
     drive_time_s: float
     clock_hour: float
+    stationary: bool = False  # speed below stationary_kmh (a stop, not a crawl)
+    stationary_s: float = 0.0  # seconds the vehicle has stood still, 0 otherwise
+    resting: bool = False  # stood still for rest_after_s: a rest (parked), not a red light
 
 
 def in_hours(hour: float, windows: tuple[tuple[float, float], ...]) -> bool:
@@ -69,12 +79,19 @@ class ContextTracker:
     def __init__(self, config: ContextConfig | None = None) -> None:
         self.config = config or ContextConfig()
         self._last_signal_t: float | None = None
+        self._stationary_since: float | None = None
 
     def update(self, s: VehicleSignals) -> VehicleContext:
         cfg = self.config
         if s.turn_signal is not None:
             self._last_signal_t = s.t
         turning = self._last_signal_t is not None and s.t - self._last_signal_t <= cfg.turn_signal_grace_s
+        stationary = s.speed_kmh is not None and s.speed_kmh < cfg.stationary_kmh
+        if not stationary:
+            self._stationary_since = None
+        elif self._stationary_since is None:
+            self._stationary_since = s.t
+        stationary_s = s.t - self._stationary_since if self._stationary_since is not None else 0.0
         return VehicleContext(
             t=s.t,
             speed_kmh=s.speed_kmh,
@@ -85,4 +102,7 @@ class ContextTracker:
             turning=turning,
             drive_time_s=s.drive_time_s,
             clock_hour=s.clock_hour,
+            stationary=stationary,
+            stationary_s=stationary_s,
+            resting=stationary and stationary_s >= cfg.rest_after_s,
         )

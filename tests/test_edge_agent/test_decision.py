@@ -124,6 +124,33 @@ def test_distraction_silent_when_stopped():
     assert r.level == 0 and r.distraction_score == 0
 
 
+STILL = {"speed_kmh": 0.0, "moving": False, "stationary": True}
+
+
+@pytest.mark.parametrize(
+    ("ctx", "level"),
+    [
+        ({}, 3),  # driving
+        ({"speed_kmh": 3.0, "moving": False}, 3),  # crawling in a jam is not a stop
+        ({**STILL, "stationary_s": 30.0}, 1),  # red light: capped (chime)
+        ({**STILL, "stationary_s": 200.0, "resting": True}, 0),  # parked for a rest
+    ],
+)
+def test_microsleep_level_while_standing_still(ctx, level):
+    r = assess(d=replace(D0, closed_duration=2.0), c=replace(C0, **ctx))
+    assert r.level == level
+    assert r.reasons == (("microsleep",) if level else ())
+    if not level:
+        assert r.hits == ()
+
+
+def test_stationary_cap_from_config():
+    d = replace(D0, closed_duration=2.0)
+    red_light = replace(C0, **STILL, stationary_s=30.0)
+    assert assess(d=d, c=red_light, engine=RiskEngine(RiskConfig(drowsy_stationary_max_level=3))).level == 3
+    assert assess(d=d, c=red_light, engine=RiskEngine(RiskConfig(drowsy_stationary_max_level=0))).hits == ()
+
+
 def test_highest_rule_wins_and_all_hits_kept():
     d = replace(D0, closed_duration=2.0, perclos_60s=0.2)
     x = replace(X0, phone_ratio_2s=0.9)
@@ -172,6 +199,20 @@ def test_linear_slope():
     assert linear_slope([]) is None and linear_slope([3.0]) is None
     assert linear_slope([1.0, 1.0, 1.0]) == pytest.approx(0.0)
     assert linear_slope([10.0, 8.0, 6.0]) == pytest.approx(-2.0)
+
+
+def test_trip_memory_forgets_a_rest():
+    mem = TripMemory(TripMemoryConfig(bin_s=60))
+    for t in range(180):  # 3 minutes of driving, one microsleep
+        mem.update(float(t), 10.0, ("microsleep",) if t == 100 else ())
+    for t in range(180, 300):  # stopped, not a rest yet: still binned
+        mem.update(float(t), 80.0, ("microsleep",) if t == 200 else ())
+    for t in range(300, 600):  # the stop became a rest: not binned
+        mem.update(float(t), 90.0, ("microsleep",) if t == 400 else (), observed=False)
+    mem.forget_since(180.0)  # driving off: drop everything since the vehicle stopped
+    state = mem.update(600.0, 5.0)
+    assert state.minute_scores == (10.0, 10.0, 10.0)
+    assert state.last_microsleep_t == 100.0
 
 
 def test_trip_memory_counts_alerts():

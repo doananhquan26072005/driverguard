@@ -1,7 +1,7 @@
 import pytest
 
 from edge_agent.config import PROJECT_ROOT
-from edge_agent.context.can_sim import CanSimulator, load_scenario, parse_clock, scenario_from_dict
+from edge_agent.context.can_sim import CanSimulator, VehicleSignals, load_scenario, parse_clock, scenario_from_dict
 from edge_agent.context.vehicle_context import ContextConfig, ContextTracker, in_hours
 
 SCENARIO = {
@@ -130,3 +130,28 @@ def test_one_min_speed_for_risk_engine_and_distraction():
     f = FrameFeatures(0, 0.0, True, 1.0, ear=0.3, mar=0.0, pitch=0.0, yaw=0.0, roll=0.0)
     r = pipe.step(f, False, signals(10.0))
     assert not r.context.moving and not r.distraction.active
+
+
+def at_speed(t, speed):
+    return VehicleSignals(t=t, speed_kmh=speed, turn_signal=None, drive_time_s=0.0, clock_hour=12.0)
+
+
+def test_standing_still_becomes_a_rest():
+    tracker = ContextTracker(ContextConfig(rest_after_s=120))
+    assert not tracker.update(at_speed(0.0, 50.0)).stationary
+    c = tracker.update(at_speed(10.0, 0.0))
+    assert c.stationary and c.stationary_s == 0.0 and not c.resting
+    assert not tracker.update(at_speed(129.9, 0.0)).resting  # a long red light
+    c = tracker.update(at_speed(130.0, 0.0))
+    assert c.resting and c.stationary_s == pytest.approx(120.0)
+    c = tracker.update(at_speed(131.0, 20.0))  # drives off
+    assert not c.stationary and c.stationary_s == 0.0 and not c.resting
+
+
+def test_crawling_in_a_jam_or_unknown_speed_is_never_a_rest():
+    tracker = ContextTracker()
+    for t in range(600):  # 10 min at 3 km/h: not moving (distraction off), but not standing still
+        c = tracker.update(at_speed(float(t), 3.0))
+    assert not c.moving and not c.stationary and not c.resting
+    c = ContextTracker().update(at_speed(0.0, None))
+    assert c.moving and not c.stationary
