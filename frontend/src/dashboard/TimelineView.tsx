@@ -55,7 +55,7 @@ export default function TimelineView({ session, range, tripId, onTripChange, l1,
     <section className="card">
       <div className="card-head">
         <h2>Timeline mệt mỏi</h2>
-        <label className="inline">
+        <label className="field-inline">
           Chuyến đi
           <select value={tripId} onChange={(e) => onTripChange(e.target.value)}>
             {!trips.some((t) => t.trip_id === tripId) && tripId && <option value={tripId}>{tripId}</option>}

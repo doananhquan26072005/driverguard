@@ -1,29 +1,19 @@
-from unittest.mock import AsyncMock
+"""Shared test setup.
 
-import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+tests/test_agents and tests/test_api cover the course template (src/, LangGraph / LangChain),
+not DriverGuard. They are skipped unless requirements-template.txt is installed, so
+`pytest tests` works with requirements-dev.txt alone.
+"""
 
-from src.main import app
+import importlib.util
+from pathlib import Path
 
-
-@pytest_asyncio.fixture
-async def client():
-    """Async HTTP client for testing API endpoints."""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+TEMPLATE_DEPS = ("langgraph", "langchain_openai", "pytest_asyncio")
+TEMPLATE_DIRS = {Path(__file__).parent / "test_agents", Path(__file__).parent / "test_api"}
+HAS_TEMPLATE_DEPS = all(importlib.util.find_spec(m) for m in TEMPLATE_DEPS)
 
 
-@pytest.fixture
-def mock_llm():
-    """Mock LLM to avoid calling OpenAI during tests.
-
-    Usage in test:
-        def test_something(mock_llm):
-            # LLM calls will return mock response instead of hitting OpenAI
-            ...
-    """
-    mock = AsyncMock()
-    mock.ainvoke.return_value = AsyncMock(content="Mocked LLM response")
-    return mock
+def pytest_ignore_collect(collection_path: Path, config) -> bool | None:
+    if not HAS_TEMPLATE_DEPS and collection_path in TEMPLATE_DIRS:
+        return True
+    return None

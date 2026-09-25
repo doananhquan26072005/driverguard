@@ -4,6 +4,12 @@ Reads frames from a camera or a video file on a background thread and keeps
 only the newest frame. Consumers always get the most recent frame; frames the
 consumer was too slow to take are dropped (counted in `dropped_frames`).
 
+Camera lost (unplugged, driver crash): after `max_consecutive_failures` failed reads the
+camera is released and reopened every `reconnect_interval_s` until it works again, instead
+of ending the stream. `lost` is True meanwhile, and also when no frame arrived for
+`frame_timeout_s` (a read that hangs instead of failing), so the main loop can tell the
+HUD and the backend that the driver is not monitored. A video file still ends normally.
+
 Frames live in RAM only. Nothing here writes images to disk.
 """
 
@@ -19,6 +25,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from edge_agent.config import config_from_dict
+
 
 @dataclass(frozen=True)
 class CaptureConfig:
@@ -28,11 +36,12 @@ class CaptureConfig:
     video_realtime: bool = True
     video_fallback_fps: float = 30.0
     max_consecutive_failures: int = 30
+    reconnect_interval_s: float = 2.0  # 0 = no reconnect: a lost camera ends the stream
+    frame_timeout_s: float = 3.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> CaptureConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "capture")
 
 
 @dataclass(frozen=True)
@@ -79,7 +88,10 @@ class FrameSource:
         self._last_returned_id = -1
         self._ended = False
         self._next_id = 0
+        self._lost = False
+        self._last_frame_t = 0.0
         self.dropped_frames = 0
+        self.reconnects = 0
         self.source_fps = 0.0
 
     # ------------------------------------------------------------------ lifecycle
@@ -93,14 +105,11 @@ class FrameSource:
         if not self._cap.isOpened():
             raise RuntimeError(f"Cannot open source: {self.source}")
 
-        if self.is_camera:
-            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera_width)
-            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera_height)
-            self._cap.set(cv2.CAP_PROP_FPS, self.config.camera_fps)
-
+        self._configure()
         fps = float(self._cap.get(cv2.CAP_PROP_FPS) or 0.0)
         self.source_fps = fps if 0 < fps < 1000 else self.config.video_fallback_fps
 
+        self._last_frame_t = time.monotonic()
         self._thread = threading.Thread(target=self._run, name="FrameSource", daemon=True)
         self._thread.start()
         return self
@@ -125,8 +134,15 @@ class FrameSource:
 
     @property
     def ended(self) -> bool:
-        """True once the source has no more frames (end of video / camera lost)."""
+        """True once the source has no more frames (end of video, or camera lost without reconnect)."""
         return self._ended
+
+    @property
+    def lost(self) -> bool:
+        """Camera only: reads keep failing (reconnecting) or no frame for `frame_timeout_s`."""
+        if not self.is_camera or self._thread is None:
+            return False
+        return self._lost or time.monotonic() - self._last_frame_t > self.config.frame_timeout_s
 
     # ------------------------------------------------------------------ consumer
     def read(self, timeout: float = 1.0) -> Frame | None:
@@ -165,10 +181,15 @@ class FrameSource:
                     break
                 failures += 1
                 if failures >= self.config.max_consecutive_failures:
-                    break
+                    if self.config.reconnect_interval_s <= 0 or not self._reconnect():
+                        break
+                    failures = 0
+                    continue
                 time.sleep(0.01)
                 continue
             failures = 0
+            self._lost = False
+            self._last_frame_t = time.monotonic()
 
             if pace:
                 # Simulate a live camera: release frames at the video's native FPS.
@@ -191,3 +212,26 @@ class FrameSource:
         with self._cond:
             self._ended = True
             self._cond.notify_all()
+
+    def _configure(self) -> None:
+        if self.is_camera:
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.config.camera_width)
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.config.camera_height)
+            self._cap.set(cv2.CAP_PROP_FPS, self.config.camera_fps)
+
+    def _reconnect(self) -> bool:
+        """Camera lost: reopen it every reconnect_interval_s. False when stopped meanwhile."""
+        self._lost = True
+        while not self._stop_event.wait(self.config.reconnect_interval_s):
+            if self._cap is not None:
+                self._cap.release()
+            try:
+                self._cap = self._capture_factory(self.source)
+                opened = bool(self._cap.isOpened())
+            except Exception:  # noqa: BLE001 - a driver error must not kill the reader thread
+                opened = False
+            if opened:
+                self._configure()
+                self.reconnects += 1
+                return True  # `lost` clears on the first good frame
+        return False

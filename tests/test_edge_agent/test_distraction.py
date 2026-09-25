@@ -13,12 +13,12 @@ def feats(t, yaw=0.0, pitch=0.0, face=True):
     return FrameFeatures(int(t * FPS), t, True, 1.0, ear=0.3, mar=0.0, pitch=pitch, yaw=yaw, roll=0.0)
 
 
-def run(analyzer, t0, seconds, speed=50.0, phone=False, **pose):
+def run(analyzer, t0, seconds, moving=True, phone=False, **pose):
     """Feed `seconds` of identical frames starting at t0. Returns (last state, next t)."""
     state = None
     n = round(seconds * FPS)
     for i in range(n):
-        state = analyzer.update(feats(t0 + i * DT, **pose), phone, speed)
+        state = analyzer.update(feats(t0 + i * DT, **pose), phone, moving)
     return state, t0 + n * DT
 
 
@@ -66,26 +66,19 @@ def test_looking_back_long_enough_resets_timer():
 def test_single_noisy_frame_on_road_is_ignored():
     a = no_adapt()
     _, t = run(a, 0.0, 1.0, yaw=45.0)
-    s = a.update(feats(t, yaw=0.0), False, 50.0)
+    s = a.update(feats(t, yaw=0.0), False, True)
     assert s.off_road
 
 
 def test_branch_disabled_when_stopped():
-    a = no_adapt(min_speed_kmh=5.0)
+    a = no_adapt()
     _, t = run(a, 0.0, 3.0, yaw=45.0, phone=True)
-    s, t = run(a, t, 1.0, speed=0.0, yaw=45.0, phone=True)
+    s, t = run(a, t, 1.0, moving=False, yaw=45.0, phone=True)
     assert not s.active
     assert s.off_road_duration == 0.0 and s.phone_ratio_2s == 0.0
     # Driving again: timers start from zero, not from before the stop.
-    s, _ = run(a, t, 1.0, speed=30.0, yaw=45.0)
+    s, _ = run(a, t, 1.0, moving=True, yaw=45.0)
     assert s.active and s.off_road_duration == pytest.approx(1.0 - DT, abs=DT)
-
-
-def test_unknown_speed_follows_config():
-    s, _ = run(no_adapt(assume_moving_when_speed_unknown=True), 0.0, 1.0, speed=None, yaw=45.0)
-    assert s.active and s.off_road
-    s, _ = run(no_adapt(assume_moving_when_speed_unknown=False), 0.0, 1.0, speed=None, yaw=45.0)
-    assert not s.active
 
 
 def test_face_lost_holds_previous_state():
@@ -137,7 +130,70 @@ def test_baseline_ignores_off_road_samples_and_is_clamped():
 
 
 def test_config_from_yaml_dict():
-    cfg = DistractionConfig.from_dict({"min_speed_kmh": 8, "baseline": {"adapt": False, "yaw_deg": 12.0}})
-    assert cfg.min_speed_kmh == 8
+    cfg = DistractionConfig.from_dict({"yaw_off_road_deg": 25, "baseline": {"adapt": False, "yaw_deg": 12.0}})
+    assert cfg.yaw_off_road_deg == 25
     assert cfg.baseline_adapt is False and cfg.baseline_yaw_deg == 12.0
     assert DistractionAnalyzer(cfg).baseline_yaw == 12.0
+
+
+def test_no_face_duration_while_moving():
+    a = no_adapt()
+    _, t = run(a, 0.0, 1.0)
+    s, t = run(a, t, 3.0, face=False)
+    assert s.no_face_duration == pytest.approx(3.0 - DT, abs=DT)
+    s, t = run(a, t, DT)  # one frame with a face resets it
+    assert s.no_face_duration == 0.0
+    s, _ = run(a, t, 3.0, face=False, moving=False)  # stopped: branch off
+    assert s.no_face_duration == 0.0
+
+
+def calibrating(**kw):
+    return DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=5.0, **kw))
+
+
+def test_camera_mounted_far_to_the_side_is_calibrated():
+    # Camera 35 deg to the side: without calibration every frame is off road.
+    s, _ = run(no_adapt(), 0.0, 10.0, yaw=35.0)
+    assert s.off_road and s.off_road_duration > 9.0
+    a = calibrating()
+    s, t = run(a, 0.0, 10.0, yaw=35.0, pitch=8.0)
+    assert not s.off_road and not s.calibrating
+    assert (a.baseline_yaw, a.baseline_pitch) == pytest.approx((35.0, 8.0), abs=0.5)
+    s, _ = run(a, t, 3.0, yaw=35.0 + 45.0)  # a real look away is still caught
+    assert s.off_road and s.off_road_duration > 2.5
+
+
+def test_no_off_road_while_calibrating_and_median_ignores_glances():
+    a = calibrating(baseline_adapt=False)
+    s, t = run(a, 0.0, 1.0, yaw=60.0)  # glance during calibration
+    assert s.calibrating and not s.off_road
+    s, t = run(a, t, 4.5, yaw=0.0)
+    assert not s.calibrating and a.baseline_yaw == pytest.approx(0.0)
+
+
+def test_calibration_waits_for_driving_and_is_clamped():
+    a = calibrating(baseline_adapt=False)
+    run(a, 0.0, 10.0, moving=False, yaw=70.0)  # parked: nothing learnt
+    assert not a.calibrated
+    run(a, 10.0, 6.0, yaw=70.0)
+    assert a.calibrated and a.baseline_yaw == pytest.approx(45.0)
+
+
+def test_adaptation_stays_around_calibrated_pose():
+    a = calibrating(baseline_tau_s=1.0, baseline_max_deg=10.0)
+    _, t = run(a, 0.0, 6.0, yaw=35.0)
+    run(a, t, 30.0, yaw=35.0 + 25.0)  # 25 deg: on road (< 30), adapts but only by 10
+    assert a.baseline_yaw == pytest.approx(45.0, abs=0.1)
+
+
+def test_partial_face_holds_state_and_is_not_no_face():
+    a = no_adapt()
+    _, t = run(a, 0.0, 1.0, yaw=45.0)
+    for i in range(round(2 * FPS)):  # face half out of frame, pose says "on road": not trusted
+        ti = t + i * DT
+        f = FrameFeatures(
+            int(ti * FPS), ti, True, 0.5, face_reliable=False, ear=0.3, mar=0.0, pitch=0.0, yaw=0.0, roll=0.0
+        )
+        s = a.update(f, False, True)
+    assert s.off_road and s.off_road_duration == pytest.approx(3.0 - DT, abs=DT)
+    assert s.no_face_duration == 0.0

@@ -76,7 +76,7 @@ export default function FatigueChart({ samples, events, l1, l2 }: Props) {
       >
         {yTicks.map((v) => (
           <g key={v}>
-            <line className="grid" x1={M.left} x2={width - M.right} y1={y(v)} y2={y(v)} />
+            <line className="grid-line" x1={M.left} x2={width - M.right} y1={y(v)} y2={y(v)} />
             <text className="axis-label" x={M.left - 8} y={y(v)} dy="0.32em" textAnchor="end">
               {v}
             </text>

@@ -3,7 +3,7 @@
 - Resize to `target_width` (aspect ratio kept, downscale only).
 - IR / grayscale input (1 channel, or 3 nearly identical channels) -> 3-channel BGR,
   because MediaPipe and YOLO expect 3 channels.
-- CLAHE on luminance to stabilize contrast under low light / harsh sun.
+- CLAHE on luminance (Y of YCrCb) to stabilize contrast under low light / harsh sun.
 - Report `brightness` (mean luminance before CLAHE) for the context block.
 """
 
@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from edge_agent.capture.frame_source import Frame
+from edge_agent.config import config_from_dict
 
 
 @dataclass(frozen=True)
@@ -28,15 +29,13 @@ class PreprocessConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PreprocessConfig:
-        d = d or {}
-        clahe = d.get("clahe") or {}
-        default = cls()
+        c = config_from_dict(cls, d, "preprocess")
         return cls(
-            target_width=int(d.get("target_width", default.target_width)),
-            ir_channel_diff_max=float(d.get("ir_channel_diff_max", default.ir_channel_diff_max)),
-            clahe_enabled=bool(clahe.get("enabled", default.clahe_enabled)),
-            clahe_clip_limit=float(clahe.get("clip_limit", default.clahe_clip_limit)),
-            clahe_tile_grid=int(clahe.get("tile_grid", default.clahe_tile_grid)),
+            target_width=int(c.target_width),
+            ir_channel_diff_max=float(c.ir_channel_diff_max),
+            clahe_enabled=bool(c.clahe_enabled),
+            clahe_clip_limit=float(c.clahe_clip_limit),
+            clahe_tile_grid=int(c.clahe_tile_grid),
         )
 
 
@@ -91,16 +90,17 @@ class Preprocessor:
                 gray = self._clahe.apply(gray)
             bgr = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
         else:
-            # CLAHE on L of LAB so colors are not shifted.
-            lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB)
-            l_ch, a_ch, b_ch = cv2.split(lab)
-            brightness = float(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY).mean())
+            # CLAHE on Y of YCrCb so colors are not shifted. Y uses the same weights as
+            # BGR2GRAY, so brightness needs no extra conversion (LAB took two more).
+            ycc = cv2.cvtColor(small, cv2.COLOR_BGR2YCrCb)
+            y = np.ascontiguousarray(ycc[..., 0])
+            brightness = float(cv2.mean(y)[0])
             if self.config.clahe_enabled:
-                l_ch = self._clahe.apply(l_ch)
-                bgr = cv2.cvtColor(cv2.merge((l_ch, a_ch, b_ch)), cv2.COLOR_LAB2BGR)
+                ycc[..., 0] = self._clahe.apply(y)
+                bgr = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)
             else:
                 bgr = small
-            gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)  # of the output (colour clipping shifts Y a bit)
 
         return bgr, gray, brightness, is_ir, scale
 

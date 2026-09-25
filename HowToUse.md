@@ -55,7 +55,7 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 
 | Hành vi | Dấu hiệu dùng | Cách phát hiện |
 |---|---|---|
-| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, tối, lóa kính) thì CNN trạng thái mắt | Mắt nhắm liên tục ≥ 1,5 s → L3 ngay |
+| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, tối, lóa kính) thì CNN trạng thái mắt | Mắt nhắm **sâu** liên tục ≥ 1,5 s → L3 ngay (mắt nheo lúc nhìn xuống / chói nắng không tính). Thời gian nhắm lúc đang ngáp / đang nói (và 1,5 s sau đó) không được tính |
 | **Buồn ngủ tích lũy** | PERCLOS 60 s, ngáp, gục đầu | `drowsy_score` 0–100 → L1 (≥ 40) / L2 (≥ 70) |
 | **Ngáp** | MAR (độ mở miệng) | Miệng mở rộng đủ lâu (nói chuyện không tính) |
 | **Gục đầu** | Góc pitch + mắt nhắm | Cúi xuống rồi ngẩng lại nhanh, kèm mắt nhắm |
@@ -71,6 +71,31 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 | **L1** | Chú ý | Biểu tượng + chuông nhẹ |
 | **L2** | Cảnh báo | Âm thanh + rung ghế |
 | **L3** | Nguy hiểm | Cảnh báo mạnh, gợi ý dừng xe nghỉ |
+
+**Giao diện HUD** (`frontend/src/hud/HudView.tsx`, luôn nền tối): thiết kế để liếc 0,5 s là hiểu. Khối trạng thái lớn bên trái (gần tầm mắt tài xế ở xe tay lái thuận) có màu theo mức, icon theo lý do và một câu **hành động** ("Nhìn về phía trước", "Bỏ điện thoại xuống"); lý do cụ thể nằm ở dòng nhỏ bên dưới. Mức càng cao, màn hình càng ít chữ:
+
+| Mức | HUD hiển thị |
+|---|---|
+| **L0** | Nền tối, khiên xanh "Tỉnh táo". Ban đêm giảm sáng 20 % cho đỡ chói |
+| **L1** | Viền và icon vàng |
+| **L2** | Cả khối trạng thái tô cam, chữ tối |
+| **L3** | Đỏ toàn màn hình, nhấp nháy 1 Hz (tắt nếu hệ điều hành bật "giảm chuyển động"). Chỉ còn "Mở mắt! Dừng xe nghỉ ngay" và số giây mắt nhắm; thông số và nút "Cảnh báo sai" bị ẩn |
+| Mất camera / kết nối | Thẻ viền xanh dương: lỗi thiết bị, không phải lỗi tài xế |
+
+Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam giác → bát giác (như biển báo), luôn kèm chữ L0–L3. Khi có nhiều lý do, tiêu đề lấy lý do nguy hiểm nhất (`frontend/src/hud/hudModel.ts`: microsleep > no_face > phone > off_road > drowsy_score > trend > blink_rate). Thứ tự này chỉ dùng để hiển thị, không đổi mức cảnh báo.
+
+**Âm thanh trên HUD** (`frontend/src/hud/chime.ts`, tổng hợp bằng WebAudio, không có file âm thanh): mỗi loại cảnh báo có tiếng riêng để tài xế biết chuyện gì xảy ra mà không cần nhìn màn hình. Mức cảnh báo quyết định độ to.
+
+| Loại | Tiếng |
+|---|---|
+| Buồn ngủ (`drowsy_score`, `blink_rate`) | Nốt sine trầm dần, êm (L1: 2 nốt, L2: 3 nốt) |
+| Mệt mỏi tăng dần (`trend`) | Một nốt dài, nhẹ |
+| Nhắm mắt khi xe đứng yên (`microsleep` mức L1) | Hai nhịp trầm "tỉnh dậy" |
+| Nhìn lệch (`off_road`) | Hai nốt đi lên, lặp 2 lần ("nhìn phía trước") |
+| Điện thoại (`phone`) | Ba tiếng bíp cao, nhanh |
+| Không thấy mặt (`no_face`) | Ba nhịp rè trầm |
+| **L3** (nhắm mắt kéo dài) | Còi hú cao/thấp xen kẽ, **lặp mỗi 1,5 s cho tới khi tài xế mở mắt** |
+| Mất camera / có lại | Tiếng rè đi xuống / hai nốt đi lên |
 
 ### 2.3 Chống cảnh báo sai
 
@@ -159,9 +184,12 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 P-135/
 ├── CLAUDE.md                  Ràng buộc và quy ước dự án
 ├── HowToUse.md                Tài liệu này
-├── requirements.txt           Thư viện Python
+├── requirements.txt           Thư viện Python để chạy DriverGuard
+├── requirements-dev.txt       + ruff, pytest (CI, phát triển)
+├── requirements-template.txt  Template khóa học (src/, LangChain), DriverGuard không cần
 ├── config/
 │   ├── thresholds.yaml        TẤT CẢ ngưỡng (không hardcode trong code)
+│   ├── datasets.yaml          Preset dataset Kaggle cho tools/dataset.py
 │   └── scenarios/             Kịch bản CAN giả lập: city_day, highway_night, parked
 ├── edge_agent/                Chạy trong xe (khối 1–14)
 │   ├── capture/               1  đọc camera / video, luồng riêng, giữ frame mới nhất
@@ -186,6 +214,7 @@ P-135/
 │   ├── debug_view.py          Xem camera + landmark + chỉ số + đồ thị (debug)
 │   ├── download_models.py     Tải / tạo model
 │   ├── eval.py                Precision / recall / F1 / FP mỗi giờ so với nhãn
+│   ├── dataset.py             Tải dataset Kaggle và đo từng tín hiệu (EAR, CNN mắt, MAR, YOLO)
 │   └── benchmark.py           FPS, latency p50/p95, FP32 vs INT8
 ├── models/                    Model (KHÔNG có trong git, tải bằng tools/download_models.py)
 ├── data/                      DB backend, hàng đợi offline, video (KHÔNG có trong git)
@@ -206,7 +235,7 @@ P-135/
 | Node.js | **20.19 trở lên** (cho frontend) |
 | Hệ điều hành | Windows 10/11, Linux, macOS |
 | Camera | Webcam bất kỳ (camera IR cũng được: ảnh 1 kênh được chuyển sang 3 kênh) |
-| CPU | Không cần GPU. Máy thử (Intel, 18 luồng): vòng lặp chính > 150 FPS với frame tổng hợp |
+| CPU | Không cần GPU. Máy thử (Mac ARM, 10 luồng), trên clip YawDD có mặt thật: vòng lặp chính ~146 FPS, MediaPipe ~5,7 ms/frame (`eval/results/benchmark.md`) |
 
 ---
 
@@ -216,11 +245,20 @@ Các lệnh dưới đây dùng **PowerShell trên Windows**. Trên Linux/macOS,
 
 ### 6.1 Môi trường Python
 
+Cần **Python ≥ 3.11** (code dùng `datetime.UTC`). Khuyên dùng [uv](https://docs.astral.sh/uv/) với Python 3.12:
+
 ```powershell
-python -m venv .venv
+uv venv -p 3.12 --seed .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements-dev.txt      # hoặc: pip install -r requirements-dev.txt
 ```
+
+- `requirements.txt`: chỉ những gì DriverGuard cần để chạy (edge agent + backend).
+- `requirements-dev.txt`: thêm ruff, pytest, httpx để kiểm tra code và chạy test.
+- `requirements-template.txt`: phần template của khóa học (`src/`, LangGraph/LangChain, Dockerfile). DriverGuard không cần; khi chưa cài, `tests/test_agents` và `tests/test_api` được tự bỏ qua.
+- **`Dockerfile` / `docker-compose.yml` chạy app template của khóa học (`src.main:app`), không phải backend DriverGuard.** Backend DriverGuard chạy bằng `uvicorn backend.app:app` (mục 7.2); chưa có image Docker cho nó.
+- macOS: `requirements.txt` ghim `mediapipe==0.10.21`, vì bản 1.0.x bị crash (Metal).
+- Trên Linux/macOS có sẵn `make venv`.
 
 ### 6.2 Model (bắt buộc)
 
@@ -341,7 +379,8 @@ cd frontend
 npm run dev
 ```
 
-- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo.
+- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo. Bấm **"Bật âm thanh"** (trình duyệt chỉ cho phát âm thanh sau một lần bấm): vòng mô phỏng 90 s lần lượt phát đủ các loại cảnh báo, nên nghe được tiếng của từng loại.
+- **Xem trước giao diện HUD:** http://localhost:5173/#/hud-preview. Chọn từng trạng thái (L0–L3, mất camera, mất kết nối, ngày / đêm) ở thanh dưới cùng, không cần edge agent. Mở thẳng một trạng thái: `#/hud-preview?s=l3&night=0`.
 - **Dashboard:** http://localhost:5173/#/dashboard. Đăng nhập bằng tài khoản ở bước 7.2.
 
 ### 7.4 Kịch bản demo gợi ý
@@ -359,17 +398,17 @@ npm run dev
 
 ### 8.1 `config/thresholds.yaml`
 
-Mọi ngưỡng nằm ở đây, mỗi dòng có chú thích.
+Mọi ngưỡng nằm ở đây, mỗi dòng có chú thích. Mỗi ngưỡng chỉ nằm ở **một chỗ**, và key hoặc mục không có trong code (ví dụ gõ sai `yawn: {mar_opn: 0.9}`) làm edge agent **dừng ngay khi khởi động**, báo `ConfigError` kèm đường dẫn key, thay vì lặng lẽ dùng giá trị mặc định.
 
 | Mục | Khối | Ví dụ |
 |---|---|---|
-| `capture`, `preprocess` | 1, 2 | độ phân giải camera, kích thước resize, CLAHE |
+| `capture`, `preprocess` | 1, 2 | độ phân giải camera, kích thước resize, CLAHE (trên kênh Y của YCrCb) |
 | `landmarks`, `features` | 3, 6 | độ tin cậy MediaPipe, tiêu cự camera |
 | `eye_state` | 5 | model, cách cắt mắt, khi nào gọi CNN (IR, độ sáng, lệch EAR hai mắt) |
 | `phone` | 4 | model, ngưỡng tin cậy, tần suất YOLO, vùng tài xế |
 | `drowsiness` | 7 | tỉ lệ nhắm mắt, microsleep, PERCLOS, ngáp, gục đầu |
-| `distraction` | 8 | góc nhìn lệch, tốc độ tối thiểu, mốc nhìn đường |
-| `context` | 10 | tốc độ cao, khung giờ đêm, lái lâu, thời gian xi nhan |
+| `distraction` | 8 | góc nhìn lệch, mốc nhìn đường |
+| `context` | 10 | tốc độ tối thiểu ("xe đang chạy", dùng chung cho khối 8 và 9), tốc độ cao, khung giờ đêm, lái lâu, thời gian xi nhan |
 | `risk` | 9 | bảng luật: trọng số `drowsy_score`, ngưỡng L1/L2/L3 |
 | `trip_memory` | 11 | kích thước bin, cửa sổ xu hướng |
 | `alert` | 12 | thời gian xác nhận, giữ mức, cooldown |
@@ -436,7 +475,34 @@ python tools\eval.py convert-frames --frames 001_mouth.txt --video 001.mp4 --fps
 
 Kết quả gồm precision, recall, F1, độ trễ phát hiện và **FP mỗi giờ lái** cho từng hành vi, cộng thêm một dòng tính cho **mọi cảnh báo**.
 
-### 9.2 Tốc độ: `tools/benchmark.py`
+### 9.2 Dataset Kaggle: `tools/dataset.py`
+
+Phần lớn dataset công khai trên Kaggle là **ảnh chia theo thư mục lớp** hoặc **clip gắn nhãn theo tên file**, không phải video có nhãn theo thời gian như `eval.py` cần. `tools/dataset.py` tải dataset về `data/kaggle/` (không có trong git) và đo từng tín hiệu trên đó.
+
+```powershell
+pip install kagglehub                                  # dataset công khai: không cần tài khoản Kaggle
+python tools\dataset.py list                           # các preset có sẵn
+python tools\dataset.py eval yawn_eye_mouth --out eval\results\dataset_yawn_eye_mouth.md
+python tools\dataset.py eval state_farm --limit 200    # tối đa 200 ảnh mỗi lớp, chạy nhanh
+python tools\dataset.py eval mrl_eye --root D:\datasets\mrl   # dataset đã giải nén sẵn
+python tools\dataset.py labels yawdd --out data\yawdd_labels.csv   # clip -> nhãn cho eval.py
+```
+
+| Preset | Dataset Kaggle | Đo gì |
+|---|---|---|
+| `mrl_eye` | `prasadvpatil/mrl-dataset` (23 MB) | CNN mắt (khối 5) trên ảnh mắt IR. CNN học trên MRL nên số sẽ lạc quan |
+| `yawn_eye_eyes` | `serenaraju/yawn-eye-dataset-new` (169 MB) | CNN mắt trên ảnh mắt màu |
+| `yawn_eye_mouth` | như trên | MAR (khối 6) so với ngưỡng ngáp `yawn.mar_open` |
+| `ddd` | `ismailnasri20/driver-drowsiness-dataset-ddd` (2,7 GB) | Chỉ số gần đúng trên từng ảnh: mắt nhắm hoặc ngáp (EAR, CNN, MAR) |
+| `state_farm` | `rightway11/state-farm-distracted-driver-detection` (550 MB) | YOLO điện thoại (khối 4): c1–c4 có điện thoại, c0 và c5–c9 là mẫu âm khó. Cần `yolov8n.onnx` |
+| `yawdd` | `enider/yawdd-dataset` (5 GB) | Toàn bộ pipeline (khối 2–12) trên clip: Yawning là dương, Normal / Talking là âm |
+
+- Báo cáo có accuracy / precision / recall / F1 **ở ngưỡng hiện tại trong `thresholds.yaml`**, kèm **ngưỡng cho F1 tốt nhất** trên dataset đó. Với State Farm, báo cáo có thêm tỉ lệ báo dương theo từng lớp c0–c9.
+- Ảnh tĩnh chưa có baseline riêng của từng tài xế và luật thời gian của khối 7–8. Vì vậy ngưỡng tốt hơn ở đây chỉ là **gợi ý**. Hãy kiểm tra lại bằng video (`yawdd`, `eval.py`) trước khi sửa `thresholds.yaml`.
+- Thêm dataset Kaggle khác: khai báo một preset trong `config/datasets.yaml` (slug, task, thư mục → nhãn), **không cần sửa code**.
+- Ảnh chỉ được đọc vào RAM, tool chỉ ghi file metric.
+
+### 9.3 Tốc độ: `tools/benchmark.py`
 
 ```powershell
 python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\benchmark.md
@@ -445,15 +511,17 @@ python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\ben
 - Đo FPS và độ trễ p50/p95 của từng khối, rồi của cả vòng lặp chính.
 - Đo kích thước model và so YOLO **FP32 với INT8**. Lần đầu chạy sẽ tự tạo `models/yolov8n_int8.onnx`.
 - Nên dùng **video có mặt người**. Không có `--source` thì dùng frame tổng hợp không có mặt, nên thời gian đo của MediaPipe sẽ thấp hơn thực tế.
+- `eval/results/benchmark.md` hiện đo trên clip Dash của YawDD (`python tools/dataset.py` tải về `data/kaggle/`), ví dụ `--source "data/kaggle/datasets/enider/yawdd-dataset/versions/4/Dash/Dash/Female/1-FemaleNoGlasses.avi"`.
+- Lần chạy đầu tạo `yolov8n_int8.onnx`, hiệu chỉnh INT8 bằng chính các frame của `--source`. Đừng chạy lần đầu với frame tổng hợp; nếu lỡ chạy thì thêm `--requantize`.
 
 ---
 
 ## 10. Kiểm thử
 
 ```powershell
-pytest tests\test_edge_agent tests\test_backend -q       # ~260 test, không cần camera hay video
+pytest tests\test_edge_agent tests\test_backend -q       # 359 test, không cần camera hay video
 ruff check edge_agent backend tools tests
-cd frontend; npm test; npm run build
+cd frontend; npm test; npm run build                     # 18 test frontend
 ```
 
 Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả**, không cần video (quy ước của `CLAUDE.md`).
@@ -480,20 +548,27 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 
 - HUD server chỉ nghe trên `127.0.0.1`. HUD phải chạy trên **cùng máy** với edge agent.
 - Ngưỡng chỉnh trên dashboard chỉ có hiệu lực **khi edge agent khởi động lại**.
-- Nút "Cảnh báo sai" chỉ dùng được trong **120 giây** sau khi có cảnh báo.
-- Khi xe dừng (dưới 5 km/h), nhánh mất tập trung tắt. Nếu không có tín hiệu tốc độ, hệ thống mặc định coi xe đang chạy.
+- Nút "Cảnh báo sai" chỉ dùng được trong **120 giây** sau khi có cảnh báo (`hud.feedback_window_s`; HUD đọc giá trị này từ thiết bị).
+- **Mất camera** (rút dây, lỗi driver): sau `capture.max_consecutive_failures` lần đọc lỗi, hoặc `capture.frame_timeout_s` (3 s) không có frame, edge agent coi là mất camera. HUD hiện "Mất camera", backend nhận sự kiện `camera_lost` (loại `system`, mức 0, không tính vào thống kê cảnh báo), và camera được mở lại mỗi `capture.reconnect_interval_s` (2 s). Có hình trở lại thì gửi `camera_restored`. Video file vẫn kết thúc bình thường.
+- Ngưỡng liên quan nhau được kiểm tra chéo (`edge_agent/config.py`, `CONSISTENCY_RULES`, ví dụ L1 < L2, sự kiện microsleep không muộn hơn luật L3): YAML sai thì agent không khởi động, ngưỡng từ dashboard sai thì backend trả 422 khi lưu và thiết bị bỏ qua.
+- Khi xe dừng (dưới `context.min_speed_kmh` = 5 km/h), nhánh mất tập trung tắt. Nếu không có tín hiệu tốc độ (`speed_kmh = None`), hệ thống mặc định coi xe đang chạy (`context.assume_moving_when_speed_unknown`) nhưng không coi là tốc độ cao; cả risk engine lẫn nhánh 8 đều theo quy tắc này.
+- Nhánh buồn ngủ khi xe **đứng yên** (dưới `context.stationary_kmh` = 1 km/h; xe bò 2–4 km/h lúc kẹt xe vẫn tính là đang đi): cảnh báo buồn ngủ tối đa **L1** (`risk.drowsy.stationary_max_level`), nên microsleep ở đèn đỏ vẫn có chime, còn tài xế đỗ xe nhắm mắt nghỉ không bị báo động mạnh L3. Đứng yên từ `context.rest_after_s` (120 s) trở lên thì coi là **nghỉ**: không cảnh báo buồn ngủ, không đưa vào timeline mệt mỏi. Khi xe chạy lại, dữ liệu buồn ngủ gom từ lúc dừng (PERCLOS, microsleep, ngáp, gật đầu, mốc mắt mở) bị xoá, để giấc nghỉ không gây cảnh báo ở những giây đầu của lần lái tiếp. Đánh đổi: tài xế ngủ gật ở đèn đỏ chỉ nhận chime L1, và đèn đỏ dài hơn 120 s thì bị coi là nghỉ. Key cũ `risk.drowsy.active_when_stopped` đã bỏ (đặt `stationary_max_level: 0` để tắt hẳn khi đứng yên).
 - Lệnh đặt biến môi trường trên PowerShell: `$env:DG_DEVICE_KEY = "..."`. Trên bash: `export DG_DEVICE_KEY=...`.
 
 ### Giới hạn hiện tại
 
-- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược).
-- Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. PERCLOS **chưa loại** các frame có `face_conf` thấp.
-- Ngưỡng MAR của ngáp (0,6) là giá trị ước lượng. Hãy kiểm tra trên đồ thị MAR của `debug_view`.
+- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược). Khi được gọi vì **trời tối hoặc camera IR**, CNN được giữ thêm `eye_state.hold_s` (2 s) sau khi điều kiện hết, để nguồn EAR/CNN không đổi qua lại từng frame lúc chạng vạng (chuỗi giả: không giữ thì PERCLOS 0,36 và 599 lần chớp giả trong 40 s; giữ 2 s thì cả hai về 0). Khi được gọi vì **hai mắt lệch EAR** (kính, chói) thì không giữ: CNN yếu với người đeo kính, giữ thêm làm microsleep sai trên YawDD tăng 6 → 18, toàn ở clip đeo kính.
+- Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. Frame có `face_conf` < `features.min_face_conf` (0,9: mặt ra ngoài khung một phần) không được tính vào PERCLOS, mốc mắt mở, ngáp, gật đầu và góc nhìn lệch; pitch của frame đó chỉ dùng để nhận ra gục đầu.
+- Ngưỡng MAR của ngáp đã hạ từ 0,6 xuống 0,45 (đóng lại dưới 0,34), kiểm chứng trên `yawn_eye_mouth` và video YawDD.
+- Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s) hoặc đang nói. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa. PERCLOS cũng bỏ qua các frame này (`drowsiness.perclos_use_mask`), nên khi tài xế nói liên tục thì PERCLOS gần như không được tính (trên YawDD, 82% thời gian của clip Talking bị che).
+- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở (hoặc CNN p_closed ≥ 0,8). Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
+- PERCLOS xét **từng frame** (`drowsiness.perclos_close_ratio` = 0,65 × mốc mắt mở), không dùng trạng thái có hysteresis của mắt. Trước đây, sau mỗi lần chớp, hysteresis giữ trạng thái "nhắm" suốt lúc mắt nheo (0,65–0,75 × mốc, ví dụ nheo vì nắng) nên PERCLOS lên gần 100% và ra L1 sau khoảng 11 s. Đánh đổi: mắt hé ở khoảng 0,65–0,75 × mốc không còn được tính vào PERCLOS.
 - YOLO **INT8** nhanh hơn khoảng 2 lần và nhỏ hơn khoảng 3,6 lần, nhưng **chưa được đo độ chính xác**, nên hệ thống vẫn dùng FP32.
-- **Chưa có số precision/recall thật**: cần dataset có nhãn (xem mục 9.1).
+- **Chưa có precision/recall trên video có nhãn theo thời gian** (mục 9.1). Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
+- **macOS:** MediaPipe 1.0.1 bị crash (`graph_service.h ... Service is unavailable`, Metal) trên macOS mới, kể cả ở chế độ VIDEO. `requirements.txt` đã ghim `mediapipe==0.10.21` cho macOS.
 - CAN đang là **giả lập**. Tín hiệu thật từ xe sẽ thay `CanSimulator`, còn phần xử lý ngữ cảnh giữ nguyên.
 - **Giấy phép:** YOLOv8 (Ultralytics) dùng **AGPL-3.0**, còn repo dùng MIT. Cần xem lại nếu phân phối sản phẩm.
-- CI (`.github/workflows/ci.yml`) chỉ chạy test Python, chưa chạy test frontend.
+- CI (`.github/workflows/ci.yml`) có 3 job: `python` (ruff check + format trên `edge_agent/ backend/ tools/ tests/`, rồi pytest), `frontend` (typecheck, vitest, build) và `template` (phần `src/` của khóa học, tách riêng).
 
 ---
 
@@ -529,6 +604,6 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | M4 | Khối 9–12: risk engine, CAN giả lập, cooldown | Xong |
 | M5 | Khối 14 + backend FastAPI | Xong |
 | M6 | Dashboard React + HUD | Xong |
-| M7 | Script eval + benchmark FPS | Công cụ xong, bảng FPS có số; chờ dataset có nhãn |
+| M7 | Script eval + benchmark FPS + dataset Kaggle | Công cụ xong, bảng FPS có số, số theo từng ảnh trên Kaggle; chờ video có nhãn thời gian |
 
 Chi tiết từng mốc: `docs/roadmap.md`. Quy ước làm việc: `CLAUDE.md`.

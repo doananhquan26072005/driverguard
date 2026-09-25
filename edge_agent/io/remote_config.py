@@ -3,7 +3,8 @@
 At startup the edge agent fetches the latest overrides (GET /api/v1/device/thresholds)
 and applies them on top of config/thresholds.yaml. Keys are dotted paths into the YAML
 ("risk.drowsy.l1", "alert.cooldown_s.2"). Offline, or if the merged result is not
-consistent, the local YAML is used unchanged: a bad remote value never breaks the device.
+consistent (edge_agent.config.consistency_errors, the same rules the backend checks
+before saving), the local YAML is used unchanged: a bad remote value never breaks the device.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import logging
 import urllib.error
 import urllib.request
 from typing import Any
+
+from edge_agent.config import consistency_errors
 
 log = logging.getLogger("driverguard.remote_config")
 
@@ -45,17 +48,6 @@ def _set(tree: dict[Any, Any], dotted: str, value: float) -> None:
     if isinstance(current, bool) or not isinstance(current, (int, float)):
         raise KeyError(dotted)
     node[parts[-1]] = value
-
-
-def consistency_errors(th: dict[str, Any]) -> list[str]:
-    errors = []
-    drowsy = th.get("risk", {}).get("drowsy", {})
-    if drowsy.get("l1", 0) >= drowsy.get("l2", 100):
-        errors.append("risk.drowsy.l1 must be lower than risk.drowsy.l2")
-    dist = th.get("risk", {}).get("distraction", {})
-    if dist.get("off_road_high_speed_s", 0) > dist.get("off_road_s", 1e9):
-        errors.append("off_road_high_speed_s must not exceed off_road_s")
-    return errors
 
 
 def apply_overrides(th: dict[str, Any], values: dict[str, float]) -> tuple[dict[str, Any], list[str]]:

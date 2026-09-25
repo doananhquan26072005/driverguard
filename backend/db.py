@@ -257,7 +257,10 @@ def query_trips(conn: sqlite3.Connection, limit: int = 100, **filters: Any) -> l
 
 def event_stats(conn: sqlite3.Connection, **filters: Any) -> dict[str, Any]:
     where, args = _where(**filters)
-    rows = conn.execute(f"SELECT level, reasons, feedback FROM events WHERE {where}", args).fetchall()
+    # Alerts only: system events (camera_lost / camera_restored) are listed in the log, not counted here.
+    rows = conn.execute(
+        f"SELECT level, reasons, feedback FROM events WHERE {where} AND type != 'system'", args
+    ).fetchall()
     by_level = {level: 0 for level in range(4)}
     by_reason: dict[str, dict[str, int]] = {}
     false_alarms = 0

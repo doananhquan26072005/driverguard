@@ -1,0 +1,82 @@
+# Public datasets for tools/dataset.py (M7). Not thresholds: only where the data is and how
+# its folders / file names map to labels. Add a Kaggle dataset here without touching code.
+#
+#   kaggle:     owner/slug on kaggle.com (downloaded with kagglehub into data/kaggle/)
+#   task:       eye_state | yawn | phone | drowsy_frame | video_yawn
+#   input:      face (full face / cabin image: MediaPipe first) | eye_crop (image is one eye)
+#   label_from: folder (a path component names the class, default) | stem_suffix (text after
+#               the last "-" of the file name, e.g. YawDD "1-FemaleNoGlasses-Yawning.avi")
+#   classes:    folder / suffix (case-insensitive) -> label; unlisted ones are skipped
+#   positive:   the label that counts as "detected"
+#   split:      only files with this path component (case-insensitive), e.g. test
+
+mrl_eye:
+  kaggle: prasadvpatil/mrl-dataset
+  description: MRL Eye, infrared eye crops (4000). Block 5's CNN was trained on MRL, so expect optimistic numbers.
+  task: eye_state
+  input: eye_crop
+  classes: {Closed_Eyes: closed, Open_Eyes: open}
+  positive: closed
+
+mrl_eye_full:
+  kaggle: tauilabdelilah/mrl-eye-dataset
+  description: MRL Eye, larger copy with a test split (infrared eye crops). Block 5's CNN was trained on MRL, so expect optimistic numbers.
+  task: eye_state
+  input: eye_crop
+  split: test
+  classes: {close eyes: closed, open eyes: open}
+  positive: closed
+
+yawn_eye_eyes:
+  kaggle: serenaraju/yawn-eye-dataset-new
+  description: Colour eye close-ups, open vs closed.
+  task: eye_state
+  input: eye_crop
+  split: test
+  classes: {Closed: closed, Open: open}
+  positive: closed
+
+yawn_eye_mouth:
+  kaggle: serenaraju/yawn-eye-dataset-new
+  description: Face images, yawning vs not (checks the MAR threshold of block 7).
+  task: yawn
+  input: face
+  split: test
+  classes: {yawn: yawn, no_yawn: no_yawn}
+  positive: yawn
+
+ddd:
+  kaggle: ismailnasri20/driver-drowsiness-dataset-ddd
+  description: Driver Drowsiness Dataset (face crops from NTHU-DDD videos). Single frames only, so this is a proxy (eyes closed or yawning), not the temporal drowsiness branch.
+  task: drowsy_frame
+  input: face
+  classes: {Drowsy: drowsy, Non Drowsy: alert}
+  positive: drowsy
+
+drowsy_detection:
+  kaggle: yasharjebraeily/drowsy-detection-dataset
+  description: Face crops, drowsy vs natural. Single frames only, so this is a proxy (eyes closed or yawning).
+  task: drowsy_frame
+  input: face
+  split: test
+  classes: {DROWSY: drowsy, NATURAL: alert}
+  positive: drowsy
+
+state_farm:
+  kaggle: rightway11/state-farm-distracted-driver-detection
+  description: State Farm Distracted Driver (side view). c1-c4 texting / calling are "phone"; c0 and c5-c9 (radio, drinking, reaching, make-up, passenger) are hard negatives.
+  task: phone
+  input: face
+  split: train
+  classes: {c0: no_phone, c1: phone, c2: phone, c3: phone, c4: phone, c5: no_phone, c6: no_phone, c7: no_phone, c8: no_phone, c9: no_phone}
+  positive: phone
+
+yawdd:
+  kaggle: enider/yawdd-dataset
+  description: YawDD mirror-camera clips (5 GB). Labels are per clip, so a yawn anywhere in a Yawning clip is a hit and any yawn in a Normal / Talking clip is a false positive. Runs the full pipeline (blocks 2-12).
+  task: video_yawn
+  input: face
+  label_from: stem_suffix
+  split: Mirror
+  classes: {Yawning: yawn, TalkingYawning: yawn, Normal: none, Talking: none}
+  positive: yawn

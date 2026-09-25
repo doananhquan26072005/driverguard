@@ -5,8 +5,14 @@ thread at ~`target_fps`. The main loop calls `submit()` every frame (only the ne
 frame is kept) and reads `latest()`, which returns the most recent result. Results
 older than `max_result_age_s` are treated as unknown.
 
+A result is already `now - frame timestamp` old when inference finishes. On a CPU where
+YOLO takes longer than `max_result_age_s`, every result would be unknown and phone detection
+silently off: such results are counted (`stale_results`) and a warning is printed once.
+
 `phone_near_face()` decides whether a detected phone is in the driver's zone
 (around the face and down to the chest), so a passenger's phone does not count.
+A phone held in front of the face often hides it from MediaPipe, so `FaceBoxMemory`
+keeps the last face box for `face_memory_s` and the zone is still known.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from edge_agent.config import PROJECT_ROOT
+from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 BBox = tuple[float, float, float, float]  # x1, y1, x2, y2 in pixels of the preprocessed image
@@ -40,11 +46,11 @@ class PhoneDetectorConfig:
     zone_expand_x: float = 1.0
     zone_expand_up: float = 0.5
     zone_expand_down: float = 1.5
+    face_memory_s: float = 3.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PhoneDetectorConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "phone")
 
     def resolved_model_path(self) -> Path:
         p = Path(self.model_path)
@@ -98,6 +104,26 @@ def phone_near_face(detections: tuple[PhoneDetection, ...], face: BBox | None, c
         if zx1 <= cx <= zx2 and zy1 <= cy <= zy2:
             return True
     return False
+
+
+class FaceBoxMemory:
+    """Last seen face box, reused for up to `max_age_s` after the face is lost.
+
+    Call `update()` every frame with the current face box (None when no face).
+    """
+
+    def __init__(self, max_age_s: float) -> None:
+        self.max_age_s = max_age_s
+        self._face: BBox | None = None
+        self._seen_at: float | None = None
+
+    def update(self, face: BBox | None, t: float) -> BBox | None:
+        if face is not None:
+            self._face, self._seen_at = face, t
+            return face
+        if self._seen_at is not None and t - self._seen_at <= self.max_age_s:
+            return self._face
+        return None
 
 
 # --------------------------------------------------------------------------- YOLO model
@@ -157,6 +183,9 @@ class YoloPhoneModel:
         opts = ort.SessionOptions()
         opts.intra_op_num_threads = self.config.num_threads  # leave CPU for the main loop
         opts.inter_op_num_threads = 1
+        # YOLO runs ~5x/s: idle pool threads must sleep, not busy-wait on cores MediaPipe needs
+        # (measured: -22% CPU of this thread, same latency).
+        opts.add_session_config_entry("session.intra_op.allow_spinning", "0")
         self._session = ort.InferenceSession(str(model), opts, providers=["CPUExecutionProvider"])
         self._input_name = self._session.get_inputs()[0].name
 
@@ -188,6 +217,7 @@ class AsyncPhoneDetector:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.runs = 0
+        self.stale_results = 0  # results already older than max_result_age_s when they arrived
 
     def start(self) -> AsyncPhoneDetector:
         if self._thread is None:
@@ -250,4 +280,14 @@ class AsyncPhoneDetector:
                 finished_at=time.monotonic(),
             )
             self.runs += 1
+            age_s = self._result.finished_at - frame.timestamp
+            if age_s > self.config.max_result_age_s:
+                self.stale_results += 1
+                if self.stale_results == 1:
+                    print(
+                        f"[phone] WARNING: result arrived {age_s * 1000:.0f} ms after its frame "
+                        f"(inference {infer_ms:.0f} ms) > phone.max_result_age_s "
+                        f"({self.config.max_result_age_s * 1000:.0f} ms): it counts as unknown. If this "
+                        "keeps happening, phone detection is effectively off: use a smaller / INT8 model"
+                    )
             next_run = max(next_run + period, time.monotonic())

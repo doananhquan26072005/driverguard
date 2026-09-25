@@ -5,8 +5,13 @@ Turns the per-frame risk level into stable alerts:
   active (L3 can be 0 s = immediate). One noisy frame cannot raise an alert.
 - Fall hysteresis: the level must stay lower for fall_hold_s before the active level
   drops, so an alert does not flicker on / off.
-- Cooldown: once an alert of a level is emitted, the same level is not emitted again
-  within cooldown_s[level]. A higher level is always emitted (escalation).
+- New reason at the same level: while a level is active, a reason that was not in its
+  alerts yet (e.g. L2 off_road, then L2 phone) is emitted as a new alert once it has
+  held for rise_confirm_s[level], so the dashboard gets an event for every cause.
+  When the active level drops, the reasons of the lower level do not raise a new alert.
+- Cooldown: per (level, reason). An alert is held back only when every one of its
+  reasons was already emitted at that level within cooldown_s[level]. A higher level
+  is always emitted (escalation).
 
 `active_level` is what the HUD shows; `new_alert` is set only on the frame an alert
 is emitted (chime / sound / seat vibration, metadata event).
@@ -17,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from edge_agent.config import check_keys
 from edge_agent.decision.risk_engine import RiskAssessment
 
 LEVEL_ACTIONS = {
@@ -42,6 +48,7 @@ class AlertConfig:
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:
         d = d or {}
+        check_keys("alert", {k: k for k in d}, cls.__dataclass_fields__)
         default = cls()
         return cls(
             rise_confirm_s=_levels(d.get("rise_confirm_s"), default.rise_confirm_s),
@@ -80,26 +87,60 @@ class AlertManager:
         self._candidate: int | None = None
         self._candidate_since = 0.0
         self._lower_since: float | None = None
-        self._last_emit: dict[int, float] = {}
+        self._last_emit: dict[tuple[int, str], float] = {}  # (level, reason) -> last emit time
+        self._alerted: set[str] = set()  # reasons already covered by an alert at the active level
+        self._new_reason_since: float | None = None
+        self._reason_seen: dict[str, float] = {}  # reason -> last time it was a hit at the active level
+
+    def _emit(self, r: RiskAssessment, level: int, reasons: tuple[str, ...]) -> AlertOutput:
+        t = r.t
+        self._alerted |= set(reasons)
+        keys = reasons or ("",)
+        cooldown = self.config.cooldown_s.get(level, 0.0)
+        if all(t - self._last_emit.get((level, k), -float("inf")) < cooldown for k in keys):
+            return AlertOutput(t, level, self._active_reasons, None, suppressed=True)
+        for k in keys:
+            self._last_emit[(level, k)] = t
+        alert = Alert(t, level, reasons, r.drowsy_score, r.distraction_score)
+        return AlertOutput(t, level, self._active_reasons, alert)
 
     def _raise(self, r: RiskAssessment, level: int) -> AlertOutput:
-        t = r.t
         self.active_level = level
         self._active_reasons = r.reasons
         self._candidate = None
         self._lower_since = None
-        last = self._last_emit.get(level)
-        if last is not None and t - last < self.config.cooldown_s.get(level, 0.0):
-            return AlertOutput(t, level, self._active_reasons, None, suppressed=True)
-        self._last_emit[level] = t
-        alert = Alert(t, level, r.reasons, r.drowsy_score, r.distraction_score)
-        return AlertOutput(t, level, self._active_reasons, alert)
+        self._alerted = set()
+        self._new_reason_since = None
+        self._reason_seen = dict.fromkeys(r.reasons, r.t)
+        return self._emit(r, level, r.reasons)
+
+    def _check_new_reasons(self, r: RiskAssessment) -> AlertOutput | None:
+        """Same level as active: emit when a reason not yet alerted has held long enough."""
+        for x in r.reasons:
+            self._reason_seen[x] = r.t
+        # A reason counts as new again only after it was gone for fall_hold_s, like the level
+        # itself: a reason flickering off for a frame or two must not re-alert.
+        self._alerted = {
+            x for x in self._alerted if r.t - self._reason_seen.get(x, float("-inf")) < self.config.fall_hold_s
+        }
+        new = tuple(x for x in r.reasons if x not in self._alerted)
+        if not new:
+            self._new_reason_since = None
+            return None
+        if self._new_reason_since is None:
+            self._new_reason_since = r.t
+        if r.t - self._new_reason_since < self.config.rise_confirm_s.get(self.active_level, 0.0):
+            return None
+        self._new_reason_since = None
+        # New reasons first: the publisher derives the event kind from the first reason.
+        return self._emit(r, self.active_level, new + tuple(x for x in r.reasons if x not in new))
 
     def update(self, r: RiskAssessment) -> AlertOutput:
         t, target = r.t, r.level
 
         if target > self.active_level:
             self._lower_since = None
+            self._new_reason_since = None
             # A higher target restarts the confirmation; a lower-but-still-raised target keeps it.
             if self._candidate is None or target > self._candidate:
                 self._candidate, self._candidate_since = target, t
@@ -109,16 +150,22 @@ class AlertManager:
                 return self._raise(r, self._candidate)
         elif target < self.active_level:
             self._candidate = None
+            self._new_reason_since = None
             if self._lower_since is None:
                 self._lower_since = t
             if t - self._lower_since >= self.config.fall_hold_s:
                 self.active_level = target
                 self._active_reasons = r.reasons
+                self._alerted = set(r.reasons)  # dropping a level is not a new alert
+                self._reason_seen = dict.fromkeys(r.reasons, t)
                 self._lower_since = None
         else:
             self._candidate = None
             self._lower_since = None
             if target > 0:
                 self._active_reasons = r.reasons
+                out = self._check_new_reasons(r)
+                if out is not None:
+                    return out
 
         return AlertOutput(t, self.active_level, self._active_reasons)

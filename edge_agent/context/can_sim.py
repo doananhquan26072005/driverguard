@@ -48,7 +48,7 @@ class Scenario:
 @dataclass(frozen=True)
 class VehicleSignals:
     t: float  # scenario time, seconds
-    speed_kmh: float
+    speed_kmh: float | None  # None = no speed signal (the simulator always has one)
     turn_signal: str | None  # "left" / "right" or None
     drive_time_s: float  # total time spent moving, including initial_drive_time_s
     clock_hour: float  # local time of day, 0..24

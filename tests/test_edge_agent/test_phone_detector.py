@@ -5,6 +5,7 @@ import pytest
 
 from edge_agent.perception.phone_detector import (
     AsyncPhoneDetector,
+    FaceBoxMemory,
     PhoneDetection,
     PhoneDetectorConfig,
     decode_yolov8,
@@ -85,6 +86,16 @@ def test_no_face_means_no_phone_near_face():
     assert phone_near_face((det(350, 160),), None, CFG) is False
 
 
+def test_face_memory_keeps_zone_when_phone_hides_face():
+    mem = FaceBoxMemory(3.0)
+    assert mem.update(None, 0.0) is None  # no face seen yet
+    assert mem.update(FACE, 1.0) == FACE
+    # Phone in front of the face: MediaPipe loses it, the zone is still known.
+    face = mem.update(None, 3.5)
+    assert face == FACE and phone_near_face((det(350, 160),), face, CFG) is True
+    assert mem.update(None, 4.1) is None  # too old
+
+
 def make_frame(i, t):
     img = np.zeros((8, 8, 3), dtype=np.uint8)
     return PreprocessedFrame(img, img[..., 0], 0.0, False, 1.0, i, t)
@@ -136,3 +147,49 @@ def test_slow_model_does_not_block_submit():
         for i in range(50):
             detector.submit(make_frame(i, 0.0))
         assert time.perf_counter() - t0 < 0.1
+
+
+def test_too_slow_model_is_counted_and_warned_once(capsys):
+    # Inference (0.1 s) longer than max_result_age_s (0.05 s): every result is unknown.
+    cfg = PhoneDetectorConfig(target_fps=100.0, max_result_age_s=0.05)
+    with AsyncPhoneDetector(cfg, model=FakeModel(delay=0.1)) as detector:
+        for i in range(40):
+            detector.submit(make_frame(i, time.monotonic()))
+            if detector.runs >= 2:
+                break
+            time.sleep(0.02)
+        assert detector.runs >= 2 and detector.stale_results == detector.runs
+        assert detector.latest() is None
+    assert capsys.readouterr().out.count("WARNING") == 1
+
+
+def test_fast_model_is_not_stale(capsys):
+    cfg = PhoneDetectorConfig(target_fps=100.0, max_result_age_s=0.5)
+    with AsyncPhoneDetector(cfg, model=FakeModel()) as detector:
+        for i in range(50):
+            detector.submit(make_frame(i, time.monotonic()))
+            if detector.runs >= 3:
+                break
+            time.sleep(0.01)
+        assert detector.runs >= 3 and detector.stale_results == 0
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_yolo_session_does_not_spin(monkeypatch):
+    import onnxruntime as ort
+
+    from edge_agent.perception.phone_detector import YoloPhoneModel
+
+    seen = {}
+
+    class FakeSession:
+        def __init__(self, path, opts, providers):
+            seen["spin"] = opts.get_session_config_entry("session.intra_op.allow_spinning")
+
+        def get_inputs(self):
+            return [type("I", (), {"name": "images"})()]
+
+    monkeypatch.setattr(ort, "InferenceSession", FakeSession)
+    monkeypatch.setattr(PhoneDetectorConfig, "resolved_model_path", lambda self: __import__("pathlib").Path(__file__))
+    YoloPhoneModel(PhoneDetectorConfig())
+    assert seen["spin"] == "0"

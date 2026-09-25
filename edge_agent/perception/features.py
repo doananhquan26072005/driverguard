@@ -12,6 +12,10 @@ Angle conventions (camera looking at the driver):
 
 Output is `FrameFeatures`, always produced (fields are None when no face),
 so the temporal blocks get one sample per frame.
+
+face_reliable: face_conf (fraction of landmarks inside the image) >= `min_face_conf`.
+A face partly out of frame has extrapolated landmarks, so EAR / MAR / pose are kept for
+display but blocks 7 and 8 treat the frame as "not measurable".
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from edge_agent.config import config_from_dict
 from edge_agent.perception.landmarks import FaceLandmarks
 
 # MediaPipe Face Mesh indices. "Right"/"left" are the driver's own sides.
@@ -58,11 +63,12 @@ POSE_MODEL_POINTS = np.array(
 class FeatureConfig:
     # Camera focal length in pixels = focal_length_scale * image width (no calibration).
     focal_length_scale: float = 1.0
+    # Below this face_conf the measurements are not trusted (face_reliable = False).
+    min_face_conf: float = 0.9
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> FeatureConfig:
-        d = d or {}
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        return config_from_dict(cls, d, "features")
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,7 @@ class FrameFeatures:
     timestamp: float
     face_found: bool
     face_conf: float
+    face_reliable: bool = True  # face_found and face_conf >= features.min_face_conf
     ear: float | None = None
     ear_left: float | None = None
     ear_right: float | None = None
@@ -157,7 +164,9 @@ class FeatureExtractor:
     def __call__(self, lm: FaceLandmarks | None, frame_id: int, timestamp: float) -> FrameFeatures:
         if lm is None:
             self.reset()
-            return FrameFeatures(frame_id=frame_id, timestamp=timestamp, face_found=False, face_conf=0.0)
+            return FrameFeatures(
+                frame_id=frame_id, timestamp=timestamp, face_found=False, face_conf=0.0, face_reliable=False
+            )
 
         ear_left = eye_aspect_ratio(lm.points, LEFT_EYE)
         ear_right = eye_aspect_ratio(lm.points, RIGHT_EYE)
@@ -168,6 +177,7 @@ class FeatureExtractor:
             timestamp=timestamp,
             face_found=True,
             face_conf=lm.face_conf,
+            face_reliable=lm.face_conf >= self.config.min_face_conf,
             ear=(ear_left + ear_right) / 2.0,
             ear_left=ear_left,
             ear_right=ear_right,

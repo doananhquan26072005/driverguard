@@ -47,9 +47,10 @@ của đội thì báo BTC — repo tự tạo nằm ngoài org sẽ không đư
 ### 2. Cài môi trường
 
 ```bash
-python3.11 -m venv .venv
+uv venv -p 3.12 --seed .venv    # Python >= 3.11
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+uv pip install -r requirements-dev.txt        # DriverGuard + ruff / pytest
+uv pip install -r requirements-template.txt   # only for the course template (src/)
 ```
 
 ### 3. Cấu hình biến môi trường

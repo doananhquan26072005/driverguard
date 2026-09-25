@@ -18,6 +18,7 @@ D0 = DrowsinessState(
     microsleep=False,
     perclos_60s=0.0,
     perclos_coverage_s=60.0,
+    perclos_ready=True,
     blink_rate=15.0,
     yawning=False,
     yawn_count_10min=0,
@@ -69,7 +70,7 @@ def test_drowsy_score_l2_and_capped():
 
 
 def test_perclos_needs_coverage():
-    r = assess(d=replace(D0, perclos_60s=0.3, perclos_coverage_s=10.0))
+    r = assess(d=replace(D0, perclos_60s=0.3, perclos_coverage_s=10.0, perclos_ready=False))
     assert r.drowsy_terms[0] == 0.0 and r.level == 0
 
 
@@ -105,10 +106,49 @@ def test_phone_ratio_60_percent_is_l2(ratio, level):
     assert assess(x=replace(X0, phone_ratio_2s=ratio)).level == level
 
 
+@pytest.mark.parametrize(("no_face", "level"), [(2.9, 0), (3.0, 2)])
+def test_no_face_3s_while_moving_is_l2(no_face, level):
+    r = assess(x=replace(X0, no_face_duration=no_face))
+    assert r.level == level
+    assert r.reasons == (("no_face",) if level else ())
+
+
+def test_no_face_not_muted_by_turn_signal():
+    r = assess(x=replace(X0, no_face_duration=4.0), c=replace(C0, turning=True))
+    assert r.reasons == ("no_face",)
+
+
 def test_distraction_silent_when_stopped():
     x = replace(X0, active=False, off_road_duration=0.0, phone_ratio_2s=0.0)
     r = assess(x=x, c=replace(C0, speed_kmh=0.0, moving=False))
     assert r.level == 0 and r.distraction_score == 0
+
+
+STILL = {"speed_kmh": 0.0, "moving": False, "stationary": True}
+
+
+@pytest.mark.parametrize(
+    ("ctx", "level"),
+    [
+        ({}, 3),  # driving
+        ({"speed_kmh": 3.0, "moving": False}, 3),  # crawling in a jam is not a stop
+        ({**STILL, "stationary_s": 30.0}, 1),  # red light: capped (chime)
+        ({**STILL, "stationary_s": 200.0, "resting": True}, 0),  # parked for a rest
+    ],
+)
+def test_microsleep_level_while_standing_still(ctx, level):
+    r = assess(d=replace(D0, closed_duration=2.0), c=replace(C0, **ctx))
+    assert r.level == level
+    assert r.reasons == (("microsleep",) if level else ())
+    if not level:
+        assert r.hits == ()
+
+
+def test_stationary_cap_from_config():
+    d = replace(D0, closed_duration=2.0)
+    red_light = replace(C0, **STILL, stationary_s=30.0)
+    assert assess(d=d, c=red_light, engine=RiskEngine(RiskConfig(drowsy_stationary_max_level=3))).level == 3
+    assert assess(d=d, c=red_light, engine=RiskEngine(RiskConfig(drowsy_stationary_max_level=0))).hits == ()
 
 
 def test_highest_rule_wins_and_all_hits_kept():
@@ -159,6 +199,20 @@ def test_linear_slope():
     assert linear_slope([]) is None and linear_slope([3.0]) is None
     assert linear_slope([1.0, 1.0, 1.0]) == pytest.approx(0.0)
     assert linear_slope([10.0, 8.0, 6.0]) == pytest.approx(-2.0)
+
+
+def test_trip_memory_forgets_a_rest():
+    mem = TripMemory(TripMemoryConfig(bin_s=60))
+    for t in range(180):  # 3 minutes of driving, one microsleep
+        mem.update(float(t), 10.0, ("microsleep",) if t == 100 else ())
+    for t in range(180, 300):  # stopped, not a rest yet: still binned
+        mem.update(float(t), 80.0, ("microsleep",) if t == 200 else ())
+    for t in range(300, 600):  # the stop became a rest: not binned
+        mem.update(float(t), 90.0, ("microsleep",) if t == 400 else (), observed=False)
+    mem.forget_since(180.0)  # driving off: drop everything since the vehicle stopped
+    state = mem.update(600.0, 5.0)
+    assert state.minute_scores == (10.0, 10.0, 10.0)
+    assert state.last_microsleep_t == 100.0
 
 
 def test_trip_memory_counts_alerts():
@@ -234,3 +288,72 @@ def test_alert_config_from_yaml_dict():
     cfg = AlertConfig.from_dict({"rise_confirm_s": {"2": 0.8}, "cooldown_s": {3: 5}})
     assert cfg.rise_confirm_s[2] == 0.8 and cfg.rise_confirm_s[1] == 1.0
     assert cfg.cooldown_s[3] == 5.0
+
+
+def risk_reasons(t, level, reasons):
+    hits = tuple(RuleHit(level, x, 1.0) for x in reasons)
+    return RiskAssessment(t, level, hits, 0.0, 0.0, (0, 0, 0, 0))
+
+
+def run_reasons(manager, steps, t0=0.0, dt=0.1):
+    """steps: list of (level, reasons), one per dt."""
+    return [manager.update(risk_reasons(t0 + i * dt, lv, rs)) for i, (lv, rs) in enumerate(steps)]
+
+
+def emitted_reasons(outputs):
+    return [(round(o.t, 1), o.new_alert.level, o.new_alert.reasons) for o in outputs if o.new_alert is not None]
+
+
+def test_new_reason_at_same_level_is_a_new_alert():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("off_road", "phone"))] * 10
+    out = run_reasons(m, steps)
+    # phone joins at 2.0 s, holds the 0.5 s L2 confirmation, new reason listed first
+    assert emitted_reasons(out) == [(0.5, 2, ("off_road",)), (2.5, 2, ("phone", "off_road"))]
+
+
+def test_new_reason_must_hold_before_alert():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("off_road", "phone"))] * 3 + [(2, ("off_road",))] * 10
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",))]
+
+
+def test_reason_switch_at_same_level_is_alerted():
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 20 + [(2, ("phone",))] * 10
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",)), (2.5, 2, ("phone",))]
+
+
+def test_cooldown_is_per_reason():
+    m = AlertManager(CFG)
+    # off_road alert, back to L0, off_road again within 30 s: suppressed; phone: emitted.
+    steps = [(2, ("off_road",))] * 10 + [(0, ())] * 40 + [(2, ("off_road",))] * 10
+    out = run_reasons(m, steps)
+    assert emitted_reasons(out) == [(0.5, 2, ("off_road",))] and any(o.suppressed for o in out)
+    steps = [(0, ())] * 40 + [(2, ("phone",))] * 10
+    assert emitted_reasons(run_reasons(m, steps, t0=6.0)) == [(10.5, 2, ("phone",))]
+
+
+def test_dropping_a_level_is_not_a_new_alert():
+    m = AlertManager(CFG)
+    steps = [(3, ("microsleep",))] * 5 + [(2, ("phone",))] * 60
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.0, 3, ("microsleep",))]
+    assert m.active_level == 2
+
+
+def test_flickering_reason_is_not_re_alerted():
+    # phone drops out for one frame every 2 s for 60 s: one phone alert, not one per cooldown.
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 10
+    for _ in range(30):
+        steps += [(2, ("off_road", "phone"))] * 19 + [(2, ("off_road",))]
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",)), (1.5, 2, ("phone", "off_road"))]
+
+
+def test_reason_gone_longer_than_fall_hold_is_new_again():
+    # phone gone 4 s (> fall_hold_s 3 s), back after its 30 s cooldown: a new alert.
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road", "phone"))] * 10 + [(2, ("off_road",))] * 350 + [(2, ("off_road", "phone"))] * 10
+    out = emitted_reasons(run_reasons(m, steps))
+    assert out[0] == (0.5, 2, ("off_road", "phone"))
+    assert out[-1][2][0] == "phone" and out[-1][0] == pytest.approx(36.5, abs=0.11)

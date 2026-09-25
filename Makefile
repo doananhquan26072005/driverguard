@@ -1,19 +1,30 @@
-.PHONY: run test lint format typecheck check clean
+.PHONY: venv run test lint format typecheck check clean frontend-test
+
+PY_DIRS = edge_agent/ backend/ tools/ tests/
+
+# Python 3.12 venv with DriverGuard runtime + dev tools (course template: requirements-template.txt)
+venv:
+	uv venv -p 3.12 --seed .venv
+	uv pip install --python .venv/bin/python -r requirements-dev.txt
+
 
 run:
-	uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+	uvicorn backend.app:app --reload --port 8100
 
 test:
 	pytest tests/ -v
 
 lint:
-	ruff check src/ tests/
+	ruff check $(PY_DIRS)
 
 format:
-	ruff format src/ tests/
+	ruff format $(PY_DIRS)
 
 typecheck:
-	mypy src/
+	cd frontend && npm run typecheck
+
+frontend-test:
+	cd frontend && npm test
 
 check: lint format test
 

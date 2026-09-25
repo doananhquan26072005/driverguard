@@ -6,12 +6,16 @@ Rule table (docs/workflow/workflow_full_4.jpg):
   >= l1 -> L1, >= l2 -> L2; multiplied by night / long-drive factors from context
 - off_road_duration >= off_road_s (off_road_high_speed_s at high speed) -> L2
 - phone_ratio_2s >= phone_ratio                          -> L2
+- no_face_duration >= no_face_s (moving)                 -> L2 (driver slumped / camera covered)
 - trend_15min >= slope_per_min (enough history, score not trivial) -> trend.level (early warning)
 - blink_rate outside [normal_min, normal_max]            -> blink.level (0 = note only)
 The final level is the highest level among the rules that fire.
 
 Context: distraction rules only while moving; off-road is expected while the turn
-signal is on. Stateless: same inputs -> same output.
+signal is on. Drowsiness rules while standing still (block 10) are capped at
+`drowsy.stationary_max_level`: a microsleep at a red light still gets a chime, a driver
+closing the eyes to rest after parking gets no strong alarm. Once the stop is a rest
+(context.rest_after_s) they are off. Stateless: same inputs -> same output.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from typing import Any
 
 from edge_agent.analysis.distraction import DistractionState
 from edge_agent.analysis.drowsiness import DrowsinessState
-from edge_agent.config import flatten
+from edge_agent.config import config_from_dict
 from edge_agent.context.vehicle_context import VehicleContext
 from edge_agent.decision.trip_memory import TripState
 
@@ -35,7 +39,6 @@ class RiskConfig:
     drowsy_weight_nod: float = 20.0
     drowsy_perclos_low: float = 0.05
     drowsy_perclos_high: float = 0.20
-    drowsy_perclos_min_coverage_s: float = 30.0
     drowsy_yawn_full: float = 3.0
     drowsy_nod_full: float = 2.0
     drowsy_microsleep_memory_s: float = 300.0
@@ -43,10 +46,11 @@ class RiskConfig:
     drowsy_l2: float = 70.0
     drowsy_night_factor: float = 1.2
     drowsy_long_drive_factor: float = 1.2
-    drowsy_active_when_stopped: bool = True
+    drowsy_stationary_max_level: int = 1  # 0 = off while standing still, 3 = no cap
     distraction_off_road_s: float = 2.0
     distraction_off_road_high_speed_s: float = 1.5
     distraction_phone_ratio: float = 0.6
+    distraction_no_face_s: float = 3.0
     trend_level: int = 1
     trend_min_points: int = 5
     trend_slope_per_min: float = 2.0
@@ -58,14 +62,13 @@ class RiskConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> RiskConfig:
-        flat = flatten(d)
-        return cls(**{k: flat[k] for k in cls.__dataclass_fields__ if k in flat})
+        return config_from_dict(cls, d, "risk")
 
 
 @dataclass(frozen=True)
 class RuleHit:
     level: int
-    reason: str  # microsleep, drowsy_score, off_road, phone, trend, blink_rate
+    reason: str  # microsleep, drowsy_score, off_road, phone, no_face, trend, blink_rate
     value: float  # the measurement that fired the rule
 
 
@@ -98,7 +101,7 @@ class RiskEngine:
     ) -> tuple[float, tuple[float, float, float, float]]:
         cfg = self.config
         perclos = 0.0
-        if d.perclos_coverage_s >= cfg.drowsy_perclos_min_coverage_s:
+        if d.perclos_ready:  # enough eye data: drowsiness.perclos_min_coverage_s (single source)
             perclos = ramp(d.perclos_60s, cfg.drowsy_perclos_low, cfg.drowsy_perclos_high)
         recent = "microsleep" in d.events or (
             trip is not None
@@ -120,6 +123,14 @@ class RiskEngine:
             score *= cfg.drowsy_long_drive_factor
         return min(score, 100.0), (perclos, microsleep, yawn, nod)
 
+    def drowsy_level_cap(self, ctx: VehicleContext) -> int:
+        """Highest level the drowsiness rules may raise: none during a rest, capped at a stop."""
+        if ctx.resting:
+            return 0
+        if ctx.stationary:
+            return self.config.drowsy_stationary_max_level
+        return 3
+
     def off_road_threshold(self, ctx: VehicleContext) -> float:
         cfg = self.config
         return cfg.distraction_off_road_high_speed_s if ctx.high_speed else cfg.distraction_off_road_s
@@ -136,8 +147,8 @@ class RiskEngine:
 
         # Drowsiness branch
         drowsy, terms = self.drowsy_score(d, ctx, trip)
-        drowsy_on = ctx.moving or cfg.drowsy_active_when_stopped
-        if drowsy_on:
+        cap = self.drowsy_level_cap(ctx)
+        if cap > 0:
             if d.closed_duration >= cfg.microsleep_l3_s:
                 hits.append(RuleHit(3, "microsleep", d.closed_duration))
             if drowsy >= cfg.drowsy_l2:
@@ -157,17 +168,24 @@ class RiskEngine:
                 cfg.blink_normal_min <= d.blink_rate <= cfg.blink_normal_max
             ):
                 hits.append(RuleHit(cfg.blink_level, "blink_rate", d.blink_rate))
+            hits = [RuleHit(min(h.level, cap), h.reason, h.value) for h in hits]
 
         # Distraction branch: only while moving (block 8 already resets when stopped).
         off_road_thr = self.off_road_threshold(ctx)
         off_road = 0.0 if ctx.turning else x.off_road_duration
         distraction = 0.0
         if x.active and ctx.moving:
-            distraction = 100.0 * min(max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio), 1.0)
+            no_face_term = x.no_face_duration / cfg.distraction_no_face_s if cfg.distraction_no_face_s > 0 else 0.0
+            distraction = 100.0 * min(
+                max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio, no_face_term), 1.0
+            )
             if off_road >= off_road_thr:
                 hits.append(RuleHit(2, "off_road", off_road))
             if x.phone_ratio_2s >= cfg.distraction_phone_ratio:
                 hits.append(RuleHit(2, "phone", x.phone_ratio_2s))
+            # Not muted by the turn signal: a shoulder check never hides the face this long.
+            if cfg.distraction_no_face_s > 0 and x.no_face_duration >= cfg.distraction_no_face_s:
+                hits.append(RuleHit(2, "no_face", x.no_face_duration))
 
         hits.sort(key=lambda h: -h.level)
         level = max((h.level for h in hits), default=0)

@@ -112,7 +112,7 @@ export default function Dashboard() {
 
       <main className="dash-main">
         <div className="filters" role="group" aria-label="Bộ lọc">
-          <label className="inline">
+          <label className="field-inline">
             Thời gian
             <select value={filters.range} onChange={(e) => setFilters({ ...filters, range: e.target.value as RangeKey })}>
               {RANGES.map((r) => (
@@ -124,7 +124,7 @@ export default function Dashboard() {
           </label>
           {tab === "events" && (
             <>
-              <label className="inline">
+              <label className="field-inline">
                 Mức từ
                 <select value={filters.minLevel} onChange={(e) => setFilters({ ...filters, minLevel: Number(e.target.value) })}>
                   {([0, 1, 2, 3] as const).map((lv) => (
@@ -135,7 +135,7 @@ export default function Dashboard() {
                 </select>
               </label>
               {session.role !== "driver" && (
-                <label className="inline">
+                <label className="field-inline">
                   Tài xế
                   <input
                     list="drivers"
@@ -150,7 +150,7 @@ export default function Dashboard() {
                   </datalist>
                 </label>
               )}
-              <label className="inline check">
+              <label className="field-inline check">
                 <input
                   type="checkbox"
                   checked={filters.falseAlarmOnly}

@@ -38,6 +38,7 @@ from edge_agent.analysis.drowsiness import (  # noqa: E402
 )
 from edge_agent.capture import CaptureConfig, FrameSource  # noqa: E402
 from edge_agent.config import load_thresholds  # noqa: E402
+from edge_agent.context.vehicle_context import ContextConfig  # noqa: E402
 from edge_agent.perception import PreprocessConfig, Preprocessor  # noqa: E402
 from edge_agent.perception.eye_state import EyeStateConfig, make_estimator  # noqa: E402
 from edge_agent.perception.features import (  # noqa: E402
@@ -54,6 +55,8 @@ from edge_agent.perception.features import (  # noqa: E402
 from edge_agent.perception.landmarks import FaceLandmarkDetector, FaceLandmarks, LandmarkConfig  # noqa: E402
 from edge_agent.perception.phone_detector import (  # noqa: E402
     AsyncPhoneDetector,
+    BBox,
+    FaceBoxMemory,
     PhoneDetectorConfig,
     PhoneResult,
     driver_zone,
@@ -87,11 +90,8 @@ def draw_overlay(image: np.ndarray, lines: list[Line]) -> None:
         cv2.putText(image, text, (10, 20 + i * line_h), font, scale, color, 1, cv2.LINE_AA)
 
 
-def draw_phone(
-    image: np.ndarray, result: PhoneResult | None, lm: FaceLandmarks | None, cfg: PhoneDetectorConfig
-) -> None:
+def draw_phone(image: np.ndarray, result: PhoneResult | None, face: BBox | None, cfg: PhoneDetectorConfig) -> None:
     """Driver zone (thin) and phone boxes: orange inside the zone, gray outside."""
-    face = face_bbox(lm.points) if lm is not None else None
     if face is not None:
         zx1, zy1, zx2, zy2 = (int(v) for v in driver_zone(face, cfg))
         cv2.rectangle(image, (zx1, zy1), (zx2, zy2), (90, 90, 90), 1)
@@ -120,13 +120,13 @@ def distraction_lines(
     ]
 
 
-def drowsiness_lines(d: DrowsinessState, min_coverage_s: float, f: FrameFeatures) -> list[Line]:
+def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
     eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
     if d.eye_source == "cnn":  # block 5 decided: show its probability and why it was called
         eyes += f" [CNN p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
     elif d.eye_source == "ear":
         eyes += " [EAR]"
-    warming = "" if d.perclos_coverage_s >= min_coverage_s else f" (warming up {d.perclos_coverage_s:.0f}s)"
+    warming = "" if d.perclos_ready else f" (warming up {d.perclos_coverage_s:.0f}s)"
     return [
         (
             f"eyes {eyes} {d.closed_duration:3.1f}s  PERCLOS {d.perclos_60s:.2f}{warming}  blinks {d.blink_rate:.0f}/min",
@@ -289,6 +289,7 @@ def main() -> int:
     drowsiness = DrowsinessAnalyzer(DrowsinessConfig.from_dict(thresholds.get("drowsiness")))
     yawn_mar = drowsiness.config.yawn_mar_open
     distraction = DistractionAnalyzer(DistractionConfig.from_dict(thresholds.get("distraction")))
+    context_cfg = ContextConfig.from_dict(thresholds.get("context"))
     moving_speed = args.speed if args.speed else 50.0
     speed: float | None = args.speed
 
@@ -301,6 +302,7 @@ def main() -> int:
     last_t = time.monotonic()
     shown = None
     smoother = DisplaySmoother(args.smooth)
+    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
     history: deque[FrameFeatures] = deque()
     text_lines: list[Line] = []
     last_text_t = 0.0
@@ -331,9 +333,9 @@ def main() -> int:
                 if phone_detector is not None:
                     phone_detector.submit(pre)  # YOLO runs on its own thread at ~5 FPS
                     phone = phone_detector.latest()
-                face = face_bbox(lm.points) if lm is not None else None
+                face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                 phone_flag = None if phone is None else phone_near_face(phone.detections, face, phone_cfg)
-                dstate = distraction.update(feats, phone_flag, speed)
+                dstate = distraction.update(feats, phone_flag, context_cfg.is_moving(speed))
                 drowsy = drowsiness.update(feats)
                 t3 = time.perf_counter()
 
@@ -362,7 +364,7 @@ def main() -> int:
                 target = processed if (side_by_side or not show_raw) else raw.copy()
                 if show_landmarks and lm is not None:
                     draw_landmarks(target, lm, extractor)
-                draw_phone(target, phone, lm, phone_cfg)
+                draw_phone(target, phone, face, phone_cfg)
                 if side_by_side:
                     shown = np.hstack([raw, target])
                 else:
@@ -383,7 +385,7 @@ def main() -> int:
                         f"brightness {pre.brightness:5.1f}  IR {pre.is_ir}  {w}x{h}",
                         f"frame {pre.frame_id}  dropped {source.dropped_frames}",
                         *feature_lines(values, feats, lm.num_faces if lm else 0),
-                        *drowsiness_lines(drowsy, drowsiness.config.perclos_min_coverage_s, feats),
+                        *drowsiness_lines(drowsy, feats),
                         *distraction_lines(dstate, phone_flag, phone, speed),
                     ]
                 draw_overlay(shown, text_lines)

@@ -1,0 +1,76 @@
+/* Tailwind v4 for the HUD only. No preflight, so the dashboard keeps its own base styles
+   (styles.css), and only src/hud/ is scanned, so dashboard class names never become utilities.
+   Layer order: legacy < utilities, so Tailwind classes always win on the HUD. A styles.css class
+   named like a utility the HUD uses (.grid, .inline, .hidden, ...) would be overridden: avoid. */
+@layer theme, legacy, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "./styles.css" layer(legacy);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./hud";
+
+/* Self-hosted: the in-car screen must work offline. Vietnamese subset is picked by unicode-range. */
+@import "@fontsource/be-vietnam-pro/500.css";
+@import "@fontsource/be-vietnam-pro/600.css";
+@import "@fontsource/be-vietnam-pro/700.css";
+@import "@fontsource/be-vietnam-pro/800.css";
+
+/* HUD design tokens. px on purpose: styles.css sets the root font-size to 15px. */
+@theme {
+  --font-hud: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --spacing: 4px; /* 8pt grid = spacing-2, 4, 6, 8, 12, 16 */
+
+  /* Surfaces: near-black, not pure black (less halation at night) */
+  --color-hud-bg: #0a0c10;
+  --color-hud-surface: #12151b;
+  --color-hud-raised: #1a1f27;
+  --color-hud-line: rgb(255 255 255 / 0.08);
+  --color-hud-ink: #e8eaed; /* off-white: less glare than #fff */
+  --color-hud-ink-2: #a1a9b4;
+  --color-hud-ink-3: #7d8590; /* >= 4.5:1 on bg and surface */
+
+  /* Status: one hue per level, never reused for anything else */
+  --color-hud-safe: #22c55e; /* L0 */
+  --color-hud-caution: #fbbf24; /* L1 */
+  --color-hud-warning: #f97316; /* L2, filled: dark text only */
+  --color-hud-on-warning: #1c0d02;
+  --color-hud-danger: #dc2626; /* L3, filled: white text 4.8:1 */
+  --color-hud-danger-deep: #7f1d1d; /* L3 pulse phase, white text 10:1 */
+  --color-hud-system: #60a5fa; /* device / camera / link: not the driver */
+
+  /* Type scale (tablet at 60-80 cm) */
+  --text-hud-label: 16px;
+  --text-hud-label--line-height: 1.3;
+  --text-hud-body: 20px;
+  --text-hud-body--line-height: 1.4;
+  --text-hud-metric: 44px;
+  --text-hud-metric--line-height: 1;
+  --text-hud-title: clamp(22px, 2.4vw, 30px);
+  --text-hud-title--line-height: 1.3;
+  --text-hud-display: clamp(40px, 6vw, 80px);
+  --text-hud-display--line-height: 1.05;
+
+  --radius-hud-sm: 12px;
+  --radius-hud: 20px;
+  --radius-hud-lg: 28px;
+
+  /* Motion: alerts appear fast, calm-down is slow. Pulse 1 Hz (WCAG 2.3.1: <= 3 flashes/s). */
+  --animate-hud-in-fast: hud-in 150ms ease-out both;
+  --animate-hud-in-slow: hud-in 600ms ease-out both;
+  --animate-hud-pulse: hud-pulse 1s ease-in-out infinite;
+
+  @keyframes hud-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+  }
+  @keyframes hud-pulse {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}

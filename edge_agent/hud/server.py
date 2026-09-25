@@ -17,25 +17,37 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from edge_agent.config import config_from_dict
 from edge_agent.decision.alert_manager import LEVEL_ACTIONS
 from edge_agent.decision.pipeline import DecisionResult
 
 log = logging.getLogger("driverguard.hud")
 
-FEEDBACK_WINDOW_S = 120.0  # the driver can flag an alert for this long after it fired
 MAX_BODY = 1024
+
+
+@dataclass(frozen=True)
+class HudConfig:
+    feedback_window_s: float = 120.0  # the driver can flag an alert for this long after it fired
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any] | None) -> HudConfig:
+        return config_from_dict(cls, d, "hud")
 
 
 class HudState:
     """Latest decision snapshot shared between the main loop and the HUD server. Thread-safe."""
 
-    def __init__(self, recent_alerts: int = 10) -> None:
+    def __init__(self, config: HudConfig | None = None, recent_alerts: int = 10) -> None:
+        self.config = config or HudConfig()
         self._lock = threading.Lock()
         self._snapshot: dict[str, Any] = {"connected": False, "level": 0, "reasons": []}
         self._alerts: deque[dict[str, Any]] = deque(maxlen=recent_alerts)
+        self._camera_lost = False
 
     def update(self, r: DecisionResult, fps: float) -> None:
         c = r.context
@@ -57,6 +69,10 @@ class HudState:
         with self._lock:
             self._snapshot = snapshot
 
+    def set_camera_lost(self, lost: bool) -> None:
+        with self._lock:
+            self._camera_lost = lost
+
     def add_alert(self, event_id: str, level: int, reasons: tuple[str, ...]) -> None:
         with self._lock:
             self._alerts.append(
@@ -72,7 +88,7 @@ class HudState:
                     continue
                 if alert["feedback"] is not None:
                     return "duplicate"
-                if now - alert["at"] > FEEDBACK_WINDOW_S:
+                if now - alert["at"] > self.config.feedback_window_s:
                     return "expired"
                 alert["feedback"] = "false_alarm"
                 return "ok"
@@ -80,7 +96,12 @@ class HudState:
 
     def to_json(self) -> dict[str, Any]:
         with self._lock:
-            return {**self._snapshot, "alerts": [dict(a) for a in reversed(self._alerts)]}
+            return {
+                **self._snapshot,
+                "camera_lost": self._camera_lost,  # driver not monitored, reconnecting
+                "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it
+                "alerts": [dict(a) for a in reversed(self._alerts)],
+            }
 
 
 def make_handler(
