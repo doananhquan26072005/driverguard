@@ -297,3 +297,21 @@ def test_dropping_a_level_is_not_a_new_alert():
     steps = [(3, ("microsleep",))] * 5 + [(2, ("phone",))] * 60
     assert emitted_reasons(run_reasons(m, steps)) == [(0.0, 3, ("microsleep",))]
     assert m.active_level == 2
+
+
+def test_flickering_reason_is_not_re_alerted():
+    # phone drops out for one frame every 2 s for 60 s: one phone alert, not one per cooldown.
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road",))] * 10
+    for _ in range(30):
+        steps += [(2, ("off_road", "phone"))] * 19 + [(2, ("off_road",))]
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",)), (1.5, 2, ("phone", "off_road"))]
+
+
+def test_reason_gone_longer_than_fall_hold_is_new_again():
+    # phone gone 4 s (> fall_hold_s 3 s), back after its 30 s cooldown: a new alert.
+    m = AlertManager(CFG)
+    steps = [(2, ("off_road", "phone"))] * 10 + [(2, ("off_road",))] * 350 + [(2, ("off_road", "phone"))] * 10
+    out = emitted_reasons(run_reasons(m, steps))
+    assert out[0] == (0.5, 2, ("off_road", "phone"))
+    assert out[-1][2][0] == "phone" and out[-1][0] == pytest.approx(36.5, abs=0.11)

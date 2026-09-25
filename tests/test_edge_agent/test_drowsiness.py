@@ -345,3 +345,47 @@ def test_describe_events():
     _, states = simulate(20, ear=lambda t: 0.08 if 10.0 <= t < 11.5 else OPEN)
     fired = next(s for s in states if "microsleep" in s.events)
     assert describe_events(fired) == ["[DROWSY] microsleep: eyes closed 1.0 s"]
+
+
+def test_sleep_right_after_yawn_with_head_drop_reaches_microsleep():
+    # Yawn 22-25 s, eyes shut from 24 s, head drops at 26 s (inside the 1.5 s hold) and stays
+    # down: the closure is carried and counted from the drop, not hidden by the yawn mask.
+    a, _ = simulate(20)
+    _, s = simulate(
+        10,
+        ear=lambda t: CLOSED if t >= 24.0 else OPEN,
+        mar=lambda t: WIDE if 22.0 <= t < 25.0 else 0.05,
+        pitch=lambda t: 40.0 if t >= 26.0 else 0.0,
+        analyzer=a,
+        t0=20.0,
+    )
+    assert any(x.head_drop for x in s)
+    assert events(s, "microsleep")[0] == pytest.approx(27.0, abs=3 * DT)
+    assert s[-1].closed_duration >= 1.5  # risk engine: L3
+
+
+def test_sleep_while_talking_with_head_drop_reaches_microsleep():
+    talk = pulses(0.4, 0.2, 0.35, 0.05)
+    a, _ = simulate(22, mar=talk)
+    _, s = simulate(
+        5,
+        ear=const(CLOSED),
+        mar=lambda t: talk(t) if t < 22.2 else 0.05,
+        pitch=lambda t: 40.0 if t >= 23.0 else 0.0,
+        analyzer=a,
+        t0=22.0,
+    )
+    assert any(x.head_drop for x in s)
+    assert events(s, "microsleep")
+    assert s[-1].closed_duration >= 1.5
+
+
+def test_face_lost_mid_sentence_is_no_microsleep():
+    # PR review: the talking mask is not extended while the face is lost (MAR unknown).
+    # That cannot fake a microsleep: with the eyes unknown and no head drop seen, the
+    # closure ends after max_gap_s instead of counting.
+    talk = pulses(0.4, 0.2, 0.35, 0.05)
+    a, _ = simulate(22, mar=talk)
+    _, s = simulate(4, ear=const(CLOSED), mar=talk, face=lambda t: t < 22.3, analyzer=a, t0=22.0)
+    assert not events(s, "microsleep")
+    assert all(x.closed_duration == 0.0 for x in s)

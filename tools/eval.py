@@ -262,44 +262,46 @@ def run_video(
     )
 
     cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"cannot open {path}")
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    fps = fps if 0 < fps < 1000 else 30.0
-    preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
-    extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
-    eye_state = make_estimator(EyeStateConfig.from_dict(thresholds.get("eye_state")))
-    phone_cfg = PhoneDetectorConfig.from_dict(thresholds.get("phone"))
-    yolo = YoloPhoneModel(phone_cfg) if use_phone else None
-    yolo_every = max(1, round(fps / phone_cfg.target_fps))  # same rate as the runtime thread
-    pipeline = DecisionPipeline(thresholds)
-    can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]}))
-    preds: list[Prediction] = []
-    detections: tuple = ()
-    last_yolo_t = -1e9
-    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
-    i = 0
-    with FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks"))) as landmarks:
-        while True:
-            ok, image = cap.read()
-            if not ok:
-                break
-            t = i / fps
-            pre = preprocessor(Frame(image=image, frame_id=i, timestamp=t))
-            lm = landmarks.detect(pre)
-            if yolo is not None and i % yolo_every == 0:
-                detections, last_yolo_t = yolo(pre.image), t
-            phone_flag = None
-            face = face_memory.update(face_bbox(lm.points) if lm else None, t)
-            if yolo is not None and t - last_yolo_t <= phone_cfg.max_result_age_s:
-                phone_flag = phone_near_face(detections, face, phone_cfg)
-            feats = extractor(lm, i, t)
-            if eye_state is not None:
-                feats = eye_state(pre, lm, feats)
-            r = pipeline.step(feats, phone_flag, can.sample(t))
-            preds += predictions_from_result(path.name, t, r)
-            i += 1
-    cap.release()
+    try:  # release the file even if a frame fails, so long runs do not leak handles
+        if not cap.isOpened():
+            raise RuntimeError(f"cannot open {path}")
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = fps if 0 < fps < 1000 else 30.0
+        preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
+        extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
+        eye_state = make_estimator(EyeStateConfig.from_dict(thresholds.get("eye_state")))
+        phone_cfg = PhoneDetectorConfig.from_dict(thresholds.get("phone"))
+        yolo = YoloPhoneModel(phone_cfg) if use_phone else None
+        yolo_every = max(1, round(fps / phone_cfg.target_fps))  # same rate as the runtime thread
+        pipeline = DecisionPipeline(thresholds)
+        can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]}))
+        preds: list[Prediction] = []
+        detections: tuple = ()
+        last_yolo_t = -1e9
+        face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
+        i = 0
+        with FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks"))) as landmarks:
+            while True:
+                ok, image = cap.read()
+                if not ok:
+                    break
+                t = i / fps
+                pre = preprocessor(Frame(image=image, frame_id=i, timestamp=t))
+                lm = landmarks.detect(pre)
+                if yolo is not None and i % yolo_every == 0:
+                    detections, last_yolo_t = yolo(pre.image), t
+                phone_flag = None
+                face = face_memory.update(face_bbox(lm.points) if lm else None, t)
+                if yolo is not None and t - last_yolo_t <= phone_cfg.max_result_age_s:
+                    phone_flag = phone_near_face(detections, face, phone_cfg)
+                feats = extractor(lm, i, t)
+                if eye_state is not None:
+                    feats = eye_state(pre, lm, feats)
+                r = pipeline.step(feats, phone_flag, can.sample(t))
+                preds += predictions_from_result(path.name, t, r)
+                i += 1
+    finally:
+        cap.release()
     return preds, i / fps
 
 

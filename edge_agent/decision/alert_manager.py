@@ -88,6 +88,7 @@ class AlertManager:
         self._last_emit: dict[tuple[int, str], float] = {}  # (level, reason) -> last emit time
         self._alerted: set[str] = set()  # reasons already covered by an alert at the active level
         self._new_reason_since: float | None = None
+        self._reason_seen: dict[str, float] = {}  # reason -> last time it was a hit at the active level
 
     def _emit(self, r: RiskAssessment, level: int, reasons: tuple[str, ...]) -> AlertOutput:
         t = r.t
@@ -108,11 +109,18 @@ class AlertManager:
         self._lower_since = None
         self._alerted = set()
         self._new_reason_since = None
+        self._reason_seen = dict.fromkeys(r.reasons, r.t)
         return self._emit(r, level, r.reasons)
 
     def _check_new_reasons(self, r: RiskAssessment) -> AlertOutput | None:
         """Same level as active: emit when a reason not yet alerted has held long enough."""
-        self._alerted &= set(r.reasons)  # a reason that went away counts as new if it comes back
+        for x in r.reasons:
+            self._reason_seen[x] = r.t
+        # A reason counts as new again only after it was gone for fall_hold_s, like the level
+        # itself: a reason flickering off for a frame or two must not re-alert.
+        self._alerted = {
+            x for x in self._alerted if r.t - self._reason_seen.get(x, float("-inf")) < self.config.fall_hold_s
+        }
         new = tuple(x for x in r.reasons if x not in self._alerted)
         if not new:
             self._new_reason_since = None
@@ -147,6 +155,7 @@ class AlertManager:
                 self.active_level = target
                 self._active_reasons = r.reasons
                 self._alerted = set(r.reasons)  # dropping a level is not a new alert
+                self._reason_seen = dict.fromkeys(r.reasons, t)
                 self._lower_since = None
         else:
             self._candidate = None

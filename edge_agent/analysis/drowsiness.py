@@ -272,8 +272,11 @@ class DrowsinessAnalyzer:
         head_down = pitch_off is not None and pitch_off > cfg.eye_max_pitch_down_deg
         self._update_closure(t, eye_closed, head_down, pitch_off is None, events)
         masked = self._update_mask(t, f.mar)
-        if masked and self._closed_since is not None:
-            self._count_since = t  # yawning: restart the counted part of the closure
+        if masked and self._closed_since is not None and not self._head_drop:
+            # Yawning / talking: restart the counted part of the closure. Not once the head
+            # has dropped (a head drop is not a yawn), or falling asleep right after a yawn
+            # would never reach the microsleep rules.
+            self._count_since = t
         closed_duration = t - self._count_since if self._count_since is not None else 0.0
         if closed_duration >= cfg.microsleep_min_s and not self._microsleep_fired:
             self._microsleep_fired = True
@@ -325,7 +328,9 @@ class DrowsinessAnalyzer:
                 if not (head_down or face_lost):
                     self._end_closure()
                 return
-            closed_before = self._last_eye_t - self._count_since
+            # From the start of the closure, not of its counted part: eyes shut during a
+            # yawn / talking still qualify for the carry when the head drops.
+            closed_before = self._last_eye_t - self._closed_since
             if (
                 head_down
                 and t - self._last_eye_t <= cfg.max_gap_s
