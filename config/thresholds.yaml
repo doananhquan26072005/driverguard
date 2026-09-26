@@ -41,11 +41,14 @@ landmarks:
   min_face_detection_confidence: 0.5
   min_face_presence_confidence: 0.5
   min_tracking_confidence: 0.5
+  # Also output MediaPipe blendshapes (same model, no measurable cost): eyeBlink feeds block 5.
+  blendshapes: true
 
 # Block 5 - Eye-state CNN (Open Model Zoo open-closed-eye-0001, Apache-2.0, 46 KB)
 # Only called when EAR is not reliable; otherwise EAR alone decides (block 7).
 eye_state:
   enabled: true
+  source: cnn                   # eye-state score when EAR is not reliable: blendshape (eyeBlink, block 3) | cnn
   model_path: models/open_closed_eye.onnx   # python tools/download_models.py
   input_size: 32
   crop_scale: 1.8               # crop side = 1.8 x eye-corner distance (as in Intel's demo)
@@ -53,8 +56,9 @@ eye_state:
   scale: 255.0
   closed_index: 0               # softmax index of "closed" (Intel demo: out[0] < out[1] = open)
   run_on_ir: true               # infrared / grayscale camera: call the CNN
-  low_light_brightness: 60      # mean luminance 0-255 below this: call the CNN
-  ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / mean above this (glare, occlusion): call the CNN
+  low_light_brightness: 60      # mean luminance 0-255 of the FACE (before CLAHE) below this: EAR not trusted
+  ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / max(EAR_L, EAR_R) above this (glare, occlusion): EAR not trusted
+  ear_asymmetry_min_open: 0.18  # ... only while one eye still looks open (EAR >= this); both closed = they agree
   hold_s: 2.0                   # keep the CNN this long after an ir / low_light trigger clears (no EAR <-> CNN flicker at dusk); not after ear_asymmetry (glasses: CNN weak)
   always_run: false             # true = every frame (debug, evaluation)
 
@@ -127,6 +131,10 @@ drowsiness:
     ear_ratio: 0.5
     cnn: 0.8
     min_frac: 0.5
+    # EAR deep frames also need MediaPipe eyeBlink >= this (0 = off): EAR also collapses for glare on
+    # glasses, a head tilted down, narrow eyes before the baseline is learnt. NITYMED false microsleeps
+    # 16 -> 7 / h with the same L3 recall; YawDD false microsleeps 7 -> 4.
+    blink: 0.5
   # Eyes squeeze shut while yawning: closed-eye time is not counted in closed_duration
   # while the mouth is wide open (yawn.mar_open .. yawn.mar_close) and for hold_s after.
   # Stops after the mouth has been open max_open_s (slack jaw in sleep is not a yawn).
@@ -140,6 +148,10 @@ drowsiness:
     talk_window_s: 2.0
     talk_swing: 0.08
     talk_min_swings: 3          # 0 = no talking mask
+    # Talking does not restart a deep closure (EAR shut + blendshape vote): lip movements of a sleepy
+    # driver hid real microsleeps. With the vote: NITYMED microsleep >= 1.5 s at L3 68 -> 79 %, YawDD
+    # false alerts unchanged (10); without the vote it adds false ones (YawDD 10 -> 14).
+    talk_spares_deep: true
   perclos_window_s: 60
   perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
   perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
@@ -253,7 +265,9 @@ alert:
   fall_hold_s: 3.0                           # and stay lower this long before it is dropped
   # No repeated alert of the same (level, reason) within this. A new reason at the
   # active level (L2 off_road, then L2 phone) is emitted after rise_confirm_s.
-  cooldown_s: {1: 120, 2: 30, 3: 10}
+  # L3 has none: fall_hold_s already keeps it from flickering, so a new L3 means the eyes were open
+  # >= 3 s and closed again, a new microsleep (NITYMED: new L3 alert on 55 -> 76 % of microsleeps).
+  cooldown_s: {1: 120, 2: 30, 3: 0}
 
 # Block 13 - In-car HUD server
 hud:

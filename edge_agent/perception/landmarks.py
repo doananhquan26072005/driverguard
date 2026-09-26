@@ -6,6 +6,11 @@ preprocessed image, or None when no face is found.
 
 When several faces are visible (e.g. a passenger), the largest one is taken as
 the driver, since the driver sits closest to the camera.
+
+With `blendshapes` on, the same model also outputs its 52 blendshape scores; the driver's
+eyeBlinkLeft / eyeBlinkRight (0 = open, 1 = shut) are kept. They are pretrained, need no
+per-driver baseline and cost no measurable time (NITYMED: AUC 0.986 for closed eyes, EAR
+0.987, eye CNN 0.881), so block 5 uses them as its eye-state score.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ class LandmarkConfig:
     min_face_detection_confidence: float = 0.5
     min_face_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
+    blendshapes: bool = True  # also output eyeBlink scores (block 5)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> LandmarkConfig:
@@ -52,6 +58,8 @@ class FaceLandmarks:
     num_faces: int  # faces seen in the frame (driver + others)
     frame_id: int
     timestamp: float
+    # MediaPipe blendshapes eyeBlinkLeft, eyeBlinkRight of the driver (0 open .. 1 shut), None when off.
+    eye_blink: tuple[float, float] | None = None
 
 
 def bbox_area(points: np.ndarray) -> float:
@@ -81,6 +89,7 @@ class FaceLandmarkDetector:
             min_face_detection_confidence=self.config.min_face_detection_confidence,
             min_face_presence_confidence=self.config.min_face_presence_confidence,
             min_tracking_confidence=self.config.min_tracking_confidence,
+            output_face_blendshapes=self.config.blendshapes,
         )
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._last_ts_ms = -1
@@ -115,7 +124,13 @@ class FaceLandmarkDetector:
             np.array([(lm.x * w, lm.y * h, lm.z * w) for lm in face], dtype=np.float32)
             for face in result.face_landmarks
         ]
-        driver = max(faces, key=bbox_area)
+        k = max(range(len(faces)), key=lambda i: bbox_area(faces[i]))
+        driver = faces[k]
+        eye_blink = None
+        if result.face_blendshapes and k < len(result.face_blendshapes):
+            scores = {c.category_name: c.score for c in result.face_blendshapes[k]}
+            if "eyeBlinkLeft" in scores and "eyeBlinkRight" in scores:
+                eye_blink = (float(scores["eyeBlinkLeft"]), float(scores["eyeBlinkRight"]))
         return FaceLandmarks(
             points=driver,
             image_width=w,
@@ -124,4 +139,5 @@ class FaceLandmarkDetector:
             num_faces=len(faces),
             frame_id=frame.frame_id,
             timestamp=frame.timestamp,
+            eye_blink=eye_blink,
         )

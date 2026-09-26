@@ -526,3 +526,74 @@ def test_blink_rate_min_span_from_config():
     assert s[-1].blink_rate == pytest.approx(6.0)  # 1 / 10 s * 60
     _, s = simulate(2, ear=ear, analyzer=DrowsinessAnalyzer(DrowsinessConfig(blink_rate_min_span_s=20.0)))
     assert s[-1].blink_rate == pytest.approx(3.0)
+
+
+# ---------------------------------------------------------------- 26/09: blendshape vote for deep closure
+
+
+def closure_with_blink(blink, deep_blink):
+    """15 s open, then EAR firmly shut (0.08) for 2 s with MediaPipe eyeBlink = `blink`."""
+    a = DrowsinessAnalyzer(DrowsinessConfig(microsleep_deep_blink=deep_blink))
+    states = []
+    for i in range(round(18 * FPS)):
+        t = i * DT
+        shut = 15.0 <= t < 17.0
+        f = FrameFeatures(i, t, True, 1.0, ear=0.08 if shut else OPEN, mar=0.05, pitch=0.0, yaw=0.0, roll=0.0,
+                          eye_blink=blink if shut else 0.05)  # fmt: skip
+        states.append(a.update(f))
+    return states
+
+
+def test_blendshape_vote_off_by_default():
+    assert events(closure_with_blink(0.1, 0.0), "microsleep")  # EAR alone decides
+
+
+def test_blendshape_vote_confirms_a_real_closure():
+    s = closure_with_blink(0.9, 0.5)
+    assert len(events(s, "microsleep")) == 1
+    assert max(x.closed_duration for x in s) == pytest.approx(2.0, abs=2 * DT)
+
+
+def test_blendshape_vote_rejects_ear_collapse_with_open_eyes():
+    # Glare on glasses / head tilted down: EAR looks shut, the blendshape sees open eyes.
+    s = closure_with_blink(0.1, 0.5)
+    assert not events(s, "microsleep") and max(x.closed_duration for x in s) == 0.0
+    assert any(x.eye_closed for x in s)  # still a closure for blinks / PERCLOS: only microsleep is gated
+
+
+def test_blendshape_vote_ignored_when_blendshapes_are_off():
+    a = DrowsinessAnalyzer(DrowsinessConfig(microsleep_deep_blink=0.5))
+    _, states = simulate(20, ear=lambda t: 0.08 if 10.0 <= t < 11.5 else OPEN, analyzer=a)  # eye_blink None
+    assert len(events(states, "microsleep")) == 1
+
+
+def talking_closure(ear_closed, talk_spares_deep, blink=None, deep_blink=0.0):
+    """Lips keep moving (talking mask on) while the eyes close for 2 s."""
+    cfg = DrowsinessConfig(microsleep_mask_talk_spares_deep=talk_spares_deep, microsleep_deep_blink=deep_blink)
+    a = DrowsinessAnalyzer(cfg)
+    talk = pulses(0.4, 0.2, 0.35, 0.05)
+    states = []
+    for i in range(round(26 * FPS)):
+        t = i * DT
+        shut = 22.0 <= t < 24.0
+        f = FrameFeatures(i, t, True, 1.0, ear=ear_closed if shut else OPEN, mar=talk(t), pitch=0.0, yaw=0.0,
+                          roll=0.0, eye_blink=None if blink is None else (blink if shut else 0.05))  # fmt: skip
+        states.append(a.update(f))
+    return states
+
+
+def test_talk_spares_deep_closure_confirmed_by_the_blendshape():
+    assert not events(talking_closure(0.08, False, blink=0.9, deep_blink=0.5), "microsleep")  # off: masked
+    assert len(events(talking_closure(0.08, True, blink=0.9, deep_blink=0.5), "microsleep")) == 1  # shut: counted
+
+
+def test_talk_spares_deep_still_masks_squinting():
+    # Narrowed eyes while talking (0.6 x baseline: closed, not deep) stay masked.
+    assert not events(talking_closure(0.6 * OPEN, True, blink=0.9, deep_blink=0.5), "microsleep")
+
+
+def test_talk_spares_deep_needs_the_blendshape():
+    # EAR shut but eyeBlink says open (glare while talking): still masked.
+    assert not events(talking_closure(0.08, True, blink=0.1, deep_blink=0.5), "microsleep")
+    # Blendshapes off: EAR alone does not lift the mask (it let talking fake microsleeps on YawDD).
+    assert not events(talking_closure(0.08, True, blink=None, deep_blink=0.5), "microsleep")

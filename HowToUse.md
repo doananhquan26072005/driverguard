@@ -55,7 +55,7 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 
 | Hành vi | Dấu hiệu dùng | Cách phát hiện |
 |---|---|---|
-| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, tối, lóa kính) thì CNN trạng thái mắt | Mắt nhắm **sâu** liên tục ≥ 1,5 s → L3 ngay (mắt nheo lúc nhìn xuống / chói nắng không tính). Thời gian nhắm lúc đang ngáp / đang nói (và 1,5 s sau đó) không được tính |
+| **Nhắm mắt lâu / microsleep** | EAR; khi EAR không tin cậy (IR, mặt quá tối, lóa kính một mắt) thì CNN trạng thái mắt; blendshape `eyeBlink` của MediaPipe xác nhận "nhắm sâu" | Mắt nhắm **sâu** liên tục ≥ 1,5 s → L3 ngay (mắt nheo lúc nhìn xuống / chói nắng không tính). Thời gian nhắm lúc đang ngáp (và 1,5 s sau đó) không được tính; lúc đang nói chỉ không tính khi mắt không nhắm sâu |
 | **Buồn ngủ tích lũy** | PERCLOS 60 s, ngáp, gục đầu | `drowsy_score` 0–100 → L1 (≥ 40) / L2 (≥ 70) |
 | **Ngáp** | MAR (độ mở miệng) | Miệng mở rộng đủ lâu (nói chuyện không tính) |
 | **Gục đầu** | Góc pitch + mắt nhắm | Cúi xuống rồi ngẩng lại nhanh, kèm mắt nhắm |
@@ -403,8 +403,8 @@ Mọi ngưỡng nằm ở đây, mỗi dòng có chú thích. Mỗi ngưỡng ch
 | Mục | Khối | Ví dụ |
 |---|---|---|
 | `capture`, `preprocess` | 1, 2 | độ phân giải camera, kích thước resize, CLAHE (trên kênh Y của YCrCb) |
-| `landmarks`, `features` | 3, 6 | độ tin cậy MediaPipe, tiêu cự camera |
-| `eye_state` | 5 | model, cách cắt mắt, khi nào gọi CNN (IR, độ sáng, lệch EAR hai mắt) |
+| `landmarks`, `features` | 3, 6 | độ tin cậy MediaPipe, bật blendshapes (`eyeBlink`), tiêu cự camera |
+| `eye_state` | 5 | nguồn điểm mắt (`cnn` / `blendshape`), model, cách cắt mắt, khi nào dùng (IR, độ sáng **vùng mặt**, một mắt còn mở mà mắt kia lệch EAR) |
 | `phone` | 4 | model, ngưỡng tin cậy, tần suất YOLO, vùng tài xế |
 | `drowsiness` | 7 | tỉ lệ nhắm mắt, microsleep, PERCLOS, ngáp, gục đầu |
 | `distraction` | 8 | góc nhìn lệch, mốc nhìn đường |
@@ -502,7 +502,25 @@ python tools\dataset.py labels yawdd --out data\yawdd_labels.csv   # clip -> nh�
 - Thêm dataset Kaggle khác: khai báo một preset trong `config/datasets.yaml` (slug, task, thư mục → nhãn), **không cần sửa code**.
 - Ảnh chỉ được đọc vào RAM, tool chỉ ghi file metric.
 
-### 9.3 Tốc độ: `tools/benchmark.py`
+### 9.3 Video có nhãn theo frame / theo clip: `tools/seq_eval.py`
+
+Chạy toàn bộ pipeline (khối 2–12) trên từng frame video, ghi lại một dòng số mỗi frame (không ghi ảnh), rồi chấm điểm:
+
+```powershell
+python tools\seq_eval.py trace fl3d --workers 8 --out data\eval_traces\fl3d.pkl    # FL3D: nhãn từng frame, chạy trên video gốc NITYMED
+python tools\seq_eval.py fl3d --traces data\eval_traces\fl3d.pkl --out eval\results\dataset_fl3d.md
+python tools\seq_eval.py trace sust --workers 8 --out data\eval_traces\sust.pkl    # SUST-DDD: 2074 clip 10 s, nhãn theo clip (~45 phút)
+python tools\seq_eval.py sust --traces data\eval_traces\sust.pkl --out eval\results\dataset_sust_ddd.md
+python tools\seq_eval.py trace yawdd --workers 8 --out data\eval_traces\yawdd.pkl  # YawDD: kiểm tra hồi quy
+# Thử ngưỡng khác mà không chạy lại MediaPipe: khối 5 và 7–12 được chạy lại từ các cột đã ghi
+python tools\seq_eval.py fl3d --traces data\eval_traces\fl3d.pkl --replay block5 --set drowsiness.microsleep_deep.blink=0.4
+```
+
+- FL3D (Kaggle `matjazmuc/frame-level-driver-drowsiness-detection-fl3d`) là ảnh mặt cắt từ video NITYMED (`nikospetrellis/nitymed`), nên cần tải cả hai; nhãn khớp theo số thứ tự frame.
+- SUST-DDD không có trên Kaggle: đặt vào `data/sust-ddd/SUST Driver Drowsiness Dataset/{drowsiness,not drowsiness}/`.
+- `--replay block5` chạy lại khối 5 (trigger + hold, nguồn điểm theo `eye_state.source`) và khối 7–12 với ngưỡng hiện tại; `--set` thử một ngưỡng khác. Replay trùng khớp với lần chạy thật (đã kiểm tra từng frame).
+
+### 9.4 Tốc độ: `tools/benchmark.py`
 
 ```powershell
 python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\benchmark.md
@@ -557,14 +575,14 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 
 ### Giới hạn hiện tại
 
-- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye). Chưa đo độ chính xác trên dataset của mình; nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược). Khi được gọi vì **trời tối hoặc camera IR**, CNN được giữ thêm `eye_state.hold_s` (2 s) sau khi điều kiện hết, để nguồn EAR/CNN không đổi qua lại từng frame lúc chạng vạng (chuỗi giả: không giữ thì PERCLOS 0,36 và 599 lần chớp giả trong 40 s; giữ 2 s thì cả hai về 0). Khi được gọi vì **hai mắt lệch EAR** (kính, chói) thì không giữ: CNN yếu với người đeo kính, giữ thêm làm microsleep sai trên YawDD tăng 6 → 18, toàn ở clip đeo kính.
+- **Khối 5 (Eye-state CNN)** dùng model có sẵn `open-closed-eye-0001` (Intel Open Model Zoo, Apache-2.0, học trên MRL Eye); nhãn lớp đầu ra được xác định theo demo chính thức của Intel (README của model ghi ngược). Trên NITYMED (lái ban đêm) CNN tách mắt nhắm kém EAR (AUC 0,881 so với 0,987), nên chỉ được gọi khi EAR thật sự không tin được: **độ sáng tính trên vùng mặt** (trước CLAHE), không phải cả khung (xe tối nhưng mặt được chiếu sáng thì EAR vẫn tốt), và **lệch EAR hai mắt chỉ tính khi một mắt còn mở** (hai mắt cùng nhắm là chúng đồng ý; cách chia cho EAR trung bình cũ làm CNN bị gọi đúng lúc nhắm mắt và che mất microsleep). Blendshape `eyeBlink` đã được thử làm nguồn thay CNN: ngang EAR trên NITYMED nhưng tệ hơn CNN với người đeo kính (YawDD), nên chỉ dùng làm phiếu xác nhận nhắm sâu. Khi được gọi vì **mặt tối hoặc camera IR**, CNN được giữ thêm `eye_state.hold_s` (2 s) sau khi điều kiện hết, để nguồn EAR/CNN không đổi qua lại từng frame lúc chạng vạng (chuỗi giả: không giữ thì PERCLOS 0,36 và 599 lần chớp giả trong 40 s; giữ 2 s thì cả hai về 0). Khi được gọi vì **hai mắt lệch EAR** (kính, chói) thì không giữ: CNN yếu với người đeo kính, giữ thêm làm microsleep sai trên YawDD tăng 6 → 18, toàn ở clip đeo kính.
 - Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. Frame có `face_conf` < `features.min_face_conf` (0,9: mặt ra ngoài khung một phần) không được tính vào PERCLOS, mốc mắt mở, ngáp, gật đầu và góc nhìn lệch; pitch của frame đó chỉ dùng để nhận ra gục đầu.
 - Ngưỡng MAR của ngáp đã hạ từ 0,6 xuống 0,45 (đóng lại dưới 0,34), kiểm chứng trên `yawn_eye_mouth` và video YawDD.
-- Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s) hoặc đang nói. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa. PERCLOS cũng bỏ qua các frame này (`drowsiness.perclos_use_mask`), nên khi tài xế nói liên tục thì PERCLOS gần như không được tính (trên YawDD, 82% thời gian của clip Talking bị che).
-- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở (hoặc CNN p_closed ≥ 0,8). Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
+- Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s). Lúc **đang nói**, mắt nhắm sâu mà blendshape cũng xác nhận thì vẫn được tính (`talk_spares_deep`): môi cử động nhẹ của người đang buồn ngủ từng che mất microsleep thật trên NITYMED; tắt blendshapes thì mặt nạ nói chuyện hoạt động như cũ. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa. PERCLOS cũng bỏ qua các frame này (`drowsiness.perclos_use_mask`), nên khi tài xế nói liên tục thì PERCLOS gần như không được tính (trên YawDD, 82% thời gian của clip Talking bị che).
+- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở **và** blendshape `eyeBlink` ≥ 0,5 (hoặc CNN p_closed ≥ 0,8). Phiếu blendshape loại các lần EAR sụp vì lóa kính, cúi đầu, mắt hẹp lúc chưa học xong mốc. Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
 - PERCLOS xét **từng frame** (`drowsiness.perclos_close_ratio` = 0,65 × mốc mắt mở), không dùng trạng thái có hysteresis của mắt. Trước đây, sau mỗi lần chớp, hysteresis giữ trạng thái "nhắm" suốt lúc mắt nheo (0,65–0,75 × mốc, ví dụ nheo vì nắng) nên PERCLOS lên gần 100% và ra L1 sau khoảng 11 s. Đánh đổi: mắt hé ở khoảng 0,65–0,75 × mốc không còn được tính vào PERCLOS.
 - YOLO **INT8** nhanh hơn khoảng 2 lần và nhỏ hơn khoảng 3,6 lần, nhưng **chưa được đo độ chính xác**, nên hệ thống vẫn dùng FP32.
-- **Chưa có precision/recall trên video có nhãn theo thời gian** (mục 9.1). Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
+- Đã có số trên video có nhãn theo frame (FL3D / NITYMED, mục 9.3, `eval/results/dataset_fl3d.md`), nhưng NITYMED là diễn lại và quay ban đêm; SUST-DDD (xe thật) chỉ có nhãn theo clip 10 s, ngắn hơn thời gian khởi động PERCLOS. Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
 - **macOS:** MediaPipe 1.0.1 bị crash (`graph_service.h ... Service is unavailable`, Metal) trên macOS mới, kể cả ở chế độ VIDEO. `requirements.txt` đã ghim `mediapipe==0.10.21` cho macOS.
 - CAN đang là **giả lập**. Tín hiệu thật từ xe sẽ thay `CanSimulator`, còn phần xử lý ngữ cảnh giữ nguyên.
 - **Giấy phép:** YOLOv8 (Ultralytics) dùng **AGPL-3.0**, còn repo dùng MIT. Cần xem lại nếu phân phối sản phẩm.
