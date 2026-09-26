@@ -11,7 +11,8 @@ Turns the per-frame risk level into stable alerts:
   When the active level drops, the reasons of the lower level do not raise a new alert.
 - Cooldown: per (level, reason). An alert is held back only when every one of its
   reasons was already emitted at that level within cooldown_s[level]. A higher level
-  is always emitted (escalation).
+  is always emitted (escalation). L3 has no cooldown by default: after fall_hold_s of open
+  eyes, a new closure is a new microsleep and gets its own siren and event.
 
 `active_level` is what the HUD shows; `new_alert` is set only on the frame an alert
 is emitted (chime / sound / seat vibration, metadata event).
@@ -43,7 +44,7 @@ def _levels(d: dict[Any, Any] | None, default: dict[int, float]) -> dict[int, fl
 class AlertConfig:
     rise_confirm_s: dict[int, float] = field(default_factory=lambda: {1: 1.0, 2: 0.5, 3: 0.0})
     fall_hold_s: float = 3.0
-    cooldown_s: dict[int, float] = field(default_factory=lambda: {1: 120.0, 2: 30.0, 3: 10.0})
+    cooldown_s: dict[int, float] = field(default_factory=lambda: {1: 120.0, 2: 30.0, 3: 0.0})
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:

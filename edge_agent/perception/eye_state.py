@@ -1,6 +1,13 @@
-"""Block 5 - Eye-state CNN (pretrained, called only when EAR is not reliable).
+"""Block 5 - Eye-state score (pretrained, used only when EAR is not reliable).
 
-Model: Intel Open Model Zoo `open-closed-eye-0001` (Apache-2.0), trained on the MRL Eye
+Two sources, `source` in thresholds.yaml:
+- "blendshape": MediaPipe's eyeBlinkLeft / eyeBlinkRight (block 3 already outputs them, no
+  extra model, no measurable time). On NITYMED night driving it separates closed eyes as
+  well as EAR (AUC 0.986 vs 0.987), the CNN below only 0.881.
+- "cnn": the open-closed-eye-0001 CNN on eye crops, described below.
+The chosen score goes to FrameFeatures.p_closed; block 7 applies the same hysteresis to both.
+
+CNN model: Intel Open Model Zoo `open-closed-eye-0001` (Apache-2.0), trained on the MRL Eye
 dataset (mostly infrared eye crops), 46 KB ONNX. Input: BGR 32x32, (x - 127) / 255.
 Output: softmax over 2 classes where index 0 = CLOSED and index 1 = OPEN. The model README
 says the opposite, but Intel's own gaze_estimation_demo treats `out[0] < out[1]` as "eye
@@ -9,10 +16,17 @@ open" (and our sanity check agrees), so p_closed = out[0].
 Crop, as in that demo: a square of `crop_scale` x the distance between the two eye corners,
 centred on their midpoint and rotated so the eye line is horizontal.
 
-EAR stays the primary signal (block 6). The CNN only runs when EAR is likely wrong:
-- infrared / grayscale image or a dark cabin (night),
-- the two eyes' EAR disagree a lot (glare on glasses or one eye occluded).
-Once called for the whole scene (infrared, dark cabin), the CNN stays on for `hold_s` after the
+EAR stays the primary signal (block 6). The score is only used when EAR is likely wrong:
+- infrared / grayscale image, or a dark face. Brightness is the mean luminance of the face
+  (landmark box, before CLAHE), not of the whole frame: at night the cabin is dark but a lit
+  face still gives a good EAR (NITYMED: whole frame 49-59, below the threshold on 97 % of frames,
+  which handed eye state to the weaker CNN and cut microsleep detection 3x).
+- the two eyes' EAR disagree a lot (glare on glasses or one eye occluded): |L - R| / max(L, R)
+  above `ear_asymmetry_max` while one eye still looks open (max >= `ear_asymmetry_min_open`).
+  Dividing by the mean EAR, as before, blew up whenever both eyes closed (0.05 vs 0.08 ->
+  0.46), so the CNN was called exactly on closures (59 % of NITYMED microsleep frames, 8 %
+  of alert frames) and, seeing them as open, hid them.
+Once called for the whole scene (infrared, dark face), the score stays on for `hold_s` after the
 trigger clears: at dusk the brightness wobbles around `low_light_brightness`, and switching
 EAR <-> CNN frame by frame lets the unreliable EAR frames fake closures (PERCLOS, blinks) in
 between the CNN ones. An EAR asymmetry is not held: it comes from glasses / glare, where the
@@ -30,7 +44,7 @@ from typing import Any, Protocol
 import cv2
 import numpy as np
 
-from edge_agent.config import PROJECT_ROOT, config_from_dict
+from edge_agent.config import PROJECT_ROOT, ConfigError, config_from_dict
 from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.landmarks import FaceLandmarks
 from edge_agent.perception.preprocess import PreprocessedFrame
@@ -40,11 +54,13 @@ RIGHT_EYE_CORNERS = (33, 133)
 LEFT_EYE_CORNERS = (263, 362)
 # Triggers about the whole scene, held for hold_s (see module doc); ear_asymmetry is not.
 HELD_REASONS = ("ir", "low_light")
+SOURCES = ("blendshape", "cnn")
 
 
 @dataclass(frozen=True)
 class EyeStateConfig:
     enabled: bool = True
+    source: str = "cnn"  # "blendshape" (MediaPipe eyeBlink, block 3) or "cnn" (model_path)
     model_path: str = "models/open_closed_eye.onnx"
     input_size: int = 32
     crop_scale: float = 1.8
@@ -53,14 +69,18 @@ class EyeStateConfig:
     closed_index: int = 0
     # When to call the CNN (EAR not reliable):
     run_on_ir: bool = True
-    low_light_brightness: float = 60.0  # mean luminance (0-255) below this = night
-    ear_asymmetry_max: float = 0.35  # |L - R| / mean EAR above this = one eye unreliable
+    low_light_brightness: float = 60.0  # mean face luminance (0-255, before CLAHE) below this = too dark
+    ear_asymmetry_max: float = 0.35  # |L - R| / max(L, R) above this = one eye unreliable
+    ear_asymmetry_min_open: float = 0.18  # ... only while one eye still looks open (both closed agree)
     hold_s: float = 2.0  # keep the CNN on this long after an ir / low_light trigger clears (no flicker)
     always_run: bool = False  # debug / evaluation
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EyeStateConfig:
-        return config_from_dict(cls, d, "eye_state")
+        cfg = config_from_dict(cls, d, "eye_state")
+        if cfg.source not in SOURCES:
+            raise ConfigError(f"thresholds: eye_state.source {cfg.source!r} must be one of {SOURCES}")
+        return cfg
 
     def resolved_model_path(self) -> Path:
         p = Path(self.model_path)
@@ -71,7 +91,7 @@ class EyeStateConfig:
 class EyeState:
     p_closed_left: float
     p_closed_right: float
-    reason: str  # why the CNN was called: ir, low_light, ear_asymmetry, always
+    reason: str  # why the score was used: ir, low_light, ear_asymmetry, always
 
     @property
     def p_closed(self) -> float:
@@ -96,19 +116,41 @@ def eye_crop(image: np.ndarray, p1: np.ndarray, p2: np.ndarray, scale: float, si
     return cv2.warpAffine(image, m, (size, size), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REPLICATE)
 
 
-def trigger_reason(pre: PreprocessedFrame, f: FrameFeatures, cfg: EyeStateConfig) -> str | None:
-    """Why EAR should not be trusted on this frame (the CNN is then called), or None."""
+def face_brightness(pre: PreprocessedFrame, lm: FaceLandmarks | None) -> float:
+    """Mean luminance (before CLAHE) inside the landmark box; the whole frame's without a face."""
+    if lm is None or pre.luma is None:
+        return pre.brightness
+    h, w = pre.luma.shape[:2]
+    x1, y1 = np.floor(lm.points[:, :2].min(axis=0)).astype(int)
+    x2, y2 = np.ceil(lm.points[:, :2].max(axis=0)).astype(int)
+    x1, y1, x2, y2 = max(x1, 0), max(y1, 0), min(x2, w), min(y2, h)
+    if x2 - x1 < 2 or y2 - y1 < 2:
+        return pre.brightness
+    return float(cv2.mean(pre.luma[y1:y2, x1:x2])[0])
+
+
+def trigger_from_values(
+    cfg: EyeStateConfig, is_ir: bool, brightness: float, ear_left: float | None, ear_right: float | None
+) -> str | None:
+    """Why EAR should not be trusted, from plain numbers (also used to replay recorded runs)."""
     if cfg.always_run:
         return "always"
-    if cfg.run_on_ir and pre.is_ir:
+    if cfg.run_on_ir and is_ir:
         return "ir"
-    if pre.brightness < cfg.low_light_brightness:
+    if brightness < cfg.low_light_brightness:
         return "low_light"
-    if f.ear_left is not None and f.ear_right is not None:
-        mean = (f.ear_left + f.ear_right) / 2.0
-        if mean > 1e-6 and abs(f.ear_left - f.ear_right) / mean > cfg.ear_asymmetry_max:
+    if ear_left is not None and ear_right is not None:
+        hi, lo = max(ear_left, ear_right), min(ear_left, ear_right)
+        if hi >= cfg.ear_asymmetry_min_open and (hi - lo) / hi > cfg.ear_asymmetry_max:
             return "ear_asymmetry"
     return None
+
+
+def trigger_reason(
+    pre: PreprocessedFrame, f: FrameFeatures, cfg: EyeStateConfig, lm: FaceLandmarks | None = None
+) -> str | None:
+    """Why EAR should not be trusted on this frame (the eye-state score is then used), or None."""
+    return trigger_from_values(cfg, pre.is_ir, face_brightness(pre, lm), f.ear_left, f.ear_right)
 
 
 class OnnxEyeClassifier:
@@ -132,33 +174,46 @@ class OnnxEyeClassifier:
 
 
 class EyeStateEstimator:
-    """Runs the CNN when needed and adds p_closed to the frame's features."""
+    """Adds p_closed (blendshape or CNN) to the frame's features when EAR is not reliable."""
 
     def __init__(self, config: EyeStateConfig | None = None, classifier: EyeClassifier | None = None) -> None:
         self.config = config or EyeStateConfig()
-        self._classifier = classifier if classifier is not None else OnnxEyeClassifier(self.config)
+        if classifier is None and self.config.source == "cnn":
+            classifier = OnnxEyeClassifier(self.config)
+        self._classifier = classifier
         self.runs = 0
         self._hold_until = float("-inf")
         self._hold_reason = ""
+
+    def decide(self, t: float, reason: str | None) -> str | None:
+        """The trigger of this frame, with the hold for scene-wide triggers (pure: replayable)."""
+        if reason in HELD_REASONS:
+            self._hold_until, self._hold_reason = t + self.config.hold_s, reason
+        elif reason is None:
+            if t > self._hold_until:
+                return None
+            reason = self._hold_reason  # the face was too dark a moment ago: keep the same source
+        return reason
 
     def estimate(self, pre: PreprocessedFrame, lm: FaceLandmarks | None, f: FrameFeatures) -> EyeState | None:
         if not self.config.enabled or lm is None:
             return None
         cfg = self.config
-        reason = trigger_reason(pre, f, cfg)
-        if reason in HELD_REASONS:
-            self._hold_until, self._hold_reason = pre.timestamp + cfg.hold_s, reason
-        elif reason is None:
-            if pre.timestamp > self._hold_until:
+        reason = self.decide(pre.timestamp, trigger_reason(pre, f, cfg, lm))
+        if reason is None:
+            return None
+        if cfg.source == "blendshape" or self._classifier is None:
+            if lm.eye_blink is None:  # blendshapes off in block 3: EAR decides
                 return None
-            reason = self._hold_reason  # the scene was too dark a moment ago: keep the same source
-        crops = np.stack(
-            [
-                eye_crop(pre.image, lm.points[a, :2], lm.points[b, :2], cfg.crop_scale, cfg.input_size)
-                for a, b in (LEFT_EYE_CORNERS, RIGHT_EYE_CORNERS)
-            ]
-        )
-        p_left, p_right = (float(p) for p in self._classifier(crops))
+            p_left, p_right = lm.eye_blink
+        else:
+            crops = np.stack(
+                [
+                    eye_crop(pre.image, lm.points[a, :2], lm.points[b, :2], cfg.crop_scale, cfg.input_size)
+                    for a, b in (LEFT_EYE_CORNERS, RIGHT_EYE_CORNERS)
+                ]
+            )
+            p_left, p_right = (float(p) for p in self._classifier(crops))
         self.runs += 1
         return EyeState(p_closed_left=p_left, p_closed_right=p_right, reason=reason)
 
@@ -170,7 +225,7 @@ class EyeStateEstimator:
 
 
 def make_estimator(config: EyeStateConfig) -> EyeStateEstimator | None:
-    """Estimator, or None (EAR only) when disabled or the model file is missing."""
+    """Estimator, or None (EAR only) when disabled or the CNN model file is missing."""
     if not config.enabled:
         return None
     try:

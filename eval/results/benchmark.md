@@ -8,8 +8,8 @@
 
 | YOLO model | FPS | p50 ms | p95 ms | max ms | YOLO runs/s | ≥ 15 FPS |
 |---|---:|---:|---:|---:|---:|:---:|
-| FP32 | 150.0 | 6.5 | 7.3 | 12.3 | 4.9 | ✅ |
-| INT8 | 152.5 | 6.5 | 7.0 | 7.5 | 5.0 | ✅ |
+| FP32 | 151.8 | 6.5 | 7.2 | 7.7 | 5.0 | ✅ |
+| INT8 | 152.2 | 6.5 | 6.9 | 7.2 | 5.0 | ✅ |
 
 Frames are processed back to back (no camera pacing), so FPS is the loop's capacity; a 30 FPS camera leaves the difference as headroom.
 
@@ -17,13 +17,13 @@ Frames are processed back to back (no camera pacing), so FPS is the loop's capac
 
 | Block | mean ms | p50 ms | p95 ms | max ms | FPS alone |
 |---|---:|---:|---:|---:|---:|
-| 2 preprocess | 0.70 | 0.68 | 0.85 | 1.26 | 1423 |
-| 3 face landmarks (MediaPipe) | 5.77 | 5.76 | 5.81 | 5.86 | 173 |
-| 6 features (EAR, MAR, solvePnP) | 0.04 | 0.04 | 0.04 | 0.09 | 25348 |
-| 5 eye-state CNN (when called) | 0.10 | 0.10 | 0.10 | 0.15 | 10378 |
-| 7-12 decision chain | 0.01 | 0.01 | 0.02 | 0.23 | 77599 |
-| 4 YOLOv8n FP32 (2 threads) | 18.21 | 16.73 | 20.11 | 140.63 | 55 |
-| 4 YOLOv8n INT8 (2 threads) | 21.02 | 19.80 | 27.40 | 55.16 | 48 |
+| 2 preprocess | 0.69 | 0.67 | 0.82 | 1.01 | 1445 |
+| 3 face landmarks (MediaPipe) | 5.83 | 5.81 | 5.95 | 6.71 | 172 |
+| 6 features (EAR, MAR, solvePnP) | 0.04 | 0.04 | 0.05 | 0.09 | 25023 |
+| 5 eye-state CNN (when called) | 0.12 | 0.12 | 0.13 | 0.19 | 8554 |
+| 7-12 decision chain | 0.01 | 0.01 | 0.03 | 0.11 | 80476 |
+| 4 YOLOv8n FP32 (2 threads) | 16.80 | 16.64 | 17.16 | 32.97 | 60 |
+| 4 YOLOv8n INT8 (2 threads) | 19.59 | 19.56 | 19.79 | 20.72 | 51 |
 
 ## Models
 

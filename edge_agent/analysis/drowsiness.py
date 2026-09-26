@@ -25,7 +25,10 @@ Anti false-positive rules:
   of them. Narrowed eyes (looking down, squinting in sunlight, smiling) sit around 0.55-0.75
   x baseline and stay inside the close / reopen hysteresis for seconds; a real closure drops
   well below. Once the closure is deep, its whole length counts (no added delay). Blinks
-  keep the looser close_ratio.
+  keep the looser close_ratio. With `microsleep_deep_blink` > 0, an EAR frame is deep only
+  when MediaPipe's eyeBlink blendshape (block 3, pretrained, no per-driver baseline) agrees
+  it is at least that shut: EAR alone also collapses for glare on glasses, a head tilted
+  down and eyes that are narrow before the driver's own baseline is learnt.
 - PERCLOS judges every frame on its own (EAR < `perclos_close_ratio` x the open-eye
   baseline, or CNN p_closed >= `eye_cnn_closed`), not with the close / reopen hysteresis:
   after a blink, the hysteresis keeps narrowed eyes (squinting in sunlight, 0.65-0.75 x
@@ -55,6 +58,11 @@ Anti false-positive rules:
   (at least `microsleep_mask_talk_min_swings` MAR reversals of `microsleep_mask_talk_swing`
   within `microsleep_mask_talk_window_s`). A still mouth has none, and a single jump (a
   yawn ending, the jaw dropping in sleep) makes at most two.
+  With `microsleep_mask_talk_spares_deep`, talking (not yawning) no longer restarts a closure
+  on its deep frames (EAR firmly shut and the eyeBlink blendshape >= `microsleep_deep_blink`;
+  without blendshapes the mask works as before): people
+  squint while they talk, they do not keep the eyes firmly shut; small lip movements of a
+  sleepy driver made the talking mask hide real microsleeps (NITYMED).
   With `perclos_use_mask`, PERCLOS skips the masked frames too (eye state treated as
   unknown there): squinting while talking / yawning is not eye closure from fatigue.
   Yawns are counted by their own rule.
@@ -105,12 +113,14 @@ class DrowsinessConfig:
     microsleep_deep_ear_ratio: float = 0.5
     microsleep_deep_cnn: float = 0.8
     microsleep_deep_min_frac: float = 0.5
+    microsleep_deep_blink: float = 0.5  # EAR deep frames also need eyeBlink >= this when known (0 = off)
     # Closed-eye time does not count toward microsleep while yawning (see module doc)
     microsleep_mask_hold_s: float = 1.5
     microsleep_mask_max_open_s: float = 8.0
     microsleep_mask_talk_window_s: float = 2.0
     microsleep_mask_talk_swing: float = 0.08
     microsleep_mask_talk_min_swings: int = 3  # 0 = no talking mask
+    microsleep_mask_talk_spares_deep: bool = True  # talking does not restart a deep closure (see module doc)
     # PERCLOS
     perclos_window_s: float = 60.0
     perclos_min_coverage_s: float = 30.0
@@ -227,6 +237,7 @@ class DrowsinessAnalyzer:
         # microsleep mask
         self._mask_open_since: float | None = None
         self._mask_until = float("-inf")
+        self._yawn_mask_until = float("-inf")  # the yawn part of the mask (talking is the rest)
         self._talk_ext: float | None = None  # MAR extreme of the current mouth movement
         self._talk_rising = True
         self._talk_swings: deque[float] = deque()
@@ -331,7 +342,18 @@ class DrowsinessAnalyzer:
         head_down = head_off is not None and head_off > cfg.eye_max_pitch_down_deg
         self._update_closure(t, eye_closed, head_down, pitch_off is None, events)
         masked = self._update_mask(t, mar)
-        if masked and self._closed_since is not None and not self._head_drop:
+        talk_only = masked and t > self._yawn_mask_until
+        deep_frame = bool(eye_closed) and (
+            f.p_closed >= cfg.microsleep_deep_cnn if use_cnn else self._ear_deep(f, baseline)
+        )
+        spared = (  # only with the blendshape's word for it: EAR alone let talking fake microsleeps (YawDD)
+            talk_only
+            and cfg.microsleep_mask_talk_spares_deep
+            and deep_frame
+            and f.eye_blink is not None
+            and f.eye_blink >= cfg.microsleep_deep_blink
+        )
+        if masked and self._closed_since is not None and not self._head_drop and not spared:
             # Yawning / talking: restart the counted part of the closure. Not once the head
             # has dropped (a head drop is not a yawn), or falling asleep right after a yawn
             # would never reach the microsleep rules.
@@ -339,10 +361,7 @@ class DrowsinessAnalyzer:
             self._deep_frames = self._eye_frames = 0
         if eye_closed and self._count_since is not None:
             self._eye_frames += 1
-            if use_cnn:
-                self._deep_frames += f.p_closed >= cfg.microsleep_deep_cnn
-            else:
-                self._deep_frames += f.ear <= baseline * cfg.microsleep_deep_ear_ratio
+            self._deep_frames += deep_frame
         deep = self._eye_frames > 0 and self._deep_frames >= cfg.microsleep_deep_min_frac * self._eye_frames
         closed_duration = t - self._count_since if self._count_since is not None and deep else 0.0
         if closed_duration >= cfg.microsleep_min_s and not self._microsleep_fired:
@@ -429,6 +448,13 @@ class DrowsinessAnalyzer:
                 events.append("blink")
             self._end_closure()
 
+    def _ear_deep(self, f: FrameFeatures, baseline: float) -> bool:
+        """EAR firmly shut, confirmed by the eyeBlink blendshape when that vote is on and known."""
+        cfg = self.config
+        if f.ear is None or f.ear > baseline * cfg.microsleep_deep_ear_ratio:
+            return False
+        return cfg.microsleep_deep_blink <= 0 or f.eye_blink is None or f.eye_blink >= cfg.microsleep_deep_blink
+
     def _update_mask(self, t: float, mar: float | None) -> bool:
         """True while closed-eye time must not count toward microsleep (yawning or talking)."""
         cfg = self.config
@@ -442,6 +468,8 @@ class DrowsinessAnalyzer:
             yawning = self._mask_open_since is not None and t - self._mask_open_since <= cfg.microsleep_mask_max_open_s
             if yawning or talking:
                 self._mask_until = t + cfg.microsleep_mask_hold_s
+            if yawning:
+                self._yawn_mask_until = t + cfg.microsleep_mask_hold_s
         return t <= self._mask_until
 
     def _talking(self, t: float, mar: float) -> bool:

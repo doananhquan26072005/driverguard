@@ -140,3 +140,10 @@ def test_landmark_helpers():
     pts = np.array([[0, 0, 0], [10, 20, 0], [700, 5, 0], [5, 5, 0]], dtype=np.float32)
     assert bbox_area(pts) == pytest.approx(700 * 20)
     assert in_frame_ratio(pts, W, H) == pytest.approx(0.75)
+
+
+def test_eye_blink_blendshape_is_passed_on():
+    lm = synthetic_landmarks()
+    with_bs = FaceLandmarks(lm.points, W, H, 1.0, 1, 0, 0.0, eye_blink=(0.8, 0.6))
+    assert FeatureExtractor()(with_bs, 0, 0.0).eye_blink == pytest.approx(0.7)
+    assert FeatureExtractor()(lm, 0, 0.0).eye_blink is None  # blendshapes off

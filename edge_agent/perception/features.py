@@ -85,7 +85,9 @@ class FrameFeatures:
     pitch: float | None = None
     yaw: float | None = None
     roll: float | None = None
-    # Block 5 (eye-state CNN), only set on frames where EAR is not reliable.
+    # MediaPipe blendshape eyeBlink, mean of both eyes (0 open .. 1 shut); None when off (block 3).
+    eye_blink: float | None = None
+    # Block 5 (eye-state score), only set on frames where EAR is not reliable.
     p_closed: float | None = None
     eye_cnn_reason: str | None = None
 
@@ -185,4 +187,5 @@ class FeatureExtractor:
             pitch=pitch,
             yaw=yaw,
             roll=roll,
+            eye_blink=None if lm.eye_blink is None else (lm.eye_blink[0] + lm.eye_blink[1]) / 2.0,
         )

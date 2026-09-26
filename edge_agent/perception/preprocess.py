@@ -48,6 +48,9 @@ class PreprocessedFrame:
     scale: float  # output_size / input_size, to map coordinates back
     frame_id: int
     timestamp: float
+    # Luminance before CLAHE, same size as `image` (CLAHE lifts dark regions, so it cannot
+    # tell a lit face in a dark cabin from a dark face). Block 5 reads the face's brightness here.
+    luma: np.ndarray | None = None
 
 
 class Preprocessor:
@@ -72,8 +75,8 @@ class Preprocessor:
         new_size = (self.config.target_width, max(1, round(h * scale)))
         return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA), scale
 
-    def process_image(self, image: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, bool, float]:
-        """Core transform on a raw image. Returns (bgr, gray, brightness, is_ir, scale)."""
+    def process_image(self, image: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, bool, float, np.ndarray]:
+        """Core transform on a raw image. Returns (bgr, gray, brightness, is_ir, scale, luma before CLAHE)."""
         if image.dtype != np.uint8:
             raise ValueError(f"Expected uint8 image, got {image.dtype}")
         if image.ndim == 3 and image.shape[2] == 4:
@@ -85,6 +88,7 @@ class Preprocessor:
         if is_ir:
             gray = small if small.ndim == 2 else (small[..., 0] if small.shape[2] == 1 else small[..., 1])
             gray = np.ascontiguousarray(gray)
+            luma = gray
             brightness = float(gray.mean())
             if self.config.clahe_enabled:
                 gray = self._clahe.apply(gray)
@@ -94,6 +98,7 @@ class Preprocessor:
             # BGR2GRAY, so brightness needs no extra conversion (LAB took two more).
             ycc = cv2.cvtColor(small, cv2.COLOR_BGR2YCrCb)
             y = np.ascontiguousarray(ycc[..., 0])
+            luma = y
             brightness = float(cv2.mean(y)[0])
             if self.config.clahe_enabled:
                 ycc[..., 0] = self._clahe.apply(y)
@@ -102,10 +107,10 @@ class Preprocessor:
                 bgr = small
             gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)  # of the output (colour clipping shifts Y a bit)
 
-        return bgr, gray, brightness, is_ir, scale
+        return bgr, gray, brightness, is_ir, scale, luma
 
     def __call__(self, frame: Frame) -> PreprocessedFrame:
-        bgr, gray, brightness, is_ir, scale = self.process_image(frame.image)
+        bgr, gray, brightness, is_ir, scale, luma = self.process_image(frame.image)
         return PreprocessedFrame(
             image=bgr,
             gray=gray,
@@ -114,4 +119,5 @@ class Preprocessor:
             scale=scale,
             frame_id=frame.frame_id,
             timestamp=frame.timestamp,
+            luma=luma,
         )

@@ -126,6 +126,8 @@ def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
         eyes += f" [CNN p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
     elif d.eye_source == "ear":
         eyes += " [EAR]"
+    if f.eye_blink is not None:  # block 3 blendshape: the vote on deep closures (block 7)
+        eyes += f" blink {f.eye_blink:.2f}"
     warming = "" if d.perclos_ready else f" (warming up {d.perclos_coverage_s:.0f}s)"
     return [
         (

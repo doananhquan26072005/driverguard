@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from edge_agent.analysis.drowsiness import DrowsinessAnalyzer
+from edge_agent.config import ConfigError
 from edge_agent.perception.eye_state import (
     LEFT_EYE_CORNERS,
     RIGHT_EYE_CORNERS,
@@ -12,7 +13,9 @@ from edge_agent.perception.eye_state import (
     EyeStateEstimator,
     OnnxEyeClassifier,
     eye_crop,
+    face_brightness,
     make_estimator,
+    trigger_from_values,
     trigger_reason,
 )
 from edge_agent.perception.features import FrameFeatures
@@ -208,3 +211,72 @@ def test_ear_asymmetry_is_not_held():
     est = EyeStateEstimator(CFG, classifier=FakeClassifier(p=0.1))
     assert est(frame(t=0.0), landmarks(), feats(0.1, 0.3, t=0.0)).eye_cnn_reason == "ear_asymmetry"
     assert est(frame(t=0.1), landmarks(), feats(0.3, 0.3, t=0.1)).p_closed is None
+
+
+# ---------------------------------------------------------------- 26/09: face brightness, asymmetry, blendshape
+
+
+def lit_face_in_dark_cabin(face_luma=140, cabin_luma=20):
+    """Frame whose mean luminance is dark but the face box (landmarks) is well lit."""
+    img = np.full((360, 640, 3), cabin_luma, np.uint8)
+    luma = np.full((360, 640), cabin_luma, np.uint8)
+    luma[100:220, 220:440] = face_luma
+    return PreprocessedFrame(img, img[..., 0], float(luma.mean()), False, 1.0, 0, 0.0, luma=luma)
+
+
+def face_landmarks():
+    lm = landmarks()
+    pts = lm.points.copy()
+    pts[:, :2] = (330, 160)
+    pts[0, :2], pts[1, :2] = (230, 110), (430, 210)  # landmark box inside the lit face region
+    for (a, b), cx in ((LEFT_EYE_CORNERS, 400), (RIGHT_EYE_CORNERS, 260)):
+        pts[a, :2], pts[b, :2] = (cx + 20, 150), (cx - 20, 150)
+    return FaceLandmarks(pts, 640, 360, 1.0, 1, 0, 0.0, eye_blink=(0.9, 0.8))
+
+
+def test_low_light_is_judged_on_the_face_not_the_cabin():
+    pre = lit_face_in_dark_cabin()
+    assert pre.brightness < CFG.low_light_brightness  # the whole frame is "night"
+    assert face_brightness(pre, face_landmarks()) == pytest.approx(140)
+    assert trigger_reason(pre, feats(), CFG, face_landmarks()) is None  # lit face: EAR trusted
+    dark = lit_face_in_dark_cabin(face_luma=30)
+    assert trigger_reason(dark, feats(), CFG, face_landmarks()) == "low_light"
+    assert trigger_reason(pre, feats(), CFG) == "low_light"  # no landmarks: whole frame, as before
+
+
+@pytest.mark.parametrize(
+    ("ear_l", "ear_r", "expected"),
+    [
+        (0.05, 0.08, None),  # both eyes closing: they agree, EAR decides (was "ear_asymmetry")
+        (0.02, 0.10, None),
+        (0.30, 0.12, "ear_asymmetry"),  # one eye open, the other collapsed: glare / occlusion
+        (0.12, 0.30, "ear_asymmetry"),
+        (0.30, 0.26, None),
+    ],
+)
+def test_asymmetry_only_while_one_eye_looks_open(ear_l, ear_r, expected):
+    assert trigger_from_values(CFG, False, 120.0, ear_l, ear_r) == expected
+
+
+def test_blendshape_source_needs_no_model():
+    cfg = EyeStateConfig(source="blendshape", model_path="missing.onnx")
+    est = make_estimator(cfg)
+    assert est is not None  # no ONNX to load
+    out = est(frame(is_ir=True), face_landmarks(), feats())
+    assert out.p_closed == pytest.approx(0.85) and out.eye_cnn_reason == "ir"
+    no_bs = FaceLandmarks(face_landmarks().points, 640, 360, 1.0, 1, 0, 0.0)
+    assert est(frame(is_ir=True), no_bs, feats()).p_closed is None  # blendshapes off: EAR decides
+
+
+def test_unknown_source_is_refused():
+    with pytest.raises(ConfigError, match="source"):
+        EyeStateConfig.from_dict({"source": "magic"})
+
+
+def test_decide_holds_scene_triggers_only():
+    est = EyeStateEstimator(CFG, classifier=FakeClassifier())
+    assert est.decide(0.0, "low_light") == "low_light"
+    assert est.decide(1.0, None) == "low_light"  # within hold_s
+    assert est.decide(0.5 + CFG.hold_s + 0.1, None) is None
+    assert est.decide(10.0, "ear_asymmetry") == "ear_asymmetry"
+    assert est.decide(10.1, None) is None  # asymmetry is not held
