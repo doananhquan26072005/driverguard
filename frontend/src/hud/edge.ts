@@ -24,3 +24,12 @@ export async function sendFalseAlarm(eventId: string): Promise<FeedbackResult> {
     return "offline";
   }
 }
+
+/** Where the HUD gets its state: the edge agent's HUD server, or the in-browser agent (#/live). */
+export interface HudSource {
+  address: string; // shown when the link is down
+  state(signal?: AbortSignal): Promise<HudSnapshot>;
+  falseAlarm(eventId: string): Promise<FeedbackResult>;
+}
+
+export const edgeSource: HudSource = { address: EDGE_URL, state: fetchState, falseAlarm: sendFalseAlarm };

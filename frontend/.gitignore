@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env.local
+
+# In-browser agent assets (npm run prepare-live; the Docker build makes its own)
+public/py/
+public/models/

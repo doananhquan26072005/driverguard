@@ -91,6 +91,31 @@ def thresholds_out(conn: sqlite3.Connection) -> ThresholdsOut:
     return ThresholdsOut(**latest, specs=specs)
 
 
+def web_device_id(username: str) -> str:
+    """Device id of a user's browser running the in-browser agent (fits the 48-char identifier)."""
+    return f"web-{username}"[:48]
+
+
+def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str | None) -> BatchResult:
+    accepted = feedback = samples = 0
+    for e in batch.events:  # events first: feedback in the same batch may refer to them
+        row = e.model_dump(mode="json")
+        row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
+        accepted += db.insert_event(conn, dev, drv, row)
+    for f in batch.feedback:
+        feedback += db.apply_feedback(conn, dev, str(f.event_id), f.verdict, f.ts.astimezone(UTC).isoformat())
+    for smp in batch.samples:
+        row = smp.model_dump(mode="json")
+        row["ts"] = smp.ts.astimezone(UTC).isoformat()
+        samples += db.insert_sample(conn, dev, drv, row)
+    return BatchResult(
+        accepted=accepted,
+        duplicates=len(batch.events) - accepted,
+        feedback_applied=feedback,
+        samples_accepted=samples,
+    )
+
+
 def safe_errors(exc: ValidationError) -> list[dict[str, Any]]:
     """Validation errors without the offending input, so a rejected payload is never echoed back."""
     return [{"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
@@ -186,10 +211,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def me(user: Annotated[dict[str, Any], Depends(current_user)]) -> UserOut:
         return UserOut(username=user["sub"], role=user["role"], driver_id=user.get("driver_id"))
 
-    @app.post("/api/v1/events", response_model=BatchResult)
-    async def post_events(
-        request: Request, device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn
-    ) -> BatchResult:
+    async def read_batch(request: Request, device_id: str) -> EventBatch:
         raw = await request.body()
         if len(raw) > settings.max_body_bytes:  # chunked uploads have no content-length
             raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "payload too large")
@@ -201,30 +223,34 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             batch = EventBatch.model_validate(data)
         except ValidationError as exc:
             raise HTTPException(422, safe_errors(exc)) from None
-        if batch.device_id != device["device_id"]:
+        if batch.device_id != device_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "device_id does not match the device key")
+        return batch
 
-        def store() -> BatchResult:
-            dev, drv = device["device_id"], device["driver_id"]
-            accepted = feedback = samples = 0
-            for e in batch.events:  # events first: feedback in the same batch may refer to them
-                row = e.model_dump(mode="json")
-                row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
-                accepted += db.insert_event(conn, dev, drv, row)
-            for f in batch.feedback:
-                feedback += db.apply_feedback(conn, dev, str(f.event_id), f.verdict, f.ts.astimezone(UTC).isoformat())
-            for smp in batch.samples:
-                row = smp.model_dump(mode="json")
-                row["ts"] = smp.ts.astimezone(UTC).isoformat()
-                samples += db.insert_sample(conn, dev, drv, row)
-            return BatchResult(
-                accepted=accepted,
-                duplicates=len(batch.events) - accepted,
-                feedback_applied=feedback,
-                samples_accepted=samples,
-            )
+    @app.post("/api/v1/events", response_model=BatchResult)
+    async def post_events(
+        request: Request, device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn
+    ) -> BatchResult:
+        batch = await read_batch(request, device["device_id"])
+        return await run_in_threadpool(store_batch, conn, batch, device["device_id"], device["driver_id"])
 
-        return await run_in_threadpool(store)
+    @app.post("/api/v1/web/events", response_model=BatchResult)
+    async def post_web_events(
+        request: Request, user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))], conn: Conn
+    ) -> BatchResult:
+        """The in-browser agent (#/live): same batch, sent with the signed-in user's token.
+
+        The device is the user's browser, web-<username>; events belong to the user's own driver_id,
+        so a driver cannot post for someone else.
+        """
+        batch = await read_batch(request, web_device_id(user["sub"]))
+        return await run_in_threadpool(store_batch, conn, batch, batch.device_id, user.get("driver_id"))
+
+    @app.get("/api/v1/web/thresholds", response_model=ThresholdsOut)
+    def get_web_thresholds(
+        _: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))], conn: Conn
+    ) -> ThresholdsOut:
+        return thresholds_out(conn)
 
     @app.get("/api/v1/events", response_model=list[EventOut])
     def get_events(

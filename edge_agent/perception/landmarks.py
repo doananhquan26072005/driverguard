@@ -20,9 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
-import mediapipe as mp
 import numpy as np
-from mediapipe.tasks.python import BaseOptions, vision
 
 from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.perception.preprocess import PreprocessedFrame
@@ -77,6 +75,12 @@ def in_frame_ratio(points: np.ndarray, width: int, height: int) -> float:
 class FaceLandmarkDetector:
     def __init__(self, config: LandmarkConfig | None = None, image_mode: bool = False) -> None:
         """image_mode: unrelated still images (dataset evaluation), no tracking between calls."""
+        # Imported here so FaceLandmarks and the feature blocks work without MediaPipe's Python
+        # package (the in-browser agent runs MediaPipe in JavaScript, edge_agent/web).
+        import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions, vision
+
+        self._mp = mp
         self.config = config or LandmarkConfig()
         self.image_mode = image_mode
         model = self.config.resolved_model_path()
@@ -112,7 +116,7 @@ class FaceLandmarkDetector:
     def detect(self, frame: PreprocessedFrame) -> FaceLandmarks | None:
         h, w = frame.image.shape[:2]
         rgb = cv2.cvtColor(frame.image, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)
         if self.image_mode:
             result = self._landmarker.detect(mp_image)
         else:

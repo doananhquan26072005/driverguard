@@ -1,5 +1,5 @@
 /* Tailwind v4 for the HUD only. No preflight, so the dashboard keeps its own base styles
-   (styles.css), and only src/hud/ is scanned, so dashboard class names never become utilities.
+   (styles.css), and only src/hud/ and src/live/ (the in-browser agent, HUD look) are scanned, so dashboard class names never become utilities.
    Layer order: legacy < utilities, so Tailwind classes always win on the HUD. A styles.css class
    named like a utility the HUD uses (.grid, .inline, .hidden, ...) would be overridden: avoid. */
 @layer theme, legacy, utilities;
@@ -7,6 +7,7 @@
 @import "./styles.css" layer(legacy);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @source "./hud";
+@source "./live";
 
 /* Self-hosted: the in-car screen must work offline. Vietnamese subset is picked by unicode-range. */
 @import "@fontsource/be-vietnam-pro/500.css";

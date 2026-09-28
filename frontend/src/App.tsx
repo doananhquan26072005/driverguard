@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import Dashboard from "./dashboard/Dashboard";
 import HudPreview from "./hud/HudPreview";
 import HudScreen from "./hud/HudScreen";
+import LiveScreen from "./live/LiveScreen";
 
 // Hash routes: #/hud (in-car screen, no login), #/hud-preview (every HUD state, for design review)
-// and #/dashboard (fleet manager / engineer / driver).
-function route(): "hud" | "hud-preview" | "dashboard" {
+// #/live (the whole agent in this browser, on the visitor's camera) and #/dashboard
+// (fleet manager / engineer / driver).
+function route(): "hud" | "hud-preview" | "live" | "dashboard" {
   const hash = window.location.hash;
   if (hash.startsWith("#/hud-preview")) return "hud-preview";
+  if (hash.startsWith("#/live")) return "live";
   return hash.startsWith("#/hud") ? "hud" : "dashboard";
 }
 
@@ -19,5 +22,6 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   if (page === "hud-preview") return <HudPreview />;
+  if (page === "live") return <LiveScreen />;
   return page === "hud" ? <HudScreen /> : <Dashboard />;
 }

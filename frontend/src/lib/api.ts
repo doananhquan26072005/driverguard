@@ -111,3 +111,17 @@ export function getThresholds(s: Session): Promise<Thresholds> {
 export function putThresholds(s: Session, values: Record<string, number>): Promise<Thresholds> {
   return request("/api/v1/thresholds", { method: "PUT", body: JSON.stringify({ values }) }, s);
 }
+
+// In-browser agent (#/live): tuned thresholds and event batches with the user's token.
+export function getWebThresholds(s: Session): Promise<Thresholds> {
+  return request("/api/v1/web/thresholds", {}, s);
+}
+
+export function postWebBatch(s: Session, body: string): Promise<{ accepted: number }> {
+  return request("/api/v1/web/events", { method: "POST", body }, s);
+}
+
+/** Same as backend.app.web_device_id: the user's browser as a device. */
+export function webDeviceId(username: string): string {
+  return `web-${username}`.slice(0, 48);
+}

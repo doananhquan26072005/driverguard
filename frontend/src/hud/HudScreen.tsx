@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { HudAlert, HudSnapshot } from "../lib/types";
 import { ALARM_REPEAT_S, play, playAlert, systemSound, unlock } from "./chime";
 import { demoSnapshot } from "./demo";
-import { EDGE_URL, fetchState, sendFalseAlarm } from "./edge";
+import { edgeSource, type HudSource } from "./edge";
 import HudView from "./HudView";
 import type { HudLink } from "./hudModel";
 
@@ -18,7 +18,7 @@ function feedbackTarget(alerts: HudAlert[], now: number, windowS: number | undef
   return newest;
 }
 
-export default function HudScreen() {
+export default function HudScreen({ source = edgeSource }: { source?: HudSource }) {
   const [mode, setMode] = useState<Mode>("live");
   const [link, setLink] = useState<HudLink>("connecting");
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
@@ -43,7 +43,7 @@ export default function HudScreen() {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 1000);
       try {
-        const s = await fetchState(ctrl.signal);
+        const s = await source.state(ctrl.signal);
         if (cancelled) return;
         failures.current = 0;
         setSnap(s);
@@ -62,7 +62,7 @@ export default function HudScreen() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [mode]);
+  }, [mode, source]);
 
   // Sound for alerts not heard yet: its own sound per kind of alert (chime.ts).
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function HudScreen() {
       setToast("Đã ghi nhận cảnh báo sai (mô phỏng)");
       return;
     }
-    const result = await sendFalseAlarm(target.event_id);
+    const result = await source.falseAlarm(target.event_id);
     setToast(
       {
         recorded: "Đã ghi nhận cảnh báo sai. Cảm ơn bạn!",
@@ -98,7 +98,7 @@ export default function HudScreen() {
         offline: "Mất kết nối với thiết bị, thử lại sau",
       }[result],
     );
-  }, [target, mode]);
+  }, [target, mode, source]);
 
   const stale = mode === "live" && snap?.updated_at != null && now - snap.updated_at > STALE_S;
   const level = snap?.connected ? snap.level : 0;
@@ -133,7 +133,7 @@ export default function HudScreen() {
       sound={sound}
       feedbackTarget={target}
       toast={toast}
-      edgeUrl={EDGE_URL}
+      edgeUrl={source.address}
       onToggleSound={() => setSound((on) => (on ? false : unlock()))}
       onToggleDemo={() => setMode((m) => (m === "live" ? "demo" : "live"))}
       onFalseAlarm={onFalseAlarm}
