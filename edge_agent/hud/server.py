@@ -104,6 +104,9 @@ class HudState:
             }
 
 
+DEFAULT_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
+
 def make_handler(
     state: HudState, on_false_alarm: Callable[[str], None], allowed_origins: tuple[str, ...]
 ) -> type[BaseHTTPRequestHandler]:
@@ -120,6 +123,9 @@ def make_handler(
                 self.send_header("Vary", "Origin")
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                # Chrome asks before a public page (the hosted dashboard) calls 127.0.0.1
+                if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                    self.send_header("Access-Control-Allow-Private-Network", "true")
 
         def _json(self, code: int, body: dict[str, Any]) -> None:
             data = json.dumps(body).encode()
@@ -171,7 +177,7 @@ class HudServer:
         state: HudState,
         on_false_alarm: Callable[[str], None],
         port: int = 8765,
-        allowed_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173"),
+        allowed_origins: tuple[str, ...] = DEFAULT_ORIGINS,
     ) -> None:
         self.state = state
         self._httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(state, on_false_alarm, allowed_origins))

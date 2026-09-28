@@ -1,0 +1,14 @@
+data/
+models/
+eval/
+docs/
+presentation/
+.venv/
+**/node_modules/
+frontend/dist/
+.git/
+.ai-log/
+.env
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/

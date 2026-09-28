@@ -48,6 +48,9 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         <button type="submit" className="primary" disabled={busy}>
           {busy ? "Đang đăng nhập…" : "Đăng nhập"}
         </button>
+        <a className="muted small" href="#/live">
+          Chạy với camera trên trình duyệt này →
+        </a>
         <a className="muted small" href="#/hud">
           Mở HUD trong xe →
         </a>

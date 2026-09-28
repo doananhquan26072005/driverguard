@@ -55,6 +55,25 @@ def test_state_endpoint(hud):
     assert "Access-Control-Allow-Origin" not in call(f"{url}/state", origin="http://evil.example")[2]
 
 
+def test_extra_origin_and_private_network_preflight():
+    hosted = "https://driveguard.example"
+    server = HudServer(HudState(), lambda _: None, port=0, allowed_origins=(ORIGIN, hosted)).start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{server.port}/state",
+            method="OPTIONS",
+            headers={"Origin": hosted, "Access-Control-Request-Private-Network": "true"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            assert resp.headers["Access-Control-Allow-Origin"] == hosted
+            assert resp.headers["Access-Control-Allow-Private-Network"] == "true"
+        req.add_header("Origin", "http://evil.example")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            assert resp.headers["Access-Control-Allow-Private-Network"] is None
+    finally:
+        server.stop()
+
+
 def test_false_alarm_flow(hud):
     state, url, flagged = hud
     state.add_alert("ev-1", 2, ("phone",))

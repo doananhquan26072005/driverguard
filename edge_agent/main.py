@@ -37,7 +37,7 @@ from edge_agent.context.can_sim import CanSimulator, load_scenario
 from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.decision.pipeline import DecisionPipeline
 from edge_agent.hud.hud import alert_line, draw_hud, status_line
-from edge_agent.hud.server import HudConfig, HudServer, HudState
+from edge_agent.hud.server import DEFAULT_ORIGINS, HudConfig, HudServer, HudState
 from edge_agent.io.publisher import (
     MetadataPublisher,
     PublisherConfig,
@@ -76,6 +76,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--device-id", default="cam-001", help="this device's id, registered in the backend")
     p.add_argument("--device-key", default=None, help="device key (default: env DG_DEVICE_KEY)")
     p.add_argument("--hud-port", type=int, default=8765, help="local HUD server port on 127.0.0.1 (0 = off)")
+    p.add_argument(
+        "--hud-origin",
+        action="append",
+        default=[],
+        help="extra web origin allowed to read the HUD server, e.g. https://driveguard-production-6b83.up.railway.app",
+    )
     return p.parse_args(argv)
 
 
@@ -128,7 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     hud_server = None
     if args.hud_port:
         try:
-            hud_server = HudServer(hud_state, on_false_alarm, port=args.hud_port).start()
+            hud_server = HudServer(
+                hud_state, on_false_alarm, port=args.hud_port, allowed_origins=(*DEFAULT_ORIGINS, *args.hud_origin)
+            ).start()
             print(f"[hud] in-car HUD server on http://127.0.0.1:{hud_server.port}/state")
         except OSError as e:
             print(f"[hud] server disabled: {e}")

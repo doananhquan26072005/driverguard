@@ -1,0 +1,52 @@
+# DriveGuard on Railway: backend (FastAPI) + dashboard / HUD / in-browser agent (React) in one image.
+# The server never runs a model: #/live runs the pipeline in the visitor's browser, so the image
+# only serves its files (the Python of edge_agent/ for Pyodide + the two pretrained models).
+
+# ---- Stage 1: build the dashboard ----
+FROM node:22-alpine AS frontend
+WORKDIR /fe
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+# Empty API URL: the dashboard calls the backend on the same origin.
+ENV VITE_API_URL=""
+RUN npx vite build
+
+# ---- Stage 2: backend dependencies only (no OpenCV / MediaPipe / onnxruntime) ----
+FROM python:3.12-slim AS deps
+RUN python -m venv /venv
+ENV PATH=/venv/bin:$PATH
+RUN pip install --no-cache-dir \
+    "fastapi>=0.115.0" "uvicorn>=0.34.0" "pydantic>=2.10.0" \
+    "pydantic-settings>=2.7.0" "pyjwt>=2.8.0" "pyyaml>=6.0"
+
+# ---- Stage 3: files for the in-browser agent (#/live) ----
+FROM python:3.12-slim AS webpy
+WORKDIR /src
+COPY tools/build_web_py.py tools/
+COPY edge_agent/ edge_agent/
+COPY config/thresholds.yaml config/
+COPY config/scenarios/ config/scenarios/
+RUN python tools/build_web_py.py /out/py/edge_agent.zip
+
+# ---- Stage 4: runtime ----
+FROM python:3.12-slim
+ENV PATH=/venv/bin:$PATH \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DG_DB_PATH=/app/data/driverguard.db \
+    DG_STATIC_DIR=/app/static \
+    APP_VERSION=1.1.0
+WORKDIR /app
+COPY --from=deps /venv /venv
+COPY backend/ backend/
+COPY edge_agent/__init__.py edge_agent/config.py edge_agent/
+COPY edge_agent/io/__init__.py edge_agent/io/remote_config.py edge_agent/io/
+COPY config/thresholds.yaml config/
+COPY deploy/railway_app.py deploy/
+COPY --from=frontend /fe/dist /app/static
+COPY --from=webpy /out/py /app/static/py
+COPY models/face_landmarker.task models/yolov8n.onnx /app/static/models/
+RUN mkdir -p /app/data
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn deploy.railway_app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
