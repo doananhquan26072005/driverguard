@@ -23,7 +23,16 @@ try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass
+    # The pre-push hook runs whatever python3 is on PATH, often without python-dotenv:
+    # read KEY=VALUE lines of .env ourselves, or every push silently skips submission.
+    _env = Path(".env")
+    if _env.is_file():
+        for _line in _env.read_text(encoding="utf-8").splitlines():
+            _line = _line.strip()
+            if not _line or _line.startswith("#") or "=" not in _line:
+                continue
+            _key, _value = _line.split("=", 1)
+            os.environ.setdefault(_key.strip(), _value.strip().strip("'\""))
 
 SERVER_URL = os.environ.get("AI_LOG_SERVER", "")
 API_KEY = os.environ.get("AI_LOG_API_KEY", "")
