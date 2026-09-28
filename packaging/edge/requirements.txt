@@ -1,0 +1,8 @@
+# DriveGuard edge agent only (camera + models on this machine). Python 3.11 or 3.12.
+opencv-python>=4.9.0
+numpy>=1.26.0
+pyyaml>=6.0
+# MediaPipe 1.0.x crashes on recent macOS ("Metal ... Service is unavailable"); 0.10.21 works.
+mediapipe==0.10.21; sys_platform == "darwin"
+mediapipe>=0.10.20; sys_platform != "darwin"
+onnxruntime>=1.18.0
