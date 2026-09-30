@@ -3,47 +3,90 @@
 Danh sách để chọn mốc tiếp theo, không phải kế hoạch. Theo CLAUDE.md, không mục nào được làm
 trước khi có yêu cầu; mục nào được chọn thì thêm thành mốc trong `docs/roadmap.md`.
 
-Cập nhật: 30/09/2026 (sắp xếp theo thứ tự ưu tiên; dataset tách thành mục 3).
+Cập nhật: 30/09/2026 (bảng việc theo mức ưu tiên, mỗi task có link xuống chi tiết và cột người thực
+hiện; thêm việc để cuối: đóng gói APK, giao diện cho tài xế; thêm việc đo tài nguyên phần cứng;
+thêm việc tối ưu ngưỡng buồn ngủ trên UTA-RLDD).
 
-## Thứ tự ưu tiên đề xuất
+## Danh sách việc theo mức ưu tiên
 
-Tiêu chí: giảm báo sai, việc nhỏ, không thêm model / không ảnh hưởng FPS, test được bằng chuỗi số
-giả → làm trước. Cần công cụ eval mới, dữ liệu mới, model mới hay phần cứng → làm sau. Đây chỉ là đề
-xuất, bạn quyết định mốc nào làm.
+Bấm tên việc để xuống phần chi tiết. Số thứ tự dùng để gọi tắt khi chọn mốc ("làm việc 2"). Đây chỉ
+là đề xuất, bạn quyết định làm việc nào.
 
-| # | Việc | Mục | Vì sao ở vị trí này |
+### Cần quyết định trước
+Chưa phải việc code, nhưng chặn các việc khác.
+
+| # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 0 | **Chốt FR-6** (mất mặt ≥ 3 s: L2 hay `unavailable`) | 1 | Quyết định chặn cờ chói (5) và cảnh báo mất mặt 10 s (4.6) |
-| **P1** | | | **Nhỏ, giảm báo sai hoặc sửa lỗi đo, không thêm model** |
-| 1 | CI Poisson + số giờ dữ liệu, tách theo lý do / mức | 2 | PRD bắt buộc; cần có để đo mọi thay đổi phía sau. Dữ liệu: UTA-RLDD (~8 giờ tỉnh táo, mục 3) |
-| 2 | Mốc mắt mở học đầu chuyến rồi giữ gần cố định | 4.1 | Mốc tụt theo cơn buồn ngủ → bỏ sót đúng lúc cần báo |
-| 3 | Cờ chói / trigger `overexposed` ở khối 5 | 5 | Nguồn báo nhắm mắt sai và `no_face` sai khi gặp đèn pha |
-| 4 | Bám tài xế giữa các frame (hysteresis, ưu tiên ghế lái) | 6 | Chọn nhầm hành khách trộn dữ liệu hai người |
-| **P2** | | | **Thêm tín hiệu / luật mới, vẫn không thêm model** |
-| 5 | Tốc độ mở mắt lại, thời lượng chớp | 4.2 | Dấu hiệu sớm trước PERCLOS |
-| 6 | Gục đầu: cúi chậm, ngẩng nhanh | 4.3 | Bớt báo sai khi liếc bảng đồng hồ |
-| 7 | Hướng nhìn từ blendshape `eyeLook*` + mống mắt | 7 | Bắt liếc điện thoại khi đầu thẳng; tách "nhìn xuống" với "nhắm" |
-| 8 | So PERCLOS P80 với ngưỡng 0,65 hiện tại | 4.4 | Chỉ chạy eval, chưa đổi code |
-| 9 | Tách giai đoạn khởi động + đường đánh đổi ngưỡng | 2 | Số cảnh báo sai / giờ phản ánh đúng hơn |
-| 10 | Mức cảnh báo theo thời gian nhắm (3 s, 6 s) | 4.5 | Cần thêm sự kiện `unresponsive` + CAN giả lập |
-| 11 | Mất mặt 10 s → `monitoring_unavailable` | 4.6 | Làm sau khi chốt FR-6 |
-| **P3** | | | **Cần công cụ, dữ liệu, model mới hoặc còn chưa chắc** |
-| 12 | Sửa `seq_eval` trace thêm cột → thử `blinkcnn` / OCEC | 8 | Research xong nhưng phải thử offline trước |
-| 13 | Clip tự quay có nhãn + công cụ đo time-to-alert | 10 | Dùng chung cho đánh giá ở mục 2, 5, 7. Dữ liệu có sẵn: DMD (nhãn theo frame, mục 3) |
-| 14 | Nhướn mày làm thành phần phụ của `drowsy_score` | 4.7 | Chưa có bằng chứng, ưu tiên thấp |
-| 15 | Cân bằng tương phản trên web bằng WebGL | 5 | Phải đo lại FPS |
-| 16 | Phần PRD còn thiếu: LLM (FR-12/13), Docker edge, nhật ký (FR-8/9/17), test 10 người, nộp bài | 10 | Việc lớn, không trực tiếp giảm báo sai |
-| 17 | Tải thử NTHU-DDD (HF `train.zip`), mở Dropbox Brain4Cars | 3 | Chưa xác nhận dùng được; cần trước khi đo IR / kính râm / `off_road` khi rẽ |
-| — | Camera IR, xi-nhan / tốc độ CAN thật | 5, 9 | Phụ thuộc phần cứng, ngoài phần mềm |
+| A | [Chốt mất mặt 3 s](#quyet-dinh) | FR-6: mất mặt ≥ 3 s khi xe chạy báo L2 (như code) hay im lặng ở `unavailable` (như PRD) (chặn việc 3, 11) |  |
+| B | [Chốt cách đăng ký tài xế](#quyet-dinh) | Bắt buộc hay bỏ qua được; chữ ký mặt có giữ qua chuyến không; khối mới hay gộp vào khối cũ (chặn việc 2, 4) |  |
 
-(Số 4.x = đề xuất thứ x trong "Hướng đề xuất" của mục 4.)
+### Ưu tiên cao: làm trước
+Nhỏ, giảm báo sai hoặc sửa lỗi đo, không thêm model, không ảnh hưởng FPS, test được bằng chuỗi số giả.
+
+| # | Task | Solution | Người thực hiện |
+|---:|---|---|---|
+| 1 | [Sửa cách đo báo sai](#viec-do-bao-sai) | Thêm khoảng tin cậy (CI Poisson) + số giờ dữ liệu vào mọi bảng; tách theo lý do / mức |  |
+| 2 | [Học mặt tài xế lúc khởi động](#dang-ky-buoc-a) | Màn hình hướng dẫn nhìn thẳng / nhìn đường / nhắm mắt → mốc mắt, miệng, tư thế đầu của riêng tài xế |  |
+| 3 | [Chống chói đèn pha](#viec-choi) | Cờ chói + trigger `overexposed` ở khối 5 |  |
+| 4 | [Nhận ra tài xế](#dang-ky-buoc-b) | Bám tài xế giữa các frame bằng chữ ký mặt + vị trí ghế lái + hysteresis |  |
+
+### Ưu tiên vừa
+Thêm tín hiệu / luật mới, vẫn không thêm model.
+
+| # | Task | Solution | Người thực hiện |
+|---:|---|---|---|
+| 5 | [Đo tốc độ chớp mắt](#viec-chop-mat) | Thời lượng chớp, thời gian mở mắt lại, tỉ lệ chớp dài |  |
+| 6 | [Tách gục đầu với liếc đồng hồ](#viec-guc-dau) | Gục đầu = cúi chậm rồi ngẩng nhanh |  |
+| 7 | [Theo dõi hướng mắt](#viec-huong-nhin) | Hướng nhìn từ blendshape `eyeLook*` + mống mắt |  |
+| 8 | [So định nghĩa PERCLOS](#viec-perclos) | Chạy P80 song song với ngưỡng 0,65 hiện tại |  |
+| 9 | [Tách giai đoạn khởi động khi đo](#viec-do-bao-sai) | Báo riêng 30 s đầu clip; vẽ đường đánh đổi báo sai ↔ bắt sự kiện khi đổi ngưỡng |  |
+| 10 | [Cảnh báo theo độ dài nhắm mắt](#viec-muc-nham-mat) | Thêm mốc nhắm 3 s và 6 s; 6 s sinh sự kiện `unresponsive` |  |
+| 11 | [Báo tạm ngưng giám sát](#viec-mat-mat-10s) | Mất mặt 10 s → `monitoring_unavailable` |  |
+| 22 | [Tối ưu ngưỡng buồn ngủ trên UTA-RLDD](#viec-toi-uu-nguong) | Trace UTA-RLDD một lần, dò ngưỡng nhánh buồn ngủ + `drowsy_score` bằng `seq_eval --replay`, chọn theo fold người; làm sau việc 1 |  |
+
+### Ưu tiên thấp
+Cần công cụ, dữ liệu hoặc model mới, hoặc còn chưa chắc có lợi.
+
+| # | Task | Solution | Người thực hiện |
+|---:|---|---|---|
+| 12 | [Thử model mắt mới](#viec-model-mat) | Sửa `seq_eval` để trace thêm cột → thử `blinkcnn` / OCEC offline |  |
+| 13 | [Quay clip + đo độ trễ cảnh báo](#viec-prd) | Clip tự quay có nhãn + công cụ đo time-to-alert |  |
+| 14 | [Học vùng nhìn, nhận mặt bằng model](#dang-ky-buoc-c) | Học tư thế nhìn gương / đồng hồ; embedding mặt nếu việc 4 không đủ |  |
+| 15 | [Nhướn mày](#viec-nhuon-may) | Nhướn mày làm thành phần phụ của `drowsy_score` |  |
+| 16 | [Tăng tương phản trên web](#viec-choi) | Cân bằng tương phản bằng WebGL |  |
+| 17 | [Làm nốt yêu cầu PRD](#viec-prd) | LLM (FR-12/13), Docker edge, nhật ký (FR-8/9/17), test 10 người, nộp bài |  |
+| 18 | [Tải thử dataset](#viec-tai-dataset) | Tải thử NTHU-DDD (HF `train.zip`), mở Dropbox Brain4Cars |  |
+
+### Không gấp: để cuối
+Không đổi độ chính xác, chỉ đổi cách dùng.
+
+| # | Task | Solution | Người thực hiện |
+|---:|---|---|---|
+| 19 | [Đóng gói app APK](#viec-apk) | Gói bản web thành app Android chạy offline |  |
+| 20 | [Giao diện cho tài xế](#viec-giao-dien) | Bỏ thuật ngữ chuyên ngành, gộp các bước tải thành một |  |
+
+### Phụ thuộc phần cứng
+Cần thiết bị thật hoặc tín hiệu xe thật.
+
+| # | Task | Solution | Người thực hiện |
+|---:|---|---|---|
+| 21 | [Đo tài nguyên phần cứng](#viec-do-phan-cung) | Đo CPU, RAM, nhiệt độ, FPS khi chạy lâu trên hub gắn trên xe và trên máy chạy project; thêm vào `tools/benchmark.py` |  |
+| — | [Phần cứng thật](#viec-phan-cung) | Camera IR, xi-nhan / tốc độ CAN thật |  |
 
 ---
+
+<a id="quyet-dinh"></a>
 
 ## 1. Cần quyết định
 
 - **FR-6:** mất mặt ≥ 3 s khi xe chạy nên báo L2 (như code) hay im lặng ở `unavailable` (như PRD)?
-  Liên quan trực tiếp mục 5: nếu giữ L2 thì cần cờ chói để tránh báo sai do đèn pha.
+  Liên quan trực tiếp mục 6: nếu giữ L2 thì cần cờ chói để tránh báo sai do đèn pha.
+- **Đăng ký tài xế (mục 4):**
+  - Bắt buộc lúc khởi động, hay cho phép bỏ qua và quay về cách tự học hiện tại?
+  - Chữ ký mặt (dãy số, không phải ảnh) chỉ giữ trong RAM trong một chuyến, hay được lưu lại để lần
+    sau tài xế quen không phải đăng ký lại? Lưu lại là lưu dữ liệu sinh trắc, dù không vi phạm chữ
+    "ảnh" trong CLAUDE.md.
+  - Làm thành khối mới trong kiến trúc 14 khối, hay là một giai đoạn của khối 6 / 7 / 8?
 - **Cooldown L3:** HUD vẫn đỏ khi cảnh báo bị cooldown giữ lại. Worklog ghi là thiết kế, đang chờ
   xác nhận.
 - **License YOLO (AGPL-3.0):** Ultralytics ghi mọi model YOLO của họ, kể cả model fine-tune và bản
@@ -86,6 +129,8 @@ nhận (bị làm phiền bao nhiêu lần / giờ), khớp PRD (≤ 1,0 / giờ
 5. **Số HITL trên dashboard không cùng loại:** `false_alarms / tổng cảnh báo` là precision, không phải
    / giờ, và phụ thuộc tài xế có bấm nút hay không.
 
+<a id="viec-do-bao-sai"></a>
+
 ### Hướng đề xuất (dễ → khó)
 1. **Thêm CI Poisson + số giờ dữ liệu** vào mọi bảng cảnh báo sai / giờ (báo cáo + công cụ eval). Đây là
    yêu cầu có sẵn của PRD.
@@ -111,7 +156,7 @@ thêm thành mốc riêng (cần task mới trong `tools/dataset.py`).
 
 | Dataset | Dùng cho | Lấy thế nào | Trạng thái |
 |---|---|---|---|
-| UTA-RLDD | Cảnh báo sai / giờ (~8 giờ tỉnh táo), buồn ngủ thật theo mức 0 / 5 / 10 | Kaggle 96,6 GB, hoặc Kaggle Notebook | Nên dùng (P1 số 1) |
+| UTA-RLDD | Cảnh báo sai / giờ (~8 giờ tỉnh táo), buồn ngủ thật theo mức 0 / 5 / 10 | Kaggle 96,6 GB, hoặc Kaggle Notebook | Nên dùng (việc 1) |
 | DMD | Recall theo frame, time-to-alert, ngáp che tay, mất tập trung, hướng nhìn | Cổng DMD, CC BY-NC-ND | Nên dùng |
 | DROZY | Buồn ngủ thật + KSS / PVT / EEG, IR phụ | ORBi 2,46 GB, tải thẳng | Nên dùng |
 | NTHU-DDD | Video IR, kính râm, gục đầu, nói / cười (báo sai) | HF gated `auto` hoặc email NTHU | Cần xem `train.zip` trước |
@@ -121,8 +166,8 @@ thêm thành mốc riêng (cần task mới trong `tools/dataset.py`).
 
 Đối chiếu dữ liệu đã có / sắp có (FL3D, YawDD, SUST, UTA-RLDD, DMD) với điều kiện PRD FR-9 và các khối.
 Đã bỏ khỏi danh sách (chốt 30/09): ngược sáng / đèn pha, mặt người Việt, điện thoại để thấp, khẩu
-trang, mũ lưỡi trai, hai người trong khung hình (không cần dataset; mục 6 nếu làm thì test bằng
-chuỗi khung bao giả). Mọi phần còn lại đều đã có nguồn.
+trang, mũ lưỡi trai, hai người trong khung hình (không cần dataset; mục 4 bước B nếu làm thì test
+bằng chuỗi landmark / khung bao giả). Mọi phần còn lại đều đã có nguồn.
 
 | Phần thiếu | Nguồn | Trạng thái |
 |---|---|---|
@@ -132,6 +177,8 @@ chuỗi khung bao giả). Mọi phần còn lại đều đã có nguồn.
 | Gục đầu có nhãn | NTHU-DDD (nhãn đầu, *chưa kiểm chứng*), DMD (diễn) | Có nguồn |
 | Xi-nhan, tốc độ, rẽ thật | Brain4Cars | Có nguồn, không có xi-nhan; clip 5 s |
 
+<a id="uta-rldd"></a>
+
 ### UTA-RLDD
 
 Nguồn: Kaggle `rishab260/uta-reallife-drowsiness-dataset` [U1], bản gốc [U2], paper Ghoddoosian et
@@ -139,7 +186,7 @@ al., CVPRW 2019. Kiểm tra qua Kaggle API, chưa tải, chưa chạy thử.
 
 **Kết luận: nên dùng**, nhưng chỉ cho (a) cảnh báo sai / giờ trên video tỉnh táo và (b) `drowsy_score`
 có tăng theo mức buồn ngủ trên cùng một người hay không. Không dùng được để đo tỉ lệ bắt microsleep /
-ngáp; không giúp mục 5 (đêm, chói) hay điện thoại.
+ngáp; không giúp mục 6 (đêm, chói) hay điện thoại.
 
 | | Bản gốc | Bản Kaggle |
 |---|---|---|
@@ -155,8 +202,8 @@ ngáp; không giúp mục 5 (đêm, chói) hay điện thoại.
 - ~8 giờ video tỉnh táo liên tục, 48 người (FL3D chỉ 26 phút). 0 cảnh báo sai trên 8 giờ → cận trên
   CI 95% ≈ 0,46 / giờ: lần đầu kết luận được mục tiêu PRD ≤ 1,0 / giờ.
 - Video 10 phút: giai đoạn khởi động chỉ là phần nhỏ (khác SUST / YawDD).
-- Cùng người có đủ 3 mức: so `drowsy_score`, `perclos_60s` giữa 0 / 5 / 10; kiểm tra được đề xuất
-  4.1 (mốc mắt mở cố định) và trip memory.
+- Cùng người có đủ 3 mức: so `drowsy_score`, `perclos_60s` giữa 0 / 5 / 10; kiểm tra được mốc mắt
+  mở cố định (mục 4, học từ video `0` rồi dùng cho `5` / `10`) và trip memory.
 
 **Hạn chế:**
 - Nhãn cả video, là trạng thái "phần lớn thời gian": video `10` có thể không có microsleep → không đo
@@ -183,12 +230,16 @@ ngáp; không giúp mục 5 (đêm, chói) hay điện thoại.
   video (0,02–1,6 GB), chạy xong xoá. Vẫn là tải, nhưng không cần 97 GB trống.
 - Không nên đọc stream qua URL bằng OpenCV: file `.mov` / `.mp4` thường đặt chỉ mục ở cuối file, dễ lỗi.
 
+Dùng để chỉnh ngưỡng buồn ngủ: [việc 22](#viec-toi-uu-nguong).
+
 **Cần làm nếu chọn (mốc riêng):** task mới trong `tools/dataset.py` (vd. `video_drowsy`, nhãn từ tên
 file `0` / `5` / `10`, gộp `10_1` / `10_2`), báo cáo cảnh báo sai / giờ + CI trên video `0` và phân
 bố `drowsy_score` theo mức. Nên gộp với đề xuất 1–2 ở mục 2. Thử 1 fold (~12 GB) trước.
 
 - U1. https://www.kaggle.com/datasets/rishab260/uta-reallife-drowsiness-dataset
 - U2. https://sites.google.com/view/utarldd/home
+
+<a id="dmd"></a>
 
 ### DMD — Driver Monitoring Dataset
 
@@ -224,7 +275,7 @@ từng frame**: đo được recall sự kiện, độ trễ và time-to-alert. 
 
 **Hạn chế:**
 - Diễn thì rõ và cường điệu hơn thật → recall lạc quan.
-- 14 người, không còn IR → không giúp mục 5 (đêm).
+- 14 người, không còn IR → không giúp mục 6 (đêm).
 - Hành động nguy hiểm trên xe thật làm khi **xe đứng yên** → phải giả lập tốc độ, nếu không luật ngữ
   cảnh (khối 10) tắt cảnh báo.
 - License **CC BY-NC-ND 4.0, chỉ dùng học thuật**. Dự án không thương mại nên dùng được; ND = không
@@ -237,7 +288,7 @@ từng frame**: đo được recall sự kiện, độ trễ và time-to-alert. 
 
 **Cần làm nếu chọn (mốc riêng):** đọc nhãn OpenLABEL → task video theo frame trong `tools/dataset.py`,
 báo cáo recall microsleep / ngáp, độ trễ, time-to-alert p95. Nên làm sau UTA-RLDD (mốc cảnh báo sai /
-giờ); gộp được với công cụ đo time-to-alert (P3 số 13).
+giờ); gộp được với công cụ đo time-to-alert (việc 13).
 
 - D1. https://dmd.vicomtech.org/
 - D2. https://github.com/Vicomtech/DMD-Driver-Monitoring-Dataset
@@ -281,7 +332,10 @@ giờ); gộp được với công cụ đo time-to-alert (P3 số 13).
 - Dùng: đo `off_road` báo bao nhiêu lần khi quay đầu hợp lệ trước khi rẽ / chuyển làn (nguồn báo sai
   chính trên SUST), clip đi thẳng làm đối chứng.
 - Hạn chế: **không có xi-nhan** (phải giả lập); **clip 5 s** ngắn hơn giai đoạn hiệu chỉnh mốc tư
-  thế đầu → cần video cả chuyến (*chưa biết có trong 16 GB không*) hoặc nạp sẵn mốc từng tài xế.
+  thế đầu → cần video cả chuyến (*chưa biết có trong 16 GB không*) hoặc nạp sẵn mốc từng tài xế
+  (giống kết quả đăng ký ở mục 4).
+
+<a id="viec-tai-dataset"></a>
 
 ### Việc tiếp theo (chưa làm)
 
@@ -310,9 +364,117 @@ blendshape cần cả mặt để chạy MediaPipe), phần này đã có 3 data
 
 ---
 
-## 4. Ý tưởng từ video phân tích DMS thương mại (29/09)
+## 4. Đăng ký tài xế lúc khởi động (học khuôn mặt người lái)
 
-Nguồn: ghi chú `Video.pdf` (bỏ phần camera IR 940 nm, đã có ở mục 5). Đối chiếu với code ngày 29/09,
+Ý tưởng 30/09, chưa làm, chưa đo. Đây là một giai đoạn chạy **trước** khi bắt đầu giám sát, không
+phải khối 2 (tiền xử lý ảnh, CLAHE).
+
+### Hiện tại: mọi mốc đều tự học trong lúc lái
+| Mốc | Cách học hiện tại | Vấn đề |
+|---|---|---|
+| Mắt mở (EAR) | Percentile 90 của 120 s gần nhất (`drowsiness.eye.baseline_*`) | Trong 10 s đầu dùng giá trị mặc định 0,28: L3 microsleep đầu chuyến dựa trên mốc sai. Buồn ngủ dần vài chục phút → mắt hẹp lại → mốc tụt theo → PERCLOS và "nhắm sâu" bị đánh giá thấp đúng lúc cần báo |
+| Miệng (MAR) | Không có mốc: ngưỡng tuyệt đối `yawn.mar_open` 0,45 / `mar_close` 0,34 | Người miệng to / môi hé tự nhiên dễ bị tính là ngáp; miệng nhỏ thì khó đạt ngưỡng ngáp |
+| Tư thế đầu (gục đầu) | Median của yaw / pitch trong 60 s, chỉ học lúc mắt mở | Cần vài giây dữ liệu, trước đó so với mốc chưa ổn |
+| Tư thế "nhìn đường" | 5 s đầu có mặt khi xe chạy → median, sau đó trôi chậm (`distraction.baseline`) | Nếu 5 s đầu tài xế đang nhìn điện thoại / gương thì mốc sai cả chuyến (chỉ được trôi ±20°) |
+| Ai là tài xế | Mỗi frame chọn mặt có khung bao lớn nhất (`landmarks.py`, web: `largestFace` trong `frontend/src/live/measure.ts`), `num_faces` = 2 | Xem "Rủi ro nhiều khuôn mặt" bên dưới |
+
+**Rủi ro nhiều khuôn mặt (hành khách):**
+- Tài xế quay ngang (nhìn gương, ngoái lại) → khung bao 2D hẹp lại → mặt hành khách nhìn thẳng có
+  thể lớn hơn → theo dõi nhầm hành khách, bỏ lỡ đúng lúc cần báo `off_road`.
+- Hành khách nghiêng lại gần camera → chọn nhầm.
+- Không nhớ tài xế giữa các frame: hai mặt cỡ gần bằng nhau có thể đổi qua lại, trộn dữ liệu hai
+  người vào `closed_duration`, `perclos_60s`, `blink_rate`, mốc EAR / pitch.
+- Camera đặt giữa xe (cạnh gương chiếu hậu): giả định "lớn nhất = tài xế" yếu đi nhiều.
+- Điện thoại thì đã ổn: chỉ tính trong vùng quanh mặt tài xế, nên điện thoại của hành khách không bị
+  tính (với điều kiện chọn đúng mặt tài xế).
+
+### Đề xuất: các bước đăng ký lúc khởi động
+Chỉ chạy khi xe đứng yên (khối 10). HUD / web hướng dẫn từng bước, mỗi bước chỉ nhận khi mặt đủ tin
+cậy (`face_conf`, `face_reliable`, không tối / chói) và số đo ổn định (độ lệch nhỏ). Không đạt thì làm
+lại bước đó.
+
+| Bước | Tài xế làm | Học được | Thay cho |
+|---|---|---|---|
+| A1 | Nhìn thẳng vào camera ~2 s | EAR mắt mở, MAR miệng khép, kích thước và vị trí mặt, chữ ký mặt (bước B) | Mốc EAR mặc định 0,28; ngưỡng MAR tuyệt đối |
+| A2 | Nhìn ra đường phía trước như khi lái ~3 s | Tư thế "nhìn đường" (yaw / pitch) + mốc tư thế đầu cho gục đầu | Hiệu chỉnh 5 s tự động của khối 8; mốc pose 60 s của khối 7 |
+| A3 | Nhắm mắt ~2 s | EAR mắt nhắm của chính người đó | Chưa có: hiện chỉ biết mốc mắt mở |
+| C (tuỳ chọn) | Liếc gương trái, gương phải, bảng đồng hồ | Tư thế đầu hợp lệ của từng vùng nhìn | Chưa có |
+
+<a id="dang-ky-buoc-a"></a>
+
+**Bước A: mốc của riêng tài xế (không thêm model)**
+- **Mắt to / mắt nhỏ:** độ mở mắt tính theo khoảng giữa mốc nhắm (A3) và mốc mở (A1), thay vì chỉ theo
+  tỉ lệ của mốc mở. Các ngưỡng tương đối hiện tại (`close_ratio`, `perclos_close_ratio`,
+  `microsleep_deep.ear_ratio`) tính trên thang mới này.
+- **Mốc mắt mở gần như cố định:** lấy từ A1, sau đó chỉ được trôi rất chậm hoặc chỉ được trôi lên,
+  không trôi theo cơn buồn ngủ. Có giới hạn trôi trong `thresholds.yaml`, giống `baseline.max_deg`
+  của khối 8. (Video DMS thương mại ở mục 5 cũng dùng 5–10 phút đầu để làm quen mắt tài xế.)
+- **Miệng to / miệng nhỏ:** ngưỡng ngáp = mốc MAR khép (A1) + một khoảng tương đối, thay cho 0,45 /
+  0,34 cố định.
+- **Tư thế nhìn đường:** lấy từ A2 làm tâm, giữ cơ chế trôi chậm ±20° hiện tại.
+- **Giám sát có mốc ngay từ giây đầu**, nên không còn giai đoạn "L3 microsleep dựa trên mốc mặc định".
+
+<a id="dang-ky-buoc-b"></a>
+
+**Bước B: phân biệt tài xế với hành khách (không thêm model)**
+- **Chữ ký mặt = một dãy tỉ lệ hình học** tính từ landmark 3D của MediaPipe, gần như không đổi khi quay
+  đầu: khoảng cách hai mắt / chiều rộng mặt, chiều dài mũi / chiều cao mặt, độ rộng miệng / khoảng cách
+  hai mắt, độ rộng mắt… Học ở A1 và A2.
+- Mỗi frame chọn mặt theo điểm tổng hợp: giống chữ ký + gần vị trí tài xế ở frame trước + ở phía ghế
+  lái (Việt Nam: bên trái; để tham số trong `thresholds.yaml` vì còn tùy camera có lật ảnh không). Kích
+  thước mặt đo bằng khoảng cách hai mắt kết hợp chiều cao mặt, ít phụ thuộc góc quay đầu hơn diện tích
+  khung bao.
+- Chỉ đổi sang mặt khác khi mặt đó vượt rõ trong N frame liên tiếp (hysteresis). Nếu thật sự đổi
+  người (xe dừng, tài xế mới ngồi vào) thì reset các bộ đếm theo thời gian và đề nghị đăng ký lại.
+- *(suy luận, chưa kiểm chứng)* Tỉ lệ landmark không đủ để nhận dạng người lạ, nhưng trong xe chỉ cần
+  phân biệt 2–3 người, lại kết hợp với vị trí và sự liên tục giữa các frame, nên có thể đủ. Cần đo.
+
+<a id="dang-ky-buoc-c"></a>
+
+**Bước C (tuỳ chọn): các vùng nhìn hợp lệ**
+- Tư thế đầu khi nhìn gương / bảng đồng hồ của chính tài xế đó, dùng cho:
+  - Đề xuất 5.2 (gục đầu): cúi đúng về tư thế bảng đồng hồ với mắt mở thì không phải gục đầu.
+  - Mục 7 (hướng nhìn): mốc hướng nhìn theo từng vùng.
+- **Không** dùng để bỏ qua `off_road`: nhìn gương quá 2 s khi chạy vẫn phải báo.
+
+**Bước D (chỉ khi bước B không đủ): embedding mặt**
+- Một model nhận dạng mặt pretrained nhỏ (vd. SFace trong OpenCV Zoo; *chưa kiểm tra license, kích
+  thước, tốc độ*) chỉ chạy lúc đăng ký và khi nghi đổi người, không chạy mỗi frame, nên không ảnh
+  hưởng 15 FPS. Là model mới nên cần quyết định riêng.
+
+### Ràng buộc và chống báo sai
+- **Không lưu ảnh:** chỉ giữ số (EAR, MAR, góc, dãy tỉ lệ / embedding) trong RAM. Metadata gửi backend
+  chỉ có trạng thái đăng ký (`enrolled`, chất lượng mốc), không có chữ ký mặt. Giữ qua chuyến hay
+  không: chờ quyết định ở mục 1.
+- **Đăng ký sai là rủi ro lớn nhất:** mốc sai thì sai cả chuyến. Mỗi bước phải có kiểm tra (độ lệch
+  thấp, giá trị nằm trong khoảng hợp lý như `baseline_min` / `baseline_max`, nhìn đường thì góc không
+  quá `calibrate_max_deg`). Không đạt thì làm lại. Bỏ qua hoặc hết thời gian thì quay về cách tự học
+  hiện tại.
+- **Luôn giữ đường dự phòng tự học:** các dataset eval không có bước đăng ký, nên công cụ eval dùng
+  đường dự phòng, hoặc giả lập đăng ký từ N giây đầu clip (báo cáo riêng hai cách).
+- **Đổi tư thế ngồi / chỉnh ghế / đổi camera giữa chuyến:** mốc nhìn đường vẫn trôi chậm như hiện tại;
+  lệch quá xa thì đề nghị đăng ký lại lúc xe dừng.
+- **Test bằng chuỗi số giả:** bộ đăng ký nhận chuỗi `FrameFeatures` giả (EAR / MAR / góc / tỉ lệ
+  landmark theo thời gian). Bước B test bằng hai chuỗi mặt giả đổi chỗ, cỡ và góc.
+
+### Còn lại sau khi làm
+- MediaPipe chỉ trả `num_faces` = 2 mặt: với ≥ 3 người có thể không thấy tài xế nếu hai mặt khác nổi
+  hơn. Tăng lên 3 thì phải đo lại FPS.
+- Chưa có dữ liệu nhiều người trong xe để đo bước B; dataset eval đều chỉ có một người.
+- Không giải quyết mắt liếc khi đầu thẳng (mục 7), ánh sáng (mục 6), `off_road` hợp lệ khi rẽ (mục 9).
+
+### Nên tách thành mốc
+1. **Bước A** + màn hình hướng dẫn trên HUD / web + đường dự phòng (việc 2).
+2. **Bước B** bám tài xế bằng chữ ký + vị trí + hysteresis (việc 4). Làm được riêng, không cần A.
+3. **Bước C / D** tuỳ chọn, sau khi có hướng nhìn (mục 7) hoặc khi B đo ra không đủ (việc 14).
+
+Màn hình hướng dẫn đăng ký nên theo cùng cách nói của [giao diện cho tài xế](#viec-giao-dien) (việc 20).
+
+---
+
+## 5. Ý tưởng từ video phân tích DMS thương mại (29/09)
+
+Nguồn: ghi chú `Video.pdf` (bỏ phần camera IR 940 nm, đã có ở mục 6). Đối chiếu với code ngày 29/09,
 chưa đo thử.
 
 ### Đã có, trùng với video
@@ -323,34 +485,30 @@ chưa đo thử.
 - Con số theo phút: trip memory 1 điểm/phút + cảnh báo xu hướng.
 
 ### Hướng đề xuất (xếp theo ưu tiên)
-1. **Mốc mắt mở học lúc đầu chuyến rồi giữ gần cố định.** Hiện mốc EAR = percentile 90 của 120 s
-   gần nhất (`ear_baseline`, `drowsiness.py`). Buồn ngủ dần vài chục phút → mắt hẹp lại → mốc tụt
-   theo → PERCLOS và "nhắm sâu" bị đánh giá thấp đúng lúc cần. Video: dùng 5–10 phút đầu để làm quen
-   mắt tài xế. Hướng: học mốc trong N phút đầu, sau đó chỉ trôi rất chậm hoặc chỉ trôi lên. Test
-   bằng chuỗi EAR giả giảm dần.
-2. **Tốc độ mở mắt lại, không chỉ số lần chớp.** Video: buồn ngủ thì khép lâu hơn và mở lại chậm.
+1. <a id="viec-chop-mat"></a>**Tốc độ mở mắt lại, không chỉ số lần chớp.** Video: buồn ngủ thì khép lâu hơn và mở lại chậm.
    Hiện chỉ có `blink_rate`; `blink_max_s` chỉ phân biệt chớp / nhắm. Thêm: thời lượng chớp trung
    bình mỗi phút, thời gian mở lại (từ khép sâu đến mở hẳn), tỉ lệ chớp dài. Là dấu hiệu sớm, trước
    khi PERCLOS kịp tăng.
-3. **Gục đầu = cúi chậm rồi giật lên nhanh.** Hiện: dip > 15°, quay lại trong 0,2–2 s, mắt nhắm.
+2. <a id="viec-guc-dau"></a>**Gục đầu = cúi chậm rồi giật lên nhanh.** Hiện: dip > 15°, quay lại trong 0,2–2 s, mắt nhắm.
    Thêm điều kiện tốc độ ngẩng lên nhanh hơn rõ so với tốc độ cúi (liếc bảng đồng hồ thì hai chiều
    gần đối xứng) → bớt báo sai. Xem lại `nod.max_s`: cú gục thật có thể cúi chậm hơn 2 s.
-4. **Kiểm tra định nghĩa PERCLOS.** Video dùng P80 (mắt khép ≥ 80%, ≈ EAR < 0,2 × mốc). Code dùng
+3. <a id="viec-perclos"></a>**Kiểm tra định nghĩa PERCLOS.** Video dùng P80 (mắt khép ≥ 80%, ≈ EAR < 0,2 × mốc). Code dùng
    `perclos_close_ratio: 0.65` (khép ~35% đã tính) → nhạy hơn, dễ tính cả nheo mắt. Chạy P80 song
    song trên FL3D / YawDD / SUST để so, chưa thay ngay.
-5. **Mức cảnh báo tăng theo thời gian nhắm.** Video: 1–2 s gợi ý trạm dừng; ≥ 3 s còi + rung ghế;
+4. <a id="viec-muc-nham-mat"></a>**Mức cảnh báo tăng theo thời gian nhắm.** Video: 1–2 s gợi ý trạm dừng; ≥ 3 s còi + rung ghế;
    ≥ 6 s coi là không còn phản ứng → giảm tốc, tấp làn. Hiện chỉ một L3 ở 1,5 s. Thêm mốc
    `closed_duration` ≥ 3 s và ≥ 6 s trong `thresholds.yaml`; mốc 6 s sinh sự kiện `unresponsive`
    lên backend và yêu cầu giảm tốc qua CAN giả lập. Cảnh báo 1–2 s kèm gợi ý dừng nghỉ.
-6. **10 s không thấy mặt → báo hệ thống tạm ngưng giám sát.** Hiện mất mặt 3 s khi chạy → L2
+5. <a id="viec-mat-mat-10s"></a>**10 s không thấy mặt → báo hệ thống tạm ngưng giám sát.** Hiện mất mặt 3 s khi chạy → L2
    `no_face`. Tách hai trường hợp: tài xế gục (giữ L2) và camera bị che (sự kiện
    `monitoring_unavailable` lên HUD / backend, như `camera_lost`). Liên quan quyết định FR-6 ở mục 1.
-7. **Nhướn mày để giữ mắt mở.** Blendshape `browInnerUp` / `browOuterUp` đã có sẵn từ MediaPipe,
+6. <a id="viec-nhuon-may"></a>**Nhướn mày để giữ mắt mở.** Blendshape `browInnerUp` / `browOuterUp` đã có sẵn từ MediaPipe,
    không tốn FPS. Mày nhướn trong lúc EAR thấp / đang giảm = đang chống cơn buồn ngủ → thành phần
    phụ của `drowsy_score`.
 
-Ưu tiên đề xuất: 1 → 2 → 3. Cả ba không thêm model, chỉ thêm ngưỡng vào `thresholds.yaml`, test được
-bằng chuỗi số giả.
+Ưu tiên đề xuất: 1 → 2. Cả hai không thêm model, chỉ thêm ngưỡng vào `thresholds.yaml`, test được
+bằng chuỗi số giả. (Đề xuất "mốc mắt mở học lúc đầu chuyến rồi giữ gần cố định" đã chuyển sang mục 4,
+bước A.)
 
 ### Không áp dụng
 - **Hai model (sóng não + mặt → chỉ mặt) để chấm điểm buồn ngủ:** phải train, vi phạm "chỉ dùng
@@ -358,7 +516,7 @@ bằng chuỗi số giả.
 
 ---
 
-## 5. Ánh sáng khó: lái đêm, đèn đường, đèn pha xe ngược chiều
+## 6. Ánh sáng khó: lái đêm, đèn đường, đèn pha xe ngược chiều
 
 ### Đã có (cả thiết bị lẫn web, vì web chạy lại khối 5–12 bằng Python qua Pyodide)
 - Mặt quá tối (độ sáng vùng mặt, trước CLAHE, < `low_light_brightness` = 60): khối 5 thay EAR
@@ -379,6 +537,8 @@ bằng chuỗi số giả.
 - **Giới hạn vật lý:** webcam RGB trong cabin tối gần như không thấy mặt; phần mềm không bù được.
 - **Chưa có dữ liệu** đèn pha / đèn đường quét qua; chưa đánh giá riêng đường chạy web ban đêm.
 
+<a id="viec-choi"></a>
+
 ### Hướng đề xuất
 - **Cờ chói / cháy sáng:** tỉ lệ pixel bão hoà trong vùng mặt + bước nhảy độ sáng giữa các frame.
   Vượt ngưỡng → trạng thái mắt = "không biết" (`None`) trong một khoảng ngắn thay vì đoán, và tạm
@@ -391,35 +551,7 @@ bằng chuỗi số giả.
 
 ---
 
-## 6. Nhiều khuôn mặt trong khung hình (hành khách)
-
-### Hiện tại
-- MediaPipe tìm tối đa `num_faces` = 2 mặt; mỗi frame chọn mặt có khung bao lớn nhất làm tài xế
-  (`landmarks.py`, web: `largestFace` trong `frontend/src/live/measure.ts`).
-- `num_faces` chỉ đi vào metadata, không logic nào dùng.
-- Điện thoại chỉ tính trong vùng quanh mặt tài xế, nên điện thoại hành khách không bị tính.
-
-### Rủi ro
-- Tài xế quay ngang (nhìn gương, ngoái lại) → khung bao 2D hẹp lại → mặt hành khách nhìn thẳng có
-  thể lớn hơn → theo dõi nhầm hành khách, bỏ lỡ đúng lúc cần báo `off_road`.
-- Hành khách nghiêng lại gần camera → chọn nhầm.
-- Không nhớ tài xế giữa các frame: hai mặt cỡ gần bằng nhau có thể đổi qua lại, trộn dữ liệu hai
-  người vào `closed_duration`, `perclos_60s`, `blink_rate`, mốc EAR / pitch.
-- Camera đặt giữa xe (cạnh gương chiếu hậu): giả định "lớn nhất = tài xế" yếu đi nhiều.
-- ≥ 3 người: MediaPipe chỉ trả 2 mặt.
-- Chưa có test đổi mặt theo thời gian; các dataset eval đều chỉ có một người.
-
-### Hướng đề xuất
-- **Bám tài xế giữa các frame:** ưu tiên mặt gần vị trí tài xế frame trước; chỉ đổi khi mặt khác
-  vượt rõ trong N frame liên tiếp (hysteresis).
-- **Ưu tiên phía ghế lái:** cộng điểm cho mặt ở nửa ảnh phía tài xế (Việt Nam: bên trái; tham số
-  trong `thresholds.yaml` vì còn tùy camera có lật ảnh hay không).
-- **Chọn theo kích thước ít phụ thuộc góc quay đầu** (khoảng cách hai mắt kết hợp chiều cao mặt)
-  thay vì diện tích khung bao.
-- **Reset bộ đếm theo thời gian khi phát hiện đổi người.**
-- Không thêm model, không ảnh hưởng FPS; test bằng chuỗi khung bao giả.
-
----
+<a id="viec-huong-nhin"></a>
 
 ## 7. Mắt nhìn lệch khi đầu vẫn thẳng (hướng nhìn)
 
@@ -443,9 +575,11 @@ bằng chuỗi số giả.
 - **10 điểm mống mắt** (landmark 468–477): vị trí mống mắt so với hai khoé mắt cho độ lệch của mắt.
 - Tính **hướng nhìn = góc đầu + độ lệch mắt**, dùng làm tín hiệu bổ sung cho `off_road` với ngưỡng
   riêng trong `thresholds.yaml`; giữ góc đầu làm tín hiệu chính.
+- Mốc hướng nhìn theo từng tài xế / từng vùng (đường, gương, bảng đồng hồ) lấy từ bước đăng ký ở
+  mục 4 (bước A2, C) thay vì một ngưỡng chung.
 - Dùng cùng tín hiệu để nhánh buồn ngủ phân biệt **"mắt nhìn xuống"** với **"mắt nhắm"**.
 - Rủi ro: ước lượng mắt kém khi IR / đeo kính → cần tắt hoặc giảm tin cậy trong các trường hợp đó
-  (nối với trigger của khối 5 ở mục 5, 8).
+  (nối với trigger của khối 5 ở mục 6, 8).
 - Test bằng chuỗi số giả (góc đầu + độ lệch mắt theo thời gian); cần thêm clip có nhãn "liếc điện
   thoại, đầu thẳng" để đo báo sai (gộp với clip tự quay ở mục 10).
 
@@ -506,6 +640,8 @@ công bố; *(suy luận)* = nhận định chưa kiểm chứng. Số đo trên
 - **Landmark mí mắt** (OMZ 98 điểm [5], 3DDFA_V2 [25], SPIGA [26], PIPNet [27]): vẫn phải tính
   kiểu EAR nên không giải quyết lóa kính; MediaPipe đã có 16 điểm / mắt + iris. Ưu tiên thấp.
 - **Fine-tune bất kỳ model nào:** là train, ngoài phạm vi theo CLAUDE.md.
+
+<a id="viec-model-mat"></a>
 
 ### Đề xuất thử offline
 - Thứ tự: `blinkcnn` → OCEC-S / OCEC-L → (tuỳ chọn) ghép điểm CNN hiện tại với ứng viên thắng
@@ -593,6 +729,8 @@ và Kaggle Eyes; điều khoản AIHub.
 
 ---
 
+<a id="viec-phan-cung"></a>
+
 ## 9. Vấn đề kỹ thuật còn mở (worklog 26/09)
 
 - **off_road trên xe thật:** 25 cảnh báo L2 trong 3 giờ SUST là quay đầu thật. Cần xi-nhan / tốc
@@ -600,16 +738,17 @@ và Kaggle Eyes; điều khoản AIHub.
 - **Clip ngắn:** SUST chỉ 10 s nên PERCLOS và mốc EAR không kịp khởi động, recall 1,6%.
 - **Điện thoại:** YOLO bắt 2,1% ảnh State Farm; góc bên không giống camera của mình nên chưa đủ để
   kết luận.
-- **B4:** L3 microsleep trong 10 s đầu chuyến vẫn dựa trên mốc EAR mặc định.
 
 ---
+
+<a id="viec-prd"></a>
 
 ## 10. PRD yêu cầu nhưng roadmap chưa có mốc
 
 - **LLM tóm tắt + gợi ý (FR-12, FR-13):** chưa có dòng code nào trong DriverGuard.
 - **Buổi kiểm tra hiểu cảnh báo 10 người (PRD §7 bậc 3):** chưa diễn ra, số đang là "not evaluated".
 - **Clip tự quay có nhãn** theo điều kiện sáng / tối / kính / ngược sáng: chưa có; mọi số hiện tại
-  từ dataset công khai. (Gộp được với phần đánh giá ở mục 5.)
+  từ dataset công khai. (Gộp được với phần đánh giá ở mục 6.)
 - **Time-to-alert p95 ≤ 3 s:** chưa có công cụ đo riêng.
 - **Docker cho backend + edge (FR-14):** repo đã có `Dockerfile`, `Dockerfile.railway` và
   `docker-compose.yml`, nhưng compose mới có service `backend`; còn thiếu edge.
@@ -617,3 +756,159 @@ và Kaggle Eyes; điều khoản AIHub.
   (FR-8, FR-9, FR-17).
 - **Nộp bài:** `presentation/` mới có README. (`eval/results/report.md` đã có báo cáo tổng hợp từ
   28/09, cần kiểm tra lại mức đầy đủ so với yêu cầu nộp.)
+
+---
+
+## 11. Đóng gói app và giao diện cho tài xế (không gấp)
+
+Không làm thay đổi độ chính xác hay số báo sai, chỉ làm app dễ dùng hơn. Để cuối.
+
+<a id="viec-apk"></a>
+
+### Đóng gói thành app Android (APK)
+
+**Hiện tại:** chỉ có bản web (React + MediaPipe tasks-vision + onnxruntime-web + khối 5–12 bằng
+Python qua Pyodide), mở bằng trình duyệt. Lần đầu mỗi máy phải tải ~25 MB Python cùng các model.
+
+**Hướng đề xuất:** gói chính bản web vào một app WebView (vd. Capacitor), không viết lại.
+- Đưa sẵn Pyodide, `edge_agent.zip`, `face_landmarker.task`, `yolov8n.onnx` vào APK: mở app là chạy
+  ngay, không cần mạng để giám sát. Mạng chỉ dùng để gửi metadata JSON lên backend (đúng CLAUDE.md).
+- Giữ một bộ code cho cả web và app; `npm run build` rồi đồng bộ sang project Android.
+- Việc riêng của app: xin quyền camera, giữ màn hình sáng, khoá màn hình ngang (điện thoại gắn trên
+  taplo), địa chỉ backend trong phần cài đặt.
+- Không chọn: viết lại native (Kotlin + MediaPipe Android + ONNX Runtime Mobile) vì phải chuyển toàn
+  bộ logic khối 5–12 từ Python sang Kotlin và giữ hai bản đồng bộ. Cũng không chọn TWA (bọc trang web
+  đang host), vì vẫn cần mạng để mở app.
+
+**Rủi ro / cần đo:**
+- *(chưa kiểm chứng)* WASM + WebGL trong WebView Android có đạt ≥ 15 FPS trên điện thoại tầm trung
+  không. Phải đo trên máy thật trước khi làm tiếp.
+- Nóng máy và hao pin khi chạy camera + model liên tục cả chuyến.
+- Khi app chạy nền hoặc tắt màn hình, Android có thể dừng camera → phải báo "tạm ngưng giám sát",
+  không được im lặng (nối với [việc 11](#viec-mat-mat-10s)).
+- APK nặng thêm ~40–50 MB vì chứa sẵn Python và model (*ước lượng*).
+- Phát tán APK có YOLO là phân phối phần mềm AGPL: phải kèm mã nguồn (xem License YOLO ở
+  [mục 1](#quyet-dinh)).
+
+<a id="viec-giao-dien"></a>
+
+### Giao diện cho tài xế: bỏ thuật ngữ, gộp bước tải
+
+**Hiện tại, những chỗ tài xế thấy thuật ngữ kỹ thuật:**
+
+| Chỗ | Đang hiện | Vấn đề |
+|---|---|---|
+| Màn hình chuẩn bị (`STEPS` trong `frontend/src/live/agent.ts`) | 4 bước: "Mở camera", "Tải bộ xử lý Python (lần đầu khoảng 25 MB)", "Tải MediaPipe nhận diện khuôn mặt", "Tải YOLO phát hiện điện thoại" | Tài xế không cần biết Python / MediaPipe / YOLO; 3 bước tải là một việc |
+| Ô camera nhỏ (`SelfView` trong `LiveScreen.tsx`) | `EAR 0.28 · 30 FPS`, `Yaw 5° · Pitch -3°`, `ĐT không (40 ms)` | Số đo cho kỹ sư, tài xế không hiểu và dễ bị phân tâm khi lái |
+| Mức cảnh báo (`LEVELS` trong `frontend/src/lib/labels.ts`) | Nhãn `L0`–`L3`; mô tả L1 / L2 là "Biểu tượng + chuông nhẹ", "Âm thanh + rung ghế" | Mô tả cách hệ thống báo, không nói tài xế nên làm gì |
+| Dashboard, trang ngưỡng | `drowsy_score`, PERCLOS, microsleep… | Dành cho kỹ sư / quản lý: giữ nguyên, chỉ ẩn khỏi vai trò tài xế |
+
+**Hướng đề xuất:**
+- **Gộp các bước tải thành một:** "Mở camera" (cần tài xế cho phép) + "Đang chuẩn bị (lần đầu
+  khoảng … MB)" với một thanh tiến độ chung. Trong APK ([việc 19](#viec-apk)) bước này gần như biến mất.
+- **Ô camera nhỏ chỉ còn trạng thái dễ hiểu:** "Đang theo dõi" / "Không thấy mặt, hãy chỉnh camera".
+  Chuyển EAR, FPS, góc đầu, ms sang một chế độ kỹ sư (bật trong cài đặt), mặc định tắt.
+- **Mức cảnh báo nói việc cần làm:** bỏ `L0`–`L3` khỏi màn hình tài xế, dùng màu + câu ngắn, vd. "Bạn
+  có vẻ mệt, nghỉ ở trạm dừng gần nhất", "Nhìn về phía trước", "Dừng xe nghỉ ngay". Mã mức vẫn giữ
+  trong metadata và dashboard.
+- **Nhìn một lần là hiểu:** chữ lớn, ít chữ, nút to, không cần chạm khi đang chạy. Cân nhắc đọc
+  thành tiếng cho L2 / L3.
+- **Màn hình đăng ký** ([việc 2](#dang-ky-buoc-a)) dùng cùng cách nói: "Nhìn thẳng vào camera",
+  "Nhìn ra đường như khi lái", "Nhắm mắt 2 giây".
+- **Kiểm tra với người thật:** gộp với buổi test hiểu cảnh báo 10 người của PRD ([mục 10](#viec-prd)).
+- Chỉ đổi phần chữ / bố cục ở frontend, không đổi logic phát hiện; vẫn ≥ 15 FPS.
+
+---
+
+<a id="viec-do-phan-cung"></a>
+
+## 12. Đo tài nguyên phần cứng: CPU, RAM, nhiệt độ
+
+**Hiện tại:**
+- `tools/benchmark.py` (M7) chỉ đo FPS, độ trễ p50 / p95 từng khối, kích thước model. Chạy ngắn (vài
+  trăm frame), trên máy Mac ARM của team (146 FPS với video YawDD).
+- **Chưa đo** CPU, RAM, nhiệt độ; chưa chạy dài; chưa đo trên thiết bị gắn trên xe. PRD FR-18 / NFR-2
+  yêu cầu có số CPU / RAM, gắn nhãn `simulated`.
+- Số 146 FPS trên Mac không nói được gì về hub trên xe: máy yếu hơn, trong cabin nóng, chạy liên tục
+  cả chuyến.
+
+**Cần đo, trên hai nơi:**
+- **Hub gắn trên xe** (thiết bị đích; *loại máy chưa chốt*) và điện thoại nếu làm APK
+  ([việc 19](#viec-apk)).
+- **Máy chạy project** (máy dev / laptop demo): làm mốc so sánh, và để biết bản `simulated` hiện tại
+  đang chiếm bao nhiêu tài nguyên.
+
+| Chỉ số | Vì sao | Cách đo (đề xuất) |
+|---|---|---|
+| CPU % (cả tiến trình và từng luồng: vòng chính, YOLO) | Còn dư bao nhiêu cho app khác trên hub (bản đồ, camera lùi…) | `psutil` lấy mẫu mỗi giây |
+| RAM (RSS, đỉnh, có tăng dần theo thời gian không) | Bắt rò rỉ bộ nhớ khi chạy nhiều giờ; frame chỉ nằm trong RAM nên phải chắc không bị giữ lại | `psutil` |
+| Nhiệt độ CPU / SoC | Máy nóng → tự hạ xung → FPS tụt dưới 15 giữa chuyến | Cảm biến của hệ điều hành (Linux: `/sys/class/thermal`; macOS cần công cụ riêng) |
+| FPS và độ trễ theo thời gian | Thấy FPS tụt khi máy nóng, không chỉ con số trung bình | Đã có trong `benchmark.py`, thêm ghi theo từng phút |
+| Pin / điện năng (điện thoại) | APK chạy cả chuyến | Công cụ của Android, chỉ khi làm việc 19 |
+
+**Hướng đề xuất:**
+- Thêm chế độ chạy dài vào `tools/benchmark.py` (vd. `--duration 60m`): chạy vòng chính 2–12 như
+  `edge_agent.main`, ghi CPU / RAM / nhiệt / FPS mỗi giây, báo cáo p50 / p95 / đỉnh và biểu đồ theo
+  thời gian. Chỉ ghi số, không ghi frame.
+- Chạy ở ba điều kiện: không có mặt, có mặt, có mặt + điện thoại (YOLO làm việc nhiều nhất).
+- Mỗi bảng ghi rõ máy, hệ điều hành, số luồng, có giới hạn CPU không (`simulated` hay máy thật).
+- Ngưỡng đạt nằm trong `thresholds.yaml` hoặc báo cáo: ≥ 15 FPS suốt cả lần chạy (CLAUDE.md), RAM
+  không tăng dần, không bị hạ xung.
+- Nếu hub không đạt: dùng YOLO INT8 (đã có), giảm tần suất YOLO, giảm độ phân giải đầu vào. Mỗi
+  thay đổi phải đo lại độ chính xác.
+
+**Cần có trước khi đo trên xe:** chốt loại hub (CPU, RAM, hệ điều hành) và cách mang project lên đó
+(Docker edge ở [việc 17](#viec-prd), hoặc APK ở [việc 19](#viec-apk)). Phần đo trên máy dev thì làm
+được ngay.
+
+---
+
+<a id="viec-toi-uu-nguong"></a>
+
+## 13. Tối ưu ngưỡng buồn ngủ trên UTA-RLDD
+
+**Hiện tại:** ngưỡng nhánh buồn ngủ (khối 7) và `drowsy_score` (khối 9) được chỉnh tay trên YawDD,
+NITYMED (FL3D), SUST: toàn clip ngắn, buồn ngủ diễn. [UTA-RLDD](#uta-rldd) là bộ đầu tiên có buồn ngủ
+thật, video 10 phút, cùng một người có cả 3 mức 0 / 5 / 10.
+
+**Chỉnh được gì (chỉ thay số trong `thresholds.yaml`, không đổi logic):**
+
+| Nhóm | Khoá |
+|---|---|
+| PERCLOS | `drowsiness.perclos_close_ratio`, `perclos_drowsy`, `perclos_rearm`; `risk.drowsy.perclos_low` / `perclos_high` |
+| Điểm buồn ngủ | `risk.drowsy.weight_*`, `l1`, `l2`, `yawn_full`, `nod_full` |
+| Ngáp, gục đầu | `drowsiness.yawn.*`, `drowsiness.nod.*` |
+| Mốc mắt | `drowsiness.eye.baseline_*`, `close_ratio`, `open_ratio` |
+
+**Không chỉnh bằng UTA-RLDD:** ngưỡng microsleep / L3 (`microsleep_min_s`, `microsleep_deep.*`,
+`risk.microsleep_l3_s`). Nhãn chỉ có cho cả video, không biết microsleep nằm ở đâu, nên không đo được
+bắt đúng hay bỏ sót. Giữ số hiện tại, kiểm tra bằng FL3D / DMD.
+
+**Thế nào là "tối ưu":**
+- Chỉ tiêu chính: **cảnh báo sai / giờ trên video `0` (tỉnh táo) ≤ 1,0**, tính cả CI 95% ([việc 1](#viec-do-bao-sai)).
+- Trong các bộ ngưỡng đạt chỉ tiêu trên, chọn bộ **tách mức 0 và 10 tốt nhất**: AUC của `drowsy_score`
+  (trung bình hoặc p90 mỗi video) giữa video `0` và `10`; tỉ lệ video `10` có ít nhất một L1.
+- Video `5` báo riêng, không tính đúng / sai (L1 hợp lý, L3 đáng xem lại).
+- Phải so trên **cùng một người** (0 so với 10 của chính họ), vì mắt mỗi người khác nhau.
+
+**Cách làm:**
+1. Thêm UTA-RLDD vào `tools/seq_eval.py trace` (hiện chỉ có `fl3d`, `sust`, `yawdd`), nhãn lấy từ tên
+   file. Chạy MediaPipe một lần, lưu trace số theo frame (không lưu frame). Nặng: ~24 giờ video, nên
+   chạy trên Kaggle Notebook (xem [UTA-RLDD](#uta-rldd)).
+2. Dò ngưỡng bằng `seq_eval --replay --set ...`: chỉ chạy lại khối 7–12 trên trace nên rất nhanh. Dò
+   lưới nhỏ, mỗi lần 1–2 khoá, không dò tất cả cùng lúc.
+3. **Chống học thuộc dữ liệu:** chia theo người (UTA có sẵn fold). Chọn ngưỡng trên một số fold, báo
+   số trên các fold còn lại. Không bao giờ chọn và báo số trên cùng một người.
+4. **Không được làm tệ bộ cũ:** chạy lại FL3D (microsleep ≥ 1,5 s đạt L3), YawDD (báo sai), SUST với
+   bộ ngưỡng mới. Tụt thì không nhận.
+5. Ghi bảng trước / sau vào `eval/results/`, mỗi khoá đổi kèm lý do trong comment `thresholds.yaml`
+   (giống các comment YawDD / NITYMED hiện có).
+
+**Lưu ý:**
+- Người trong UTA nhìn laptop, hơi cúi, không lái xe: tắt hoặc báo riêng `off_road` / `phone`. Luật
+  gục đầu có thể khác khi lái thật.
+- Nếu làm [việc 2](#dang-ky-buoc-a) (mốc mắt từ đăng ký) thì ý nghĩa của `close_ratio` /
+  `perclos_close_ratio` đổi → phải dò lại. Nên chốt thứ tự: làm việc 2 trước rồi mới dò, hoặc dò
+  trước rồi dò lại sau.
+- Nhãn KSS là tự đánh giá, video `10` có thể có đoạn tỉnh: dùng số theo phân bố, không kỳ vọng mọi
+  video `10` đều có cảnh báo.
