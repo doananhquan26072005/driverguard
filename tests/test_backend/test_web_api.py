@@ -46,7 +46,13 @@ def test_web_feedback_and_samples(client):
         ],
     }
     r = client.post("/api/v1/web/events", json=body, headers=an)
-    assert r.json() == {"accepted": 1, "duplicates": 0, "feedback_applied": 1, "samples_accepted": 1}
+    assert r.json() == {
+        "accepted": 1,
+        "duplicates": 0,
+        "feedback_applied": 1,
+        "samples_accepted": 1,
+        "summaries_accepted": 0,
+    }
 
 
 def test_web_thresholds_readable_by_driver(client):

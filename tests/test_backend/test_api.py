@@ -57,7 +57,13 @@ def test_device_posts_batch(client):
     events = [make_event(), make_event(level=3, reasons=["microsleep"], type="drowsiness")]
     r = post_events(client, events)
     assert r.status_code == 200
-    assert r.json() == {"accepted": 2, "duplicates": 0, "feedback_applied": 0, "samples_accepted": 0}
+    assert r.json() == {
+        "accepted": 2,
+        "duplicates": 0,
+        "feedback_applied": 0,
+        "samples_accepted": 0,
+        "summaries_accepted": 0,
+    }
 
 
 def test_retry_is_idempotent(client):

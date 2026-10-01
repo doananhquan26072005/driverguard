@@ -25,11 +25,15 @@ Reason = Literal[
     "drowsy_score",
     "off_road",
     "phone",
-    "no_face",
+    "no_face",  # v1 only (now monitoring_unavailable, no alert): kept for events already stored
     "trend",
     "blink_rate",
     "camera_lost",
     "camera_restored",  # system events: the device stopped / resumed monitoring
+    "driver_enrolled",  # system event: from now on judged with the driver's own baselines
+    "monitoring_unavailable",  # system events: face lost while moving (FR-6) / back
+    "monitoring_restored",
+    "driver_changed",  # system event: "Đổi tài xế" on the HUD, a new driver enrolls
 ]
 EventType = Literal["drowsiness", "distraction", "system"]
 # Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
@@ -102,6 +106,12 @@ class EventMetrics(StrictModel):
     nod_count_5min: int | None = Field(default=None, ge=0, le=1000)
     off_road_duration: float | None = Field(default=None, ge=0, le=3600)
     phone_ratio_2s: float | None = Field(default=None, ge=0, le=1)
+    blink_time_frac: float | None = Field(default=None, ge=0, le=1)  # v2 slow blinks
+    reopen_ratio: float | None = Field(default=None, ge=0, le=100)  # v2 slow blinks
+    brow_raise_count_5min: int | None = Field(default=None, ge=0, le=1000)  # v2 brow raise
+    enrolled: int | None = Field(default=None, ge=0, le=1)  # driver enrollment done before this alert
+    enroll_s: float | None = Field(default=None, ge=0, le=3600)  # driver_enrolled: time it took
+    enroll_redo: int | None = Field(default=None, ge=0, le=1000)  # driver_enrolled: steps redone
 
 
 class EventIn(StrictModel):
@@ -136,11 +146,72 @@ class SampleIn(StrictModel):
     max_level: int = Field(ge=0, le=3)
 
 
+Rating = Literal["good", "attention", "risk"]
+RatingReason = Literal["microsleep", "frequent_alerts", "tired_minutes", "low_coverage"]
+SuggestionCode = Literal[
+    "rest_now", "rest_after", "regular_breaks", "phone_away", "eyes_on_road", "check_camera", "enroll"
+]
+MAX_TRIP_MINUTES = 24 * 60
+
+
+class MinuteIn(StrictModel):
+    minute: int = Field(ge=0, le=MAX_TRIP_MINUTES)
+    drowsy_score: float = Field(ge=0, le=100)
+    max_level: int = Field(ge=0, le=3)
+    moving: bool
+
+
+class SuggestionIn(StrictModel):
+    code: SuggestionCode
+    minutes: int | None = Field(default=None, ge=0, le=MAX_TRIP_MINUTES)
+
+
+class TripSummaryIn(StrictModel):
+    """End-of-trip summary built on the device (edge_agent/decision/trip_summary.py). Numbers only."""
+
+    trip_id: str = Identifier
+    started_at: AwareDatetime
+    ended_at: AwareDatetime
+    duration_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    driving_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    stopped_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    rests: int = Field(ge=0, le=1000)
+    longest_drive_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    avg_speed_kmh: float | None = Field(default=None, ge=0, le=400)
+    speed_source: Literal["simulated", "can"]
+    alerts_by_level: dict[Literal["1", "2", "3"], int]
+    alerts_by_reason: dict[Reason, int] = Field(max_length=16)
+    false_alarms: int = Field(ge=0, le=100_000)
+    microsleeps: int = Field(ge=0, le=100_000)
+    longest_closure_s: float = Field(ge=0, le=3600)
+    yawns: int = Field(ge=0, le=100_000)
+    nods: int = Field(ge=0, le=100_000)
+    brow_raises: int = Field(ge=0, le=100_000)
+    off_road_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    phone_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    monitored_frac: float | None = Field(default=None, ge=0, le=1)
+    unavailable_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    camera_lost_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    enrolled: bool
+    driver_changes: int = Field(default=0, ge=0, le=1000)
+    drowsy_mean: float = Field(ge=0, le=100)
+    drowsy_p90: float = Field(ge=0, le=100)
+    drowsy_max: float = Field(ge=0, le=100)
+    first_tired_min: int | None = Field(default=None, ge=0, le=MAX_TRIP_MINUTES)
+    score_l1: float = Field(ge=0, le=100)
+    score_l2: float = Field(ge=0, le=100)
+    rating: Rating
+    rating_reasons: list[RatingReason] = Field(max_length=8)
+    suggestions: list[SuggestionIn] = Field(max_length=10)
+    minutes: list[MinuteIn] = Field(max_length=MAX_TRIP_MINUTES + 1)
+
+
 class EventBatch(StrictModel):
     device_id: str = Identifier
     events: list[EventIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
     feedback: list[FeedbackIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
     samples: list[SampleIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
+    summaries: list[TripSummaryIn] = Field(default_factory=list, max_length=5)
 
     @model_validator(mode="before")
     @classmethod
@@ -152,7 +223,7 @@ class EventBatch(StrictModel):
 
     @model_validator(mode="after")
     def not_empty(self) -> EventBatch:
-        if not (self.events or self.feedback or self.samples):
+        if not (self.events or self.feedback or self.samples or self.summaries):
             raise ValueError("batch is empty")
         return self
 
@@ -162,6 +233,7 @@ class BatchResult(BaseModel):
     duplicates: int
     feedback_applied: int = 0
     samples_accepted: int = 0
+    summaries_accepted: int = 0
 
 
 class EventOut(BaseModel):
@@ -205,6 +277,19 @@ class TripOut(BaseModel):
     end: datetime
     events: int
     max_level: int
+
+
+class TripReportOut(BaseModel):
+    """A trip summary as stored, with who sent it and whether a higher role has looked at it."""
+
+    trip_id: str
+    device_id: str
+    driver_id: str | None
+    received_at: datetime
+    rating: Rating
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    summary: dict[str, Any]
 
 
 class ReasonStats(BaseModel):

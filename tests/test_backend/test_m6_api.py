@@ -249,3 +249,21 @@ def test_camera_lost_event_is_listed_but_not_counted_as_an_alert(client, enginee
     assert next(e for e in events if e["type"] == "system")["reasons"] == ["camera_lost"]
     stats = client.get("/api/v1/stats", headers=engineer).json()
     assert stats["total"] == 1 and "camera_lost" not in stats["by_reason"]
+
+
+def test_unavailable_and_enrolled_events_are_accepted_as_system_events(client, engineer):
+    from edge_agent.io.publisher import build_system_event
+
+    records = [
+        build_system_event("monitoring_unavailable", "trip-20261001-090000", 60.0),
+        build_system_event("monitoring_restored", "trip-20261001-090000", 60.0),
+        build_system_event("driver_enrolled", "trip-20261001-090000", 0.0, metrics={"enroll_s": 9.6, "enroll_redo": 1}),
+    ]
+    assert batch(client, events=records).status_code == 200
+    events = client.get("/api/v1/events", headers=engineer).json()
+    assert sorted(e["reasons"][0] for e in events) == [
+        "driver_enrolled",
+        "monitoring_restored",
+        "monitoring_unavailable",
+    ]
+    assert client.get("/api/v1/stats", headers=engineer).json()["total"] == 0

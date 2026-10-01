@@ -58,6 +58,20 @@ CREATE TABLE IF NOT EXISTS fatigue_samples (
     max_level    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_samples_trip ON fatigue_samples (trip_id, ts);
+CREATE TABLE IF NOT EXISTS trip_summaries (
+    id          INTEGER PRIMARY KEY,
+    trip_id     TEXT NOT NULL,
+    device_id   TEXT NOT NULL,
+    driver_id   TEXT,
+    started_at  TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    rating      TEXT NOT NULL,
+    summary     TEXT NOT NULL,
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    UNIQUE (device_id, trip_id)
+);
+CREATE INDEX IF NOT EXISTS idx_summaries_driver ON trip_summaries (driver_id, started_at);
 CREATE TABLE IF NOT EXISTS threshold_versions (
     version    INTEGER PRIMARY KEY,
     vals       TEXT NOT NULL,
@@ -207,6 +221,72 @@ def insert_sample(conn: sqlite3.Connection, device_id: str, driver_id: str | Non
         ),
     )
     return cur.rowcount == 1
+
+
+def upsert_summary(conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any]) -> bool:
+    """Store a trip summary; a re-sent one (offline queue retry) replaces it but keeps the review."""
+    now = datetime.now(UTC).isoformat()
+    cur = conn.execute(
+        """INSERT INTO trip_summaries (trip_id, device_id, driver_id, started_at, received_at, rating, summary)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (device_id, trip_id) DO UPDATE SET
+               started_at = excluded.started_at, rating = excluded.rating, summary = excluded.summary""",
+        (s["trip_id"], device_id, driver_id, s["started_at"], now, s["rating"], json.dumps(s)),
+    )
+    return cur.rowcount == 1
+
+
+def _summary_row(r: sqlite3.Row) -> dict[str, Any]:
+    d = dict(r)
+    d["summary"] = json.loads(d["summary"])
+    return d
+
+
+def query_summaries(
+    conn: sqlite3.Connection,
+    driver_id: str | None = None,
+    device_id: str | None = None,
+    since: str | None = None,
+    unreviewed_only: bool = False,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    where, args = ["1=1"], []
+    for col, val in (("driver_id", driver_id), ("device_id", device_id)):
+        if val is not None:
+            where.append(f"{col} = ?")
+            args.append(val)
+    if since is not None:
+        where.append("started_at >= ?")
+        args.append(since)
+    if unreviewed_only:
+        where.append("reviewed_at IS NULL")
+    rows = conn.execute(
+        f"""SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, summary
+            FROM trip_summaries WHERE {" AND ".join(where)} ORDER BY started_at DESC LIMIT ?""",
+        [*args, limit],
+    ).fetchall()
+    return [_summary_row(r) for r in rows]
+
+
+def get_summary(
+    conn: sqlite3.Connection, device_id: str, trip_id: str, driver_id: str | None = None
+) -> dict[str, Any] | None:
+    sql = """SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, summary
+             FROM trip_summaries WHERE device_id = ? AND trip_id = ?"""
+    args: list[Any] = [device_id, trip_id]
+    if driver_id is not None:
+        sql += " AND driver_id = ?"
+        args.append(driver_id)
+    row = conn.execute(sql, args).fetchone()
+    return None if row is None else _summary_row(row)
+
+
+def review_summary(conn: sqlite3.Connection, device_id: str, trip_id: str, username: str) -> bool:
+    cur = conn.execute(
+        "UPDATE trip_summaries SET reviewed_by = ?, reviewed_at = ? WHERE device_id = ? AND trip_id = ?",
+        (username, datetime.now(UTC).isoformat(), device_id, trip_id),
+    )
+    return cur.rowcount > 0
 
 
 def _where(
