@@ -4,6 +4,10 @@ A tiny HTTP server on the device (127.0.0.1 only, never exposed to the network) 
 the in-car HUD screen talks to:
 - GET  /state     current level, reasons, scores, speed and the latest alerts
 - POST /feedback  {"event_id": ...}: the driver pressed "false alarm" on an alert
+- POST /vehicle   {"action": "park" | "drive" | "change_driver"}: "Tạm dừng", "Tiếp tục lái",
+                  "Đổi tài xế" (park / drive only in the manual vehicle mode); the main loop applies it
+- POST /end-trip  the driver pressed "end trip": the main loop builds the trip summary
+                  (block 11), sends it to the backend, and the reply carries it for the HUD
 
 Only numbers and short strings go through it - never images. Feedback is forwarded to
 the backend by the metadata publisher (block 14), so it also survives offline periods.
@@ -28,6 +32,8 @@ from edge_agent.decision.pipeline import DecisionResult
 log = logging.getLogger("driverguard.hud")
 
 MAX_BODY = 1024
+VEHICLE_ACTIONS = ("park", "drive", "change_driver")
+END_TRIP_WAIT_S = 10.0  # the main loop answers on its next frame
 
 
 @dataclass(frozen=True)
@@ -48,6 +54,34 @@ class HudState:
         self._snapshot: dict[str, Any] = {"connected": False, "level": 0, "reasons": []}
         self._alerts: deque[dict[str, Any]] = deque(maxlen=recent_alerts)
         self._camera_lost = False
+        self.false_alarms = 0  # flagged by the driver this trip (for the trip summary)
+        self._end_requested = threading.Event()
+        self._summary_ready = threading.Event()
+        self._summary_delivered = threading.Event()
+        self._summary: dict[str, Any] | None = None
+        self._vehicle: dict[str, Any] = {"manual": False, "driving": None}
+        self._actions: deque[str] = deque(maxlen=8)
+
+    # ------------------------------------------------------------------ vehicle buttons
+    def request_vehicle(self, action: str) -> str:
+        """'queued', or 'unsupported' (park / drive need the manual vehicle mode)."""
+        if action not in VEHICLE_ACTIONS:
+            return "unknown"
+        with self._lock:
+            if action != "change_driver" and not self._vehicle["manual"]:
+                return "unsupported"
+            self._actions.append(action)
+        return "queued"
+
+    def take_actions(self) -> list[str]:
+        with self._lock:
+            actions = list(self._actions)
+            self._actions.clear()
+        return actions
+
+    def set_vehicle(self, state: dict[str, Any]) -> None:
+        with self._lock:
+            self._vehicle = dict(state)
 
     def update(self, r: DecisionResult, fps: float) -> None:
         c = r.context
@@ -65,6 +99,14 @@ class HudState:
             "eyes_closed_s": round(r.drowsiness.closed_duration, 2),
             "perclos_60s": round(r.drowsiness.perclos_60s, 3),
             "fps": round(fps, 1),
+            "unavailable": r.risk.unavailable,  # face lost while moving: not monitored, no alerts (FR-6)
+            "enrollment": {  # driver enrollment: the HUD guides the steps (words, voice, beep)
+                "status": r.enrollment.status,
+                "progress": round(r.enrollment.progress, 2),
+                "hint": r.enrollment.hint,
+                "attempts": r.enrollment.attempts,
+                "duration_s": None if r.enrollment.duration_s is None else round(r.enrollment.duration_s, 1),
+            },
         }
         with self._lock:
             self._snapshot = snapshot
@@ -91,14 +133,44 @@ class HudState:
                 if now - alert["at"] > self.config.feedback_window_s:
                     return "expired"
                 alert["feedback"] = "false_alarm"
+                self.false_alarms += 1
                 return "ok"
         return "unknown"
+
+    # ------------------------------------------------------------------ end of trip
+    def request_end(self) -> None:
+        self._end_requested.set()
+
+    @property
+    def end_requested(self) -> bool:
+        return self._end_requested.is_set()
+
+    def set_summary(self, summary: dict[str, Any]) -> None:
+        """The main loop built the trip summary: hand it to the waiting HUD request."""
+        with self._lock:
+            self._summary = summary
+        self._summary_ready.set()
+
+    def wait_summary(self, timeout: float) -> dict[str, Any] | None:
+        if not self._summary_ready.wait(timeout):
+            return None
+        with self._lock:
+            return self._summary
+
+    def mark_delivered(self) -> None:
+        self._summary_delivered.set()
+
+    def wait_delivered(self, timeout: float) -> bool:
+        """The main loop waits for the HUD to have the summary before the server stops."""
+        return self._summary_delivered.wait(timeout)
 
     def to_json(self) -> dict[str, Any]:
         with self._lock:
             return {
                 **self._snapshot,
                 "camera_lost": self._camera_lost,  # driver not monitored, reconnecting
+                "trip_ended": self._summary is not None,
+                "vehicle": dict(self._vehicle),  # manual mode: the HUD shows park / drive buttons
                 "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it
                 "alerts": [dict(a) for a in reversed(self._alerts)],
             }
@@ -149,12 +221,30 @@ def make_handler(
                 self._json(404, {"detail": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/feedback":
+            if self.path == "/end-trip":
+                state.request_end()
+                summary = state.wait_summary(END_TRIP_WAIT_S)
+                if summary is None:
+                    self._json(503, {"detail": "the agent did not answer"})
+                    return
+                self._json(200, {"summary": summary})
+                state.mark_delivered()
+                return
+            if self.path not in ("/feedback", "/vehicle"):
                 self._json(404, {"detail": "not found"})
                 return
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > MAX_BODY:
                 self._json(400, {"detail": "bad body"})
+                return
+            if self.path == "/vehicle":
+                try:
+                    action = str(json.loads(self.rfile.read(length))["action"])
+                except (ValueError, KeyError, TypeError):
+                    self._json(400, {"detail": 'expected {"action": ...}'})
+                    return
+                status = state.request_vehicle(action)
+                self._json(202 if status == "queued" else 409, {"status": status})
                 return
             try:
                 event_id = str(json.loads(self.rfile.read(length))["event_id"])

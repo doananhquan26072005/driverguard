@@ -27,7 +27,7 @@ import cv2
 import numpy as np
 
 from edge_agent.config import config_from_dict
-from edge_agent.perception.landmarks import FaceLandmarks
+from edge_agent.perception.landmarks import FaceLandmarks, face_center_size, face_shape
 
 # MediaPipe Face Mesh indices. "Right"/"left" are the driver's own sides.
 # EAR order: p1 (outer corner), p2, p3 (upper lid), p4 (inner corner), p5, p6 (lower lid).
@@ -87,9 +87,16 @@ class FrameFeatures:
     roll: float | None = None
     # MediaPipe blendshape eyeBlink, mean of both eyes (0 open .. 1 shut); None when off (block 3).
     eye_blink: float | None = None
+    # MediaPipe blendshape browOuterUp (block 3), 0 rest .. 1 raised; None when off.
+    brow_up: float | None = None
     # Block 5 (eye-state score), only set on frames where EAR is not reliable.
     p_closed: float | None = None
     eye_cnn_reason: str | None = None
+    # Who this face is, as numbers (driver enrollment, block 3's DriverSelector): landmark-ratio
+    # signature, face centre and inter-ocular distance (both / image width).
+    face_shape: tuple[float, ...] | None = None
+    face_center: tuple[float, float] | None = None
+    face_size: float | None = None
 
 
 def _dist(a: np.ndarray, b: np.ndarray) -> float:
@@ -174,6 +181,7 @@ class FeatureExtractor:
         ear_right = eye_aspect_ratio(lm.points, RIGHT_EYE)
         pose = self.head_pose(lm)
         pitch, yaw, roll = pose if pose is not None else (None, None, None)
+        center, size = face_center_size(lm.points, lm.image_width)
         return FrameFeatures(
             frame_id=frame_id,
             timestamp=timestamp,
@@ -188,4 +196,8 @@ class FeatureExtractor:
             yaw=yaw,
             roll=roll,
             eye_blink=None if lm.eye_blink is None else (lm.eye_blink[0] + lm.eye_blink[1]) / 2.0,
+            brow_up=lm.brow_up,
+            face_shape=face_shape(lm.points),
+            face_center=center,
+            face_size=size,
         )

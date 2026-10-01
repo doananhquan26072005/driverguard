@@ -20,6 +20,9 @@ Anti false-positive rules:
   `yaw_off_road_deg` to the side looks "off road" on every frame, so the baseline never
   gets an on-road sample to learn from. Adaptation then stays within
   +-`baseline_max_deg` of the calibrated pose.
+- Driver enrollment (block 6 stage) gives the driver's own road pose (`set_road_pose`):
+  it replaces the start-up calibration, also when it comes mid-trip at a stop.
+  Adaptation then stays within +-`baseline_max_deg` of it.
 - Returning to the road must last `on_road_confirm_s` before the off-road timer resets,
   so a quick glance back does not hide a long distraction; a single noisy frame
   cannot reset it either.
@@ -129,6 +132,14 @@ class DistractionAnalyzer:
         pitch_med = float(np.median([p for _, _, p in self._calib]))
         self.baseline_yaw = self._center_yaw = min(max(yaw_med, -lim), lim)
         self.baseline_pitch = self._center_pitch = min(max(pitch_med, -lim), lim)
+        self.calibrated = True
+        self._calib = []
+
+    def set_road_pose(self, yaw: float, pitch: float) -> None:
+        """The enrolled "looking at the road" pose: the baseline and its centre from now on."""
+        lim = self.config.baseline_calibrate_max_deg
+        self.baseline_yaw = self._center_yaw = min(max(yaw, -lim), lim)
+        self.baseline_pitch = self._center_pitch = min(max(pitch, -lim), lim)
         self.calibrated = True
         self._calib = []
 

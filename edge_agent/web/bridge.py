@@ -4,7 +4,9 @@ The browser runs block 1 (getUserMedia), block 3 (MediaPipe Tasks JS, the same
 face_landmarker.task) and the YOLO inference of block 4 (onnxruntime-web, the same
 yolov8n.onnx). Per frame it hands this module plain numbers: the 478 landmarks, the
 eyeBlink blendshapes, the face brightness. Everything from block 6 on is the same Python
-as edge_agent.main, run by Pyodide in the page.
+as edge_agent.main, run by Pyodide in the page. The browser hands over every face it sees;
+which one is the driver is decided here (block 3's DriverSelector: the largest face until
+driver enrollment, then the enrolled one), as on the device.
 
 Differences from the device, forced by the browser:
 - block 2: no CLAHE (MediaPipe gets the camera frame as is). The browser measures the raw
@@ -21,20 +23,23 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 
 from edge_agent.config import PROJECT_ROOT, load_thresholds
-from edge_agent.context.can_sim import CanSimulator, load_scenario
+from edge_agent.context.can_sim import MANUAL, CanSimulator, ManualVehicle, load_manual, load_scenario
 from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.decision.pipeline import DecisionPipeline
 from edge_agent.hud.server import HudConfig, HudState
 from edge_agent.io.publisher import (
     PublisherConfig,
     batch_body,
+    build_enrolled_event,
     build_event,
     build_feedback,
     build_sample,
@@ -43,7 +48,7 @@ from edge_agent.io.publisher import (
 from edge_agent.io.remote_config import apply_overrides
 from edge_agent.perception.eye_state import EyeStateConfig, EyeStateEstimator
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
-from edge_agent.perception.landmarks import FaceLandmarks, LandmarkConfig, in_frame_ratio
+from edge_agent.perception.landmarks import DriverSelector, FaceLandmarks, LandmarkConfig, in_frame_ratio
 from edge_agent.perception.phone_detector import (
     FaceBoxMemory,
     PhoneDetection,
@@ -54,7 +59,7 @@ from edge_agent.perception.phone_detector import (
 )
 from edge_agent.perception.preprocess import PreprocessConfig, PreprocessedFrame
 
-SCENARIOS = ("city_day", "highway_night", "parked")
+SCENARIOS = (MANUAL, "city_day", "highway_night", "parked")  # manual: the HUD buttons drive the vehicle
 NUM_LANDMARKS = 478
 MAX_RECORDS_PER_BATCH = 100  # backend: MAX_EVENTS_PER_BATCH per list
 
@@ -92,7 +97,7 @@ class WebAgent:
         self,
         device_id: str,
         trip_id: str,
-        scenario: str = "city_day",
+        scenario: str = MANUAL,
         overrides: dict[str, float] | None = None,
     ) -> None:
         if scenario not in SCENARIOS:
@@ -105,12 +110,19 @@ class WebAgent:
         self.phone_cfg = PhoneDetectorConfig.from_dict(th.get("phone"))
         self.preprocess_cfg = PreprocessConfig.from_dict(th.get("preprocess"))
         self.landmark_cfg = LandmarkConfig.from_dict(th.get("landmarks"))
+        self.selector = DriverSelector(self.landmark_cfg)
         self.publisher_cfg = PublisherConfig.from_dict(th.get("publisher"))
         self.face_memory = FaceBoxMemory(self.phone_cfg.face_memory_s)
-        self.can = CanSimulator(
-            load_scenario(PROJECT_ROOT / "config" / "scenarios" / f"{scenario}.yaml"),
-            moving_kmh=ContextConfig.from_dict(th.get("context")).min_speed_kmh,
-        )
+        moving_kmh = ContextConfig.from_dict(th.get("context")).min_speed_kmh
+        scenario_path = PROJECT_ROOT / "config" / "scenarios" / f"{scenario}.yaml"
+        self.manual: ManualVehicle | None = None
+        self.can: CanSimulator | ManualVehicle
+        if scenario == MANUAL:
+            self.manual = load_manual(scenario_path)
+            self.manual.moving_kmh = moving_kmh
+            self.can = self.manual
+        else:
+            self.can = CanSimulator(load_scenario(scenario_path), moving_kmh=moving_kmh)
         self.decisions = DecisionPipeline(th)
         self.hud = HudState(HudConfig.from_dict(th.get("hud")))
         self._phone: _PhoneResult | None = None
@@ -121,6 +133,10 @@ class WebAgent:
         self._last_speed: float | None = None
         self._last_t: float | None = None
         self._fps = 0.0
+        self._unavailable = False
+        self._started_at = datetime.now(UTC)
+        self._lost_since: float | None = None
+        self._camera_lost_s = 0.0
 
     def settings(self) -> str:
         """What the browser side needs from thresholds.yaml (JSON): it keeps no thresholds of its own."""
@@ -180,8 +196,11 @@ class WebAgent:
         eye_blink: Sequence[float] | None = None,
         channel_diff: float = 255.0,
         brightness: float = 128.0,
+        brow_up: Sequence[float] | None = None,
     ) -> str:
-        """One camera frame. points: 478 x (x, y, z) in pixels (z scaled like x), or None without a face.
+        """One camera frame. points: num_faces x 478 x (x, y, z) in pixels (z scaled like x), or None
+        without a face; eye_blink: (left, right) per face, in the same order; brow_up: MediaPipe
+        browOuterUp (mean of both sides) per face, in the same order.
 
         channel_diff: mean |B - G|, |G - R| of the frame (block 2's IR test, 0 = grayscale / infrared).
         brightness: mean luminance 0-255 of the face (landmark box), of the frame without a face.
@@ -191,17 +210,25 @@ class WebAgent:
             self._t0 = t
         lm = None
         if points is not None:
-            pts = _floats(points).reshape(NUM_LANDMARKS, 3)
-            blink = None if eye_blink is None else (float(eye_blink[0]), float(eye_blink[1]))
+            faces = list(_floats(points).reshape(-1, NUM_LANDMARKS, 3))
+            k = self.selector.choose(faces, width)  # 3: which face is the driver
+            pts = faces[k]
+            blinks = None if eye_blink is None else _floats(eye_blink)
+            blink = None
+            if blinks is not None and len(blinks) >= 2 * k + 2:
+                blink = (float(blinks[2 * k]), float(blinks[2 * k + 1]))
+            brows = None if brow_up is None else _floats(brow_up)
+            brow = float(brows[k]) if brows is not None and len(brows) > k else None
             lm = FaceLandmarks(
                 points=pts,
                 image_width=width,
                 image_height=height,
                 face_conf=in_frame_ratio(pts, width, height),
-                num_faces=max(num_faces, 1),
+                num_faces=max(num_faces, len(faces)),
                 frame_id=frame_id,
                 timestamp=t,
                 eye_blink=blink,
+                brow_up=brow,
             )
         face = self.face_memory.update(face_bbox(lm.points) if lm is not None else None, t)
         phone_flag = self._phone_flag(face, t)
@@ -218,7 +245,17 @@ class WebAgent:
         features = self.eye_state(pre, lm, features)  # 5
         signals = self.can.sample(t - self._t0)  # 10 (CAN)
         self._last_speed = signals.speed_kmh
-        r = self.decisions.step(features, phone_flag, signals)  # 7, 8, 10, 11, 9, 12
+        r = self.decisions.step(features, phone_flag, signals)  # 6 enrollment, 7, 8, 10, 11, 9, 12
+        if r.risk.unavailable != self._unavailable:  # 9: face lost while moving / back (FR-6)
+            self._unavailable = r.risk.unavailable
+            reason = "monitoring_unavailable" if self._unavailable else "monitoring_restored"
+            self._records.append({"kind": "event", "data": build_system_event(reason, self.trip_id, self._last_speed)})
+        if self.manual is not None:
+            self.manual.on_enrollment(r.enrollment.events)
+            self.hud.set_vehicle(self.manual.state())
+        if "enrolled" in r.enrollment.events and r.enrollment.profile is not None:
+            self.selector.set_anchor(r.enrollment.profile.anchor)
+            self._records.append({"kind": "event", "data": build_enrolled_event(r, self.trip_id)})
 
         if self._last_t is not None and t > self._last_t:
             dt = t - self._last_t
@@ -260,8 +297,45 @@ class WebAgent:
     def camera(self, lost: bool) -> None:
         """Camera track ended / came back: the dashboard learns this driver is (not) monitored."""
         self.hud.set_camera_lost(lost)
+        if lost:
+            self._lost_since = time.monotonic()
+        elif self._lost_since is not None:
+            self._camera_lost_s += time.monotonic() - self._lost_since
+            self._lost_since = None
         reason = "camera_lost" if lost else "camera_restored"
         self._records.append({"kind": "event", "data": build_system_event(reason, self.trip_id, self._last_speed)})
+
+    def vehicle(self, action: str) -> str:
+        """HUD buttons: "park" ("Tạm dừng"), "drive" ("Tiếp tục lái"), "change_driver" ("Đổi tài xế").
+        Returns 'ok', or 'unsupported' (park / drive need the manual mode)."""
+        if action == "change_driver":
+            if self.manual is not None:
+                self.manual.change_driver()
+            self.decisions.change_driver()
+            self.selector.set_anchor(None)  # block 3: the largest face until the new driver enrolls
+            self._records.append(
+                {"kind": "event", "data": build_system_event("driver_changed", self.trip_id, self._last_speed)}
+            )
+        elif action in ("park", "drive") and self.manual is not None:
+            self.manual.park() if action == "park" else self.manual.drive()
+        else:
+            return "unsupported"
+        if self.manual is not None:
+            self.hud.set_vehicle(self.manual.state())
+        return "ok"
+
+    def end_trip(self) -> str:
+        """The driver pressed "Kết thúc chuyến": the trip summary (JSON), also queued for the backend."""
+        lost = self._camera_lost_s + (time.monotonic() - self._lost_since if self._lost_since is not None else 0.0)
+        summary = self.decisions.trip_log.summary(
+            self.trip_id,
+            self._started_at,
+            datetime.now(UTC),
+            false_alarms=self.hud.false_alarms,
+            camera_lost_s=lost,
+        ).to_dict()
+        self._records.append({"kind": "summary", "data": summary})
+        return json.dumps(summary)
 
     # ------------------------------------------------------------------ block 14 (the browser posts it)
     def take_batch(self) -> str | None:

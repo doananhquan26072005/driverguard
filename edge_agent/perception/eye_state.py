@@ -155,7 +155,9 @@ def trigger_reason(
 
 class OnnxEyeClassifier:
     def __init__(self, config: EyeStateConfig) -> None:
-        import onnxruntime as ort
+        from edge_agent.perception.onnx import load_ort
+
+        ort = load_ort()
 
         model = config.resolved_model_path()
         if not model.exists():

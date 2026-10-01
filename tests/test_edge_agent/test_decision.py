@@ -55,7 +55,7 @@ def test_drowsy_score_formula():
     # PERCLOS 12.5 % -> term 0.5 (ramp 5..20 %), 2 yawns -> 2/3, 1 nod -> 1/2, no microsleep
     d = replace(D0, perclos_60s=0.125, yawn_count_10min=2, nod_count_5min=1)
     r = assess(d=d)
-    assert r.drowsy_terms == pytest.approx((0.5, 0.0, 2 / 3, 0.5))
+    assert r.drowsy_terms == pytest.approx((0.5, 0.0, 2 / 3, 0.5, 0.0, 0.0))
     assert r.drowsy_score == pytest.approx(40 * 0.5 + 15 * 2 / 3 + 20 * 0.5)  # 40 -> L1
     assert r.level == 1 and r.reasons == ("drowsy_score",)
 
@@ -106,16 +106,31 @@ def test_phone_ratio_60_percent_is_l2(ratio, level):
     assert assess(x=replace(X0, phone_ratio_2s=ratio)).level == level
 
 
-@pytest.mark.parametrize(("no_face", "level"), [(2.9, 0), (3.0, 2)])
-def test_no_face_3s_while_moving_is_l2(no_face, level):
+@pytest.mark.parametrize(("no_face", "unavailable"), [(2.9, False), (3.0, True)])
+def test_no_face_3s_while_moving_is_unavailable_not_an_alert(no_face, unavailable):
+    """PRD FR-6: without a face nothing can be judged, so no alert, the driver is just not monitored."""
     r = assess(x=replace(X0, no_face_duration=no_face))
-    assert r.level == level
-    assert r.reasons == (("no_face",) if level else ())
+    assert r.unavailable is unavailable
+    assert r.level == 0 and r.reasons == ()
 
 
-def test_no_face_not_muted_by_turn_signal():
-    r = assess(x=replace(X0, no_face_duration=4.0), c=replace(C0, turning=True))
-    assert r.reasons == ("no_face",)
+def test_unavailable_mutes_every_rule():
+    # off road held from before the face was lost, a high drowsy score: nothing fires while unavailable
+    x = replace(X0, no_face_duration=4.0, off_road=True, off_road_duration=6.0)
+    d = replace(D0, perclos_60s=0.5, perclos_ready=True, yawn_count_10min=3, nod_count_5min=2)
+    r = assess(d=d, x=x)
+    assert r.unavailable and r.level == 0 and r.hits == () and r.distraction_score == 0.0
+
+
+def test_not_unavailable_when_parked():
+    assert not assess(x=replace(X0, no_face_duration=10.0), c=replace(C0, moving=False)).unavailable
+
+
+def test_closure_carried_through_a_head_drop_stays_monitored():
+    """Eyes closed, then the head fell out of view: that is a microsleep, the L3 alarm goes on."""
+    d = replace(D0, closed_duration=4.0, microsleep=True, head_drop=True, eye_closed=None)
+    r = assess(d=d, x=replace(X0, no_face_duration=3.5))
+    assert not r.unavailable and r.level == 3 and r.reasons == ("microsleep",)
 
 
 def test_distraction_silent_when_stopped():

@@ -36,8 +36,12 @@ preprocess:
 landmarks:
   # Relative to project root. Download with: python tools/download_models.py
   model_path: models/face_landmarker.task
-  # Track up to 2 faces; the largest one is taken as the driver.
+  # Track up to 2 faces. Before driver enrollment the largest one is the driver; after it, the
+  # face that best matches the enrolled driver: score = shape distance / driver_shape_tol
+  # + centre distance / (driver_position_tol x enrolled inter-ocular distance), lowest wins.
   num_faces: 2
+  driver_shape_tol: 0.08        # mean relative difference of the landmark-ratio signature
+  driver_position_tol: 2.0      # in enrolled inter-ocular distances
   min_face_detection_confidence: 0.5
   min_face_presence_confidence: 0.5
   min_tracking_confidence: 0.5
@@ -70,6 +74,30 @@ features:
   # partly out of frame and its landmarks are extrapolated: blocks 7 and 8 treat the frame
   # as not measurable (no EAR / PERCLOS / eye baseline, no head pose, no MAR).
   min_face_conf: 0.9
+
+# Block 6 stage - Driver enrollment (edge_agent/perception/enrollment.py)
+# Mandatory, at a stop, once per trip; nothing is stored after the trip. Three steps, each
+# counting only good frames (face fully in view, EAR trusted, pose known); a blink or a
+# glance away pauses the step clock. 15 FPS x 2 s = 30 frames: one blink (~5 frames) does
+# not move the median. Monitoring runs on the self-learnt baselines until it is done.
+enrollment:
+  enabled: true
+  look_camera_s: 2.0            # step 1: open-eye EAR, closed-mouth MAR, face signature
+  look_road_s: 3.0              # step 2: head pose when looking at the road
+  close_eyes_s: 2.0             # step 3: closed-eye EAR (ends with a beep)
+  road_settle_s: 1.0            # start of step 2 not used: the eyes are still moving to the road
+  step_timeout_s: 12.0          # not finished in this long: redo the step with a hint
+  max_attempts: 3               # tries per step; then wait until the vehicle moved and stopped again
+  max_gap_s: 0.5                # a longer gap between good frames adds no step time
+  facing_max_deg: 20            # step 1: |yaw|, |pitch| at most this (facing the camera)
+  eye_blink_shut: 0.5           # MediaPipe eyeBlink at or above this = eyes shut
+  ear_spread_max: 0.15          # step 1: (p90 - p10) / median EAR at most this (steady eyes)
+  mar_closed_max: 0.25          # step 1: mouth closed
+  pose_spread_max_deg: 6.0      # step 2: p90 - p10 of yaw / pitch at most this (head held still)
+  # Step 3: a frame is shut when EAR < closed_ear_ratio x the step-1 EAR (and eyeBlink agrees);
+  # EAR that never gets there (glare on glasses) times the step out instead of learning a bad value.
+  closed_ear_ratio: 0.6
+  reopen_grace_s: 2.0           # drowsiness alerts stay off this long after step 3 (eyes open on the beep)
 
 # Block 4 - Phone detector (YOLOv8n ONNX, runs on its own thread)
 phone:
@@ -113,6 +141,11 @@ drowsiness:
     # reopened when p_closed <= cnn_open (hysteresis).
     cnn_closed: 0.6
     cnn_open: 0.4
+    # After driver enrollment the baseline starts at the enrolled open-eye EAR and stays within
+    # [1 - enrolled_max_drop, 1 + enrolled_max_rise] x it: eyes narrowing as the driver gets
+    # drowsy no longer pull the baseline down and hide PERCLOS / deep closures.
+    enrolled_max_drop: 0.10
+    enrolled_max_rise: 0.25
   # Eyes closed, then the head drops past eye.max_pitch_down_deg (eye state unknown):
   # keep counting the closure while the head stays down / the face is lost, so the
   # microsleep L3 rule still fires. The eyes must have been closed this long before the
@@ -166,14 +199,59 @@ drowsiness:
     mar_close: 0.34
     min_s: 1.5                  # talking / laughing open the mouth for shorter
     window_s: 600
+    # After driver enrollment: mar_open / mar_close = the driver's closed-mouth MAR + these
+    # (lips that rest apart are not a yawn; a small mouth still reaches it).
+    enrolled_open_above: 0.40
+    enrolled_close_above: 0.29
+  # Nod vs bow (docs/research/2026-10-01-blink-nod-brow.md): a drowsy nod drops slowly (neck
+  # letting go) and jerks back up; a deliberate bow (dashboard, phone) is controlled both ways.
+  # Nod = rise at least rise_speed_ratio x faster than the drop and >= min_rise_deg_s, eyes
+  # closed for part of it; other dips are "bow" events (not drowsiness).
   nod:
-    pitch_down_deg: 15          # dip below the driver's usual pitch (rolling median)
+    pitch_down_deg: 15          # dip below the driver's usual pitch (rolling median / enrolled road pose)
     return_deg: 7
     min_s: 0.2
-    max_s: 2.0                  # longer = sustained head down, not a nod
+    max_s: 2.0                  # past pitch_down_deg -> back (as v1); longer = sustained head down, not a nod
+    # Nod vs bow test OFF by default (01/10 replay on FL3D / SUST traces): with ratio 1.5 + 40 deg/s
+    # FL3D nods hit / false 115 / 1 (v1) -> 51 / 1, SUST nod precision 48 % -> 25 %; ratio 1.0 or
+    # 1.2 also lost nods without fewer false ones. No setting beat v1 on these datasets (no bows
+    # with lowered eyes in them). To try it: max_drop_s 3.0, max_rise_s 1.0, max_s 3.0,
+    # rise_speed_ratio 1.5, min_rise_deg_s 40. All 0 = v1 behaviour (only "bow" events added).
+    max_drop_s: 0               # leaving the usual pose -> the bottom; 0 = no limit
+    max_rise_s: 0               # leaving the bottom -> back; 0 = no limit
+    rise_speed_ratio: 0         # e.g. 1.5: rise at least 1.5 x faster than the drop; 0 = off
+    min_rise_deg_s: 0           # e.g. 40; 0 = off
     require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
     eyes_closed_min_frac: 0.3
     window_s: 300
+  # Slow blinks (Caffier 2003: reopening 162 -> 273 ms when drowsy; Schleicher 2008). Each blink
+  # is timed on the eye aperture (0 = the driver's closed EAR .. 1 = open-eye baseline; enrolled
+  # EARs when enrolled), crossings interpolated between frames. Over the PERCLOS window:
+  # blink_time_frac = time in blinks / eye-known time, reopen_ratio = median reopening time /
+  # the driver's own early-trip median. slow_blink_score = max of the two ramps (drowsy_score
+  # term risk.drowsy.weight_slow_blink). All TEMPORARY, to be tuned on eval data.
+  blink_closed_ref_ratio: 0.35  # not enrolled: closed-eye EAR ~ this x open-eye baseline
+  blink_open_level: 0.8         # aperture where a blink starts / ends
+  slow_blink:
+    reopen_max_s: 1.0           # a reopening not finished in this long is not measured
+    min_blinks: 5               # measured blinks in the window before reopen_ratio counts
+    baseline_blinks: 20         # first blinks of the trip = the driver's own reopening time
+    time_frac_low: 0.10         # alert ~5-8 % of the time in blinks
+    time_frac_high: 0.16        # full term (user's ~16 %, source not found yet)
+    reopen_ratio_low: 1.3
+    reopen_ratio_high: 1.7      # Caffier 2003: 273 / 162 ms
+  # Brow raise to keep the eyes open (Vural et al. 2007, FACS AU2 = MediaPipe browOuterUp):
+  # browOuterUp >= resting brow + raise_above while EAR < narrow_ratio x baseline (drooping, not
+  # closed) for min_s, not while yawning / talking -> "brow_raise", counted over window_s
+  # (drowsy_score term risk.drowsy.weight_brow). Resting brow: enrolled, else rolling median.
+  # TEMPORARY, to be tuned on eval data.
+  brow:
+    raise_above: 0.2
+    narrow_ratio: 0.85
+    min_s: 0.5
+    window_s: 300
+    baseline_window_s: 120
+    baseline_min_data_s: 10
   # Usual head pose = rolling median of yaw / pitch, learnt only from eyes-open frames
   # (nods with closed eyes do not drag it down). The first min_data_s are all taken.
   pose_baseline_window_s: 60
@@ -224,11 +302,15 @@ risk:
     weight_microsleep: 25
     weight_yawn: 15
     weight_nod: 20
+    # v2 (TEMPORARY, to be tuned on eval data): the total can exceed 100, the score is capped at 100.
+    weight_slow_blink: 10       # drowsiness.slow_blink: slow / long blinks
+    weight_brow: 10             # drowsiness.brow: brows raised to keep the eyes open
     perclos_low: 0.05           # PERCLOS term ramps 0 -> 1 between low and high
     perclos_high: 0.20
     # No PERCLOS term before drowsiness.perclos_min_coverage_s of eye data.
     yawn_full: 3                # yawn_count_10min for a full yawn term
     nod_full: 2                 # nod_count_5min for a full nod term
+    brow_full: 3                # brow_raise_count_5min for a full brow term
     microsleep_memory_s: 300    # a microsleep in the last 5 min = full microsleep term
     l1: 40
     l2: 70
@@ -242,7 +324,11 @@ risk:
     off_road_s: 2.0
     off_road_high_speed_s: 1.5
     phone_ratio: 0.6
-    no_face_s: 3.0              # no face this long while moving -> L2 (slumped / camera covered)
+  # PRD FR-6: no face this long while moving (camera covered, driver out of view, glare) ->
+  # monitoring unavailable: no alert while it lasts, the HUD and the backend are told instead.
+  # A closure carried through a head drop (block 7) stays monitored (microsleep L3 goes on).
+  unavailable:
+    no_face_s: 3.0              # 0 = never unavailable
   trend:
     level: 1                    # early warning: suggest a break
     min_points: 5               # minutes of history needed
@@ -253,6 +339,20 @@ risk:
     normal_max: 30
     min_observed_s: 60
     level: 0                    # 0 = note only (blink rate varies a lot between people)
+
+# Block 11 stage - Trip summary (edge_agent/decision/trip_summary.py), built when the trip ends
+# ("Kết thúc chuyến" on the HUD, or the agent stopping) and sent to the backend for the driver and
+# the higher roles. The assessment describes the trip, it does not grade the driver.
+# "Tired" minute = drowsy_score >= risk.drowsy.l1; long drive = context.long_drive_s.
+trip_summary:
+  max_frame_gap_s: 1.0          # a longer gap between frames (stall) adds no time
+  risk_on_l3: true              # any L3 alert / microsleep -> "risk"
+  attention_alerts_per_hour: 2.0  # L2+ alerts per driving hour -> "attention"
+  attention_min_alerts: 2         # ... and at least this many: 1 alert in a 10-minute trip is not "frequent"
+  attention_tired_minutes: 5    # tired minutes -> "attention"
+  min_monitored_frac: 0.6       # face seen on less of the driving time: "low coverage" (numbers incomplete)
+  rest_margin_min: 10           # suggest a rest this long before fatigue first showed
+  min_rest_suggestion_min: 15
 
 # Block 11 - Trip memory
 trip_memory:
@@ -282,3 +382,11 @@ publisher:
   max_queue: 10000              # oldest events dropped beyond this
   backoff_initial_s: 1.0        # retry delay after a failure, doubling up to backoff_max_s
   backoff_max_s: 60.0
+
+# Evaluation tools only (tools/metrics.py, used by tools/eval.py and tools/seq_eval.py), never read
+# by the agent. FAR / MAR on fixed windows, next to false alarms per hour (docs/improvements.md §2).
+eval:
+  window_s: 10                  # window length, not overlapping
+  warmup_s: 30                  # left out at each clip start (baselines, PERCLOS window), reported apart
+  positive_frac: 0.5            # drowsy window: ≥ this inside a labelled episode; awake: ≥ this known-awake
+  min_level: 1                  # predicted drowsy: the branch reaches this level in the window (L2 also reported)

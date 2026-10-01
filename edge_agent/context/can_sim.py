@@ -14,6 +14,11 @@ Plays vehicle signals from a YAML scenario, as a real CAN reader would deliver t
 
 Speed is interpolated linearly between keyframes; turn_signal holds until changed.
 `sample(t)` must be called with non-decreasing t (drive time is integrated).
+
+`ManualVehicle` (scenario `manual`, the default mode of the HUD / #/live) has no timeline: the
+vehicle is parked or driving at `cruise_kmh` as the driver says on the HUD ("Tạm dừng" /
+"Tiếp tục lái"; "Đổi tài xế" parks it). It starts parked, so driver enrollment runs first. The
+time of day is the real clock.
 """
 
 from __future__ import annotations
@@ -137,3 +142,66 @@ class CanSimulator:
             drive_time_s=self._drive_time,
             clock_hour=((self._clock0 + t) % 86400) / 3600.0,
         )
+
+
+MANUAL = "manual"
+
+
+class ManualVehicle:
+    """Vehicle signals driven by the HUD buttons instead of a scenario (see module doc)."""
+
+    def __init__(self, cruise_kmh: float = 50.0, moving_kmh: float = 5.0) -> None:
+        self.cruise_kmh = cruise_kmh
+        self.moving_kmh = moving_kmh
+        self.driving = False  # starts parked: enrollment first
+        self.drive_after_enrollment = True  # set again by a driver change
+        now = time.localtime()
+        self._clock0 = float(now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)
+        self._drive_time = 0.0
+        self._last_t: float | None = None
+        self._last_speed = 0.0
+
+    def park(self) -> None:
+        self.driving = False
+
+    def drive(self) -> None:
+        self.driving = True
+        self.drive_after_enrollment = False
+
+    def change_driver(self) -> None:
+        """Park for the new driver to enroll; drive on once they are enrolled."""
+        self.driving = False
+        self.drive_after_enrollment = True
+
+    def on_enrollment(self, events: tuple[str, ...]) -> None:
+        """Enrollment just finished (block 6 stage): start driving if that is what we waited for."""
+        if "enrolled" in events and self.drive_after_enrollment:
+            self.drive()
+
+    def state(self) -> dict:
+        return {"manual": True, "driving": self.driving}
+
+    def sample(self, t: float) -> VehicleSignals:
+        speed = self.cruise_kmh if self.driving else 0.0
+        if self._last_t is not None and t > self._last_t and self._last_speed >= self.moving_kmh:
+            self._drive_time += t - self._last_t
+        self._last_t, self._last_speed = t, speed
+        return VehicleSignals(
+            t=t,
+            speed_kmh=speed,
+            turn_signal=None,
+            drive_time_s=self._drive_time,
+            clock_hour=((self._clock0 + t) % 86400) / 3600.0,
+        )
+
+
+def load_manual(path: str | Path) -> ManualVehicle:
+    """config/scenarios/manual.yaml: {mode: manual, cruise_kmh: ...}."""
+    with open(path, encoding="utf-8") as f:
+        d = yaml.safe_load(f) or {}
+    return ManualVehicle(cruise_kmh=float(d.get("cruise_kmh", 50.0)))
+
+
+def is_manual(path: str | Path) -> bool:
+    with open(path, encoding="utf-8") as f:
+        return (yaml.safe_load(f) or {}).get("mode") == MANUAL

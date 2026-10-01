@@ -1,6 +1,8 @@
 """M4 acceptance: the whole decision chain (blocks 7-12) gives the right L0-L3 per scenario.
 
-Uses the real config/thresholds.yaml and fake 30 FPS feature sequences, no video.
+Uses the real config/thresholds.yaml and fake 30 FPS feature sequences, no video. Driver
+enrollment is off by default (self-learnt baselines, as in the evaluation tools); its own
+scenarios are in test_enrollment.py.
 """
 
 import pytest
@@ -27,9 +29,11 @@ def constant_speed(kmh, clock="15:00", drive_s=600, turn=None):
     )
 
 
-def drive(seconds, scenario, ear=None, mar=None, yaw=None, pitch=None, phone=None, face=None):
+def drive(seconds, scenario, ear=None, mar=None, yaw=None, pitch=None, phone=None, face=None, enroll=False):
     """Run the decision pipeline. Each signal is a function of t. Returns (alerts, results)."""
-    pipeline = DecisionPipeline(load_thresholds())
+    th = load_thresholds()
+    th["enrollment"] = {**th["enrollment"], "enabled": enroll}
+    pipeline = DecisionPipeline(th)
     can = CanSimulator(scenario)
     alerts, results = [], []
     for i in range(round(seconds * FPS)):
@@ -225,10 +229,11 @@ def test_glance_at_dashboard_after_blink_is_not_l3():
     assert all(level < 3 for _, level, _ in alerts)
 
 
-def test_face_lost_while_moving_is_l2():
-    alerts, _ = drive(15, constant_speed(60), face=between(5, 10, False, True))
-    assert [(lv, r) for _, lv, r in alerts] == [(2, ("no_face",))]
-    assert alerts[0][0] == pytest.approx(8.5, abs=0.1)  # 3 s without a face + 0.5 s confirmation
+def test_face_lost_while_moving_is_unavailable_without_alert():
+    alerts, results = drive(15, constant_speed(60), face=between(5, 10, False, True))
+    assert alerts == []
+    off = [r.risk.t for r in results if r.risk.unavailable]
+    assert off[0] == pytest.approx(8.0, abs=0.05) and off[-1] < 10.0  # after 3 s without a face, until it is back
 
 
 def test_face_lost_short_or_parked_no_alert():

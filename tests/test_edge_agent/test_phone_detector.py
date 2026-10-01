@@ -176,7 +176,9 @@ def test_fast_model_is_not_stale(capsys):
 
 
 def test_yolo_session_does_not_spin(monkeypatch):
-    import onnxruntime as ort
+    from edge_agent.perception.onnx import load_ort
+
+    ort = load_ort()
 
     from edge_agent.perception.phone_detector import YoloPhoneModel
 

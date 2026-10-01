@@ -35,9 +35,9 @@ Anti false-positive rules:
   baseline) "closed" until they open wide again, which reads as PERCLOS near 100 %.
   Hysteresis is for episodes (blinks, microsleep); PERCLOS is a time fraction.
 - A yawn needs the mouth wide open for `yawn_min_s` (talking / laughing are shorter).
-- A nod is a head dip relative to the driver's usual pitch that comes back within
-  `nod_max_s` AND has the eyes closed for part of it (a glance at the speedometer
-  keeps the eyes open).
+- A nod is a head dip relative to the driver's usual pitch that is back within `nod_max_s`
+  (longer = sustained head down), drops within `nod_max_drop_s`, comes back up fast (see "Nod vs bow" below) AND has the eyes closed
+  for part of it (a glance at the speedometer keeps the eyes open).
 - The usual head pose (rolling median of yaw / pitch) only learns from frames with the
   eyes open, like the EAR baseline, so frequent nods do not drag it down. The first
   `pose_baseline_min_data_s` of pose data are all taken, to get started.
@@ -66,6 +66,35 @@ Anti false-positive rules:
   With `perclos_use_mask`, PERCLOS skips the masked frames too (eye state treated as
   unknown there): squinting while talking / yawning is not eye closure from fatigue.
   Yawns are counted by their own rule.
+- Driver enrollment (block 6 stage, `set_profile`): the open-eye baseline starts at the
+  driver's enrolled EAR and only drifts within `eye_enrolled_max_drop` below /
+  `eye_enrolled_max_rise` above it: eyes narrowing over tens of minutes of drowsiness no
+  longer drag the baseline down and hide PERCLOS / deep closures. Yawn thresholds become the
+  enrolled closed-mouth MAR + `yawn_enrolled_open_above` / `_close_above` (lips that rest
+  apart are not a yawn, a small mouth still reaches it). The head-pose reference starts at
+  the enrolled road pose and only learns from eyes-open frames. Without enrollment
+  (skipped, evaluation clips) everything is self-learnt as before.
+- Slow blinks (Caffier et al. 2003: eyelid reopening 162 -> 273 ms when drowsy; Schleicher et
+  al. 2008: blink duration and delayed reopening are the best blink signs). Each blink is timed
+  on the eye aperture, scaled between the closed and open EAR (enrolled values, or
+  `blink_closed_ref_ratio` x baseline / baseline when not enrolled), crossing times interpolated
+  between frames: its duration (aperture below `blink_open_level` and back) and its reopening
+  time (deepest point -> `blink_open_level`). Two signals over the PERCLOS window:
+  blink_time_frac (time spent in blinks / eye-known time) and reopen_ratio (median reopening
+  time / the driver's own median over the first `slow_blink_baseline_blinks` blinks of the
+  trip). Both ramp into slow_blink_score 0..1 (a term of drowsy_score). At 15-30 FPS a blink
+  has only a few frames: medians of several blinks only, thresholds to be tuned on data.
+- Nod vs bow: a drowsy nod drops slowly (neck muscles letting go) and comes back up with a jerk
+  (waking up); a deliberate bow (dashboard, phone, picking something up) moves both ways at a
+  controlled speed. A dip counts as a nod only when its rise is at least `nod_rise_speed_ratio`
+  x faster than its drop and at least `nod_min_rise_deg_s`, with the eyes closed for part of
+  it; other dips are "bow" events (not drowsiness). Pitch is relative to the driver's usual pose
+  (the enrolled road pose after enrollment).
+- Brow raise (Vural et al. 2007: drowsy drivers raise the outer brows, FACS AU2, to keep the
+  eyes open): browOuterUp at least `brow_raise_above` over the driver's resting brow (enrolled,
+  else the rolling median) while the eyes droop but are not closed (EAR below
+  `brow_narrow_ratio` x baseline), for `brow_min_s`, not while yawning / talking (a yawn raises
+  the brows too) -> a "brow_raise" event, counted over `brow_window_s`.
 - After a rest (the vehicle parked, block 10), `forget_since` drops what was gathered
   since the vehicle stopped: eyes closed to rest and waking-up yawns say nothing about the
   next drive. Events from before the stop stay.
@@ -100,6 +129,8 @@ class DrowsinessConfig:
     eye_max_yaw_deg: float = 35.0
     eye_max_pitch_down_deg: float = 25.0
     # Eye-state CNN (block 5) probabilities, with hysteresis
+    eye_enrolled_max_drop: float = 0.10  # enrolled baseline drifts at most this fraction down
+    eye_enrolled_max_rise: float = 0.25  # ... and this fraction up
     eye_cnn_closed: float = 0.6
     eye_cnn_open: float = 0.4
     # Keep counting a closure through a head drop (eyes closed at least this long before it)
@@ -133,14 +164,37 @@ class DrowsinessConfig:
     yawn_mar_close: float = 0.34
     yawn_min_s: float = 1.5
     yawn_window_s: float = 600.0
+    yawn_enrolled_open_above: float = 0.40  # enrolled: mar_open = closed-mouth MAR + this
+    yawn_enrolled_close_above: float = 0.29  # enrolled: mar_close = closed-mouth MAR + this
+    # Slow blinks (see module doc)
+    blink_closed_ref_ratio: float = 0.35  # not enrolled: closed-eye EAR ~ this x open-eye baseline
+    blink_open_level: float = 0.8  # aperture (0 closed .. 1 open) where a blink starts / ends
+    slow_blink_reopen_max_s: float = 1.0  # a reopening not finished in this long is not measured
+    slow_blink_min_blinks: int = 5  # measured blinks in the window before reopen_ratio counts
+    slow_blink_baseline_blinks: int = 20  # first blinks of the trip = the driver's own reopening time
+    slow_blink_time_frac_low: float = 0.10  # blink_time_frac term ramps 0 -> 1 between low and high
+    slow_blink_time_frac_high: float = 0.16
+    slow_blink_reopen_ratio_low: float = 1.3  # reopen_ratio term ramps 0 -> 1 between low and high
+    slow_blink_reopen_ratio_high: float = 1.7
     # Nod
     nod_pitch_down_deg: float = 15.0
     nod_return_deg: float = 7.0
     nod_min_s: float = 0.2
-    nod_max_s: float = 2.0
+    nod_max_s: float = 2.0  # past nod_pitch_down_deg -> back (as v1): longer = sustained head down
+    nod_max_drop_s: float = 0.0  # leaving the usual pose -> the bottom (0 = no limit)
+    nod_max_rise_s: float = 0.0  # leaving the bottom -> back (0 = no limit)
+    nod_rise_speed_ratio: float = 0.0  # rise at least this x faster than the drop (0 = off, see yaml)
+    nod_min_rise_deg_s: float = 0.0  # 0 = off
     nod_require_eyes_closed: bool = True
     nod_eyes_closed_min_frac: float = 0.3
     nod_window_s: float = 300.0
+    # Brow raise to keep the eyes open (see module doc)
+    brow_raise_above: float = 0.2  # browOuterUp above the resting brow
+    brow_narrow_ratio: float = 0.85  # ... while EAR < this x open-eye baseline (eyes drooping)
+    brow_min_s: float = 0.5
+    brow_window_s: float = 300.0
+    brow_baseline_window_s: float = 120.0  # not enrolled: resting brow = rolling median
+    brow_baseline_min_data_s: float = 10.0
     # Head pose reference (rolling median of yaw / pitch)
     pose_baseline_window_s: float = 60.0
     pose_baseline_min_data_s: float = 5.0
@@ -170,6 +224,11 @@ class DrowsinessState:
     pitch_baseline: float | None = None  # the driver's usual pitch (eyes-open median)
     closure_masked: bool = False  # yawn mask: closed-eye time is not counted on this frame
     perclos_ready: bool = False  # perclos_coverage_s >= perclos_min_coverage_s: PERCLOS is meaningful
+    blink_time_frac: float = 0.0  # time spent in blinks / eye-known time, PERCLOS window
+    reopen_s: float | None = None  # median eyelid reopening time of the window's blinks
+    reopen_ratio: float | None = None  # reopen_s / the driver's own early-trip median
+    slow_blink_score: float = 0.0  # 0..1, a drowsy_score term (needs PERCLOS coverage)
+    brow_raise_count_5min: int = 0
 
 
 class RollingWindow:
@@ -210,6 +269,12 @@ class DrowsinessAnalyzer:
     def __init__(self, config: DrowsinessConfig | None = None) -> None:
         self.config = config or DrowsinessConfig()
         cfg = self.config
+        # Driver enrollment (set_profile): None = self-learnt
+        self._ear_enrolled: float | None = None
+        self._pose_enrolled: tuple[float, float] | None = None  # (yaw, pitch)
+        self._mar_open, self._mar_close = cfg.yawn_mar_open, cfg.yawn_mar_close
+        self._ear_closed_enrolled: float | None = None
+        self._brow_enrolled: float | None = None
         self._ear = RollingWindow(cfg.eye_baseline_window_s)
         self._yaw = RollingWindow(cfg.pose_baseline_window_s)
         self._pitch = RollingWindow(cfg.pose_baseline_window_s)
@@ -247,14 +312,62 @@ class DrowsinessAnalyzer:
         self._dip_closed = 0.0
         self._last_pose_t: float | None = None
         self._nods: deque[float] = deque()
+        self._level_t: float | None = None  # last time the pitch was back near the usual pose
+        self._dip_track: list[tuple[float, float]] = []  # (t, pitch offset) of the current dip
+        # slow blinks
+        self._aperture: deque[tuple[float, float]] = deque()  # (t, aperture) of recent EAR frames
+        self._pending: tuple[float, float] | None = None  # (start, deepest t) of a blink still reopening
+        self._blink_log: deque[tuple[float, float, float]] = deque()  # (end, duration, reopen)
+        self._reopen_base: list[float] = []
+        # brow raise
+        self._brow = RollingWindow(cfg.brow_baseline_window_s)
+        self._brow_since: float | None = None
+        self._brow_fired = False
+        self._brow_last_t: float | None = None
+        self._brow_raises: deque[float] = deque()
 
     # ------------------------------------------------------------------ helpers
+    def set_profile(
+        self,
+        ear_open: float,
+        mar_closed: float,
+        road_yaw: float,
+        road_pitch: float,
+        ear_closed: float | None = None,
+        brow_neutral: float | None = None,
+    ) -> None:
+        """Use the driver's enrolled reference values from now on (see module doc)."""
+        cfg = self.config
+        self._ear_enrolled = ear_open
+        self._ear_closed_enrolled = ear_closed
+        self._brow_enrolled = brow_neutral
+        # blink timing changes scale (aperture between the enrolled EARs): start its references over
+        self._aperture.clear()
+        self._pending = None
+        self._blink_log.clear()
+        self._reopen_base = []
+        self._pose_enrolled = (road_yaw, road_pitch)
+        self._mar_open = mar_closed + cfg.yawn_enrolled_open_above
+        self._mar_close = mar_closed + cfg.yawn_enrolled_close_above
+
     def ear_baseline(self, t: float) -> float:
         cfg = self.config
+        enrolled = self._ear_enrolled
         if self._ear.span < cfg.eye_baseline_min_data_s:
-            return cfg.eye_baseline_init
-        value = self._ear.percentile(cfg.eye_baseline_percentile, t)
+            value = cfg.eye_baseline_init if enrolled is None else enrolled
+        else:
+            value = self._ear.percentile(cfg.eye_baseline_percentile, t)
+        if enrolled is not None:
+            value = min(
+                max(value, enrolled * (1.0 - cfg.eye_enrolled_max_drop)), enrolled * (1.0 + cfg.eye_enrolled_max_rise)
+            )
         return min(max(value, cfg.eye_baseline_min), cfg.eye_baseline_max)
+
+    def _enrolled_pose(self) -> tuple[float, float] | None:
+        """The enrolled (yaw, pitch) while there is not enough eyes-open pose data yet, else None."""
+        if self._pose_enrolled is not None and self._pitch.span < self.config.pose_baseline_min_data_s:
+            return self._pose_enrolled
+        return None
 
     @staticmethod
     def _expire(events: deque[float], t: float, window: float) -> None:
@@ -270,10 +383,15 @@ class DrowsinessAnalyzer:
             self._perclos_known -= dt
             self._perclos_closed -= dt if closed else 0.0
         self._perclos_armed = True
-        for events in (self._blinks, self._yawns, self._nods):
+        for events in (self._blinks, self._yawns, self._nods, self._brow_raises):
             while events and events[-1] >= t0:
                 events.pop()
-        for window in (self._ear, self._yaw, self._pitch):
+        while self._blink_log and self._blink_log[-1][0] >= t0:
+            self._blink_log.pop()
+        self._aperture.clear()
+        self._pending = None
+        self._brow_since = None
+        for window in (self._ear, self._yaw, self._pitch, self._brow):
             window.drop_since(t0)
         if self._dip_start is not None and self._dip_start >= t0:
             self._dip_start = None
@@ -305,15 +423,22 @@ class DrowsinessAnalyzer:
         yaw_off = pitch_off = None
         pitch_ref = None
         if face_ok and f.yaw is not None and f.pitch is not None:
-            if ear_low is False or self._pitch.span < cfg.pose_baseline_min_data_s:
+            starting = self._pitch.span < cfg.pose_baseline_min_data_s and self._pose_enrolled is None
+            if ear_low is False or starting:
                 self._yaw.add(t, f.yaw)
                 self._pitch.add(t, f.pitch)
-            yaw_ref, pitch_ref = self._yaw.percentile(50, t), self._pitch.percentile(50, t)
+            enrolled = self._enrolled_pose()
+            if enrolled is not None:
+                yaw_ref, pitch_ref = enrolled
+            else:
+                yaw_ref, pitch_ref = self._yaw.percentile(50, t), self._pitch.percentile(50, t)
             if yaw_ref is not None and pitch_ref is not None:
                 yaw_off, pitch_off = f.yaw - yaw_ref, f.pitch - pitch_ref
             self._last_pose_t = t
+        elif self._enrolled_pose() is not None:
+            pitch_ref = self._pose_enrolled[1]
         elif self._pitch.span > 0:
-            pitch_ref = self._pitch.percentile(50, t)
+            pitch_ref = self._pitch.percentile(50, t)  # pitch only: the yaw cache keeps its own timing
 
         # Eye state with a per-driver threshold.
         pose_ok = (
@@ -340,7 +465,11 @@ class DrowsinessAnalyzer:
         else:
             head_off = pitch_off
         head_down = head_off is not None and head_off > cfg.eye_max_pitch_down_deg
+        aperture = None
+        if eye_known and not use_cnn and f.ear is not None:
+            aperture = self._aperture_of(f.ear, baseline)
         self._update_closure(t, eye_closed, head_down, pitch_off is None, events)
+        self._update_blink_timing(t, aperture, "blink" in events)
         masked = self._update_mask(t, mar)
         talk_only = masked and t > self._yawn_mask_until
         deep_frame = bool(eye_closed) and (
@@ -377,11 +506,22 @@ class DrowsinessAnalyzer:
                 perclos_eye = f.ear < baseline * cfg.perclos_close_ratio
         perclos, coverage = self._update_perclos(t, dt, perclos_eye, events)
         blink_rate = self._blink_rate(t)
+        blink_frac, reopen_s, reopen_ratio = self._slow_blinks(t, coverage)
+        slow_blink = 0.0
+        if coverage >= cfg.perclos_min_coverage_s:
+            slow_blink = max(
+                _ramp(blink_frac, cfg.slow_blink_time_frac_low, cfg.slow_blink_time_frac_high),
+                0.0
+                if reopen_ratio is None
+                else _ramp(reopen_ratio, cfg.slow_blink_reopen_ratio_low, cfg.slow_blink_reopen_ratio_high),
+            )
         yawning = self._update_yawn(t, mar, events)
         self._update_nod(t, dt, pitch_off, ear_low, events)
+        self._update_brow(t, f, face_ok and eye_closed is False and not use_cnn, masked, baseline, events)
 
         self._expire(self._yawns, t, cfg.yawn_window_s)
         self._expire(self._nods, t, cfg.nod_window_s)
+        self._expire(self._brow_raises, t, cfg.brow_window_s)
         return DrowsinessState(
             timestamp=t,
             eye_closed=eye_closed,
@@ -401,6 +541,11 @@ class DrowsinessAnalyzer:
             ear_open_baseline=baseline,
             ear_closed_threshold=close_thr,
             events=tuple(events),
+            blink_time_frac=blink_frac,
+            reopen_s=reopen_s,
+            reopen_ratio=reopen_ratio,
+            slow_blink_score=slow_blink,
+            brow_raise_count_5min=len(self._brow_raises),
         )
 
     # ------------------------------------------------------------------ sub-steps
@@ -460,9 +605,9 @@ class DrowsinessAnalyzer:
         cfg = self.config
         if mar is not None:
             if self._mask_open_since is None:
-                if mar > cfg.yawn_mar_open:
+                if mar > self._mar_open:
                     self._mask_open_since = t
-            elif mar < cfg.yawn_mar_close:
+            elif mar < self._mar_close:
                 self._mask_open_since = None
             talking = self._talking(t, mar)  # always called: keeps the MAR window filled
             yawning = self._mask_open_since is not None and t - self._mask_open_since <= cfg.microsleep_mask_max_open_s
@@ -530,9 +675,9 @@ class DrowsinessAnalyzer:
             return self._yawn_fired
         self._last_mar_t = t
         if self._mouth_open_since is None:
-            if mar > cfg.yawn_mar_open:
+            if mar > self._mar_open:
                 self._mouth_open_since = t
-        elif mar < cfg.yawn_mar_close:
+        elif mar < self._mar_close:
             self._mouth_open_since = None
             self._yawn_fired = False
         if self._mouth_open_since is not None and not self._yawn_fired and t - self._mouth_open_since >= cfg.yawn_min_s:
@@ -540,6 +685,97 @@ class DrowsinessAnalyzer:
             self._yawns.append(t)
             events.append("yawn")
         return self._yawn_fired
+
+    def _aperture_of(self, ear: float, baseline: float) -> float:
+        """EAR scaled to 0 (the driver's closed eyes) .. 1 (open-eye baseline)."""
+        if self._ear_closed_enrolled is not None and self._ear_enrolled is not None:
+            closed = self._ear_closed_enrolled
+        else:
+            closed = self.config.blink_closed_ref_ratio * baseline
+        return (ear - closed) / max(baseline - closed, 1e-6)
+
+    def _update_blink_timing(self, t: float, aperture: float | None, blink_ended: bool) -> None:
+        """Time each blink's duration and reopening on the aperture (see module doc)."""
+        cfg = self.config
+        level = cfg.blink_open_level
+        if aperture is None:
+            self._aperture.clear()  # a gap (CNN, pose, no face): crossings cannot be timed across it
+            if self._pending is not None and t - self._pending[1] > cfg.slow_blink_reopen_max_s:
+                self._pending = None
+            return
+        prev = self._aperture[-1] if self._aperture else None
+        self._aperture.append((t, aperture))
+        while self._aperture and t - self._aperture[0][0] > cfg.blink_max_s + cfg.slow_blink_reopen_max_s:
+            self._aperture.popleft()
+        if blink_ended:
+            self._pending = self._blink_start()
+        if self._pending is None or prev is None:
+            return
+        start, deepest = self._pending
+        if aperture >= level and prev[1] < level:
+            end = _cross_time(prev, (t, aperture), level)
+            self._blink_log.append((end, end - start, end - deepest))
+            if len(self._reopen_base) < cfg.slow_blink_baseline_blinks:
+                self._reopen_base.append(end - deepest)
+            self._pending = None
+        elif t - deepest > cfg.slow_blink_reopen_max_s or self._closed_since is not None:
+            self._pending = None  # never reopened fully, or closed again: not measured
+
+    def _blink_start(self) -> tuple[float, float] | None:
+        """(start, deepest point) of the blink that just reopened, from the recent apertures."""
+        samples = list(self._aperture)
+        if len(samples) < 2:
+            return None
+        k = min(range(len(samples)), key=lambda i: (samples[i][1], -samples[i][0]))  # deepest, latest
+        level = self.config.blink_open_level
+        for i in range(k, 0, -1):
+            if samples[i - 1][1] >= level > samples[i][1]:
+                return _cross_time(samples[i - 1], samples[i], level), samples[k][0]
+        return None  # the closing edge is not in the recent frames: not measured
+
+    def _slow_blinks(self, t: float, known_s: float) -> tuple[float, float | None, float | None]:
+        """(blink_time_frac, median reopening time, reopen_ratio) over the PERCLOS window."""
+        cfg = self.config
+        while self._blink_log and t - self._blink_log[0][0] > cfg.perclos_window_s:
+            self._blink_log.popleft()
+        frac = sum(d for _, d, _ in self._blink_log) / known_s if known_s > 1e-9 else 0.0
+        if len(self._blink_log) < cfg.slow_blink_min_blinks:
+            return min(frac, 1.0), None, None
+        reopen = float(np.median([r for _, _, r in self._blink_log]))
+        ratio = None
+        if len(self._reopen_base) >= cfg.slow_blink_min_blinks:
+            ratio = reopen / max(float(np.median(self._reopen_base)), 1e-3)
+        return min(frac, 1.0), reopen, ratio
+
+    def _update_brow(
+        self, t: float, f: FrameFeatures, eyes_open: bool, masked: bool, baseline: float, events: list[str]
+    ) -> None:
+        """Brows raised over the resting brow while the eyes droop: fighting sleep (see module doc)."""
+        cfg = self.config
+        if f.brow_up is None or not eyes_open or f.ear is None:
+            if self._brow_last_t is not None and t - self._brow_last_t > cfg.max_gap_s:
+                self._brow_since, self._brow_fired = None, False
+            return
+        self._brow_last_t = t
+        if not masked:
+            self._brow.add(t, f.brow_up)
+        neutral = self._brow_enrolled
+        if neutral is None:
+            if self._brow.span < cfg.brow_baseline_min_data_s:
+                return
+            neutral = self._brow.percentile(50, t)
+        raising = (
+            not masked and f.brow_up - neutral >= cfg.brow_raise_above and f.ear < cfg.brow_narrow_ratio * baseline
+        )
+        if not raising:
+            self._brow_since, self._brow_fired = None, False
+            return
+        if self._brow_since is None:
+            self._brow_since = t
+        if not self._brow_fired and t - self._brow_since >= cfg.brow_min_s:
+            self._brow_fired = True
+            self._brow_raises.append(t)
+            events.append("brow_raise")
 
     def _update_nod(
         self, t: float, dt: float, pitch_off: float | None, ear_low: bool | None, events: list[str]
@@ -550,20 +786,59 @@ class DrowsinessAnalyzer:
                 self._dip_start = None  # face lost too long: drop the dip rather than guess
             return
         if self._dip_start is None:
-            if pitch_off > cfg.nod_pitch_down_deg:
+            if pitch_off < cfg.nod_return_deg:
+                self._level_t = t
+            elif pitch_off > cfg.nod_pitch_down_deg:
                 self._dip_start, self._dip_known, self._dip_closed = t, 0.0, 0.0
+                self._dip_track = [(t, pitch_off)]
             return
+        self._dip_track.append((t, pitch_off))
         if ear_low is not None:
             self._dip_known += dt
             self._dip_closed += dt if ear_low else 0.0
         if pitch_off < cfg.nod_return_deg:
-            duration = t - self._dip_start
+            # Drop: leaving the usual pose -> first reaching the bottom; rise: last at the bottom ->
+            # back. "Bottom" = within 15 % of the dip depth, so holding the head down does not count.
+            left = self._level_t if self._level_t is not None else self._dip_start
+            peak = max(p for _, p in self._dip_track)
+            bottom = peak - 0.15 * (peak - cfg.nod_return_deg)
+            at_bottom = [tt for tt, p in self._dip_track if p >= bottom]
+            drop_s = max(at_bottom[0] - left, 1e-3)
+            rise_s = max(t - at_bottom[-1], 1e-3)
+            depth = peak - cfg.nod_return_deg
+            down_speed, up_speed = depth / drop_s, depth / rise_s
             closed_frac = self._dip_closed / self._dip_known if self._dip_known > 0 else 0.0
             eyes_ok = not cfg.nod_require_eyes_closed or closed_frac >= cfg.nod_eyes_closed_min_frac
-            if cfg.nod_min_s <= duration <= cfg.nod_max_s and eyes_ok:
+            jerk_up = up_speed >= cfg.nod_min_rise_deg_s and (
+                cfg.nod_rise_speed_ratio <= 0 or up_speed >= cfg.nod_rise_speed_ratio * down_speed
+            )
+            timing = (
+                cfg.nod_min_s <= t - self._dip_start <= cfg.nod_max_s
+                and (cfg.nod_max_drop_s <= 0 or drop_s <= cfg.nod_max_drop_s)
+                and (cfg.nod_max_rise_s <= 0 or rise_s <= cfg.nod_max_rise_s)
+            )
+            if timing and jerk_up and eyes_ok:
                 self._nods.append(t)
                 events.append("nod")
+            else:
+                events.append("bow")  # a deliberate look down, not drowsiness
             self._dip_start = None
+            self._dip_track = []
+            self._level_t = t
+
+
+def _ramp(x: float, lo: float, hi: float) -> float:
+    if hi <= lo:
+        return 1.0 if x >= hi else 0.0
+    return min(max((x - lo) / (hi - lo), 0.0), 1.0)
+
+
+def _cross_time(a: tuple[float, float], b: tuple[float, float], level: float) -> float:
+    """Time where the line from sample a to sample b crosses `level` (linear interpolation)."""
+    (ta, va), (tb, vb) = a, b
+    if vb == va:
+        return tb
+    return ta + (level - va) / (vb - va) * (tb - ta)
 
 
 def describe_events(state: DrowsinessState) -> list[str]:
@@ -578,4 +853,6 @@ def describe_events(state: DrowsinessState) -> list[str]:
             lines.append(f"[DROWSY] yawn ({state.yawn_count_10min} in 10 min)")
         elif ev == "nod":
             lines.append(f"[DROWSY] head nod ({state.nod_count_5min} in 5 min)")
+        elif ev == "brow_raise":
+            lines.append(f"[DROWSY] brows raised to keep the eyes open ({state.brow_raise_count_5min} in 5 min)")
     return lines

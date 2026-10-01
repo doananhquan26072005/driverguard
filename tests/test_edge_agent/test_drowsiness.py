@@ -285,15 +285,78 @@ def test_yawn_window_is_10_minutes():
 # ---------------------------------------------------------------- nod
 
 
-def dip(start, length, depth=25.0):
-    return lambda t: depth if start <= t < start + length else 0.0
+def dip(start, length, depth=25.0, down_s=0.0, up_s=0.0):
+    """Head pitch: down over down_s, held, back up over up_s; `length` from start to back up."""
+
+    def pitch(t: float) -> float:
+        x = t - start
+        if x < 0 or x >= length:
+            return 0.0
+        if down_s > 0 and x < down_s:
+            return depth * x / down_s
+        if up_s > 0 and x > length - up_s:
+            return depth * (length - x) / up_s
+        return depth
+
+    return pitch
+
+
+def nod(start):
+    """A drowsy nod: drifts down over 1 s, stays 0.3 s, jerks back up in 0.2 s."""
+    return dip(start, 1.5, down_s=1.0, up_s=0.2)
 
 
 def test_drowsy_nod_with_eyes_closed():
-    closed_during_dip = lambda t: 0.08 if 20.0 <= t < 20.8 else OPEN  # noqa: E731
-    _, states = simulate(25, pitch=dip(20.0, 0.8), ear=closed_during_dip)
+    closed_during_dip = lambda t: 0.08 if 20.0 <= t < 21.3 else OPEN  # noqa: E731
+    _, states = simulate(25, pitch=nod(20.0), ear=closed_during_dip)
     assert len(events(states, "nod")) == 1
     assert states[-1].nod_count_5min == 1
+
+
+# Nod vs bow speed test: off in thresholds.yaml (no setting beat v1 on FL3D / SUST), on here.
+JERK = DrowsinessConfig(
+    nod_rise_speed_ratio=1.5, nod_min_rise_deg_s=40.0, nod_max_drop_s=3.0, nod_max_rise_s=1.0, nod_max_s=3.0
+)
+
+
+def test_controlled_bow_is_not_a_nod_even_with_eyes_low():
+    """Looking down at the phone: down and up at the same pace -> a bow, not drowsiness."""
+    eyes_low = lambda t: 0.08 if 20.0 <= t < 21.5 else OPEN  # noqa: E731
+    bow = dip(20.0, 1.5, down_s=0.5, up_s=0.5)
+    _, states = simulate(25, pitch=bow, ear=eyes_low, analyzer=DrowsinessAnalyzer(JERK))
+    assert not events(states, "nod")
+    assert len(events(states, "bow")) == 1
+    _, states = simulate(25, pitch=bow, ear=eyes_low)  # speed test off: counted as before (v1)
+    assert len(events(states, "nod")) == 1
+
+
+def test_jerk_up_nod_passes_the_speed_test():
+    eyes = lambda t: 0.08 if 20.0 <= t < 21.3 else OPEN  # noqa: E731
+    _, states = simulate(25, pitch=nod(20.0), ear=eyes, analyzer=DrowsinessAnalyzer(JERK))
+    assert len(events(states, "nod")) == 1
+
+
+def test_slow_drift_up_after_a_dip_is_not_a_nod():
+    """Fast down, slow up (rise slower than the drop): not the drowsy pattern."""
+    eyes_low = lambda t: 0.08 if 20.0 <= t < 21.6 else OPEN  # noqa: E731
+    pitch = dip(20.0, 1.6, down_s=0.2, up_s=0.9)
+    _, states = simulate(25, pitch=pitch, ear=eyes_low, analyzer=DrowsinessAnalyzer(JERK))
+    assert not events(states, "nod")
+
+
+def test_slow_nod_drop_over_two_seconds_still_counts():
+    """A real nod can drift down for more than 2 s; the jerk up decides (drop window 3 s)."""
+    eyes = lambda t: 0.08 if 20.0 <= t < 23.0 else OPEN  # noqa: E731
+    pitch = dip(20.0, 2.9, down_s=2.5, up_s=0.25)
+    _, states = simulate(30, pitch=pitch, ear=eyes, analyzer=DrowsinessAnalyzer(JERK))
+    assert len(events(states, "nod")) == 1
+
+
+def test_jerk_test_rejects_a_drop_slower_than_its_window():
+    eyes = lambda t: 0.08 if 20.0 <= t < 26.0 else OPEN  # noqa: E731
+    pitch = dip(20.0, 5.9, down_s=5.5, up_s=0.25)  # ~3.4 s from 7 deg to the bottom > max_drop_s 3 s
+    _, states = simulate(30, pitch=pitch, ear=eyes, analyzer=DrowsinessAnalyzer(JERK))
+    assert not events(states, "nod") and events(states, "bow")
 
 
 def test_glance_at_dashboard_with_open_eyes_is_not_a_nod():
@@ -307,7 +370,7 @@ def test_sustained_head_down_is_not_a_nod():
 
 
 def test_nod_window_is_5_minutes():
-    a, _ = simulate(25, pitch=dip(20.0, 0.8), ear=lambda t: 0.08 if 20.0 <= t < 20.8 else OPEN)
+    a, _ = simulate(25, pitch=nod(20.0), ear=lambda t: 0.08 if 20.0 <= t < 21.3 else OPEN)
     _, s = simulate(1, analyzer=a, t0=250.0)
     assert s[-1].nod_count_5min == 1
     _, s = simulate(1, analyzer=a, t0=330.0)
