@@ -8,16 +8,25 @@ Every clip is shorter than `drowsiness.perclos_min_coverage_s` (30 s) and `eye.b
 
 ## 1. System decision per clip
 
-| Rule | Drowsy clips flagged (recall) | Not-drowsy clips flagged (FPR) | Precision | Alerts / hour on not-drowsy clips |
+| Rule | Drowsy clips flagged (recall) | Not-drowsy clips flagged (FPR) | Precision | Alerts / hour on not-drowsy clips (95% CI) |
 |---|---:|---:|---:|---:|
-| any alert L1-L3 | 1.6% | 2.9% | 33.3% | 10.8 |
-| L2 or L3 reached | 2.1% | 4.1% | 30.8% |  |
+| any alert L1-L3 | 1.6% | 2.4% | 38.1% | 8.5 (5.56–12.5) |
+| L2 or L3 reached | 1.9% | 3.4% | 33.9% |  |
 | L3 reached | 1.1% | 0.2% | 84.6% |  |
 | any microsleep event | 2.6% | 0.5% | 80.6% |  |
 | any yawn event | 0.9% | 0.1% | 90.0% |  |
 | any nod event | 1.4% | 1.4% | 48.3% |  |
 
-Alerts by clip class and reason: drowsy: L2 off_road 5, drowsy: L3 microsleep 12, not_drowsy: L2 no_face 7, not_drowsy: L2 off_road 25, not_drowsy: L3 microsleep 2.
+Alerts by clip class and reason: drowsy: L2 off_road 5, drowsy: L3 microsleep 12, not_drowsy: L2 off_road 24, not_drowsy: L3 microsleep 2.
+
+Alerts on not-drowsy clips by reason and level (3.05 h of clips, exact Poisson 95 % CI; the same driver's clips are not independent, so the CI is optimistic):
+
+| Reason | Level | Alerts | Per hour (95% CI) |
+|---|---:|---:|---:|
+| off_road | L2 | 24 | 7.9 (5.04–11.7) |
+| microsleep | L3 | 2 | 0.7 (0.08–2.4) |
+
+FAR / MAR on windows: not computed. Every clip (~10 s) is shorter than the start-up stretch the windows leave out (`eval.warmup_s`).
 
 ## 2. How well each clip-level signal separates drowsy from not-drowsy clips
 
@@ -42,8 +51,8 @@ AUC 0.5 = no information, 1.0 = perfect; oriented so that higher = drowsier (EAR
 | microsleep_events | 0.510 | 0.000 | 0.000 | block 7 events |
 | yawn_events | 0.504 | 0.000 | 0.000 | block 7 events |
 | nod_events | 0.500 | 0.000 | 0.000 | block 7 events |
-| any_alert | 0.494 | 0.000 | 0.000 | system decision: any alert L1-L3 |
-| max_level | 0.490 | 0.000 | 0.000 | highest risk level in the clip |
+| any_alert | 0.496 | 0.000 | 0.000 | system decision: any alert L1-L3 |
+| max_level | 0.493 | 0.000 | 0.000 | highest risk level in the clip |
 | mar_open_frac | 0.485 | 0.000 | 0.000 | MAR ≥ yawn.mar_open |
 | pitch_range | 0.467 | 6.520 | 7.056 | p95 - p5 pitch |
 | pitch_std | 0.464 | 2.010 | 2.249 | head motion (nodding) |

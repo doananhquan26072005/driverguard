@@ -16,12 +16,16 @@ events, risk level, alerts). The eye-state CNN is also run on every frame as a d
 column (`p_cnn`), separate from what the pipeline used (`p_closed`). Traces hold metadata only,
 no image; frames stay in RAM.
 
-Step 2 `fl3d` / `sust` score the traces and write a markdown report.
+Step 2 `fl3d` / `sust` / `yawdd` score the traces and write a markdown report. False alarms per
+hour come with the hours they are measured on and an exact Poisson 95 % CI, split by reason and
+level; FL3D and YawDD also get FAR / MAR on fixed windows (tools/metrics.py, thresholds.yaml
+`eval`). SUST clips (10 s) are shorter than the start-up stretch left out of the windows.
 
     python tools/seq_eval.py trace fl3d --out data/eval_traces/fl3d.pkl --workers 8
     python tools/seq_eval.py fl3d --traces data/eval_traces/fl3d.pkl --out eval/results/dataset_fl3d.md
     python tools/seq_eval.py trace sust --out data/eval_traces/sust.pkl --workers 8
     python tools/seq_eval.py sust --traces data/eval_traces/sust.pkl --out eval/results/dataset_sust_ddd.md
+    python tools/seq_eval.py yawdd --traces data/eval_traces/yawdd_v2.pkl --replay block5 --out eval/results/dataset_yawdd.md
 """
 
 from __future__ import annotations
@@ -42,6 +46,18 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from edge_agent.config import PROJECT_ROOT  # noqa: E402
+from tools.metrics import (  # noqa: E402
+    DISTRACTION_REASONS,
+    DROWSY_REASONS,
+    EvalConfig,
+    WindowCounts,
+    branch_level,
+    ci_text,
+    per_second_max,
+    rate_ci,
+    window_scores,
+    window_table,
+)
 
 FL3D_ROOT = (
     PROJECT_ROOT
@@ -55,6 +71,7 @@ COLUMNS = (
     "t face reliable ear ear_base mar pitch yaw p_closed p_cnn eye_closed closed_duration "
     "perclos perclos_ready yawning masked off_road no_face_s level drowsy_score "
     "ear_l ear_r face_bright is_ir blink"  # raw inputs of block 5, so its trigger can be replayed
+    " brow"  # browOuterUp blendshape (v2 brow-raise signal of block 7); traces made before v2 lack it
 ).split()
 
 
@@ -150,6 +167,7 @@ def trace_video(path: Path, thresholds: dict[str, Any], speed_kmh: float = 60.0,
                         face_brightness(pre, lm) if lm is not None else None,
                         pre.is_ir,
                         feats.eye_blink,
+                        feats.brow_up,
                     )
                 )
                 events += [(i, ev) for ev in d.events]
@@ -241,10 +259,21 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace") -> dict:
     else:
         pcol = {"trace": c["p_closed"], "cnn": c["p_cnn"], "ear": np.full(tr["n"], np.nan)}[eye]
     blink = c.get("blink", np.full(tr["n"], np.nan))
+    brow = c.get("brow", np.full(tr["n"], np.nan))
     pipeline = DecisionPipeline(thresholds)
     can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": 60.0}]}))
     out = {
-        k: np.empty(tr["n"]) for k in ("eye_closed", "closed_duration", "masked", "yawning", "level", "drowsy_score")
+        k: np.empty(tr["n"])
+        for k in (
+            "eye_closed",
+            "closed_duration",
+            "masked",
+            "yawning",
+            "level",
+            "drowsy_score",
+            "drowsy_level",  # per branch, for FAR / MAR windows
+            "distraction_level",
+        )
     }
     events: list[tuple[int, str]] = []
     alerts: list[tuple[int, int, tuple[str, ...]]] = []
@@ -265,6 +294,7 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace") -> dict:
             pitch=val(c["pitch"][i]),
             yaw=val(c["yaw"][i]),
             eye_blink=val(blink[i]),
+            brow_up=val(brow[i]),
             p_closed=val(pcol[i]) if face else None,
         )
         r = pipeline.step(f, None, can.sample(f.timestamp))
@@ -275,6 +305,8 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace") -> dict:
         out["yawning"][i] = d.yawning
         out["level"][i] = r.risk.level
         out["drowsy_score"][i] = r.risk.drowsy_score
+        out["drowsy_level"][i] = branch_level(r.risk.hits, DROWSY_REASONS)
+        out["distraction_level"][i] = branch_level(r.risk.hits, DISTRACTION_REASONS)
         events += [(i, ev) for ev in d.events]
         if r.alert.new_alert is not None:
             alerts.append((i, r.alert.new_alert.level, tuple(r.alert.new_alert.reasons)))
@@ -575,12 +607,23 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
     pred_class: dict[str, Counter] = defaultdict(Counter)
     alert_rows = []
     alert_minutes = 0.0
+    eval_cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    win_levels = sorted({eval_cfg.min_level, 2})
+    windows = {lv: WindowCounts() for lv in win_levels}
     for vid, tr in ok.items():
         lb = labels.get(vid, {})
         runs = label_runs(lb, gap)
         ms_runs = [r for r in runs if r.label == "microsleep"]
         yw_runs = [r for r in runs if r.label == "yawning"]
         drowsy_runs = ms_runs + yw_runs
+        # FAR / MAR windows: drowsy = microsleep / yawning runs, awake = runs labelled alert
+        secs = lambda rs: [(r.start / fps, (r.end + 1) / fps) for r in rs]  # noqa: E731
+        col = tr["cols"].get("drowsy_level", tr["cols"]["level"])  # traces scored without replay: any reason
+        per_sec = per_second_max(tr["cols"]["t"], [int(v) for v in np.nan_to_num(col)], tr["n"] / fps)
+        for lv in win_levels:
+            lv_cfg = EvalConfig(eval_cfg.window_s, eval_cfg.warmup_s, eval_cfg.positive_frac, lv)
+            awake = secs([r for r in runs if r.label == "alert"])
+            windows[lv] += window_scores(tr["n"] / fps, secs(drowsy_runs), awake, per_sec, lv_cfg, tol_s)
         ev = defaultdict(list)
         for f, e in tr["events"]:
             ev[e].append(f)
@@ -638,23 +681,46 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
         "",
         f"hit = inside a matching labelled run ± {tol_s:g} s (alerts: any microsleep / yawning run ± 3 s); "
         "false = on a frame labelled `alert`, away from every drowsy run; other = another drowsy label or an "
-        f"unlabelled stretch. {alert_minutes:.1f} min of frames are labelled alert.",
+        f"unlabelled stretch. {alert_minutes:.1f} min ({alert_minutes / 60:.2f} h) of frames are labelled alert: "
+        "false alarms per hour are over those hours, with an exact Poisson 95 % CI. A few false alarms on "
+        "26 minutes say little: no PRD verdict (≤ 1.0 / h) while the CI still spans it.",
         "",
-        "| Prediction | Total | Hit | False | Other | False / hour of alert frames |",
+        "| Prediction | Total | Hit | False | Other | False / hour of alert frames (95% CI) |",
         "|---|---:|---:|---:|---:|---:|",
     ]
+    alert_h = alert_minutes / 60
     for k in ("microsleep event", "yawn event", "nod event", "perclos_high event", "L1 alert", "L2 alert", "L3 alert"):
         c = pred_class[k]
         tot = sum(c.values())
-        lines.append(
-            f"| {k} | {tot} | {c['hit']} | {c['fp']} | {c['other']} | "
-            f"{_f(c['fp'] / (alert_minutes / 60) if alert_minutes else None, 1)} |"
-        )
+        lines.append(f"| {k} | {tot} | {c['hit']} | {c['fp']} | {c['other']} | {ci_text(rate_ci(c['fp'], alert_h))} |")
     reasons = Counter()
+    false_by = Counter()
     for _, _, lv, rs, kind in alert_rows:
         for r in rs.split(","):
             reasons[(r, kind)] += 1
+            false_by[(r, lv)] += kind == "fp"
     lines += ["", "Alerts by reason: " + ", ".join(f"{r} {k} {n}" for (r, k), n in sorted(reasons.items())) + "."]
+    lines += [
+        "",
+        "False alerts by reason and level (an alert with two reasons counts under both):",
+        "",
+        "| Reason | Level | False | False / hour (95% CI) |",
+        "|---|---:|---:|---:|",
+    ]
+    for (r, lv), n in sorted(false_by.items()):
+        lines.append(f"| {r} | L{lv} | {n} | {ci_text(rate_ci(n, alert_h))} |")
+    lines += ["", "## 5b. FAR / MAR on windows (drowsiness)", ""]
+    lines += window_table([(f"Drowsiness, level ≥ L{lv}", windows[lv]) for lv in win_levels], eval_cfg)
+    lines += [
+        "",
+        "Drowsy = FL3D microsleep / yawning frames; awake = frames labelled alert; frames FL3D left out are "
+        "unlabelled. Distraction is not labelled in FL3D.",
+        "",
+        "Read with care: the videos are ~1 min (30 s start-up left out) and dense with microsleep / yawning runs, "
+        "so few windows qualify. FL3D `alert` frames sit between the microsleeps of the same drowsy actor, and "
+        "`drowsy_score` is meant to stay up for minutes after a microsleep: a high FAR here is not an awake driver "
+        "disturbed. FAR / MAR are for long recordings (UTA-RLDD, DMD).",
+    ]
     lines += [
         "",
         "## 6. Per video",
@@ -792,7 +858,7 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
         "",
         "## 1. System decision per clip",
         "",
-        "| Rule | Drowsy clips flagged (recall) | Not-drowsy clips flagged (FPR) | Precision | Alerts / hour on not-drowsy clips |",
+        "| Rule | Drowsy clips flagged (recall) | Not-drowsy clips flagged (FPR) | Precision | Alerts / hour on not-drowsy clips (95% CI) |",
         "|---|---:|---:|---:|---:|",
     ]
     for name, pred in [
@@ -805,7 +871,7 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
     ]:
         m = prf(pred, y)
         n_alerts = sum(len(ok[k]["alerts"]) for k in feats if not k.startswith("drowsiness/"))
-        per_h = f"{n_alerts / hours_neg:.1f}" if name.startswith("any alert") and hours_neg else ""
+        per_h = ci_text(rate_ci(n_alerts, hours_neg)) if name.startswith("any alert") and hours_neg else ""
         lines.append(f"| {name} | {_p(m['recall'])} | {_p(m['fpr'])} | {_p(m['precision'])} | {per_h} |")
     reasons = Counter()
     for k in feats:
@@ -815,6 +881,21 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
     lines += [
         "",
         "Alerts by clip class and reason: " + ", ".join(f"{c}: {r} {n}" for (c, r), n in sorted(reasons.items())) + ".",
+        "",
+        f"Alerts on not-drowsy clips by reason and level ({hours_neg:.2f} h of clips, exact Poisson 95 % CI; "
+        "the same driver's clips are not independent, so the CI is optimistic):",
+        "",
+        "| Reason | Level | Alerts | Per hour (95% CI) |",
+        "|---|---:|---:|---:|",
+    ]
+    for (c, rl), n in sorted(reasons.items()):
+        if c == "not_drowsy":
+            lv, r = rl.split(" ", 1)
+            lines.append(f"| {r} | {lv} | {n} | {ci_text(rate_ci(n, hours_neg))} |")
+    lines += [
+        "",
+        "FAR / MAR on windows: not computed. Every clip (~10 s) is shorter than the start-up stretch the windows "
+        "leave out (`eval.warmup_s`).",
     ]
     lines += [
         "",
@@ -846,6 +927,49 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def yawdd_report(traces: dict, thresholds: dict[str, Any]) -> str:
+    """YawDD from traces, scored like tools/dataset.py + tools/eval.py (clip labels: a Yawning clip
+    is one yawn episode covering the clip), plus FAR / MAR windows from the per-frame branch levels."""
+    from tools import eval as ev
+    from tools.dataset import label_of, load_presets
+
+    preset = load_presets()["yawdd"]
+    predictions: list = []
+    durations: dict[str, float] = {}
+    levels: dict[str, dict[str, list[int]]] = {}
+    episodes = []
+    for key, tr in sorted(traces.items()):
+        if isinstance(tr, str) or tr["n"] == 0:
+            continue
+        lab = label_of(YAWDD_ROOT / key, YAWDD_ROOT.parent, preset)
+        if lab is None:
+            continue
+        fps, c = tr["fps"], tr["cols"]
+        dur = tr["n"] / fps
+        durations[key] = dur
+        if lab[0] == preset.positive:
+            episodes.append(ev.Episode(key, "yawn", 0.0, round(dur, 3)))
+        for i, e in tr["events"]:
+            if e in ev.EVENT_TO_BEHAVIOR:
+                predictions.append(ev.Prediction(key, ev.EVENT_TO_BEHAVIOR[e], i / fps))
+        for i, lv, reasons in tr["alerts"]:
+            predictions.append(ev.Prediction(key, ev.ALERT, i / fps, lv))
+            for b in {ev.REASON_TO_BEHAVIOR[r] for r in reasons if r in ev.REASON_TO_BEHAVIOR}:
+                predictions.append(ev.Prediction(key, b, i / fps, lv))
+        levels[key] = {
+            branch: per_second_max(c["t"], [int(v) for v in np.nan_to_num(c.get(f"{branch}_level", c["level"]))], dur)
+            for branch in ("drowsy", "distraction")
+        }
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    windows = ev.window_rows(episodes, durations, levels, cfg, tolerance_s=0.0)
+    text = ev.report(ev.score(episodes, predictions, durations, tolerance_s=0.0), durations, 0.0, windows, cfg)
+    return (
+        f"Dataset: {preset.kaggle} ({preset.name}), clip-level labels, scored from traces "
+        "(tools/seq_eval.py yawdd).\n\n" + text + "\nYawning clips count as drowsy windows (YawDD has no other "
+        "drowsiness label); a car parked, no distraction label, so distraction windows are all awake.\n"
+    )
+
+
 # --------------------------------------------------------------------------- CLI
 
 
@@ -862,7 +986,7 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument(
         "--set", action="append", default=[], help="what-if threshold, e.g. eye_state.low_light_brightness=0"
     )
-    for name in ("fl3d", "sust"):
+    for name in ("fl3d", "sust", "yawdd"):
         s = sub.add_parser(name, help=f"score {name} traces")
         s.add_argument("--traces", required=True)
         s.add_argument("--out", default=None)
@@ -890,7 +1014,7 @@ def main(argv: list[str] | None = None) -> int:
     traces = pickle.loads(Path(args.traces).read_bytes())
     if args.replay or args.set:
         traces = replay_all(traces, thresholds, args.replay or "trace", args.workers)
-    text = fl3d_report(traces, thresholds) if args.cmd == "fl3d" else sust_report(traces, thresholds)
+    text = {"fl3d": fl3d_report, "sust": sust_report, "yawdd": yawdd_report}[args.cmd](traces, thresholds)
     if args.replay or args.set:
         note = f"Blocks {'5, ' if args.replay == 'block5' else ''}7-12 replayed from the traces with config/thresholds.yaml"
         note += f" and {', '.join(args.set)}." if args.set else "."

@@ -1,7 +1,11 @@
 """M7 - Accuracy evaluation: system events vs dataset labels.
 
-Per behaviour: precision, recall, F1, detection delay and false positives per hour of
-driving; plus the same for every emitted alert (any level, any reason).
+Per behaviour: precision, recall, F1, detection delay and false positives per hour; plus the
+same for every emitted alert (any reason), in total and per level. False positives per hour are
+divided by the hours where one can happen (the video time minus the episodes the predictions are
+matched against, widened by the tolerance) and printed with those hours and an exact Poisson
+95 % CI (tools/metrics.py). With per-second risk levels (recorded by `run`), FAR / MAR on fixed
+windows are added, drowsiness and distraction apart (config/thresholds.yaml, section `eval`).
 
 Labels: CSV with a header `video,behavior,start_s,end_s` (one row per labelled episode).
   behaviour = microsleep | yawn | nod | drowsy | phone | off_road
@@ -38,10 +42,28 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from tools.metrics import (  # noqa: E402
+    DISTRACTION_REASONS,
+    DROWSY_REASONS,
+    EvalConfig,
+    WindowCounts,
+    branch_level,
+    ci_text,
+    exposure_seconds,
+    rate_ci,
+    widen,
+    window_scores,
+    window_table,
+)
+
 BEHAVIORS = ("microsleep", "yawn", "nod", "drowsy", "phone", "off_road")
 ALERT = "alert"  # every emitted alert, whatever its reason
 REASON_TO_BEHAVIOR = {"phone": "phone", "off_road": "off_road", "drowsy_score": "drowsy", "trend": "drowsy"}
 EVENT_TO_BEHAVIOR = {"microsleep": "microsleep", "yawn": "yawn", "nod": "nod", "perclos_high": "drowsy"}
+# Labelled behaviours that make a FAR / MAR window drowsy / distracted.
+DROWSY_BEHAVIORS = ("microsleep", "drowsy", "nod", "yawn")
+DISTRACTION_BEHAVIORS = ("phone", "off_road")
+BRANCHES = ("drowsy", "distraction")  # per-second level series recorded by run_video
 
 
 @dataclass(frozen=True)
@@ -73,6 +95,9 @@ class Score:
     f1: float | None
     fp_per_hour: float | None
     delay_p50_s: float | None
+    exposure_h: float = 0.0  # hours where a false positive of this row can happen
+    fp_ci_low: float | None = None  # exact Poisson 95 % CI of fp_per_hour
+    fp_ci_high: float | None = None
 
 
 # --------------------------------------------------------------------------- label / prediction files
@@ -115,14 +140,21 @@ def frames_to_episodes(
     return episodes
 
 
-def save_predictions(path: str | Path, predictions: list[Prediction], durations: dict[str, float]) -> None:
-    data = {"durations_s": durations, "predictions": [asdict(p) for p in predictions]}
-    Path(path).write_text(json.dumps(data, indent=1), encoding="utf-8")
+Levels = dict[str, dict[str, list[int]]]  # video -> branch -> highest risk level of each second
 
 
-def load_predictions(path: str | Path) -> tuple[list[Prediction], dict[str, float]]:
+def save_predictions(
+    path: str | Path, predictions: list[Prediction], durations: dict[str, float], levels: Levels | None = None
+) -> None:
+    data = {"durations_s": durations, "predictions": [asdict(p) for p in predictions], "levels": levels or {}}
+    Path(path).write_text(json.dumps(data), encoding="utf-8")
+
+
+def load_predictions(path: str | Path) -> tuple[list[Prediction], dict[str, float], Levels]:
+    """Predictions, durations and per-second levels (empty for files saved before they existed)."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return [Prediction(**p) for p in data["predictions"]], {k: float(v) for k, v in data["durations_s"].items()}
+    durations = {k: float(v) for k, v in data["durations_s"].items()}
+    return [Prediction(**p) for p in data["predictions"]], durations, data.get("levels", {})
 
 
 # --------------------------------------------------------------------------- scoring (pure)
@@ -157,28 +189,41 @@ def score(
     durations_s: dict[str, float],
     tolerance_s: float = 1.0,
 ) -> list[Score]:
-    """One Score per behaviour, plus ALERT (every alert vs every labelled episode)."""
+    """One Score per behaviour, plus ALERT (every alert vs every labelled episode) in total and per level.
+
+    A row's false positives per hour are over the time where one can happen: each video's duration
+    minus the episodes that row is matched against, widened by the tolerance.
+    """
     videos = list(durations_s)
-    hours = sum(durations_s.values()) / 3600.0
     rows = []
-    for behavior in (*BEHAVIORS, ALERT):
+    for name, behavior, level in (
+        [(b, b, None) for b in BEHAVIORS] + [(ALERT, ALERT, None)] + [(f"{ALERT} L{lv}", ALERT, lv) for lv in (1, 2, 3)]
+    ):
         tp = fp = dup = n_eps = n_pred = 0
+        exposure_s = 0.0
         delays: list[float] = []
         for video in videos:
             if behavior == ALERT:  # an alert is right if it overlaps any labelled behaviour
                 eps = [e for e in episodes if e.video == video]
             else:
                 eps = [e for e in episodes if e.video == video and e.behavior == behavior]
-            times = [p.time_s for p in predictions if p.video == video and p.behavior == behavior]
+            times = [
+                p.time_s
+                for p in predictions
+                if p.video == video and p.behavior == behavior and (level is None or p.level == level)
+            ]
             t, f, d, dl = match(eps, times, tolerance_s)
             tp, fp, dup, n_eps, n_pred = tp + t, fp + f, dup + d, n_eps + len(eps), n_pred + len(times)
+            exposure_s += exposure_seconds(durations_s[video], widen([(e.start_s, e.end_s) for e in eps], tolerance_s))
             delays += dl
+        hours = exposure_s / 3600.0
+        rate, lo, hi = rate_ci(fp, hours)
         precision = _ratio(tp, tp + fp)
         recall = _ratio(tp, n_eps)
         f1 = 2 * precision * recall / (precision + recall) if precision and recall else (0.0 if n_eps else None)
         rows.append(
             Score(
-                behavior=behavior,
+                behavior=name,
                 episodes=n_eps,
                 predictions=n_pred,
                 tp=tp,
@@ -187,10 +232,37 @@ def score(
                 precision=precision,
                 recall=recall if behavior != ALERT else None,  # alerts are not meant to cover every label
                 f1=f1 if behavior != ALERT else None,
-                fp_per_hour=fp / hours if hours > 0 else None,
+                fp_per_hour=rate,
                 delay_p50_s=statistics.median(delays) if delays else None,
+                exposure_h=hours,
+                fp_ci_low=lo,
+                fp_ci_high=hi,
             )
         )
+    return rows
+
+
+def window_rows(
+    episodes: list[Episode], durations_s: dict[str, float], levels: Levels, cfg: EvalConfig, tolerance_s: float = 1.0
+) -> list[tuple[str, WindowCounts]]:
+    """FAR / MAR window counts, drowsiness and distraction apart, at cfg.min_level and at L2.
+
+    Unlabelled time counts as awake (the label file lists every episode of its videos), as for
+    false positives per hour. Videos without recorded levels are left out.
+    """
+    rows = []
+    for branch, behaviors in (("drowsy", DROWSY_BEHAVIORS), ("distraction", DISTRACTION_BEHAVIORS)):
+        for lv in sorted({cfg.min_level, 2}):
+            total = WindowCounts()
+            for video, dur in durations_s.items():
+                series = levels.get(video, {}).get(branch)
+                if series is None:
+                    continue
+                pos = [(e.start_s, e.end_s) for e in episodes if e.video == video and e.behavior in behaviors]
+                level_cfg = EvalConfig(cfg.window_s, cfg.warmup_s, cfg.positive_frac, lv)
+                total += window_scores(dur, pos, [(0.0, dur)], series, level_cfg, tolerance_s)
+            name = "Drowsiness" if branch == "drowsy" else "Distraction"
+            rows.append((f"{name}, level ≥ L{lv}", total))
     return rows
 
 
@@ -200,30 +272,43 @@ def _fmt(v: float | None, pct: bool = False, digits: int = 2) -> str:
     return f"{v * 100:.1f}%" if pct else f"{v:.{digits}f}"
 
 
-def report(scores: list[Score], durations_s: dict[str, float], tolerance_s: float) -> str:
+def report(
+    scores: list[Score],
+    durations_s: dict[str, float],
+    tolerance_s: float,
+    windows: list[tuple[str, WindowCounts]] | None = None,
+    cfg: EvalConfig | None = None,
+) -> str:
     hours = sum(durations_s.values()) / 3600.0
     lines = [
         "# DriverGuard - accuracy evaluation",
         "",
         f"{len(durations_s)} videos, {hours * 60:.1f} min of driving, match tolerance ±{tolerance_s:g} s.",
         "",
-        "| Behaviour | Episodes | Predictions | TP | FP | Dup | Precision | Recall | F1 | FP / hour | Delay p50 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "## Events and alerts",
+        "",
+        "| Behaviour | Episodes | Predictions | TP | FP | Dup | Precision | Recall | F1 | Hours | FP / hour (95% CI) | Delay p50 |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for s in scores:
-        name = "**all alerts**" if s.behavior == ALERT else s.behavior
+        name = f"**{s.behavior.replace(ALERT, 'all alerts')}**" if s.behavior.startswith(ALERT) else s.behavior
         lines.append(
             f"| {name} | {s.episodes} | {s.predictions} | {s.tp} | {s.fp} | {s.duplicates} | "
-            f"{_fmt(s.precision, True)} | {_fmt(s.recall, True)} | {_fmt(s.f1)} | "
-            f"{_fmt(s.fp_per_hour, digits=1)} | {_fmt(s.delay_p50_s, digits=1)} s |"
+            f"{_fmt(s.precision, True)} | {_fmt(s.recall, True)} | {_fmt(s.f1)} | {s.exposure_h:.2f} | "
+            f"{ci_text((s.fp_per_hour, s.fp_ci_low, s.fp_ci_high))} | {_fmt(s.delay_p50_s, digits=1)} s |"
         )
     lines += [
         "",
         "TP / FP / Dup: matched episodes / predictions outside every episode / extra predictions in an "
         "already matched episode. Delay: prediction time minus episode start (negative = inside the "
-        "tolerance before the labelled start). *all alerts*: every emitted alert (L1-L3) scored against "
-        "every labelled episode, whatever its behaviour; recall is not meaningful there.",
+        "tolerance before the labelled start). *all alerts*: every emitted alert (L1-L3; then per level) "
+        "scored against every labelled episode, whatever its behaviour; recall is not meaningful there. "
+        "Hours: where a false positive of the row can happen (video time minus the row's episodes ± "
+        "tolerance). FP / hour with an exact Poisson 95 % CI: a few false positives on little time say "
+        "little, so no PRD verdict (≤ 1.0 / h) can be drawn from a CI that still spans it.",
     ]
+    if windows and cfg is not None:
+        lines += ["", "## FAR / MAR on windows", ""] + window_table(windows, cfg)
     return "\n".join(lines) + "\n"
 
 
@@ -242,8 +327,14 @@ def predictions_from_result(video: str, t: float, r: Any) -> list[Prediction]:
 
 
 def run_video(
-    path: Path, thresholds: dict[str, Any], speed_kmh: float, use_phone: bool
+    path: Path,
+    thresholds: dict[str, Any],
+    speed_kmh: float,
+    use_phone: bool,
+    levels_out: dict[str, list[int]] | None = None,
 ) -> tuple[list[Prediction], float]:
+    """Predictions and duration of one video. levels_out, when given, gets the highest drowsiness /
+    distraction risk level of every second (for FAR / MAR windows)."""
     import cv2
 
     from edge_agent.capture import Frame
@@ -299,6 +390,13 @@ def run_video(
                     feats = eye_state(pre, lm, feats)
                 r = pipeline.step(feats, phone_flag, can.sample(t))
                 preds += predictions_from_result(path.name, t, r)
+                if levels_out is not None:
+                    sec = int(t)
+                    for branch, reasons in (("drowsy", DROWSY_REASONS), ("distraction", DISTRACTION_REASONS)):
+                        series = levels_out.setdefault(branch, [])
+                        while len(series) <= sec:
+                            series.append(0)
+                        series[sec] = max(series[sec], branch_level(r.risk.hits, reasons))
                 i += 1
     finally:
         cap.release()
@@ -352,8 +450,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     episodes, videos = read_labels(args.labels)
+    levels: Levels = {}
     if args.cmd == "score":
-        predictions, durations = load_predictions(args.predictions)
+        predictions, durations, levels = load_predictions(args.predictions)
         missing = [v for v in videos if v not in durations]
         if missing:
             p.error(f"no predictions for {missing}: run them first")
@@ -367,7 +466,8 @@ def main(argv: list[str] | None = None) -> int:
         predictions, durations = [], {}
         for video in videos:
             t0 = time.perf_counter()
-            preds, dur = run_video(Path(args.videos) / video, thresholds, args.speed, not args.no_phone)
+            levels[video] = {}
+            preds, dur = run_video(Path(args.videos) / video, thresholds, args.speed, not args.no_phone, levels[video])
             predictions += preds
             durations[video] = dur
             print(
@@ -375,10 +475,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
         if args.save:
-            save_predictions(args.save, predictions, durations)
+            save_predictions(args.save, predictions, durations, levels)
 
+    from edge_agent.config import load_thresholds
+
+    cfg = EvalConfig.from_dict(load_thresholds(getattr(args, "config", None)).get("eval"))
     scores = score(episodes, predictions, durations, args.tolerance)
-    text = report(scores, durations, args.tolerance)
+    windows = window_rows(episodes, durations, levels, cfg, args.tolerance) if levels else None
+    text = report(scores, durations, args.tolerance, windows, cfg)
     print(text)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")

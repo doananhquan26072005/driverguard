@@ -462,19 +462,22 @@ def eval_videos(
 ) -> str:
     from tools import eval as ev
 
-    predictions, durations = [], {}
+    predictions, durations, levels = [], {}, {}
     for i, s in enumerate(samples, 1):
         name = s.path.relative_to(root).as_posix()
         t0 = time.perf_counter()
-        preds, dur = ev.run_video(s.path, thresholds, speed, use_phone=False)
+        levels[name] = {}
+        preds, dur = ev.run_video(s.path, thresholds, speed, use_phone=False, levels_out=levels[name])
         predictions += [replace(p, video=name) for p in preds]
         durations[name] = dur
         print(f"[dataset] {i}/{len(samples)} {name}: {dur:.0f} s, {time.perf_counter() - t0:.0f} s", file=sys.stderr)
     if save:  # re-score or break down later with tools/eval.py score
-        ev.save_predictions(save, predictions, durations)
+        ev.save_predictions(save, predictions, durations, levels)
     rows = clip_label_rows(preset, samples, root, durations)
     episodes = [ev.Episode(r[0], r[1], float(r[2]), float(r[3])) for r in rows if r[1] != "none"]
-    text = ev.report(ev.score(episodes, predictions, durations, tolerance_s=0.0), durations, 0.0)
+    cfg = ev.EvalConfig.from_dict(thresholds.get("eval"))
+    windows = ev.window_rows(episodes, durations, levels, cfg, tolerance_s=0.0)
+    text = ev.report(ev.score(episodes, predictions, durations, tolerance_s=0.0), durations, 0.0, windows, cfg)
     return f"Dataset: {preset.kaggle} ({preset.name}), clip-level labels.\n\n" + text
 
 
