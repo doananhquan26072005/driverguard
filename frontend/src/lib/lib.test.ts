@@ -123,7 +123,15 @@ describe("HUD alert sounds", () => {
 
   it("demo plays every kind of alert", () => {
     const reasons = new Set(DEMO_SCRIPT.flatMap((e) => e.reasons));
-    for (const r of ["drowsy_score", "off_road", "phone", "no_face", "microsleep", "trend"]) expect(reasons.has(r as never)).toBe(true);
+    for (const r of ["drowsy_score", "off_road", "phone", "microsleep", "trend"]) expect(reasons.has(r as never)).toBe(true);
     expect(Math.max(...DEMO_SCRIPT.map((e) => e.end))).toBeLessThanOrEqual(DEMO_CYCLE_S);
+  });
+
+  it("demo loses the face once: monitoring unavailable, no alert (FR-6)", () => {
+    const s = demoSnapshot(48, new Set());
+    expect(s.unavailable).toBe(true);
+    expect(s.level).toBe(0);
+    expect(demoSnapshot(30, new Set()).unavailable).toBe(false);
+    expect(systemSound("monitoring_unavailable").notes).not.toEqual(systemSound("monitoring_restored").notes);
   });
 });

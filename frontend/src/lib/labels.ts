@@ -1,10 +1,10 @@
 // User-facing text (Vietnamese). Keys and code stay in English.
-import type { Level, Reason, Role } from "./types";
+import type { EnrollHint, EnrollStep, Level, Reason, Role } from "./types";
 
 export const LEVELS: Record<Level, { short: string; title: string; action: string; icon: string }> = {
   0: { short: "L0", title: "Bình thường", action: "Tỉnh táo, tiếp tục lái an toàn", icon: "✓" },
-  1: { short: "L1", title: "Chú ý", action: "Biểu tượng + chuông nhẹ", icon: "!" },
-  2: { short: "L2", title: "Cảnh báo", action: "Âm thanh + rung ghế", icon: "▲" },
+  1: { short: "L1", title: "Chú ý", action: "Bạn có vẻ mệt, nên nghỉ sớm", icon: "!" },
+  2: { short: "L2", title: "Cảnh báo", action: "Tập trung lái xe ngay", icon: "▲" },
   3: { short: "L3", title: "Nguy hiểm", action: "Hãy dừng xe nghỉ ngơi ngay", icon: "■" },
 };
 
@@ -18,6 +18,10 @@ export const REASONS: Record<Reason, string> = {
   blink_rate: "Nhịp chớp mắt bất thường",
   camera_lost: "Mất camera: ngừng giám sát",
   camera_restored: "Camera hoạt động lại",
+  driver_enrolled: "Đã đăng ký tài xế",
+  monitoring_unavailable: "Tạm ngưng giám sát: không thấy mặt",
+  monitoring_restored: "Giám sát lại",
+  driver_changed: "Đổi tài xế",
 };
 
 export const ROLES: Record<Role, string> = {
@@ -78,10 +82,48 @@ export const REASON_ACTIONS: Record<Reason, string> = {
   no_face: "Ngồi đúng vị trí lái",
   camera_lost: "Kiểm tra camera",
   camera_restored: "Camera đã hoạt động lại",
+  driver_enrolled: "Đã đăng ký tài xế",
+  monitoring_unavailable: "Ngồi đúng vị trí lái",
+  monitoring_restored: "Đang giám sát lại",
+  driver_changed: "Người lái mới đăng ký khuôn mặt",
+};
+
+// Driver enrollment: what the HUD shows and says. Spoken too, since in steps 2 and 3 the
+// driver is not looking at the screen.
+export const ENROLL_STEPS: Record<EnrollStep, { title: string; detail: string }> = {
+  look_camera: { title: "Nhìn thẳng vào camera", detail: "Mở mắt bình thường, ngậm miệng" },
+  look_road: { title: "Nhìn ra đường phía trước", detail: "Như khi đang lái, giữ đầu yên" },
+  close_eyes: { title: "Nhắm mắt lại", detail: "Mở mắt khi nghe tiếng bíp" },
+};
+
+export const ENROLL_HINTS: Record<EnrollHint, string> = {
+  stop_vehicle: "Dừng xe để đăng ký tài xế",
+  face_not_found: "Ngồi đúng vị trí, để cả khuôn mặt trong khung hình",
+  too_dark: "Hơi tối hoặc chói, bật đèn trong xe",
+  look_camera: "Quay mặt về phía camera",
+  look_road: "Nhìn ra đường phía trước như khi lái",
+  hold_still: "Giữ đầu yên",
+  open_eyes: "Mở mắt bình thường, nhìn thẳng",
+  close_mouth: "Ngậm miệng lại",
+  close_eyes: "Nhắm hẳn mắt lại",
+};
+
+export const ENROLL_TEXT = {
+  title: "Đăng ký tài xế",
+  done: "Đăng ký xong",
+  waiting: "Chưa đăng ký tài xế. Dừng xe để đăng ký, nhận diện sẽ chính xác hơn.",
+  failed: "Chưa đăng ký được. Sẽ thử lại ở lần dừng xe sau.",
 };
 
 // HUD screens when the driver is not being monitored (hud/hudModel.ts SystemState).
-export const SYSTEM_TEXT: Record<"down" | "camera_lost" | "stale" | "connecting", { title: string; detail: string }> = {
+export const SYSTEM_TEXT: Record<
+  "down" | "camera_lost" | "unavailable" | "stale" | "connecting",
+  { title: string; detail: string }
+> = {
+  unavailable: {
+    title: "Tạm ngưng giám sát",
+    detail: "Không thấy mặt tài xế. Ngồi đúng vị trí lái, không che camera.",
+  },
   down: { title: "Không kết nối được thiết bị", detail: "HUD không nhận được trạng thái từ edge agent." },
   camera_lost: { title: "Mất camera", detail: "Hệ thống đang KHÔNG giám sát tài xế. Đang kết nối lại…" },
   stale: { title: "Không nhận dữ liệu từ camera", detail: "Vòng xử lý camera đã ngừng cập nhật." },

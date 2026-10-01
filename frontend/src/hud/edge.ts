@@ -1,5 +1,5 @@
 // Client for the in-car HUD server of the edge agent (edge_agent/hud/server.py, 127.0.0.1 only).
-import type { HudSnapshot } from "../lib/types";
+import type { HudSnapshot, TripDelivery, TripSummary, VehicleAction } from "../lib/types";
 
 export const EDGE_URL: string = import.meta.env.VITE_EDGE_URL ?? "http://127.0.0.1:8765";
 
@@ -25,11 +25,46 @@ export async function sendFalseAlarm(eventId: string): Promise<FeedbackResult> {
   }
 }
 
+export interface TripEnd {
+  summary: TripSummary;
+  delivery: TripDelivery;
+}
+
+/** "Kết thúc chuyến": the edge agent builds the trip summary, queues it for the backend, stops. */
+export async function endEdgeTrip(): Promise<TripEnd> {
+  const resp = await fetch(`${EDGE_URL}/end-trip`, { method: "POST" });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const body = (await resp.json()) as { summary: TripSummary };
+  return { summary: body.summary, delivery: "device" };
+}
+
+/** "Tạm dừng" / "Tiếp tục lái" / "Đổi tài xế": the edge agent applies it on its next frame. */
+export async function sendVehicle(action: VehicleAction): Promise<boolean> {
+  try {
+    const resp = await fetch(`${EDGE_URL}/vehicle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Where the HUD gets its state: the edge agent's HUD server, or the in-browser agent (#/live). */
 export interface HudSource {
   address: string; // shown when the link is down
   state(signal?: AbortSignal): Promise<HudSnapshot>;
   falseAlarm(eventId: string): Promise<FeedbackResult>;
+  endTrip?(): Promise<TripEnd>;
+  vehicle?(action: VehicleAction): Promise<boolean>;
 }
 
-export const edgeSource: HudSource = { address: EDGE_URL, state: fetchState, falseAlarm: sendFalseAlarm };
+export const edgeSource: HudSource = {
+  address: EDGE_URL,
+  state: fetchState,
+  falseAlarm: sendFalseAlarm,
+  endTrip: endEdgeTrip,
+  vehicle: sendVehicle,
+};

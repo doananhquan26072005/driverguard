@@ -2,7 +2,9 @@
 // snapshots only (no edge agent, no sound); the live screen stays #/hud.
 import { useEffect, useState } from "react";
 import type { HudAlert, HudSnapshot, Level, Reason } from "../lib/types";
+import { demoTripSummary } from "./demo";
 import HudView from "./HudView";
+import TripSummaryView from "./TripSummaryView";
 import type { HudLink } from "./hudModel";
 
 interface Scenario {
@@ -21,9 +23,30 @@ const SCENARIOS: Scenario[] = [
   { key: "l1t", label: "L1 xu hướng", level: 1, reasons: ["trend"], patch: { drowsy_score: 41 } },
   { key: "l2o", label: "L2 nhìn lệch", level: 2, reasons: ["off_road"], patch: { distraction_score: 100 } },
   { key: "l2p", label: "L2 điện thoại", level: 2, reasons: ["phone", "off_road"], patch: { distraction_score: 100 } },
-  { key: "l2f", label: "L2 mất mặt", level: 2, reasons: ["no_face"], patch: { distraction_score: 100 } },
+  { key: "off", label: "Tạm ngưng (mất mặt)", patch: { unavailable: true } },
   { key: "l3", label: "L3 ngủ gật", level: 3, reasons: ["microsleep"], patch: { drowsy_score: 71 } },
+  {
+    key: "en1",
+    label: "Đăng ký 1",
+    patch: { speed_kmh: 0, enrollment: { status: "look_camera", progress: 0.4, hint: null, attempts: 0 } },
+  },
+  {
+    key: "en2",
+    label: "Đăng ký 2 (giữ yên)",
+    patch: { speed_kmh: 0, enrollment: { status: "look_road", progress: 0.2, hint: "hold_still", attempts: 1 } },
+  },
+  {
+    key: "en3",
+    label: "Đăng ký 3",
+    patch: { speed_kmh: 0, enrollment: { status: "close_eyes", progress: 0.7, hint: null, attempts: 0 } },
+  },
+  {
+    key: "enw",
+    label: "Chưa đăng ký",
+    patch: { enrollment: { status: "waiting", progress: 0, hint: "stop_vehicle", attempts: 0 } },
+  },
   { key: "cam", label: "Mất camera", cameraLost: true },
+  { key: "trip", label: "Tổng kết chuyến" },
   { key: "down", label: "Mất kết nối", link: "down" },
 ];
 
@@ -46,6 +69,7 @@ function snapshotFor(s: Scenario, night: boolean, now: number, since: number): H
     perclos_60s: 0.06,
     fps: 30,
     feedback_window_s: 120,
+    vehicle: { manual: true, driving: !s.patch || s.patch.speed_kmh !== 0 },
     alerts,
     ...s.patch,
   };
@@ -82,6 +106,9 @@ export default function HudPreview() {
 
   return (
     <>
+      {key === "trip" ? (
+        <TripSummaryView summary={demoTripSummary()} delivery="sent" onDone={() => pick("l0")} />
+      ) : (
       <HudView
         snap={snap}
         link={scenario.link ?? "ok"}
@@ -96,7 +123,10 @@ export default function HudPreview() {
         onToggleSound={() => undefined}
         onToggleDemo={() => undefined}
         onFalseAlarm={() => setToast("Đã ghi nhận cảnh báo sai (xem trước)")}
+        onEndTrip={() => pick("trip")}
+        onVehicle={(a) => setToast(a === "change_driver" ? "Đổi tài xế (xem trước)" : a === "park" ? "Tạm dừng (xem trước)" : "Tiếp tục lái (xem trước)")}
       />
+      )}
       <nav
         aria-label="Kịch bản xem trước"
         className="fixed inset-x-2 bottom-2 z-40 flex flex-wrap justify-center gap-1 rounded-hud-sm bg-black/70 p-1.5 font-hud text-[13px] text-white backdrop-blur"

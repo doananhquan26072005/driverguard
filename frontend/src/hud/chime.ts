@@ -7,9 +7,11 @@
 // - microsleep below L3 (red light: capped at L1): two low "wake up" pulses
 // - off_road: rising two-note triangle, twice ("look ahead")
 // - phone: fast high square beeps ("put the phone down")
-// - no_face: low buzzing pulses (driver out of view)
+// - no_face (v1 events only): low buzzing pulses (driver out of view)
 // - L3 (microsleep): loud alternating siren, repeated while the eyes stay closed
 // - camera lost / back: descending buzz / rising two notes (system, not the driver)
+// - monitoring unavailable (face lost while moving) / back: low buzzing pulses / rising two notes
+// - driver enrollment: one short clear beep when a step ends ("open your eyes" after step 3)
 // The level sets the volume. alertSound() is pure (tested); play() does the WebAudio part.
 import type { Level, Reason } from "../lib/types";
 
@@ -22,7 +24,10 @@ export type SoundKind =
   | "no_face"
   | "alarm"
   | "camera_lost"
-  | "camera_restored";
+  | "camera_restored"
+  | "enroll_beep"
+  | "monitoring_unavailable"
+  | "monitoring_restored";
 
 export interface Note {
   at: number; // seconds from the start of the sound
@@ -75,6 +80,12 @@ function notesFor(kind: SoundKind, level: Level): Note[] {
       return seq([440, 294, 196], 0.25, 0.3, "sawtooth");
     case "camera_restored":
       return seq([523, 784], 0.18, 0.25, "sine");
+    case "monitoring_unavailable":
+      return seq([330, 330, 330], 0.32, 0.22, "sawtooth");
+    case "monitoring_restored":
+      return seq([523, 784], 0.18, 0.25, "sine");
+    case "enroll_beep":
+      return seq([1047], 0, 0.25, "sine");
   }
 }
 
@@ -85,8 +96,25 @@ export function alertSound(level: Level, reasons: readonly Reason[]): Sound | nu
   return { kind, gain: GAIN[level], notes: notesFor(kind, level) };
 }
 
-export function systemSound(kind: "camera_lost" | "camera_restored"): Sound {
-  return { kind, gain: kind === "camera_lost" ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
+export type SystemSoundKind =
+  | "camera_lost"
+  | "camera_restored"
+  | "enroll_beep"
+  | "monitoring_unavailable"
+  | "monitoring_restored";
+
+export function systemSound(kind: SystemSoundKind): Sound {
+  const loud = kind === "camera_lost" || kind === "monitoring_unavailable";
+  return { kind, gain: loud ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
+}
+
+/** Spoken prompt (Vietnamese voice when the browser has one). Same user-gesture rule as sound. */
+export function say(text: string): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "vi-VN";
+  window.speechSynthesis.cancel(); // only the latest prompt matters
+  window.speechSynthesis.speak(u);
 }
 
 let ctx: AudioContext | null = null;

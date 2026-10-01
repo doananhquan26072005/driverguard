@@ -90,7 +90,18 @@ export function bbox(points: Float32Array): Box {
   return [x1, y1, x2, y2];
 }
 
-/** The driver is the largest face (closest to the camera), as on the device. */
+/** Faces (478 x 3 each) back to back, for one call into Python. */
+export function concatFaces(faces: Float32Array[]): Float32Array {
+  const out = new Float32Array(faces.reduce((n, f) => n + f.length, 0));
+  let at = 0;
+  for (const f of faces) {
+    out.set(f, at);
+    at += f.length;
+  }
+  return out;
+}
+
+/** The largest face (closest to the camera). Python picks the driver; this is for brightness. */
 export function largestFace(faces: Float32Array[]): number {
   let best = -1;
   let area = -1;

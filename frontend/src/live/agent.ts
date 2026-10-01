@@ -6,9 +6,9 @@
 // Python and only metadata JSON leaves the browser.
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId } from "../lib/api";
-import type { HudSnapshot, Session } from "../lib/types";
-import type { FeedbackResult, HudSource } from "../hud/edge";
-import { bbox, channelDiff, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
+import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
+import type { FeedbackResult, HudSource, TripEnd } from "../hud/edge";
+import { bbox, channelDiff, concatFaces, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
 
 // Pinned versions: the Python side is tested against this Pyodide (numpy, opencv-python, pyyaml).
@@ -16,20 +16,21 @@ const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const BASE = import.meta.env.BASE_URL;
 
-export const SCENARIOS = {
-  city_day: "Trong phố, ban ngày (có dừng đèn đỏ)",
-  highway_night: "Cao tốc ban đêm, đã lái gần 2 giờ",
-  parked: "Xe đỗ (không cảnh báo mất tập trung)",
-} as const;
-export type Scenario = keyof typeof SCENARIOS;
 
 export type Step = "camera" | "python" | "face" | "phone" | "ready";
-export const STEPS: Record<Exclude<Step, "ready">, string> = {
+// What the driver sees while starting: two steps, no component names. The three downloads
+// (Python, face model, phone model) are one "getting ready" step with its own progress.
+export const STEPS: Record<"camera" | "prepare", string> = {
   camera: "Mở camera",
-  python: "Tải bộ xử lý Python (lần đầu khoảng 25 MB)",
-  face: "Tải MediaPipe nhận diện khuôn mặt",
-  phone: "Tải YOLO phát hiện điện thoại",
+  prepare: "Đang chuẩn bị (lần đầu tải khoảng 60 MB, các lần sau nhanh hơn)",
 };
+const PREPARE_PARTS: Step[] = ["python", "face", "phone"];
+
+/** (shown step, progress 0..1 of the "getting ready" step) for a loading step. */
+export function shownStep(step: Step): { step: keyof typeof STEPS | "ready"; progress: number } {
+  if (step === "camera" || step === "ready") return { step, progress: step === "ready" ? 1 : 0 };
+  return { step: "prepare", progress: PREPARE_PARTS.indexOf(step) / PREPARE_PARTS.length };
+}
 
 export interface LiveStats {
   level: number;
@@ -40,6 +41,7 @@ export interface LiveStats {
   pending: number;
   sendError: string | null;
   measures: Measures | null;
+  enrollment: HudEnrollment | null;
 }
 
 export interface Measures {
@@ -72,6 +74,8 @@ interface PyAgent {
   phone_output(...args: unknown[]): number;
   false_alarm(eventId: string): string;
   camera(lost: boolean): void;
+  end_trip(): string;
+  vehicle(action: string): string;
   take_batch(): string | undefined;
   destroy(): void;
 }
@@ -88,7 +92,9 @@ function tripId(d = new Date()): string {
   return `trip-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-async function loadPython(session: Session | null, scenario: Scenario): Promise<{ agent: PyAgent; settings: Settings }> {
+// One default mode (bridge scenario "manual"): the trip starts parked so the driver enrolls,
+// drives once enrolled; the HUD buttons park / drive / change driver. Time of day = real clock.
+async function loadPython(session: Session | null): Promise<{ agent: PyAgent; settings: Settings }> {
   const mod = (await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`)) as {
     loadPyodide(o: { indexURL: string }): Promise<Pyodide>;
   };
@@ -105,10 +111,7 @@ async function loadPython(session: Session | null, scenario: Scenario): Promise<
   py.runPython('import sys; sys.path.insert(0, "/home/pyodide/dg")');
   const deviceId = session ? webDeviceId(session.username) : "web-guest";
   const overrides = py.toPy(tuned?.values ?? {});
-  const agent = py.pyimport("edge_agent.web.bridge").WebAgent.callKwargs(deviceId, tripId(), {
-    scenario,
-    overrides,
-  });
+  const agent = py.pyimport("edge_agent.web.bridge").WebAgent.callKwargs(deviceId, tripId(), { overrides });
   const settings = JSON.parse(agent.settings()) as Settings;
   if (settings.problems.length) console.warn("[live] tuned thresholds ignored:", settings.problems);
   return { agent, settings };
@@ -117,7 +120,7 @@ async function loadPython(session: Session | null, scenario: Scenario): Promise<
 export class LiveAgent implements HudSource {
   address = "trình duyệt này";
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -148,7 +151,6 @@ export class LiveAgent implements HudSource {
   /** Ask for the camera, load the models, start the loop. onStep reports progress for the setup screen. */
   static async start(
     video: HTMLVideoElement,
-    scenario: Scenario,
     session: Session | null,
     onStep: (s: Step) => void,
   ): Promise<LiveAgent> {
@@ -163,7 +165,7 @@ export class LiveAgent implements HudSource {
     await video.play();
     try {
       onStep("python");
-      const { agent, settings } = await loadPython(session, scenario);
+      const { agent, settings } = await loadPython(session);
       onStep("face");
       const lm = settings.landmarks;
       const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
@@ -222,6 +224,26 @@ export class LiveAgent implements HudSource {
     return r === "ok" ? "recorded" : (r as FeedbackResult);
   }
 
+  /** "Tạm dừng" / "Tiếp tục lái" / "Đổi tài xế" (bridge.vehicle). */
+  async vehicle(action: VehicleAction): Promise<boolean> {
+    const ok = this.py.vehicle(action) === "ok";
+    if (ok && action === "change_driver") void this.flush(); // driver_changed event
+    return ok;
+  }
+
+  /** "Kết thúc chuyến": the trip summary (block 11), sent with the user's token, then the camera stops.
+   *  Guest mode keeps it in this browser only. */
+  async endTrip(): Promise<TripEnd> {
+    const summary = JSON.parse(this.py.end_trip()) as TripSummary;
+    let delivery: TripEnd["delivery"] = "local";
+    if (this.session) {
+      await this.flush();
+      delivery = this.pendingBodies.length === 0 && !this.stats.sendError ? "sent" : "failed";
+    }
+    await this.stop();
+    return { summary, delivery };
+  }
+
   getStats(): LiveStats {
     return { ...this.stats, pending: this.pendingBodies.length };
   }
@@ -273,27 +295,31 @@ export class LiveAgent implements HudSource {
     this.lastTsMs = ts;
     const result = this.landmarker.detectForVideo(this.canvas, ts); // 3
     const faces = result.faceLandmarks.map((f) => toPixels(f, w, h));
-    const k = largestFace(faces);
-    let points: Float32Array | null = null;
-    let blink: [number, number] | null = null;
-    if (k >= 0) {
-      points = faces[k];
-      const cats = result.faceBlendshapes?.[k]?.categories;
-      const score = (name: string) => cats?.find((c) => c.categoryName === name)?.score;
-      const l = score("eyeBlinkLeft");
-      const r = score("eyeBlinkRight");
-      if (l != null && r != null) blink = [l, r];
+    // Every face goes to Python, which picks the driver (largest until enrollment, then the
+    // enrolled one); eyeBlink (left, right) per face in the same order, 0.05 = open when missing.
+    const points = faces.length ? concatFaces(faces) : null;
+    // browOuterUp (mean of both sides) per face: raising the brows to keep the eyes open (block 7).
+    let blink: number[] | null = null;
+    let brow: number[] | null = null;
+    if (result.faceBlendshapes?.length) {
+      const score = (i: number, name: string, missing: number) =>
+        result.faceBlendshapes?.[i]?.categories?.find((c) => c.categoryName === name)?.score ?? missing;
+      blink = faces.flatMap((_, i) => [score(i, "eyeBlinkLeft", 0.05), score(i, "eyeBlinkRight", 0.05)]);
+      brow = faces.map((_, i) => (score(i, "browOuterUpLeft", 0) + score(i, "browOuterUpRight", 0)) / 2);
     }
-    const brightness = meanLuma(px, w, h, points ? bbox(points) : null);
+    // Brightness of the largest face: the driver's in nearly every frame, a cheap per-frame estimate.
+    const k = largestFace(faces);
+    const brightness = meanLuma(px, w, h, k >= 0 ? bbox(faces[k]) : null);
     const diff = channelDiff(px, w, h);
 
     this.maybeRunYolo(t, w, h); // 4, own thread
     const frameId = this.frameId++;
-    const json = this.py.frame(t, frameId, w, h, points, faces.length, blink, diff, brightness); // 6-13
+    const json = this.py.frame(t, frameId, w, h, points, faces.length, blink, diff, brightness, brow); // 6-13
     const state = JSON.parse(json) as HudSnapshot & { measures: Measures };
     this.stats.level = state.level;
     this.stats.fps = state.fps ?? 0;
     this.stats.measures = state.measures;
+    this.stats.enrollment = state.enrollment ?? null;
     this.snap = state;
   }
 
