@@ -7,9 +7,12 @@
 
 | | |
 |---|---|
-| **Phiên bản** | v2.0, đang phát triển (bắt đầu 01/10/2026), dựa trên v1.1 |
-| **Mã nguồn** | nhánh `DAQuan`, chưa merge vào `main` |
-| **Triển khai** | Chưa deploy. Railway vẫn chạy v1.1 (`quanpk07/driveguard:v1.1`) |
+| **Phiên bản** | v2.0.0, deploy 01/10/2026, dựa trên v1.1 |
+| **Mã nguồn** | nhánh `DAQuan` (commit `679a44a` → `0a47d76` + merge `origin/main`), chưa PR vào `main` |
+| **Web v2** | https://driveguard-v2-production.up.railway.app (camera: `/#/live`) |
+| **Web v1 (giữ nguyên, chạy song song)** | https://driveguard-production-6b83.up.railway.app |
+| **Image Docker** | `quanpk07/driveguard:v2` (cũng là `latest`), 72,7 MB; v1 giữ ở `v1.1` và `v1-backup` (cùng digest `5de7028…`) |
+| **Triển khai** | Railway project DriveGuard: service `driveguard-v2` (volume riêng `driveguard-v2-volume`), service v1 `driveguard` không đổi. Database v2 khởi đầu bằng bản sao database v1 lúc 01/10 (tài khoản, lịch sử), sau đó tách riêng |
 | **Mốc trong lộ trình** | M9 (đăng ký tài xế), M10 (mất mặt → tạm ngưng giám sát), M11 (chớp chậm), M12 (gục đầu / cúi đầu), M13 (nhướn mày), M14 (giao diện cho tài xế), M15 (kết thúc chuyến + bảng tổng kết), M16 (một chế độ mặc định, tạm dừng / đổi tài xế), M17 (sửa cách đo báo sai), M18 (FAR / MAR theo cửa sổ), xem [roadmap.md](roadmap.md) |
 
 ---
@@ -481,7 +484,29 @@ Hai chỉ số trả lời hai câu hỏi khác nhau nên dùng song song (`docs
 
 ---
 
-## 7. Giới hạn đã biết
+## 7. Triển khai v2 (01/10/2026)
+
+- **Backup v1 trước khi làm gì:**
+  - Bản chụp nhất quán của database v1 (SQLite backup API, chỉ đọc) và bản file gốc:
+    `data/backups/driverguard-v1.1-2026-10-01.db` / `.raw.db` (trên máy, không vào git).
+  - Integrity ok: 2 tài khoản, 1 thiết bị, 11 sự kiện, 5 điểm timeline.
+  - Image v1 thêm tag `v1-backup`.
+- **v1 chạy song song, không đổi gì:** service `driveguard`, image `v1.1`, volume và URL cũ.
+- **v2 là service mới** `driveguard-v2`:
+  - image `quanpk07/driveguard:v2`, volume riêng, JWT secret riêng (đăng nhập v1 và v2 độc lập);
+  - `APP_VERSION=2.0.0`, `PORT=8000`.
+  - Database bắt đầu từ bản sao v1: tài khoản cũ dùng được ngay; bảng `trip_summaries` tự tạo khi khởi
+    động.
+- **Kiểm tra trước khi đẩy:** container v2 chạy trên bản sao database v1: nâng cấp schema giữ nguyên dữ
+  liệu; e2e Chrome (đăng nhập tài xế → đăng ký → lái → kết thúc chuyến → quản lý thấy "Báo cáo chuyến đi
+  (1 mới)").
+- **Kiểm tra sau khi đẩy:** URL v2 trả health ok và đủ file cho `#/live`; e2e chế độ dùng thử trên URL
+  thật; database v2 có dữ liệu v1 + bảng mới; v1 vẫn trả 200.
+- **Lỗi gặp khi deploy:** domain v2 tạo với cổng 8000 nhưng Railway cấp `PORT=8080` → 502. Sửa bằng biến
+  `PORT=8000` cho service v2.
+- **Quay về v1:** v1 vẫn chạy; nếu cần dựng lại thì dùng image `v1-backup` + file backup database.
+
+## 8. Giới hạn đã biết
 
 - **Đăng ký chưa thử với người thật trước camera.** Các con số sau là đề xuất, chưa đo:
   - thời lượng mỗi bước: 2 s / 3 s / 2 s;
