@@ -1,4 +1,51 @@
-# AI20K Agent Template
+# DriverGuard
+
+Hệ thống giám sát tài xế (Driver Monitoring System) chạy **ngay trên thiết bị**: camera nhìn tài xế,
+phát hiện **buồn ngủ** (nhắm mắt lâu, PERCLOS, ngáp, gục đầu, chớp chậm) và **mất tập trung** (nhìn khỏi
+đường, điện thoại), cảnh báo theo 4 mức L0–L3, và chỉ gửi **metadata JSON** lên máy chủ. Ảnh khuôn mặt
+không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrained (MediaPipe, YOLOv8n, CNN mắt Intel).
+
+| | |
+|---|---|
+| **Phiên bản** | Version 2 (v2.0.0 deploy 01/10/2026; các mốc M19 trở đi làm thêm 01–02/10) |
+| **Sản phẩm cuối** | App APK chạy trên hub gắn trên xe, bọc chính code web; bản web để xem thử |
+| **Web v2** | https://driveguard-v2-production.up.railway.app (giám sát trên trình duyệt: `/#/live`) |
+| **Kiến trúc** | 14 khối (camera → tiền xử lý → MediaPipe / YOLO / CNN mắt → đặc trưng → buồn ngủ + mất tập trung → risk engine → cảnh báo → HUD + gửi metadata) |
+
+**Một chuyến đi ở v2:** xe dừng → HUD hỏi đồng ý rồi hướng dẫn đăng ký khuôn mặt (~10 s) → lái, hệ thống
+cảnh báo bằng màu, chữ và âm thanh (luôn bật) → tài xế bấm "Kết thúc chuyến" → bảng tổng kết cho tài xế,
+quản lý / kỹ sư xem ở tab "Báo cáo chuyến đi" trên dashboard. Khi không giám sát được (mất mặt, mất camera,
+mất tín hiệu xe, lỗi xử lý) HUD nói rõ và có âm báo.
+
+**Đọc tiếp:**
+
+| Tài liệu | Nội dung |
+|---|---|
+| [HowToUse.md](HowToUse.md) | Cài đặt, chạy toàn bộ hệ thống, cấu hình, đánh giá, xử lý sự cố |
+| [docs/architecture_diagram.md](docs/architecture_diagram.md) | Sơ đồ kiến trúc, luồng dữ liệu, phần thêm ở v2 |
+| [docs/release-v2.md](docs/release-v2.md) | Những gì đã thêm / sửa / bỏ ở v2, kết quả đo, giới hạn đã biết |
+| [docs/roadmap.md](docs/roadmap.md) | Các mốc M0–M29 và trạng thái |
+| [docs/safety-fmea.md](docs/safety-fmea.md) | Phân tích lỗi: những lúc hệ thống không cảnh báo được |
+| [docs/improvements.md](docs/improvements.md) | Việc chưa làm, xếp theo ưu tiên |
+| [docs/PRD.md](docs/PRD.md) | Yêu cầu sản phẩm |
+| [CLAUDE.md](CLAUDE.md) | Ràng buộc và quy ước của dự án |
+
+Chạy nhanh trên máy (cần Python 3.11+, Node 20+; chi tiết ở HowToUse mục 6–7):
+
+```bash
+uv pip install -r requirements-dev.txt && python tools/download_models.py
+python -m edge_agent.main --source 0            # thiết bị: camera, HUD server 127.0.0.1:8765
+python tools/drive_sim.py                        # mô phỏng tốc độ / xi nhan (terminal riêng)
+cd frontend && npm install && npm run dev        # HUD: http://localhost:5173/#/hud
+```
+
+---
+
+> Phần dưới là README gốc của **template khoá AI20K** (cấu trúc `src/`, hook ghi log AI, Technical
+> Guidebook). Giữ lại cho phần cài hook và nộp bài; code DriverGuard nằm ở `edge_agent/`, `backend/`,
+> `frontend/`, `tools/`, `config/`.
+
+## AI20K Agent Template
 
 Template chính thức cho học viên VinUni AI20K Build Phase: cấu trúc dự án, code
 mẫu và hướng dẫn kỹ thuật để xây dựng một AI Agent hoàn chỉnh — từ kiến trúc,
@@ -6,7 +53,7 @@ code, test cho đến deploy và nộp bài Demo Day.
 
 Technical Guidebook: <https://phoenix.note.transformerlabs.ai/technical-book>
 
-## Template có sẵn những gì
+### Template có sẵn những gì
 
 - **Cấu trúc thư mục tách lớp** — `agents/`, `api/`, `services/`, `models/` đã
   chia sẵn, không phải bàn lại từ đầu.
@@ -21,15 +68,15 @@ Technical Guidebook: <https://phoenix.note.transformerlabs.ai/technical-book>
 - **AI usage logging** — hook cài sẵn cho 6 công cụ AI, log tự động gửi lên
   grading server mỗi lần `git push`.
 
-## Yêu cầu
+### Yêu cầu
 
 - Python 3.11 (phiên bản CI đang dùng)
 - Git
 - Docker — tuỳ chọn, chỉ cần nếu chạy `docker compose`
 
-## Bắt đầu
+### Bắt đầu
 
-### 1. Clone repo của đội
+#### 1. Clone repo của đội
 
 Khi đội được chốt, hệ thống tự sinh repo cho đội từ template này, nằm trong org
 GitHub của khoá bạn đang học và đặt tên theo mã đội. Copy URL ở trang đội trên
@@ -44,7 +91,7 @@ Không cần `rm -rf .git`, `git init` hay `git remote add`: repo sinh từ temp
 đã bắt đầu bằng lịch sử riêng của đội và remote trỏ sẵn đúng chỗ. Chưa thấy repo
 của đội thì báo BTC — repo tự tạo nằm ngoài org sẽ không được chấm.
 
-### 2. Cài môi trường
+#### 2. Cài môi trường
 
 ```bash
 uv venv -p 3.12 --seed .venv    # Python >= 3.11
@@ -53,7 +100,7 @@ uv pip install -r requirements-dev.txt        # DriverGuard + ruff / pytest
 uv pip install -r requirements-template.txt   # only for the course template (src/)
 ```
 
-### 3. Cấu hình biến môi trường
+#### 3. Cấu hình biến môi trường
 
 ```bash
 cp .env.example .env
@@ -64,7 +111,7 @@ tạo key riêng tại [dashboard Phoenix](https://phoenix.note.transformerlabs.
 rồi thay vào chỗ `<get-your-api-key-from-dashboard-phoenix>` — giá trị trong
 `.env.example` chỉ là placeholder, để nguyên thì log không vào được hệ thống chấm.
 
-### 4. Cài hook ghi log AI
+#### 4. Cài hook ghi log AI
 
 ```bash
 bash scripts/setup_hooks.sh                                      # Linux / macOS / Git Bash
@@ -75,7 +122,7 @@ Chạy một lần sau khi clone. Hook ghi lại prompt khi bạn dùng Claude C
 Codex CLI, Gemini CLI, Antigravity hoặc GitHub Copilot, và cài pre-push hook để
 đẩy log lên server.
 
-### 5. Chạy server
+#### 5. Chạy server
 ```bash
 uvicorn src.main:app --reload --port 8000
 ```
@@ -83,7 +130,7 @@ uvicorn src.main:app --reload --port 8000
 Swagger UI ở <http://localhost:8000/docs>. Hoặc dùng `make run`, `make test`,
 `make lint` — xem `Makefile`.
 
-## Cấu trúc thư mục
+### Cấu trúc thư mục
 
 ```
 src/
@@ -112,7 +159,7 @@ docker-compose.yml   Chạy backend bằng Docker
 README_boilerplate.md  Khung README cho dự án của đội
 ```
 
-## Technical Guidebook
+### Technical Guidebook
 
 | Chương | Nội dung | Thời gian |
 |---|---|---|
@@ -132,7 +179,7 @@ nhập bằng GitHub (đúng account đã được BTC mời vào org của kho�
 **Technical Book** ở sidebar trái. Bản offline nằm trong `docs/guide/`, mở được
 bằng bất kỳ markdown viewer nào.
 
-## 10 deliverables cho Demo Day
+### 10 deliverables cho Demo Day
 
 | # | Deliverable | Vị trí | Template lo tới đâu |
 |---|---|---|---|
@@ -147,7 +194,7 @@ bằng bất kỳ markdown viewer nào.
 | 9 | Worklog | `WORKLOG.md` | Khung sẵn |
 | 10 | Evaluation evidence | `eval/` | Đội tự làm |
 
-## Tech stack
+### Tech stack
 
 | Lớp | Công nghệ |
 |---|---|
@@ -158,7 +205,7 @@ bằng bất kỳ markdown viewer nào.
 | Lint / test | ruff + pytest 8 |
 | DevOps | Docker + GitHub Actions |
 
-## AI usage logging
+### AI usage logging
 
 Mọi prompt được ghi vào `.ai-log/session.jsonl` và tự động gửi lên grading server
 ở bước pre-push.
@@ -178,7 +225,7 @@ Dùng ChatGPT hay công cụ web khác thì log thủ công:
 bash scripts/_pyrun.sh scripts/log_manual.py --tool chatgpt --prompt "What you asked"
 ```
 
-## Đóng góp
+### Đóng góp
 
 Repo này là open source. Đọc [CONTRIBUTING.md](CONTRIBUTING.md) trước khi mở PR.
 
@@ -189,6 +236,6 @@ online, nên mọi thay đổi ở đó cần review của
 
 Báo lỗ hổng bảo mật theo [SECURITY.md](SECURITY.md), đừng mở public issue.
 
-## License
+### License
 
 [MIT](LICENSE) — dùng tự do cho mục đích giáo dục.

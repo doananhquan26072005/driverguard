@@ -20,7 +20,7 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M7](#m7) | Script eval + benchmark FPS | Bảng precision/recall/FP mỗi giờ, bảng FPS | ✅ Xong (công cụ) |
 | [M8](#m8) | Chạy toàn bộ trên trình duyệt (#/live): khối 1 camera, 3 MediaPipe JS, 4 YOLO onnxruntime-web, 6–12 Python thật qua Pyodide | Người khác mở web, cho phép camera là chạy, cảnh báo lưu theo tài khoản | ✅ Xong · 28/09 |
 
-### Version 2: cải tiến (M9–M18)
+### Version 2: cải tiến (M9–M29)
 
 | Mốc | Làm gì | Xong là thấy gì | Trạng thái |
 |---|---|---|---|
@@ -34,6 +34,17 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M16](#m16) | Một chế độ mặc định thay 3 tình huống giả lập; nút Tạm dừng / Tiếp tục lái / Đổi tài xế | #/live và thiết bị: bắt đầu xe đỗ + đăng ký khuôn mặt, tự lái khi xong; tạm dừng đỗ xe; đổi tài xế thì người mới đăng ký lại | ✅ Xong · 01/10 |
 | [M17](#m17) | Sửa cách đo báo sai / giờ: số giờ đo + CI 95%, mẫu số đúng, tách lý do × mức | Mọi bảng báo sai / giờ trong eval/results có giờ đo và CI | ✅ Xong · 01/10 |
 | [M18](#m18) | FAR / MAR theo cửa sổ 10 s trong công cụ eval | Báo cáo eval có bảng FAR / MAR (nhánh buồn ngủ, mất tập trung) | ✅ Xong · 01/10 · dataset hiện có quá ngắn |
+| [M19](#m19) | Bỏ nút Tạm dừng / Tiếp tục lái: đỗ / lái theo tốc độ; công cụ mô phỏng lái xe `tools/drive_sim.py` (khối 10) | Chạy công cụ trong terminal, bấm phím tăng / giảm tốc, xi nhan → HUD thiết bị và #/live đổi theo; 0 km/h hoặc không chạy công cụ = xe đỗ | ✅ Xong · 01/10 |
+| [M20](#m20) | Xi nhan nới góc quay đầu về đúng phía bật (khối 8, 10): trái → được nhìn trái tới 60°, phía kia giữ 30° | Bật xi nhan trái nhìn trái không bị cảnh báo; nhìn phải lâu vẫn bị | ✅ Xong · 01/10 · ngưỡng tạm |
+| [M21](#m21) | Trả nợ kỹ thuật: lớp chung `edge_agent/runtime.py` cho thiết bị + web; tách khối 7 thành module con; test e2e Playwright trong CI | Không đổi hành vi (replay 2437 trace ra đúng từng số); `npm run e2e` chạy #/live + dashboard thật, CI có job e2e | ✅ Xong · 02/10 |
+| [M22](#m22) | Bảng phân tích lỗi (FMEA) các trạng thái im lặng: `docs/safety-fmea.md` | Mỗi lúc hệ thống không cảnh báo được có nguyên nhân, mức nghiêm trọng, tài xế / quản lý thấy gì, im lặng tối đa, test; khoảng trống thành việc mới | ✅ Xong · 02/10 · chỉ tài liệu |
+| [M23](#m23) | Âm thanh cảnh báo luôn bật (khối 13): bỏ nút tắt tiếng, tự bật ở lần chạm đầu tiên | Mở HUD là có tiếng sau lần chạm đầu; trình duyệt còn chặn thì dải vàng to "Chạm vào màn hình để bật" trên mọi màn hình | ✅ Xong · 02/10 · APK còn cấu hình WebView |
+| [M24](#m24) | Xác nhận trước khi đăng ký khuôn mặt (giai đoạn đăng ký của khối 6, HUD khối 13) | Xe dừng: HUD giải thích vì sao đăng ký và dữ liệu khuôn mặt không bị lưu / gửi đi; bấm "Đồng ý" mới vào 3 bước, "Để sau" thì hỏi lại ở lần dừng sau | ✅ Xong · 02/10 |
+| [M25](#m25) | Cúi nhìn xuống không còn bị hiểu là nhắm mắt (khối 7, 8) | Cúi nhìn điện thoại / bảng đồng hồ: L2 "Nhìn về phía trước" thay vì L3 "Mở mắt!"; nhắm mắt thật khi đầu gục vẫn L3 | ✅ Xong · 02/10 · ngưỡng tạm |
+| [M26](#m26) | Mất tín hiệu xe khi đang chạy không còn bị coi là đỗ; báo tài xế (khối 10, 13) | Tắt công cụ mô phỏng khi xe đang chạy: HUD báo "Mất tín hiệu xe" kèm âm báo, vẫn giám sát như đang chạy (nhắm mắt vẫn L3); backend nhận sự kiện, tổng kết có thời gian mất tín hiệu | ✅ Xong · 02/10 |
+| [M27](#m27) | Bảng tổng kết không còn tính bước nhắm mắt của đăng ký (và lúc nghỉ đỗ xe) là ngủ gật (khối 11) | Đăng ký rồi kết thúc chuyến: đánh giá "Tốt", 0 lần ngủ gật; microsleep ở đèn đỏ vẫn được tính | ✅ Xong · 02/10 |
+| [M28](#m28) | Báo khi vòng xử lý dừng hoặc chậm (khối 13, 14, `TripRuntime`) | Lỗi frame liên tục ≥ 1 s: HUD "Lỗi xử lý" + âm báo to, backend nhận `agent_error`; HUD đứng hình / mất kết nối có âm báo; FPS < 14,5 trong 5 s: chip "Máy chậm" | ✅ Xong · 02/10 |
+| [M29](#m29) | Cập nhật tài liệu theo v2: README, sơ đồ kiến trúc, HowToUse | README mở đầu bằng DriverGuard; sơ đồ có phần v2; HowToUse có luồng một chuyến đi và các trạng thái không giám sát | ✅ Xong · 02/10 |
 
 ---
 
@@ -162,7 +173,7 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - Deploy Railway v1.1 (quanpk07/driveguard:v1.1)
 - Chưa đo trên điện thoại / máy yếu, chưa thử điện thoại thật trước camera
 
-### Version 2: cải tiến (M9–M18)
+### Version 2: cải tiến (M9–M21)
 
 <a id="m9"></a>
 
@@ -311,4 +322,161 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - `run_video` / `seq_eval replay` ghi mức cao nhất của nhánh buồn ngủ và mất tập trung theo từng giây (chỉ số, không ảnh); file predictions lưu thêm `levels`
 - Kết quả: FL3D 7 cửa sổ hợp lệ, YawDD 13, SUST 0: dataset hiện có quá ngắn, FAR / MAR dành cho UTA-RLDD / DMD
 - Test: 13 test mới (metrics + eval), tổng 519 Python pass
+
+<a id="m19"></a>
+
+#### M19: Bỏ nút Tạm dừng / Tiếp tục lái: đỗ / lái theo tốc độ; công cụ mô phỏng lái xe `tools/drive_sim.py` (khối 10)
+
+**Xong là thấy gì:** Chạy công cụ trong terminal, bấm phím tăng / giảm tốc, xi nhan → HUD thiết bị và #/live đổi theo; 0 km/h hoặc không chạy công cụ = xe đỗ
+
+**Trạng thái:** Xong (01/10)
+
+- `tools/drive_sim.py` (mới, ngoài giao diện): phím tăng / giảm tốc, dừng, chạy 50 km/h, xi nhan trái / phải (giữ bật đến khi tắt); tốc độ đổi dần; `--scenario` chạy lại kịch bản CAN; thông số ở `config/drive_sim.yaml`
+- Công cụ mở `GET 127.0.0.1:8766/can`; thiết bị (`SignalLink`, `--sim-url`) và #/live (mỗi 250 ms, `bridge.vehicle_signal`) cùng đọc
+- Khối 10: `ExternalVehicle` thay `ManualVehicle`; không có tín hiệu / tín hiệu cũ hơn `context.vehicle_signal_stale_s` = 0 km/h; bỏ `config/scenarios/manual.yaml`
+- HUD: dải "Tín hiệu xe" dưới thanh trên cùng (mũi tên xi nhan to nhấp nháy, km/h chữ to, "Đang lái" / "P Đang đỗ", báo chưa có tín hiệu xe); thẻ Xe chỉ còn nút "Đổi tài xế"; `POST /vehicle` chỉ nhận `change_driver`
+- Xi nhan của công cụ giữ bật đến khi người dùng tắt (không tự tắt)
+- Test: 17 test (thay 7 test M16), tổng 529 Python + 38 frontend pass
+
+<a id="m20"></a>
+
+#### M20: Xi nhan nới góc quay đầu về đúng phía bật (khối 8, 10)
+
+**Xong là thấy gì:** Bật xi nhan trái nhìn trái không bị cảnh báo; nhìn phải lâu vẫn bị
+
+**Trạng thái:** Xong (01/10, ngưỡng tạm)
+
+- Khối 10: `VehicleContext.turn_side` (phía xi nhan cuối, giữ qua `context.turn_signal_grace_s`)
+- Khối 8: giới hạn yaw phía xi nhan = `yaw_off_road_deg` + `turn_signal_extra_yaw_deg` (30 + 30), phía kia và góc cúi giữ nguyên; `left_yaw_sign` cho camera lật gương; mốc nhìn đường không học từ dải được nới
+- Khối 9: bỏ luật "đang rẽ = bỏ nhìn lệch"
+- Dashboard: thêm ngưỡng "Góc nới thêm về phía bật xi nhan"
+- Test: 15 test mới, tổng 544 Python + 38 frontend pass
+
+<a id="m21"></a>
+
+#### M21: Trả nợ kỹ thuật: lớp chung cho thiết bị + web, tách khối 7, test e2e trong CI
+
+**Xong là thấy gì:** Không đổi hành vi (replay 2437 trace ra đúng từng số); `npm run e2e` chạy #/live + dashboard thật, CI có job e2e
+
+**Trạng thái:** Xong (02/10)
+
+- `edge_agent/runtime.py` (mới): `TripRuntime` gom phần `main.py` và `web/bridge.py` từng viết hai lần: lấy mẫu khối 10, chạy `DecisionPipeline`, gắn mốc mặt tài xế cho khối 3 sau đăng ký, `unavailable`, cập nhật HUD, bản ghi khối 14 (cảnh báo, sự kiện hệ thống, mẫu mỗi phút, báo sai, tổng kết), đổi tài xế, mất camera, kết thúc chuyến. Bản ghi đi qua `emit(kind, data)`: thiết bị → `MetadataPublisher.publish_record`, web → hàng đợi gửi của trình duyệt. `main.py` / `bridge.py` chỉ còn phần vào / ra riêng (camera, HTTP, cửa sổ; Pyodide)
+- Khối 7 thành package `edge_agent/analysis/drowsiness/`: `eyes.py` (mốc mắt mở, nhắm / mở, chớp, microsleep, gục mang theo, PERCLOS), `mouth.py` (ngáp, che khi ngáp / nói), `head.py` (tư thế quen, gục / cúi), `slow_blink.py`, `brow.py`, `analyzer.py` (lớp ghép `DrowsinessAnalyzer`). Import cũ giữ nguyên
+- Kiểm tra không đổi hành vi: replay 2437 trace (FL3D, YawDD, SUST) qua khối 7 và khối 7–12, so mọi trường của `DrowsinessState`, mức, điểm, sự kiện, cảnh báo trước / sau: giống hệt
+- Test e2e (`frontend/e2e/`, Playwright): backend trên database tạm, bản build frontend có cổng test (`VITE_E2E=1`, bản production không có), camera giả của Chrome, khối 3 nhận landmark số tổng hợp (`tools/e2e_setup.py`) thay MediaPipe. Không ảnh khuôn mặt, không cần file model. 2 kịch bản: dùng thử (đăng ký → lái → nhắm mắt L3 → tổng kết); tài xế đăng nhập (đổi tài xế → đăng ký lại → tổng kết gửi lên → quản lý thấy báo cáo). CI: job `e2e`
+- Test: 10 test mới cho `TripRuntime`, tổng 554 Python + 38 frontend + 2 e2e pass
+
+<a id="m22"></a>
+
+#### M22: Bảng phân tích lỗi (FMEA) các trạng thái im lặng
+
+**Xong là thấy gì:** `docs/safety-fmea.md`: mỗi lúc hệ thống không cảnh báo được có nguyên nhân, mức nghiêm trọng, cách phát hiện, tài xế / quản lý thấy gì, im lặng tối đa, test đang kiểm; khoảng trống thành việc mới
+
+**Trạng thái:** Xong (02/10), chỉ tài liệu, không đổi code (việc 3 trong docs/improvements.md)
+
+- 15 trạng thái đối chiếu với code sau M21: 6 Cao, 4 Vừa, 5 Thấp. Mỗi dòng dẫn tên test đang kiểm (đã kiểm tra từng tên có trong `tests/`)
+- Mức Cao, chưa sửa: HUD khởi động tắt tiếng (chưa chạm "Bật âm thanh" thì còi L3 không kêu); mất tín hiệu tốc độ khi đang chạy bị coi là đỗ (tắt nhánh mất tập trung, sau 120 s tắt cảnh báo buồn ngủ); vòng xử lý dừng chỉ hiện chữ, không tiếng, backend không biết; app bị Android dừng (chưa có app); kính râm (chưa kiểm chứng); gục ra khỏi khung khi chưa thấy mắt nhắm
+- Ghi lại các quyết định đã chốt 02/10 (tạm ngưng giám sát, mất camera, gục ra khỏi khung, chưa đăng ký) và bảng thời gian cảnh báo bình thường tính từ cấu hình
+- docs/improvements.md: xoá việc 3; thêm việc 5 (âm thanh luôn bật trên app), 6 (mất tín hiệu xe không coi là đỗ), 7 (báo khi vòng xử lý dừng / chậm), 30 (phát hiện mắt bị che), chi tiết ở mục 22; đánh số lại 1–34. Việc "cảnh báo cần xác nhận" giữ câu hỏi còn mở (hỏi sau bao lâu, chờ bao lâu) và bỏ "báo mất camera theo thời gian thực" cho khớp quyết định
+- Không đổi code nên không chạy lại test
+
+<a id="m23"></a>
+
+#### M23: Âm thanh cảnh báo luôn bật (khối 13)
+
+**Xong là thấy gì:** Mở HUD là có tiếng sau lần chạm đầu tiên bất kỳ; trình duyệt còn chặn thì dải vàng to "Âm thanh cảnh báo chưa bật. Chạm vào màn hình để bật." trên mọi màn hình
+
+**Trạng thái:** Xong (02/10) (việc 5 trong docs/improvements.md, FMEA dòng 1)
+
+- `frontend/src/hud/chime.ts`: `armAudio()` tạo audio context khi HUD mở, bật lại ở lần `pointerdown` / `touchstart` / `keydown` đầu tiên bất kỳ, báo mỗi lần đổi trạng thái; `play()` không phát khi còn bị chặn (tránh dồn tiếng rồi kêu cùng lúc)
+- `HudScreen.tsx`: âm thanh luôn bật, `sound` chỉ còn nghĩa "trình duyệt đã cho phát"; bỏ nút tắt tiếng. `HudView.tsx`: dải vàng nhắc (hàng riêng trong lưới, cả L3 và màn hình hệ thống); biểu tượng loa ở góc chỉ báo trạng thái, vàng khi còn chặn. `#/hud-preview` thêm trạng thái "Chưa có tiếng"
+- Đọc thành tiếng cảnh báo L2 / L3 và trạng thái hệ thống: làm thử rồi bỏ theo quyết định 02/10 ("không cần nói, cảnh báo thôi"). Lời nhắc giọng nói của bước đăng ký giữ nguyên
+- Còn lại: APK cho WebView phát âm thanh không cần chạm (*chưa kiểm chứng*), ghi vào việc đóng gói APK
+- docs/improvements.md: xoá việc 5, đánh số lại 1–33. docs/safety-fmea.md: dòng 1 từ Cao xuống Vừa
+- Test: 1 test frontend mới, tổng 39 frontend pass; typecheck, build sạch; 2 e2e pass. Python không đổi
+
+<a id="m24"></a>
+
+#### M24: Xác nhận trước khi đăng ký khuôn mặt (giai đoạn đăng ký của khối 6, HUD khối 13)
+
+**Xong là thấy gì:** Xe dừng: HUD hiện "Đăng ký khuôn mặt" với lý do và cam kết về dữ liệu; bấm "Đồng ý, bắt đầu đăng ký" mới vào 3 bước, "Để sau" thì vẫn lái được và được hỏi lại ở lần dừng sau
+
+**Trạng thái:** Xong (02/10)
+
+- `edge_agent/perception/enrollment.py`: trạng thái `consent` (đang hỏi) và `later` (đã chọn "Để sau", tới lần dừng sau); `consent(agree)`. Trước khi trả lời không đo frame nào. Hỏi một lần cho mỗi tài xế: đã đồng ý thì đăng ký dở / thất bại làm lại ở lần dừng sau mà không hỏi lại; "Đổi tài xế" thì hỏi lại
+- Đường bấm: HUD → `POST /vehicle` `enroll_start` / `enroll_later` (thiết bị, `main.py` áp vào `TripRuntime.enrollment_answer`) hoặc `bridge.vehicle` (web). `DecisionPipeline.enrollment_answer`
+- `config/thresholds.yaml`: `enrollment.require_consent: true`. `main.py` tự tắt khi chạy không có HUD (`--hud-port 0`)
+- HUD: `ConsentPanel` thay khung trạng thái khi xe đỗ và không có cảnh báo; câu chữ ở `ENROLL_CONSENT` (`labels.ts`), viết theo đúng code: không lưu ảnh, vài con số trong RAM xoá khi hết chuyến, backend chỉ nhận "đã đăng ký" + thời gian + số bước làm lại. Thẻ nhắc khi "Để sau". `#/hud-preview` thêm "Đăng ký: xác nhận"
+- Test: 8 test Python mới (7 đăng ký, 1 runtime), 3 test cũ sửa theo hành vi mới; 2 test frontend; 2 kịch bản e2e bấm "Đồng ý", pass. Tổng 562 Python + 41 frontend pass, ruff / format / typecheck / build sạch
+
+<a id="m25"></a>
+
+#### M25: Cúi nhìn xuống không còn bị hiểu là nhắm mắt (khối 7, 8)
+
+**Xong là thấy gì:** Cúi nhìn điện thoại / bảng đồng hồ khi xe chạy: L2 "Nhìn về phía trước" thay vì L3 "Mở mắt! Dừng xe nghỉ ngay"; nhắm mắt thật khi đầu gục vẫn L3
+
+**Trạng thái:** Xong (02/10), hai ngưỡng tạm (chưa dataset nào có cảnh nhìn điện thoại)
+
+- Chẩn đoán (chuỗi số giả qua code trước M25): mí trên hạ theo hướng nhìn (EAR ~0,5 lần mốc, eyeBlink ~0,6) nên thành "nhắm sâu". Hai đường lên L3 sau ~1,7 s: (A) đầu cúi 15–24°, dưới `eye.max_pitch_down_deg` nên mắt vẫn được đánh giá; (B) cúi chậm quá 25°, mí hạ ≥ 0,5 s trước đó nên "mang theo khi gục". L2 nhìn lệch có bật nhưng L3 lấn át. eyeBlink không tách được: FL3D ngủ thật p50 0,63; SUST `n_368` (cúi 17°) 0,7
+- Sửa 1: đầu cúi ≥ `drowsiness.microsleep_deep.bowed_pitch_deg` (10°) so với tư thế quen thì frame nhắm sâu cần EAR ≤ `bowed_ear_ratio` (0,35) lần mốc (FL3D ngủ thật khi cúi: EAR p90 0,33–0,41 lần mốc)
+- Sửa 2: chỉ "mang theo khi gục" khi lần nhắm trước đó là nhắm sâu (đếm theo cả lần nhắm, mặt nạ ngáp / nói không xoá)
+- Sửa 3: `DrowsinessState.gaze_down` (đầu cúi, mí hạ, chưa nhắm chặt) → khối 8 tính là nhìn khỏi đường, mốc "nhìn đường" không học từ các frame đó
+- Replay (chỉ bật / tắt cách sửa): FL3D L3 đúng 81 / sai 1 không đổi, nhắm ≥ 1,5 s lên L3 72/95 không đổi, thêm 3 L2 nhìn lệch trong đoạn buồn ngủ; YawDD tổng báo sai 10 → 10 (microsleep 5 → 4, L1 buồn ngủ 2 → 0, nhìn lệch 9 → 10); SUST tỉnh táo 8,5 → 8,8 / giờ (+1 nhìn lệch), L3 sai 2 → 2
+- Việc còn lại (tự ghi số để chốt ngưỡng, `eyeLookDown`, đường CNN, ca EAR rất thấp khi nhìn xuống) ở docs/improvements.md việc 5
+- Test: 5 test mới (4 kịch bản pipeline: cúi nhìn xuống → L2 không L3, cúi chậm không mang theo, nhắm thật khi cúi vẫn L3, nhắm rồi gục chậm vẫn mang theo; 1 test khối 8). Tắt `bowed_pitch_deg` thì 2 kịch bản đầu đỏ lại. Tổng 567 Python pass, ruff / format sạch
+
+<a id="m26"></a>
+
+#### M26: Mất tín hiệu xe khi đang chạy không còn bị coi là đỗ; báo tài xế (khối 10, 13)
+
+**Xong là thấy gì:** Tắt công cụ mô phỏng khi xe đang chạy: HUD báo "Mất tín hiệu xe: vẫn giám sát như đang chạy" kèm âm báo, vẫn giám sát như đang chạy (nhắm mắt vẫn L3); backend nhận sự kiện, tổng kết có thời gian mất tín hiệu
+
+**Trạng thái:** Xong (02/10) (việc 1 trong docs/improvements.md, FMEA dòng 2)
+
+- `ExternalVehicle` (`edge_agent/context/can_sim.py`): `signal_lost` = không có số mới quá `context.vehicle_signal_stale_s` mà lần đọc cuối ≥ `context.stationary_kmh`. Khi đó tốc độ `None` (không biết), khối 10 coi là đang chạy (`assume_moving_when_speed_unknown`), không thành "nghỉ"; thời gian lái vẫn cộng. Lần đọc cuối là đỗ hoặc chưa từng có tín hiệu: vẫn 0 km/h như M19
+- `TripRuntime`: sự kiện hệ thống `vehicle_signal_lost` / `vehicle_signal_restored`, `vehicle_signal_lost_s` trong bản tổng kết (đếm theo thời gian frame); HUD `vehicle.signal_lost`, `speed_kmh: null`
+- Bổ sung theo yêu cầu (02/10): mất tín hiệu **lúc đỗ** cũng báo tài xế (`ExternalVehicle.link_lost`; dải vàng "coi như đang đỗ đến khi có lại tốc độ", cùng âm báo, có sự kiện); xe vẫn là đỗ, khi có lại tốc độ thì biết xe đang chạy
+- Backend: 2 lý do hệ thống mới; `vehicle_signal_lost_s` tuỳ chọn trong bản tổng kết (agent cũ không gửi vẫn nhận). Dashboard: dòng "Giám sát được" thêm thời gian mất tín hiệu
+- HUD: dải xe hiện "Mất tín hiệu xe: vẫn giám sát như đang chạy" (vàng), tốc độ "–"; âm báo to riêng khi mất, nhẹ khi có lại. `#/hud-preview` thêm "Mất tín hiệu xe"
+- Test: 5 test Python mới (nguồn tín hiệu: mất khi chạy / khi đỗ; runtime: mất lúc đỗ vẫn báo; runtime: 5 phút mất tín hiệu ở 60 km/h vẫn L3, có sự kiện, tổng kết 299 s; backend: lý do mới, trường tuỳ chọn), 2 test cũ sửa theo hành vi mới; 2 test frontend. Tổng 572 Python + 43 frontend + 2 e2e pass, ruff / typecheck / build sạch
+
+<a id="m27"></a>
+
+#### M27: Bảng tổng kết không còn tính bước nhắm mắt của đăng ký (và lúc nghỉ đỗ xe) là ngủ gật (khối 11)
+
+**Xong là thấy gì:** Đăng ký rồi kết thúc chuyến: đánh giá "Tốt", 0 lần ngủ gật; microsleep ở đèn đỏ vẫn được tính
+
+**Trạng thái:** Xong (02/10) (việc 1 trong docs/improvements.md; lỗi tìm ra ở M21)
+
+- Nguyên nhân: pipeline đã không đánh giá buồn ngủ trong bước nhắm mắt của đăng ký (+ `reopen_grace_s`) và lúc nghỉ đỗ xe (`context.rest_after_s`), và trip memory đã bỏ qua các frame đó (`observed`). Nhưng bản tổng kết (`TripCollector`) không nhận cờ này, nên vẫn đếm `microsleep`, lần nhắm dài nhất và điểm buồn ngủ từng phút; luật đánh giá thấy `microsleeps > 0` nên xếp "rủi ro: nhắm mắt ngủ gật khi đang lái" dù 0 giây lái
+- Sửa: `DecisionResult.observed` (cùng cờ đưa cho trip memory); `TripCollector` bỏ qua sự kiện buồn ngủ (microsleep, ngáp, gục, nhướn mày), lần nhắm dài nhất và điểm từng phút ở các frame đó. Thời gian, cảnh báo, độ phủ vẫn đếm như cũ
+- Cùng một nguyên nhân nên sửa luôn trường hợp nghỉ đỗ xe nhắm mắt (trước cũng bị tính là ngủ gật). Microsleep ở đèn đỏ (đứng yên nhưng chưa là "nghỉ") vẫn tính
+- Test: 3 test mới (đăng ký rồi tổng kết: 0 microsleep, "Tốt"; nghỉ đỗ xe nhắm mắt 5 s: 0 microsleep; đèn đỏ: vẫn 1 microsleep, "rủi ro"); 2 test đầu đỏ trước khi sửa. Tổng 575 Python + 2 e2e pass, ruff / format sạch. Eval không đổi (công cụ eval cho xe chạy 60 km/h, không đăng ký, không nghỉ)
+
+<a id="m28"></a>
+
+#### M28: Báo khi vòng xử lý dừng hoặc chậm (khối 13, 14, `TripRuntime`)
+
+**Xong là thấy gì:** Lỗi frame liên tục ≥ 1 s: HUD "Lỗi xử lý" + âm báo to, backend nhận `agent_error`; HUD đứng hình / mất kết nối có âm báo; FPS < 14,5 trong 5 s: chip "Máy chậm"
+
+**Trạng thái:** Xong (02/10) (việc 1 trong docs/improvements.md, FMEA dòng 3, 9)
+
+- `edge_agent/main.py`, `edge_agent/web/bridge.py`: bắt lỗi từng frame (khối 2–14), chạy tiếp, gọi `TripRuntime.frame_failed` (chỉ tên lớp lỗi, in log trên máy một lần mỗi đợt)
+- `TripRuntime`: lỗi liên tục ≥ `hud.processing_error_s` (1 s) → HUD `processing_error`, sự kiện `agent_error`; frame tốt → `agent_recovered`. FPS làm mượt < `hud.low_fps_below` (14,5) liên tục `hud.low_fps_s` (5 s) → HUD `low_fps`, sự kiện `low_fps` kèm `metrics.fps`; hồi lại → `fps_restored`. 15 FPS đúng mức tối thiểu không bị coi là chậm
+- Backend: 4 lý do hệ thống mới, `metrics.fps`. HUD: trạng thái "Lỗi xử lý" (màn hình không giám sát), âm báo to `monitoring_stopped` khi vào "Lỗi xử lý" / "Không nhận dữ liệu" / "Mất kết nối" (không kêu sau khi kết thúc chuyến), chip "Máy chậm". `#/hud-preview` thêm 2 trạng thái
+- Chưa làm: hạ tải khi máy chậm (chờ hub); nhịp "còn sống" lên backend khi tiến trình chết hẳn
+- Test: 5 test Python (lỗi ngắn bỏ qua / lỗi kéo dài báo rồi hồi; FPS thấp báo rồi hết; 15 FPS không thấp; bridge web không ném lỗi ra trang; backend nhận lý do mới), 2 test frontend. Tổng 580 Python + 45 frontend + 2 e2e pass, ruff / typecheck / build sạch
+
+<a id="m29"></a>
+
+#### M29: Cập nhật tài liệu theo v2: README, sơ đồ kiến trúc, HowToUse
+
+**Xong là thấy gì:** README mở đầu bằng DriverGuard; sơ đồ có phần v2; HowToUse có luồng một chuyến đi và các trạng thái không giám sát
+
+**Trạng thái:** Xong (02/10) (việc 2 trong docs/improvements.md)
+
+- `README.md`: phần DriverGuard ở đầu (là gì, phiên bản, sản phẩm cuối là APK trên hub, URL web, luồng một chuyến đi, bảng tài liệu, chạy nhanh); README của template khoá giữ phía dưới cho phần cài hook / nộp bài
+- `docs/architecture_diagram.md`: mục 5 "Phần thêm ở v2" (sơ đồ: nguồn tín hiệu xe, `TripRuntime`, đăng ký, tổng kết chuyến, sức khoẻ vòng lặp, các đường HUD → agent), ghi chú deploy v2 và hướng APK, 5 dòng mới trong bảng thành phần
+- `HowToUse.md`: mục 2.5 "Một chuyến đi ở v2" (đồng ý + đăng ký, cảnh báo, cúi nhìn xuống, đổi tài xế, báo sai, kết thúc chuyến + báo cáo) và bảng các trạng thái HUD khi không giám sát được; bảng trạng thái dự án thêm M8, M9–M29
+- Chỉ tài liệu, không đổi code
 

@@ -1,12 +1,15 @@
 # Architecture Diagram — DriverGuard
 
-Sơ đồ kiến trúc theo code trên nhánh DAQuan (30/09/2026, sau M8 và bản deploy v1.1).
-Bốn hình, mỗi hình trả lời một câu hỏi:
+Sơ đồ kiến trúc theo code trên nhánh DAQuan. Hình 1–4 vẽ từ 30/09/2026 (sau M8, bản v1.1) và vẫn đúng
+về khung 14 khối; **phần thêm ở v2 (đến M28, 02/10/2026) ở [mục 5](#5-phần-thêm-ở-v2)**. Năm hình, mỗi
+hình trả lời một câu hỏi:
 
 1. [Thành phần và luồng dữ liệu](#1-thành-phần-và-luồng-dữ-liệu): 14 khối nối với nhau thế nào, dữ liệu rời thiết bị ở đâu.
 2. [Hai cách chạy cùng một logic](#2-hai-cách-chạy-cùng-một-logic): thiết bị (Python) và trình duyệt (`#/live`).
 3. [Một cảnh báo đi từ camera tới dashboard](#3-một-cảnh-báo-đi-từ-camera-tới-dashboard): thứ tự và thời gian.
 4. [Deployment](#4-deployment): cái gì chạy ở máy nào.
+5. [Phần thêm ở v2](#5-phần-thêm-ở-v2): đăng ký tài xế, tổng kết chuyến, nguồn tín hiệu xe, lớp chung
+   `TripRuntime`, các đường HUD → agent, khi nào hệ thống báo "không giám sát".
 
 Thời gian mỗi khối lấy từ [`eval/results/benchmark.md`](../eval/results/benchmark.md)
 (Mac ARM, video YawDD 640×480). Mã `M0`…`M8` là mốc trong [`roadmap.md`](roadmap.md) đã làm ra khối đó.
@@ -206,6 +209,64 @@ flowchart LR
 - **Backend và frontend cùng domain**, nên dashboard gọi API không cần cấu hình CORS.
   `--hud-origin` cho phép trang HUD trên Railway đọc HUD server ở `127.0.0.1` của chính máy đó.
 - **`Dockerfile` ở gốc repo vẫn là app mẫu của khoá học** (`src.main:app`), không dùng cho DriverGuard.
+- **v2 (01/10):** service riêng `driveguard-v2`, image `quanpk07/driveguard:v2`, volume riêng; v1 vẫn chạy
+  song song. Chi tiết ở [`release-v2.md`](release-v2.md) mục 7.
+- **Sản phẩm cuối (chốt 02/10):** app APK chạy trên hub gắn trên xe, bọc chính code web (Capacitor), mọi model
+  và Pyodide đóng gói sẵn trong app; bản web trên Railway chỉ để xem thử. Chưa làm
+  ([`improvements.md`](improvements.md)).
+
+---
+
+## 5. Phần thêm ở v2
+
+```mermaid
+flowchart LR
+    subgraph SRC["Nguồn tín hiệu xe (khối 10)"]
+        SIM["tools/drive_sim.py<br/>tốc độ, xi nhan · M19"]
+        EXT["ExternalVehicle<br/>im &gt; 1 s: mất tín hiệu · M26"]
+        SIM -- "GET /can (thiết bị)<br/>trang #/live tự hỏi" --> EXT
+    end
+
+    subgraph RT["TripRuntime · edge_agent/runtime.py · M21 (chung cho thiết bị và web)"]
+        direction TB
+        EN["Đăng ký tài xế (khối 6)<br/>đồng ý → 3 bước ~10 s · M9, M24"]
+        PIPE["DecisionPipeline<br/>khối 7–12"]
+        SUM["Tổng kết chuyến (khối 11)<br/>M15, M27"]
+        HEALTH["Sức khoẻ vòng lặp<br/>lỗi frame, FPS thấp · M28"]
+        EN -- "mốc mắt / miệng / tư thế,<br/>chữ ký mặt" --> PIPE
+        PIPE --> SUM
+    end
+
+    HUD["Màn HUD<br/>#/hud hoặc trong #/live"]
+    API["Backend<br/>events, trip_summaries"]
+    DASH["Dashboard<br/>tab Báo cáo chuyến đi"]
+
+    EXT --> PIPE
+    HUD -- "POST /vehicle: change_driver,<br/>enroll_start / enroll_later" --> RT
+    HUD -- "POST /end-trip" --> SUM
+    HUD -- "POST /feedback" --> RT
+    RT -- "GET /state: mức, đăng ký, xe,<br/>mất camera / tín hiệu, lỗi xử lý" --> HUD
+    RT == "sự kiện + sự kiện hệ thống + tổng kết<br/>(chỉ JSON)" ==> API
+    API --> DASH
+```
+
+- **`TripRuntime`** (M21) gom phần quanh khối 6–14 mà trước đó `main.py` (thiết bị) và `web/bridge.py` (trình
+  duyệt) viết hai lần: lấy mẫu khối 10, `DecisionPipeline`, đăng ký, HUD, bản ghi khối 14, đổi tài xế, mất
+  camera, mất tín hiệu xe, lỗi frame, kết thúc chuyến. Hai nơi chỉ còn phần vào / ra riêng.
+- **Đăng ký tài xế** (khối 6, M9): xe dừng thì HUD hỏi đồng ý (M24, nói rõ không lưu / gửi ảnh), rồi 3 bước
+  nhìn camera / nhìn đường / nhắm mắt. Kết quả chỉ nằm trong RAM một chuyến: mốc mắt mở / nhắm, miệng, tư thế
+  "nhìn đường" cho khối 7, 8, và chữ ký mặt để khối 3 chọn đúng tài xế khi có hành khách.
+- **Tổng kết chuyến** (khối 11, M15): cộng dồn từng frame, dựng khi tài xế bấm "Kết thúc chuyến"; gửi lên
+  backend (bảng `trip_summaries`), quản lý / kỹ sư xem ở dashboard. Bỏ qua dấu hiệu buồn ngủ lúc nghỉ đỗ xe và
+  lúc bước nhắm mắt của đăng ký (M27).
+- **Nguồn tín hiệu xe:** công cụ mô phỏng `tools/drive_sim.py` thay CAN thật (M19); 0 km/h = đỗ. Đang chạy mà
+  mất tín hiệu thì tốc độ "không biết", vẫn giám sát như đang chạy; mất lúc đỗ vẫn là đỗ; cả hai đều báo tài xế
+  (M26). Xi nhan nới góc nhìn về đúng phía (M20).
+- **Khi nào HUD báo "không giám sát"** (chi tiết: [`safety-fmea.md`](safety-fmea.md)): mất mặt ≥ 3 s khi chạy
+  (M10), mất camera, lỗi xử lý ≥ 1 s hoặc không nhận dữ liệu / mất kết nối (M28, có âm báo to); FPS thấp kéo
+  dài thì chip "Máy chậm" (M28). Âm thanh luôn bật, bật ở lần chạm đầu tiên (M23).
+- **Khối 7 ở v2:** package `edge_agent/analysis/drowsiness/` (M21) thêm chớp chậm (M11), gục / cúi (M12),
+  nhướn mày (M13), phân biệt cúi nhìn xuống với nhắm mắt (M25).
 
 ---
 
@@ -219,7 +280,7 @@ flowchart LR
 | Khối 4 Điện thoại | YOLOv8n ONNX (FP32 12,85 MB / INT8 3,61 MB) | `edge_agent/perception/phone_detector.py` | M3 |
 | Khối 5 Trạng thái mắt | `open-closed-eye-0001` (Intel OMZ, 0,05 MB) | `edge_agent/perception/eye_state.py` | M2 |
 | Khối 6 Đặc trưng | EAR, MAR, solvePnP | `edge_agent/perception/features.py` | M1 |
-| Khối 7 Buồn ngủ | PERCLOS 60 s, microsleep, ngáp, gật | `edge_agent/analysis/drowsiness.py` | M2 |
+| Khối 7 Buồn ngủ | PERCLOS 60 s, microsleep, ngáp, gật | `edge_agent/analysis/drowsiness/` | M2 |
 | Khối 8 Mất tập trung | off_road, phone_ratio_2s, no_face | `edge_agent/analysis/distraction.py` | M3 |
 | Khối 9–12 Quyết định | risk engine, trip memory, alert manager | `edge_agent/decision/` | M4 |
 | Khối 10 Ngữ cảnh | tốc độ CAN giả lập theo kịch bản | `edge_agent/context/` | M4 |
@@ -229,5 +290,10 @@ flowchart LR
 | Dashboard | React 19, Tailwind v4 | `frontend/src/dashboard/` | M6 |
 | Agent trên trình duyệt | Pyodide, MediaPipe Tasks JS, onnxruntime-web | `frontend/src/live/`, `edge_agent/web/bridge.py` | M8 |
 | Ngưỡng | mọi ngưỡng ở một file, key lạ thì dừng agent | `config/thresholds.yaml` | — |
+| Lớp chung một chuyến | `TripRuntime`: khối 6–14 cho thiết bị và web, mất tín hiệu xe, sức khoẻ vòng lặp | `edge_agent/runtime.py` | M21, M26, M28 |
+| Đăng ký tài xế | màn hình đồng ý + 3 bước, mốc riêng từng tài xế (RAM, một chuyến) | `edge_agent/perception/enrollment.py` | M9, M24 |
+| Tổng kết chuyến | cộng dồn từng frame, đánh giá chuyến, gợi ý nghỉ | `edge_agent/decision/trip_summary.py` | M15, M27 |
+| Mô phỏng lái xe | tốc độ, xi nhan từ terminal, thay CAN thật | `tools/drive_sim.py`, `edge_agent/context/can_sim.py` | M19, M26 |
+| Báo cáo chuyến đi | bảng `trip_summaries`, `/api/v1/trip-reports`, tab dashboard | `backend/`, `frontend/src/dashboard/` | M15 |
 
 Tất cả model là pretrained, không train mới.
