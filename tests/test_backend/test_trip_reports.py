@@ -64,3 +64,15 @@ def test_a_summary_with_unknown_fields_is_refused(client):
     s = summary()
     s["face_crop"] = "x"
     assert send(client, s).status_code == 422
+
+
+def test_vehicle_signal_lost_time_is_kept_and_older_agents_may_omit_it(client):
+    s = summary("trip-lost")
+    s["vehicle_signal_lost_s"] = 42.5
+    assert send(client, s).json()["summaries_accepted"] == 1
+    old = summary("trip-old")
+    del old["vehicle_signal_lost_s"]  # an agent from before M26
+    assert send(client, old).json()["summaries_accepted"] == 1
+    boss = login(client, "boss")
+    got = {r["trip_id"]: r["summary"] for r in client.get("/api/v1/trip-reports", headers=boss).json()}
+    assert got["trip-lost"]["vehicle_signal_lost_s"] == 42.5

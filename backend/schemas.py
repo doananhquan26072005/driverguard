@@ -34,6 +34,12 @@ Reason = Literal[
     "monitoring_unavailable",  # system events: face lost while moving (FR-6) / back
     "monitoring_restored",
     "driver_changed",  # system event: "Đổi tài xế" on the HUD, a new driver enrolls
+    "vehicle_signal_lost",  # system events: vehicle link (speed / turn signal) lost while driving / back
+    "vehicle_signal_restored",
+    "agent_error",  # system events (M28): frames keep failing, not monitored / processing again
+    "agent_recovered",
+    "low_fps",  # system events (M28): too slow for a while, alerts may be late / back up
+    "fps_restored",
 ]
 EventType = Literal["drowsiness", "distraction", "system"]
 # Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
@@ -112,6 +118,7 @@ class EventMetrics(StrictModel):
     enrolled: int | None = Field(default=None, ge=0, le=1)  # driver enrollment done before this alert
     enroll_s: float | None = Field(default=None, ge=0, le=3600)  # driver_enrolled: time it took
     enroll_redo: int | None = Field(default=None, ge=0, le=1000)  # driver_enrolled: steps redone
+    fps: float | None = Field(default=None, ge=0, le=1000)  # low_fps / fps_restored: smoothed FPS
 
 
 class EventIn(StrictModel):
@@ -192,6 +199,7 @@ class TripSummaryIn(StrictModel):
     monitored_frac: float | None = Field(default=None, ge=0, le=1)
     unavailable_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
     camera_lost_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    vehicle_signal_lost_s: float = Field(default=0.0, ge=0, le=MAX_TRIP_MINUTES * 60)  # M26; older agents omit it
     enrolled: bool
     driver_changes: int = Field(default=0, ge=0, le=1000)
     drowsy_mean: float = Field(ge=0, le=100)
@@ -360,6 +368,7 @@ THRESHOLD_SPECS: dict[str, tuple[float, float, str]] = {
     "drowsiness.yawn.min_s": (0.5, 6.0, "s"),
     "drowsiness.nod.max_s": (0.5, 5.0, "s"),
     "distraction.yaw_off_road_deg": (10.0, 90.0, "deg"),
+    "distraction.turn_signal_extra_yaw_deg": (0.0, 60.0, "deg"),
     "alert.fall_hold_s": (0.0, 30.0, "s"),
     "alert.cooldown_s.1": (0.0, 3600.0, "s"),
     "alert.cooldown_s.2": (0.0, 3600.0, "s"),
