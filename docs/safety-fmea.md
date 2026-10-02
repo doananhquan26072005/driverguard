@@ -31,7 +31,7 @@ thiết bị (`edge_agent.main`) dùng cùng logic khối 6–14 (`edge_agent/ru
 | 9 | [FPS tụt kéo dài](#9-fps-tut) | Vừa | Có (M28) | Chip "Máy chậm" | Không im (vẫn giám sát, trễ hơn) | Có |
 | 10 | [Mắt không đánh giá được (đầu quay / cúi nhiều)](#10-mat-khong-danh-gia-duoc) | Vừa | Có | Nhánh mất tập trung thay | Đến khi đầu về | Có |
 | 11 | [Đầu chuyến: mốc chưa đủ dữ liệu](#11-dau-chuyen) | Thấp | Có | Không cần | 5 s – 5 phút tuỳ luật | Có |
-| 12 | [Đứng yên / nghỉ](#12-dung-yen-nghi) | Thấp | Có | Theo thiết kế | Suốt lúc đỗ | Có |
+| 12 | [Đứng yên / nghỉ](#12-dung-yen-nghi) | Thấp | Có | Theo thiết kế: 0 km/h không cảnh báo (M30) | Suốt lúc đỗ | Có |
 | 13 | [Chưa đăng ký / đăng ký thất bại / đang đăng ký](#13-dang-ky) | Thấp | Có | Có (thẻ nhắc) | Bước nhắm mắt: ~2 s + 2 s | Có |
 | 14 | [Cooldown chặn cảnh báo lặp](#14-cooldown) | Thấp | Có | HUD vẫn hiện mức | L1 120 s, L2 30 s, L3 không | Có |
 | 15 | [Hub mất mạng giữa chuyến](#15-mat-mang) | Thấp | Có | Không cần | Không ảnh hưởng cảnh báo | Thiết bị có; app chưa |
@@ -243,11 +243,14 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 
 ### 12. Đứng yên / nghỉ — Thấp (theo thiết kế)
 
-- Dưới `min_speed_kmh` (5 km/h): tắt mất tập trung. Dưới `stationary_kmh` (1 km/h): buồn ngủ tối đa L1;
-  đứng ≥ `rest_after_s` (120 s): tắt cảnh báo buồn ngủ. Đúng khi xe thật sự đỗ; sai khi tín hiệu tốc độ sai
-  (dòng 2).
-- **Test:** `test_microsleep_at_a_red_light_is_a_chime_not_l3`,
-  `test_resting_the_eyes_after_parking_is_never_l3_and_goes_silent`, `test_driving_off_after_a_rest_raises_nothing`,
+- Dưới `min_speed_kmh` (5 km/h): tắt mất tập trung. Dưới `stationary_kmh` (1 km/h, tức 0 km/h): **không
+  cảnh báo nào** (M30, 02/10: `risk.drowsy.stationary_max_level: 0`; trước là tối đa L1, microsleep ở đèn đỏ
+  vẫn có chuông). Dấu hiệu buồn ngủ vẫn được đo (bản tổng kết). Đứng ≥ `rest_after_s` (120 s) là nghỉ. Đúng
+  khi xe thật sự đỗ; sai khi tín hiệu tốc độ sai (dòng 2).
+- **Đánh đổi (chốt 02/10):** ngủ gật lúc dừng đèn đỏ không còn tiếng chuông; khi xe chạy lại thì mọi luật
+  hoạt động bình thường (microsleep vẫn L3 ngay).
+- **Test:** `test_standing_still_raises_no_alert_at_all`, `test_standing_still_looking_away_with_a_phone_raises_nothing`,
+  `test_the_same_closure_while_driving_is_l3`, `test_resting_the_eyes_after_parking_is_never_l3_and_goes_silent`, `test_driving_off_after_a_rest_raises_nothing`,
   `test_microsleep_after_a_rest_is_still_l3`, `test_stationary_cap_from_config`, `test_standing_still_becomes_a_rest`,
   `test_crawling_in_a_jam_or_unknown_speed_is_never_a_rest`, `test_parked_phone_and_looking_around_no_alert`.
 

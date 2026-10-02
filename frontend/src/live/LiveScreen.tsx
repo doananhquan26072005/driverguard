@@ -2,7 +2,7 @@
 // Setup (who is driving, face enrollment, privacy) -> loading steps -> the in-car HUD fed by
 // LiveAgent, with a small self-view so the driver can place the camera.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Camera, Check, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
+import { Camera, Check, Gauge, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
 import HudScreen from "../hud/HudScreen";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
 import type { HudEnrollment, Session } from "../lib/types";
@@ -318,6 +318,14 @@ function SelfView({
               )}
             </>
           )}
+          <a
+            href={`#/drive?code=${agent.driveCode}`}
+            target="_blank"
+            rel="noopener"
+            className="mt-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-full bg-hud-system/20 px-2 text-[13px] font-semibold text-white no-underline"
+          >
+            <Gauge aria-hidden className="size-3.5" /> Điều khiển xe · mã {agent.driveCode}
+          </a>
           {stats?.sendError ? (
             <span className="text-hud-caution">{stats.sendError}</span>
           ) : (

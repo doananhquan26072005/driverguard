@@ -20,7 +20,7 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M7](#m7) | Script eval + benchmark FPS | Bảng precision/recall/FP mỗi giờ, bảng FPS | ✅ Xong (công cụ) |
 | [M8](#m8) | Chạy toàn bộ trên trình duyệt (#/live): khối 1 camera, 3 MediaPipe JS, 4 YOLO onnxruntime-web, 6–12 Python thật qua Pyodide | Người khác mở web, cho phép camera là chạy, cảnh báo lưu theo tài khoản | ✅ Xong · 28/09 |
 
-### Version 2: cải tiến (M9–M29)
+### Version 2: cải tiến (M9–M31)
 
 | Mốc | Làm gì | Xong là thấy gì | Trạng thái |
 |---|---|---|---|
@@ -45,6 +45,8 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M27](#m27) | Bảng tổng kết không còn tính bước nhắm mắt của đăng ký (và lúc nghỉ đỗ xe) là ngủ gật (khối 11) | Đăng ký rồi kết thúc chuyến: đánh giá "Tốt", 0 lần ngủ gật; microsleep ở đèn đỏ vẫn được tính | ✅ Xong · 02/10 |
 | [M28](#m28) | Báo khi vòng xử lý dừng hoặc chậm (khối 13, 14, `TripRuntime`) | Lỗi frame liên tục ≥ 1 s: HUD "Lỗi xử lý" + âm báo to, backend nhận `agent_error`; HUD đứng hình / mất kết nối có âm báo; FPS < 14,5 trong 5 s: chip "Máy chậm" | ✅ Xong · 02/10 |
 | [M29](#m29) | Cập nhật tài liệu theo v2: README, sơ đồ kiến trúc, HowToUse | README mở đầu bằng DriverGuard; sơ đồ có phần v2; HowToUse có luồng một chuyến đi và các trạng thái không giám sát | ✅ Xong · 02/10 |
+| [M30](#m30) | Xe đứng yên (0 km/h) thì không có cảnh báo nào (khối 9) | Dừng xe rồi nhắm mắt / cầm điện thoại: không có chuông; chạy lại thì nhắm mắt vẫn L3 | ✅ Xong · 02/10 |
+| [M31](#m31) | Trang điều khiển xe trên web `#/drive` (khối 10, backend, frontend) | `#/live` hiện "Điều khiển xe · mã …"; mở `#/drive?code=…` (cả trên máy khác) để tăng / giảm tốc, dừng, xi nhan; `#/live` chạy theo | ✅ Xong · 02/10 |
 
 ---
 
@@ -479,4 +481,29 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - `docs/architecture_diagram.md`: mục 5 "Phần thêm ở v2" (sơ đồ: nguồn tín hiệu xe, `TripRuntime`, đăng ký, tổng kết chuyến, sức khoẻ vòng lặp, các đường HUD → agent), ghi chú deploy v2 và hướng APK, 5 dòng mới trong bảng thành phần
 - `HowToUse.md`: mục 2.5 "Một chuyến đi ở v2" (đồng ý + đăng ký, cảnh báo, cúi nhìn xuống, đổi tài xế, báo sai, kết thúc chuyến + báo cáo) và bảng các trạng thái HUD khi không giám sát được; bảng trạng thái dự án thêm M8, M9–M29
 - Chỉ tài liệu, không đổi code
+
+<a id="m30"></a>
+
+#### M30: Xe đứng yên (0 km/h) thì không có cảnh báo nào (khối 9)
+
+**Xong là thấy gì:** Dừng xe rồi nhắm mắt / cầm điện thoại: không có chuông; chạy lại thì nhắm mắt vẫn L3
+
+**Trạng thái:** Xong (02/10) (yêu cầu của anh)
+
+- `risk.drowsy.stationary_max_level: 1 → 0` (cả giá trị mặc định trong `RiskConfig`). Dưới `context.stationary_kmh` (1 km/h) không còn luật nào lên mức; mất tập trung đã tắt dưới 5 km/h từ trước. Dấu hiệu buồn ngủ vẫn đo, vẫn vào bản tổng kết
+- Đánh đổi: ngủ gật lúc dừng đèn đỏ không còn tiếng chuông (FMEA dòng 12)
+- Test: 3 kịch bản mới (đứng yên nhắm mắt / nhìn đi chỗ khác cầm điện thoại: không cảnh báo; cùng lần nhắm khi chạy: L3), 3 test cũ sửa theo (đèn đỏ L1 → 0; hai test đăng ký chuyển sang "đăng ký rồi lái đi")
+
+<a id="m31"></a>
+
+#### M31: Trang điều khiển xe trên web `#/drive` (khối 10, backend, frontend)
+
+**Xong là thấy gì:** `#/live` hiện "Điều khiển xe · mã …"; mở `#/drive?code=…` (cả trên máy khác) để tăng / giảm tốc, dừng, xi nhan; `#/live` chạy theo
+
+**Trạng thái:** Xong (02/10) (việc "Trang điều khiển xe cho bản web" trong docs/improvements.md)
+
+- Backend `backend/drive_link.py`: `PUT` / `GET /api/v1/drive/{code}` (mã 6 ký tự `A-Z0-9`), giữ tốc độ / xi nhan mới nhất trong bộ nhớ, không vào database; hết hạn 10 phút sau lần gửi cuối, tối đa 500 mã. Không cần đăng nhập (chỉ số, mã ngẫu nhiên do `#/live` tạo)
+- `frontend/src/drive/`: mô hình xe giống `tools/drive_sim.py` (`sim.ts`, test so thông số với `config/drive_sim.yaml`), trang `DriveScreen` (nút to, phím W / S / Space / C / A / D / X, gửi 5 lần / s)
+- `#/live`: mã ghép mỗi phiên, nút "Điều khiển xe · mã …" mở `#/drive?code=…`; mỗi 250 ms đọc kênh, số cũ hơn 1 s không dùng (thành mất tín hiệu xe, M26); không có kênh thì đọc `drive_sim` trên cùng máy như cũ
+- Test: 3 test backend, 5 test frontend (mô hình xe, mã ghép), 1 kịch bản e2e (ghép mã, "Chạy đều 50" + xi nhan trái → `#/live` thấy đang chạy, rẽ trái; đóng trang điều khiển → "Mất tín hiệu xe")
 

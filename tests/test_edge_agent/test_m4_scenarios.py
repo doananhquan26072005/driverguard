@@ -182,16 +182,27 @@ def parked_until(drive_off, kmh=40, clock="15:00"):
     return scenario_from_dict({"name": "t", "start_clock": clock, "timeline": timeline})
 
 
-def test_microsleep_at_a_red_light_is_a_chime_not_l3():
-    alerts, _ = drive(30, constant_speed(0), ear=between(10, 14, 0.08, OPEN_EAR))
-    assert [(lv, r) for _, lv, r in alerts] == [(1, ("microsleep",))]
+def test_standing_still_raises_no_alert_at_all():
+    """M30 (02/10): speed 0 = no alert. Before, a microsleep at a red light still got an L1 chime."""
+    alerts, results = drive(30, constant_speed(0), ear=between(10, 14, 0.08, OPEN_EAR))
+    assert alerts == [] and all(r.alert.active_level == 0 for r in results)
+    assert any("microsleep" in r.drowsiness.events for r in results)  # still seen (trip summary)
+
+
+def test_standing_still_looking_away_with_a_phone_raises_nothing():
+    alerts, _ = drive(20, constant_speed(0), yaw=between(5, 15, 60.0, 0.0), phone=between(5, 15, True, False))
+    assert alerts == []
 
 
 def test_resting_the_eyes_after_parking_is_never_l3_and_goes_silent():
-    # Parks, closes the eyes 20 s later for 5 min: chimes in the first 2 min at most.
+    # Parks, closes the eyes 20 s later for 5 min: no alert at all (M30).
     alerts, results = drive(360, constant_speed(0), ear=between(20, 320, 0.08, OPEN_EAR))
-    assert alerts and all(lv == 1 and t < 120 for t, lv, _ in alerts)
-    assert results[-1].alert.active_level == 0
+    assert alerts == [] and results[-1].alert.active_level == 0
+
+
+def test_the_same_closure_while_driving_is_l3():
+    alerts, _ = drive(30, constant_speed(60), ear=between(10, 14, 0.08, OPEN_EAR))
+    assert alerts[0][1:] == (3, ("microsleep",))
 
 
 @pytest.mark.parametrize("clock", ["15:00", "02:00"])

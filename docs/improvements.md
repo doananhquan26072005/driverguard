@@ -64,15 +64,14 @@ Cần chốt loại hub (CPU, RAM, hệ điều hành), camera (IR hay RGB) và 
 | 17 | [Hàng đợi offline cho app](#viec-outbox-web) | Hub mất mạng: lưu sự kiện / tổng kết trong bộ nhớ của app, gửi lại khi có mạng; làm cùng việc 16 |  |
 | 18 | [Thử model mắt mới](#viec-model-mat) | `blinkcnn` / OCEC offline; quan trọng nếu hub dùng camera IR |  |
 | 19 | [Tăng tương phản (app / web)](#viec-choi) | WebGL; chỉ cần nếu hub dùng camera RGB |  |
-| 20 | [Trang điều khiển xe cho bản web](#viec-dieu-khien-web) | Đường dẫn riêng chỉnh tốc độ, xi nhan, dừng xe; làm cùng lúc làm bản web |  |
 
 ### Không gấp: để cuối
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 21 | [So sánh nhiều chuyến của tài xế](#viec-nhieu-chuyen) | So với 5 chuyến gần nhất; cần nhiều chuyến thật |  |
-| 22 | [Ghi nhãn trực tiếp khi demo](#viec-nhan-demo) | Người ngồi cạnh ghi đúng / sai / bỏ sót, KSS mỗi 5 phút; cách duy nhất kết luận PRD ≤ 1,0 báo sai / giờ |  |
-| 23 | [Phần PRD còn lại](#viec-prd-con-lai) | Quyết định LLM (FR-12/13); phiên bản cấu hình trên sự kiện; test 10 người; nộp bài; Docker edge gần như lỗi thời |  |
+| 20 | [So sánh nhiều chuyến của tài xế](#viec-nhieu-chuyen) | So với 5 chuyến gần nhất; cần nhiều chuyến thật |  |
+| 21 | [Ghi nhãn trực tiếp khi demo](#viec-nhan-demo) | Người ngồi cạnh ghi đúng / sai / bỏ sót, KSS mỗi 5 phút; cách duy nhất kết luận PRD ≤ 1,0 báo sai / giờ |  |
+| 22 | [Phần PRD còn lại](#viec-prd-con-lai) | Quyết định LLM (FR-12/13); phiên bản cấu hình trên sự kiện; test 10 người; nộp bài; Docker edge gần như lỗi thời |  |
 
 ### Hoãn
 Chưa đủ dữ liệu hoặc lý do để làm; xem lại khi có chuyến thật. Lý do ở [phần hoãn](#phan-hoan).
@@ -394,7 +393,7 @@ bắt đúng hay bỏ sót. Giữ số hiện tại, kiểm tra bằng FL3D / DM
   ngưỡng, không chạy lặp đi lặp lại.
 - Các bộ đã dùng để chỉnh (YawDD, FL3D, SUST) ghi rõ là "dev". Số "test" đầu tiên đúng nghĩa sẽ là
   UTA-RLDD / DMD theo người.
-- Dữ liệu lái thật: [việc 4](#viec-prd) (clip tự quay), [việc 22](#viec-nhan-demo) (ghi nhãn khi
+- Dữ liệu lái thật: [việc 4](#viec-prd) (clip tự quay), [việc 21](#viec-nhan-demo) (ghi nhãn khi
   demo). Không có hai việc này thì không kết luận được về chỉ tiêu PRD.
 
 <a id="viec-theo-nguoi"></a>
@@ -408,7 +407,7 @@ dùng chung cho mọi người; chỉ có mốc mắt / miệng / tư thế là 
 **Chỉ số nào cho từng người:** theo [phụ lục A](#viec-far-mar), trên dataset dùng **FAR / MAR theo cửa
 sổ** làm chính: 10 phút tỉnh táo vẫn có ~60 cửa sổ, trong khi báo sai / giờ của một người trên 10 phút
 gần như vô nghĩa (xem CI bên dưới). Báo sai / giờ theo từng người chỉ kết luận được trên giờ lái thật
-có nhãn ([việc 22](#viec-nhan-demo)).
+có nhãn ([việc 21](#viec-nhan-demo)).
 
 #### Đánh giá trên dataset (offline)
 
@@ -445,7 +444,7 @@ Mục tiêu: trả lời "các tài xế khác nhau có cần ngưỡng khác nh
 
 - **Không tính được FAR / MAR đúng nghĩa:** ngoài đường không có nhãn. Lần bỏ sót thì không ai thấy
   (không có cảnh báo để bấm), nên MAR theo từng tài xế không đo được. Muốn có số đúng thì phải là
-  chuyến demo có người ghi nhãn ([việc 22](#viec-nhan-demo)).
+  chuyến demo có người ghi nhãn ([việc 21](#viec-nhan-demo)).
 - **Đo được:** số lần tài xế bấm "báo sai" / giờ lái, theo từng tài xế và từng lý do. Backend đã có
   `driver_id` trên sự kiện và `by_reason` trong `/api/v1/stats`; còn thiếu số giờ lái theo tài xế làm
   mẫu số (lấy từ sample mỗi phút) và phần tách theo tài xế.
@@ -469,7 +468,7 @@ FAR / MAR theo cửa sổ đã có (M17, M18, `tools/metrics.py`).
 2. **Đường đánh đổi** FAR ↔ MAR (và cảnh báo sai / giờ ↔ tỉ lệ bắt sự kiện) khi đổi ngưỡng, dùng
    `tools/seq_eval.py --replay` (khối 7–12, không cần chạy lại MediaPipe) để thấy ngưỡng hiện tại đứng
    ở đâu thay vì một điểm duy nhất.
-3. **Dữ liệu dài, liên tục:** chuyến demo có người ghi nhãn ([việc 22](#viec-nhan-demo)); clip tự quay
+3. **Dữ liệu dài, liên tục:** chuyến demo có người ghi nhãn ([việc 21](#viec-nhan-demo)); clip tự quay
    ở việc 5. Dataset đã kiểm tra (phụ lục B): **UTA-RLDD** cho cảnh báo sai / giờ, **DMD** cho recall theo
    frame và time-to-alert; hai bộ bổ sung cho nhau.
 
@@ -732,31 +731,11 @@ Chỉ cần nếu hub dùng camera RGB; camera IR thì bỏ. Bối cảnh ở [p
 
 ---
 
-<a id="viec-dieu-khien-web"></a>
-
-### Việc 20: trang điều khiển xe cho bản web
-
-**Yêu cầu (02/10):** khi làm bản web, tạo **một đường dẫn riêng** để điều khiển xe giả: tốc độ (tăng /
-giảm, dừng xe), xi nhan trái / phải / tắt… **Không làm ngay**, làm cùng lúc làm bản web.
-
-- **Hiện tại:** tín hiệu xe lấy từ `tools/drive_sim.py` chạy trong terminal (phím w / s / space / a / d,
-  M19); `#/live` đọc nó qua `http://127.0.0.1:<port>/can`, nên chỉ chạy được khi công cụ ở **cùng máy** với
-  trình duyệt.
-- **Hướng làm:**
-  - Một trang riêng (vd. `#/drive`) với nút to: tăng / giảm tốc, dừng xe, chạy đều 50 km/h, xi nhan trái /
-    phải / tắt; hiện tốc độ đang có. Cùng cách tăng / giảm dần như `config/drive_sim.yaml`.
-  - Mở được trên **máy khác** (vd. điện thoại người ngồi cạnh) để điều khiển trang `#/live` đang chạy: cần
-    một kênh qua backend gắn theo chuyến (chỉ số tốc độ / xi nhan, không ảnh), vì hai trình duyệt khác máy
-    không gọi thẳng được nhau.
-  - Mất kết nối với trang điều khiển: đã xử lý như mất tín hiệu xe (M26: đang chạy thì tốc độ thành "không
-    biết", vẫn giám sát như đang chạy, HUD báo tài xế).
-  - Chỉ cho bản xem thử / demo; trên hub thật tốc độ đến từ CAN (hoặc GPS, [việc 11](#viec-gps)).
-
 ---
 
 <a id="viec-nhieu-chuyen"></a>
 
-### Việc 21: so sánh nhiều chuyến của tài xế
+### Việc 20: so sánh nhiều chuyến của tài xế
 
 Bảng tổng kết một chuyến đã làm ở M15 (xem `docs/release-v2.md`):
 - nút "Kết thúc chuyến";
@@ -781,7 +760,7 @@ Bảng tổng kết một chuyến đã làm ở M15 (xem `docs/release-v2.md`):
 
 <a id="viec-nhan-demo"></a>
 
-### Việc 22: ghi nhãn trực tiếp khi demo
+### Việc 21: ghi nhãn trực tiếp khi demo
 
 Cần xe, hub, người ngồi cạnh và hàng chục giờ lái: khả thi về kỹ thuật, khó về thực tế. Là cách duy nhất kết luận chỉ tiêu PRD ≤ 1,0 báo sai / giờ.
 
@@ -821,7 +800,7 @@ nhãn**. Nhãn phải ghi ngay trong chuyến.
 
 <a id="viec-prd-con-lai"></a>
 
-### Việc 23: phần PRD còn lại
+### Việc 22: phần PRD còn lại
 
 Tách từ việc "làm nốt yêu cầu PRD" (02/10):
 - **LLM tóm tắt + gợi ý (FR-12, FR-13):** chưa có dòng code nào. Chạy ở backend trên metadata (không ảnh)
@@ -881,7 +860,7 @@ Tách từ việc "làm nốt yêu cầu PRD" (02/10):
 - **Cách làm:**
   - Tài xế bật đồng ý rõ ràng (tắt mặc định); trace nén gửi cuối chuyến kèm bản tổng kết, hoặc giữ trên
     thiết bị đến khi có mạng.
-  - Gắn phản hồi "báo sai", nhãn của người ngồi cạnh ([việc 22](#viec-nhan-demo)), KSS
+  - Gắn phản hồi "báo sai", nhãn của người ngồi cạnh ([việc 21](#viec-nhan-demo)), KSS
     nếu có.
   - Có thời hạn lưu và xoá theo yêu cầu; chỉ kỹ sư xem được.
 - **Cần quyết định:** landmark 3D chi tiết vẫn có thể là dữ liệu sinh trắc; chỉ lưu các số đã tính (EAR,
@@ -918,7 +897,7 @@ hỏi khác nhau, bỏ bên nào cũng mất một thông tin.
 |---|---|---|
 | Dò / so ngưỡng (offline) | **FAR / MAR theo cửa sổ** + độ trễ phát hiện ([M18](#viec-far-mar)) | Dataset video dài (bỏ 30 s khởi động; clip ngắn gần như không còn cửa sổ) |
 | Kiểm tra trước khi chốt ngưỡng | **Cảnh báo sai / giờ** gộp nhiều người + CI ([M17](#viec-do-bao-sai)) | UTA-RLDD (~8 giờ tỉnh táo) |
-| Kết luận đạt PRD | **Cảnh báo sai / giờ theo từng người**, có nhãn | Chuyến demo có người ghi nhãn ([việc 22](#viec-nhan-demo)) |
+| Kết luận đạt PRD | **Cảnh báo sai / giờ theo từng người**, có nhãn | Chuyến demo có người ghi nhãn ([việc 21](#viec-nhan-demo)) |
 | Đã triển khai | Số lần tài xế bấm "báo sai" / giờ, theo tài xế; chỉ để giám sát | Feedback HUD ([chỉ số theo từng người](#viec-theo-nguoi)) |
 
 Clip dataset ngắn nên báo sai / giờ trên dataset chỉ là số kiểm tra phụ; nó cần dữ liệu dài mới có ý
@@ -1337,7 +1316,7 @@ và Kaggle Eyes; điều khoản AIHub.
 
 ### E. Khung báo cáo EU DDAW
 
-Không phải việc riêng: dùng trong [việc 22](#viec-nhan-demo) (ghi nhãn khi demo) và
+Không phải việc riêng: dùng trong [việc 21](#viec-nhan-demo) (ghi nhãn khi demo) và
 [việc 7](#viec-toi-uu-nguong) (UTA-RLDD).
 
 **Vì sao:** bộ eval chưa định nghĩa "cảnh báo đúng lúc" so với lúc tài xế bắt đầu buồn ngủ. `seq_eval`
@@ -1351,7 +1330,7 @@ attention warning) trên xe mới từ 2022; quy trình thử nằm ở Annex c�
 được ngày 02/10. Khoảng thời gian một cảnh báo được tính là "đúng lúc" cũng lấy từ Annex.
 
 **Áp dụng:**
-- **Việc 22:** KSS hỏi miệng mỗi 5 phút (thay 15 phút). Cảnh báo đúng = có cảnh báo buồn ngủ trong
+- **Việc 21:** KSS hỏi miệng mỗi 5 phút (thay 15 phút). Cảnh báo đúng = có cảnh báo buồn ngủ trong
   khoảng quanh lần đầu KSS ≥ 8 (độ dài theo Annex, nằm trong `thresholds.yaml` của công cụ eval).
 - **Việc 7:** video `10` của UTA-RLDD ≈ KSS ≥ 8 (mức `5` ≈ KSS 6–7). Chỉ là xấp xỉ: một nhãn cho cả
   video, không biết lúc nào đạt 8. Bảng riêng, không dùng để chọn ngưỡng.
@@ -1362,7 +1341,7 @@ attention warning) trên xe mới từ 2022; quy trình thử nằm ở Annex c�
 - **Không tự tạo đủ sự kiện KSS ≥ 8 trên đường thật.** Ahlström & Anund [D1] phải dùng tài xế chuyên
   nghiệp, chạy đêm sau khi thức từ sáng sớm, trong nghiên cứu có kiểm soát, và viết rằng đạt mức này ban
   ngày trên đường thật là *"problematic… from legal and ethical perspectives"*. Khớp với giới hạn an
-  toàn của [việc 22](#viec-nhan-demo): demo chủ yếu đo báo sai. Số sự kiện KSS ≥ 8 thật gần như chắc
+  toàn của [việc 21](#viec-nhan-demo): demo chủ yếu đo báo sai. Số sự kiện KSS ≥ 8 thật gần như chắc
   dưới 10, chỉ báo cáo tham khảo.
 - **Không đo được "rời làn":** Cori 2023 [D3] định nghĩa suy giảm khi lái là > 3,5 lần rời làn / giờ (12
   người, đường đua kín, xe có thiết bị đo). DriverGuard chỉ có camera trong xe và CAN giả lập, không có

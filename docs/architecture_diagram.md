@@ -225,6 +225,8 @@ flowchart LR
         SIM["tools/drive_sim.py<br/>tốc độ, xi nhan · M19"]
         EXT["ExternalVehicle<br/>im &gt; 1 s: mất tín hiệu · M26"]
         SIM -- "GET /can (thiết bị)<br/>trang #/live tự hỏi" --> EXT
+        WEBDRIVE["#/drive?code=…<br/>nút tốc độ, xi nhan · M31"]
+        WEBDRIVE -- "PUT / GET /api/v1/drive/{code}<br/>qua backend (chỉ số)" --> EXT
     end
 
     subgraph RT["TripRuntime · edge_agent/runtime.py · M21 (chung cho thiết bị và web)"]
@@ -259,7 +261,9 @@ flowchart LR
 - **Tổng kết chuyến** (khối 11, M15): cộng dồn từng frame, dựng khi tài xế bấm "Kết thúc chuyến"; gửi lên
   backend (bảng `trip_summaries`), quản lý / kỹ sư xem ở dashboard. Bỏ qua dấu hiệu buồn ngủ lúc nghỉ đỗ xe và
   lúc bước nhắm mắt của đăng ký (M27).
-- **Nguồn tín hiệu xe:** công cụ mô phỏng `tools/drive_sim.py` thay CAN thật (M19); 0 km/h = đỗ. Đang chạy mà
+- **Nguồn tín hiệu xe:** công cụ mô phỏng `tools/drive_sim.py` thay CAN thật (M19), hoặc trang `#/drive` trên
+  web (M31, có thể mở trên máy khác: backend giữ tốc độ / xi nhan mới nhất theo mã ghép, trong bộ nhớ, tự hết
+  hạn); 0 km/h = đỗ và không cảnh báo nào (M30). Đang chạy mà
   mất tín hiệu thì tốc độ "không biết", vẫn giám sát như đang chạy; mất lúc đỗ vẫn là đỗ; cả hai đều báo tài xế
   (M26). Xi nhan nới góc nhìn về đúng phía (M20).
 - **Khi nào HUD báo "không giám sát"** (chi tiết: [`safety-fmea.md`](safety-fmea.md)): mất mặt ≥ 3 s khi chạy

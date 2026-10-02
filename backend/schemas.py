@@ -401,3 +401,18 @@ class ThresholdsOut(BaseModel):
     updated_by: str | None
     updated_at: datetime | None
     specs: dict[str, ThresholdSpec]
+
+
+# Web driving controls (M31, backend/drive_link.py): numbers only, no user data.
+DRIVE_CODE_PATTERN = r"^[A-Z0-9]{6}$"  # pairing code shown by #/live
+
+
+class DriveSignalIn(StrictModel):
+    speed_kmh: float = Field(ge=0, le=250)
+    turn_signal: Literal["left", "right"] | None = None
+
+
+class DriveSignalOut(BaseModel):
+    speed_kmh: float
+    turn_signal: Literal["left", "right"] | None
+    age_s: float  # seconds since the remote page last sent it

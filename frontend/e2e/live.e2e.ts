@@ -17,7 +17,7 @@ interface State {
   level?: number;
   reasons?: string[];
   enrollment?: { status: string };
-  vehicle?: { driving: boolean };
+  vehicle?: { driving: boolean; turn_signal?: string | null; signal_lost?: boolean };
 }
 
 /** The driving simulator (tools/drive_sim.py) answers with this speed; 0 km/h = parked. */
@@ -136,4 +136,28 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await expect(row).toHaveCount(1);
   await row.getByRole("button").click();
   await expect(manager.getByRole("row", { name: /^Đổi tài xế/ })).toContainText("1 lần"); // report detail
+});
+
+test("web driving controls: #/drive on another page drives #/live; closing it is a lost vehicle signal", async ({ page, context }) => {
+  // No terminal simulator here: the speed comes from #/drive through the backend (M31).
+  await obedientDriver(page);
+  await startLive(page);
+  const link = page.getByRole("link", { name: /Điều khiển xe · mã/ });
+  const code = /mã ([A-Z0-9]{6})/.exec((await link.textContent()) ?? "")?.[1];
+  expect(code).toBeTruthy();
+  expect(await link.getAttribute("href")).toBe(`#/drive?code=${code}`);
+
+  const remote = await context.newPage();
+  await remote.goto(`/#/drive?code=${code}`);
+  await expect(remote.getByText(`Mã ${code}`)).toBeVisible();
+  await remote.getByRole("button", { name: "Chạy đều 50" }).click();
+  await remote.getByRole("button", { name: /Trái/ }).click();
+  await expect(remote.getByText("Đang gửi cho trang giám sát")).toBeVisible();
+  await expect
+    .poll(async () => (await state(page)).vehicle, { timeout: 20_000 })
+    .toMatchObject({ driving: true, turn_signal: "left" });
+
+  await remote.close(); // the remote goes quiet while driving
+  await expect.poll(async () => (await state(page)).vehicle?.signal_lost, { timeout: 10_000 }).toBe(true);
+  await expect(page.getByText("Mất tín hiệu xe: vẫn giám sát như đang chạy")).toBeVisible();
 });

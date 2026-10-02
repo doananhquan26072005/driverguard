@@ -124,6 +124,7 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 | Đăng ký (~10 s) | Nhìn thẳng camera → nhìn ra đường → nhắm mắt tới khi nghe bíp; HUD đọc từng bước | Mốc riêng của tài xế, chỉ trong RAM một chuyến (M9) |
 | Đang lái | Màu, hình, câu hành động ("Nhìn về phía trước", "Mở mắt! Dừng xe nghỉ ngay") và âm thanh riêng cho từng loại | Âm thanh luôn bật; trình duyệt chặn thì dải vàng "Chạm vào màn hình để bật" (M23) |
 | Cúi nhìn điện thoại / bảng đồng hồ | L2 "Nhìn về phía trước", không phải L3 ngủ gật | M25 |
+| Xe dừng (0 km/h) | Không có cảnh báo nào (kể cả nhắm mắt, cầm điện thoại) | M30 |
 | Đổi người lái | Nút **"Đổi tài xế"**: người mới được hỏi đồng ý và đăng ký lại khi xe dừng | M16, M24 |
 | Báo sai | Nút "Cảnh báo sai" trong 120 s sau cảnh báo | Gửi lên dashboard |
 | Hết chuyến | Nút **"Kết thúc chuyến"** → bảng tổng kết (đánh giá, biểu đồ từng phút, gợi ý nghỉ) | Quản lý / kỹ sư xem ở tab **"Báo cáo chuyến đi"** (M15) |
@@ -428,6 +429,13 @@ python tools/drive_sim.py --scenario config\scenarios\city_day.yaml   # hoặc c
   chạy" kèm âm báo, tốc độ hiện "–", hệ thống vẫn giám sát như xe đang chạy. Tắt công cụ khi xe đang đỗ cũng
   được báo ("coi như đang đỗ đến khi có lại tốc độ"). Chạy lại công cụ thì có lại tín hiệu.
 - `#/live` trên trình duyệt cũng đọc công cụ này (cùng máy).
+- **Điều khiển xe trên web (M31), không cần terminal:** khung camera của `#/live` có nút **"Điều khiển xe · mã
+  XXXXXX"**. Bấm để mở trang `#/drive?code=XXXXXX` (hoặc mở link đó trên điện thoại khác): nút **Tăng tốc**,
+  **Giảm tốc**, **Chạy đều 50**, **Dừng xe**, xi nhan **Trái / Tắt / Phải**; phím giống công cụ terminal
+  (W / S / Space / C / A / D / X). Tốc độ tăng giảm dần như xe thật. Trang này gửi tốc độ qua backend theo mã
+  ghép (chỉ số, không lưu); `#/live` ưu tiên nó, không có thì đọc công cụ terminal. Đóng trang khi xe đang
+  chạy thì `#/live` báo "Mất tín hiệu xe".
+- **Xe đứng yên (0 km/h) không có cảnh báo nào** (M30), kể cả nhắm mắt hay cầm điện thoại.
 
 **Terminal 4 – Frontend**
 
