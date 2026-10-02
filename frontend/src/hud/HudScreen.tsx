@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HudAlert, HudSnapshot, VehicleAction } from "../lib/types";
-import { ALARM_REPEAT_S, play, playAlert, say, systemSound, unlock } from "./chime";
+import { ALARM_REPEAT_S, armAudio, play, playAlert, say, systemSound, unlock } from "./chime";
 import { demoSnapshot } from "./demo";
 import { edgeSource, type HudSource, type TripEnd } from "./edge";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
-import { enrollCue, type HudLink } from "./hudModel";
+import { enrollCue, type HudLink, monitoringStopped, systemState, vehicleSignalLost } from "./hudModel";
 
 const POLL_MS = 300;
 const STALE_S = 3; // no update from the camera loop for this long = frozen
@@ -29,7 +29,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   const [mode, setMode] = useState<Mode>("live");
   const [link, setLink] = useState<HudLink>("connecting");
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
-  const [sound, setSound] = useState(false);
+  const [sound, setSound] = useState(false); // sound is always on; false only while the browser blocks it
   const [toast, setToast] = useState<string | null>(null);
   const [tripEnd, setTripEnd] = useState<TripEnd | null>(null);
   const [ending, setEnding] = useState(false);
@@ -38,6 +38,9 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   const seenAlerts = useRef<Set<string>>(new Set());
   const demoStart = useRef(Date.now());
   const demoFlags = useRef<Set<string>>(new Set());
+
+  // Sound on from the start; the first touch anywhere lifts the browser's block (chime.ts).
+  useEffect(() => armAudio(setSound), []);
 
   // Live: poll the edge agent. Demo: scripted states.
   useEffect(() => {
@@ -140,6 +143,26 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
     if (sound) play(systemSound(unavailable ? "monitoring_unavailable" : "monitoring_restored"));
   }, [unavailable, sound]);
 
+  // The HUD lost the loop (M28): no data for STALE_S, no link to the device, or frames failing. Each
+  // start is loud (the driver is not watched), its end the usual "restored" tone. Not after the trip ended.
+  const stopped = mode === "live" && !tripEnd && !snap?.trip_ended && monitoringStopped(systemState(link, snap, stale, cameraLost));
+  const wasStopped = useRef(false);
+  useEffect(() => {
+    if (stopped === wasStopped.current) return;
+    wasStopped.current = stopped;
+    if (sound) play(systemSound(stopped ? "monitoring_stopped" : "monitoring_restored"));
+  }, [stopped, sound]);
+
+  // Vehicle link lost / back (M26), driving or parked: the driver is told (while driving it is still
+  // monitored as moving).
+  const signalLost = mode === "live" && link === "ok" && vehicleSignalLost(snap);
+  const wasSignalLost = useRef(false);
+  useEffect(() => {
+    if (signalLost === wasSignalLost.current) return;
+    wasSignalLost.current = signalLost;
+    if (sound) play(systemSound(signalLost ? "vehicle_signal_lost" : "vehicle_signal_restored"));
+  }, [signalLost, sound]);
+
   // Driver enrollment: steps 2 and 3 are done without looking at the screen, so each prompt
   // is spoken and the end of a step beeps (step 3: "open your eyes").
   const lastEnroll = useRef(snap?.enrollment);
@@ -167,12 +190,13 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
     }
   }, [source, ending, onTripEnded]);
 
-  // "Tạm dừng" / "Tiếp tục lái" / "Đổi tài xế": the agent applies it, the next snapshot shows it.
+  // "Đổi tài xế" and the enrollment consent answer: the agent applies them, the next snapshot shows it.
   const onVehicle = useCallback(
     async (action: VehicleAction) => {
       if (!source.vehicle) return;
       const ok = await source.vehicle(action);
-      if (!ok) setToast("Thiết bị không nhận lệnh, thử lại");
+      // A second tap on the consent screen finds nothing to answer: not worth a toast.
+      if (!ok && action === "change_driver") setToast("Thiết bị không nhận lệnh, thử lại");
       else if (action === "change_driver") setToast("Người lái mới: nhìn thẳng vào camera để đăng ký");
     },
     [source],
@@ -200,7 +224,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
       feedbackTarget={target}
       toast={toast}
       edgeUrl={source.address}
-      onToggleSound={() => setSound((on) => (on ? false : unlock()))}
+      onEnableSound={() => unlock()}
       onToggleDemo={() => setMode((m) => (m === "live" ? "demo" : "live"))}
       onFalseAlarm={onFalseAlarm}
       onEndTrip={mode === "live" && source.endTrip ? onEndTrip : undefined}

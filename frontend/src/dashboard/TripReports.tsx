@@ -183,7 +183,8 @@ function ReportDetail({
     ["Nhìn khỏi đường / cầm điện thoại", `${formatNumber(s.off_road_s, 0)} s / ${formatNumber(s.phone_s, 0)} s`],
     [
       "Giám sát được",
-      `${formatPercent(s.monitored_frac, 0)} thời gian lái; tạm ngưng ${formatNumber(s.unavailable_s, 0)} s, mất camera ${formatNumber(s.camera_lost_s, 0)} s`,
+      `${formatPercent(s.monitored_frac, 0)} thời gian lái; tạm ngưng ${formatNumber(s.unavailable_s, 0)} s, mất camera ${formatNumber(s.camera_lost_s, 0)} s` +
+        (s.vehicle_signal_lost_s ? `, mất tín hiệu xe ${formatNumber(s.vehicle_signal_lost_s, 0)} s` : ""),
     ],
     ["Đăng ký tài xế", s.enrolled ? "Có" : "Không (mốc tự học)"],
     ["Đổi tài xế", `${s.driver_changes ?? 0} lần`],

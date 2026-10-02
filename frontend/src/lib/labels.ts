@@ -22,6 +22,12 @@ export const REASONS: Record<Reason, string> = {
   monitoring_unavailable: "Tạm ngưng giám sát: không thấy mặt",
   monitoring_restored: "Giám sát lại",
   driver_changed: "Đổi tài xế",
+  vehicle_signal_lost: "Mất tín hiệu xe",
+  vehicle_signal_restored: "Có lại tín hiệu xe",
+  agent_error: "Lỗi xử lý: ngừng giám sát",
+  agent_recovered: "Xử lý hoạt động lại",
+  low_fps: "Máy xử lý chậm",
+  fps_restored: "Tốc độ xử lý bình thường lại",
 };
 
 export const ROLES: Record<Role, string> = {
@@ -56,6 +62,7 @@ export const THRESHOLD_GROUPS: { title: string; keys: { key: string; label: stri
       { key: "risk.distraction.off_road_high_speed_s", label: "Nhìn lệch khi chạy nhanh → L2", hint: "Không lớn hơn ngưỡng thường" },
       { key: "risk.distraction.phone_ratio", label: "Tỉ lệ điện thoại trong 2 s → L2" },
       { key: "distraction.yaw_off_road_deg", label: "Góc quay đầu tính là nhìn lệch" },
+      { key: "distraction.turn_signal_extra_yaw_deg", label: "Góc nới thêm về phía bật xi nhan", hint: "Chỉ phía xi nhan, phía kia giữ nguyên" },
     ],
   },
   {
@@ -86,6 +93,22 @@ export const REASON_ACTIONS: Record<Reason, string> = {
   monitoring_unavailable: "Ngồi đúng vị trí lái",
   monitoring_restored: "Đang giám sát lại",
   driver_changed: "Người lái mới đăng ký khuôn mặt",
+  vehicle_signal_lost: "Kiểm tra kết nối tốc độ xe",
+  vehicle_signal_restored: "Đã có lại tín hiệu xe",
+  agent_error: "Dừng xe an toàn nếu lỗi kéo dài",
+  agent_recovered: "Đang giám sát lại",
+  low_fps: "Cảnh báo có thể đến trễ",
+  fps_restored: "Đang giám sát bình thường",
+};
+
+// Top bar chip while the device is too slow for a while (M28).
+export const LOW_FPS_TEXT = "Máy chậm: cảnh báo có thể trễ";
+
+// Vehicle strip (HUD) while the vehicle link is lost (M26): while driving it is monitored as moving;
+// while parked it stays parked until the speed comes back.
+export const VEHICLE_SIGNAL_LOST_TEXT = {
+  driving: "Mất tín hiệu xe: vẫn giám sát như đang chạy",
+  parked: "Mất tín hiệu xe: coi như đang đỗ đến khi có lại tốc độ",
 };
 
 // Driver enrollment: what the HUD shows and says. Spoken too, since in steps 2 and 3 the
@@ -113,13 +136,34 @@ export const ENROLL_TEXT = {
   done: "Đăng ký xong",
   waiting: "Chưa đăng ký tài xế. Dừng xe để đăng ký, nhận diện sẽ chính xác hơn.",
   failed: "Chưa đăng ký được. Sẽ thử lại ở lần dừng xe sau.",
+  later: "Chưa đăng ký tài xế. Sẽ hỏi lại ở lần dừng xe sau.",
 };
+
+// Shown before the steps: why the face is enrolled and what happens to the data. Must stay true to
+// the code: enrollment.py keeps a few numbers in RAM for this trip only, publisher.py sends only
+// "enrolled", how long it took and how many steps were redone, and no frame is ever stored or sent.
+export const ENROLL_CONSENT = {
+  title: "Đăng ký khuôn mặt",
+  lead: "Để nhận biết buồn ngủ và mất tập trung chính xác nhất, hệ thống cần làm quen với khuôn mặt của bạn. Mất khoảng 10 giây, khi xe đang dừng.",
+  privacy: [
+    "Không chụp, không lưu ảnh khuôn mặt. Hình ảnh camera chỉ được xử lý ngay trên thiết bị này.",
+    "Chỉ ghi nhớ vài con số như độ mở mắt, miệng, tư thế đầu, và xoá khi kết thúc chuyến.",
+    "Không gửi khuôn mặt hay các con số đó lên máy chủ. Quản lý chỉ biết bạn đã đăng ký.",
+  ],
+  agree: "Đồng ý, bắt đầu đăng ký",
+  later: "Để sau",
+  laterNote: "Chưa đăng ký vẫn được lái, nhưng nhận biết kém chính xác hơn.",
+};
+
+// Shown while the browser still blocks sound (hud/chime.ts armAudio): one touch turns it on.
+export const SOUND_BLOCKED_TEXT = "Âm thanh cảnh báo chưa bật. Chạm vào màn hình để bật.";
 
 // HUD screens when the driver is not being monitored (hud/hudModel.ts SystemState).
 export const SYSTEM_TEXT: Record<
-  "down" | "camera_lost" | "unavailable" | "stale" | "connecting",
+  "down" | "camera_lost" | "error" | "unavailable" | "stale" | "connecting",
   { title: string; detail: string }
 > = {
+  error: { title: "Lỗi xử lý", detail: "Hệ thống đang KHÔNG giám sát tài xế. Đang thử lại…" },
   unavailable: {
     title: "Tạm ngưng giám sát",
     detail: "Không thấy mặt tài xế. Ngồi đúng vị trí lái, không che camera.",

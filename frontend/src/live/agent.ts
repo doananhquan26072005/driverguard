@@ -7,7 +7,7 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
-import type { FeedbackResult, HudSource, TripEnd } from "../hud/edge";
+import { DRIVE_SIM_URL, type FeedbackResult, type HudSource, type TripEnd } from "../hud/edge";
 import { bbox, channelDiff, concatFaces, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
 
@@ -16,6 +16,24 @@ const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const BASE = import.meta.env.BASE_URL;
 
+// End-to-end test builds only (VITE_E2E=1; production builds drop this code): block 3 reads
+// synthetic landmark numbers that the Playwright test puts on window.__dgFeed instead of running
+// MediaPipe, YOLO is off, and the latest HUD state is mirrored on window.__dgState. The camera is
+// Chrome's fake device and blocks 6-14 run unchanged, so no face image is needed anywhere.
+const E2E = import.meta.env.VITE_E2E === "1";
+
+/** One frame of synthetic faces: 478 x (x, y, z) pixels per face, eyeBlink (left, right) and browOuterUp per face. */
+export interface E2EFeed {
+  faces: number[][];
+  blink: number[];
+  brow: number[];
+}
+declare global {
+  interface Window {
+    __dgFeed?: E2EFeed | null;
+    __dgState?: unknown;
+  }
+}
 
 export type Step = "camera" | "python" | "face" | "phone" | "ready";
 // What the driver sees while starting: two steps, no component names. The three downloads
@@ -76,6 +94,7 @@ interface PyAgent {
   camera(lost: boolean): void;
   end_trip(): string;
   vehicle(action: string): string;
+  vehicle_signal(speed: number, turn: string | null): void;
   take_batch(): string | undefined;
   destroy(): void;
 }
@@ -92,8 +111,10 @@ function tripId(d = new Date()): string {
   return `trip-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-// One default mode (bridge scenario "manual"): the trip starts parked so the driver enrolls,
-// drives once enrolled; the HUD buttons park / drive / change driver. Time of day = real clock.
+// One default mode (bridge scenario "sim"): speed and turn signal come from the driving simulator
+// (tools/drive_sim.py on 127.0.0.1, polled by pollSim); none running = parked at 0 km/h.
+// Time of day = real clock.
+const SIM_POLL_MS = 250;
 async function loadPython(session: Session | null): Promise<{ agent: PyAgent; settings: Settings }> {
   const mod = (await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`)) as {
     loadPyodide(o: { indexURL: string }): Promise<Pyodide>;
@@ -130,6 +151,8 @@ export class LiveAgent implements HudSource {
   private pendingBodies: string[] = [];
   private sending = false;
   private flushTimer: number | undefined;
+  private simTimer: number | undefined;
+  private simBusy = false;
   private canvas = document.createElement("canvas");
   private ctx: CanvasRenderingContext2D;
   private yoloCanvas = document.createElement("canvas");
@@ -140,7 +163,7 @@ export class LiveAgent implements HudSource {
     private stream: MediaStream,
     private py: PyAgent,
     private settings: Settings,
-    private landmarker: FaceLandmarker,
+    private landmarker: FaceLandmarker | null, // null in end-to-end test builds (E2E)
     private yolo: Worker | null,
     private session: Session | null,
   ) {
@@ -167,6 +190,12 @@ export class LiveAgent implements HudSource {
       onStep("python");
       const { agent, settings } = await loadPython(session);
       onStep("face");
+      if (E2E) {
+        const live = new LiveAgent(video, stream, agent, settings, null, null, session);
+        live.run();
+        onStep("ready");
+        return live;
+      }
       const lm = settings.landmarks;
       const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM);
       const options = {
@@ -224,7 +253,7 @@ export class LiveAgent implements HudSource {
     return r === "ok" ? "recorded" : (r as FeedbackResult);
   }
 
-  /** "Tạm dừng" / "Tiếp tục lái" / "Đổi tài xế" (bridge.vehicle). */
+  /** "Đổi tài xế" (bridge.vehicle). */
   async vehicle(action: VehicleAction): Promise<boolean> {
     const ok = this.py.vehicle(action) === "ok";
     if (ok && action === "change_driver") void this.flush(); // driver_changed event
@@ -257,6 +286,7 @@ export class LiveAgent implements HudSource {
       this.yolo.onmessage = (e: MessageEvent<YoloResponse>) => this.onYolo(e.data);
     }
     this.flushTimer = window.setInterval(() => void this.flush(), this.settings.flush_interval_s * 1000);
+    this.simTimer = window.setInterval(() => void this.pollSim(), SIM_POLL_MS);
     const next = () => {
       if (this.stopped) return;
       if ("requestVideoFrameCallback" in this.video) this.video.requestVideoFrameCallback(tick);
@@ -293,20 +323,27 @@ export class LiveAgent implements HudSource {
     const t = nowMs / 1000;
     const ts = Math.max(Math.round(nowMs), this.lastTsMs + 1); // VIDEO mode: strictly increasing
     this.lastTsMs = ts;
-    const result = this.landmarker.detectForVideo(this.canvas, ts); // 3
-    const faces = result.faceLandmarks.map((f) => toPixels(f, w, h));
-    // Every face goes to Python, which picks the driver (largest until enrollment, then the
-    // enrolled one); eyeBlink (left, right) per face in the same order, 0.05 = open when missing.
-    const points = faces.length ? concatFaces(faces) : null;
-    // browOuterUp (mean of both sides) per face: raising the brows to keep the eyes open (block 7).
+    let faces: Float32Array[];
     let blink: number[] | null = null;
     let brow: number[] | null = null;
-    if (result.faceBlendshapes?.length) {
-      const score = (i: number, name: string, missing: number) =>
-        result.faceBlendshapes?.[i]?.categories?.find((c) => c.categoryName === name)?.score ?? missing;
-      blink = faces.flatMap((_, i) => [score(i, "eyeBlinkLeft", 0.05), score(i, "eyeBlinkRight", 0.05)]);
-      brow = faces.map((_, i) => (score(i, "browOuterUpLeft", 0) + score(i, "browOuterUpRight", 0)) / 2);
+    if (E2E) {
+      const feed = window.__dgFeed; // the test's synthetic landmarks stand in for block 3
+      faces = (feed?.faces ?? []).map((f) => Float32Array.from(f));
+      if (feed && faces.length) [blink, brow] = [feed.blink, feed.brow];
+    } else {
+      const result = this.landmarker!.detectForVideo(this.canvas, ts); // 3 (always set outside E2E)
+      faces = result.faceLandmarks.map((f) => toPixels(f, w, h));
+      // eyeBlink (left, right) per face in the same order as the faces, 0.05 = open when missing;
+      // browOuterUp (mean of both sides) per face: raising the brows to keep the eyes open (block 7).
+      if (result.faceBlendshapes?.length) {
+        const score = (i: number, name: string, missing: number) =>
+          result.faceBlendshapes?.[i]?.categories?.find((c) => c.categoryName === name)?.score ?? missing;
+        blink = faces.flatMap((_, i) => [score(i, "eyeBlinkLeft", 0.05), score(i, "eyeBlinkRight", 0.05)]);
+        brow = faces.map((_, i) => (score(i, "browOuterUpLeft", 0) + score(i, "browOuterUpRight", 0)) / 2);
+      }
     }
+    // Every face goes to Python, which picks the driver (largest until enrollment, then the enrolled one).
+    const points = faces.length ? concatFaces(faces) : null;
     // Brightness of the largest face: the driver's in nearly every frame, a cheap per-frame estimate.
     const k = largestFace(faces);
     const brightness = meanLuma(px, w, h, k >= 0 ? bbox(faces[k]) : null);
@@ -321,6 +358,7 @@ export class LiveAgent implements HudSource {
     this.stats.measures = state.measures;
     this.stats.enrollment = state.enrollment ?? null;
     this.snap = state;
+    if (E2E) window.__dgState = state;
   }
 
   private maybeRunYolo(t: number, w: number, h: number) {
@@ -379,15 +417,34 @@ export class LiveAgent implements HudSource {
     }
   }
 
+  /** One reading of the driving simulator. Not running / unreachable: nothing is passed on, and
+   *  the bridge falls back to 0 km/h (parked) once the last reading is stale. */
+  private async pollSim() {
+    if (this.simBusy || this.stopped) return;
+    this.simBusy = true;
+    try {
+      const resp = await fetch(DRIVE_SIM_URL, { cache: "no-store", signal: AbortSignal.timeout(SIM_POLL_MS * 2) });
+      if (resp.ok) {
+        const r = (await resp.json()) as { speed_kmh?: number; turn_signal?: string | null };
+        if (!this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+      }
+    } catch {
+      // simulator not running
+    } finally {
+      this.simBusy = false;
+    }
+  }
+
   async stop() {
     if (this.stopped) return;
     this.stopped = true;
     window.clearInterval(this.flushTimer);
+    window.clearInterval(this.simTimer);
     await this.flush();
     this.stream.getTracks().forEach((t) => t.stop());
     this.video.srcObject = null;
     this.yolo?.terminate();
-    this.landmarker.close();
+    this.landmarker?.close();
     this.py.destroy();
   }
 }

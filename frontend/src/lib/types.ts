@@ -16,7 +16,13 @@ export type Reason =
   | "driver_enrolled" // system event: from now on judged with the driver's own baselines
   | "monitoring_unavailable" // system events: face lost while moving (PRD FR-6) / back
   | "monitoring_restored"
-  | "driver_changed"; // system event: "Đổi tài xế" on the HUD, a new driver enrolls
+  | "driver_changed" // system event: "Đổi tài xế" on the HUD, a new driver enrolls
+  | "vehicle_signal_lost" // system events: vehicle link lost while driving (speed unknown) / back
+  | "vehicle_signal_restored"
+  | "agent_error" // system events (M28): frames keep failing, not monitored / processing again
+  | "agent_recovered"
+  | "low_fps" // system events (M28): too slow for a while, alerts may be late / back up
+  | "fps_restored";
 
 export interface Session {
   token: string;
@@ -98,9 +104,10 @@ export interface HudAlert {
   feedback: "false_alarm" | null;
 }
 
-// Driver enrollment (edge_agent/perception/enrollment.py): three steps at a stop, once per trip.
+// Driver enrollment (edge_agent/perception/enrollment.py): at a stop, the driver agrees on the consent
+// screen ("consent"; "Để sau" = "later" until the next stop), then three steps, once per trip.
 export type EnrollStep = "look_camera" | "look_road" | "close_eyes";
-export type EnrollStatus = "off" | "waiting" | EnrollStep | "done" | "failed";
+export type EnrollStatus = "off" | "waiting" | "consent" | "later" | EnrollStep | "done" | "failed";
 export type EnrollHint =
   | "stop_vehicle"
   | "face_not_found"
@@ -163,6 +170,7 @@ export interface TripSummary {
   monitored_frac: number | null;
   unavailable_s: number;
   camera_lost_s: number;
+  vehicle_signal_lost_s?: number; // M26: vehicle link lost while driving (older agents omit it)
   enrolled: boolean;
   driver_changes: number;
   drowsy_mean: number;
@@ -194,13 +202,22 @@ export interface TripReport {
  *  local (guest: nothing leaves the browser), device (the edge agent's offline queue sends it). */
 export type TripDelivery = "sent" | "failed" | "local" | "device";
 
-/** Vehicle state for the HUD buttons. manual = the default mode: "Tạm dừng" / "Tiếp tục lái" drive it. */
+/** Vehicle state for the HUD. Parked / driving follows the speed (0 km/h = parked), no button.
+ *  source "sim" = the driving simulator (tools/drive_sim.py); connected false = it is not running,
+ *  so the vehicle stands still at 0 km/h. Other sources: a scripted CAN scenario (device --scenario).
+ *  signal_lost (M26): a signal had come in and the link went quiet; the driver is told. While driving
+ *  the speed is unknown (null) and it is still monitored as driving; while parked it stays parked. */
 export interface HudVehicle {
-  manual: boolean;
-  driving: boolean | null;
+  source: string | null;
+  connected: boolean;
+  speed_kmh: number | null;
+  turn_signal: "left" | "right" | null;
+  driving: boolean;
+  signal_lost?: boolean;
 }
 
-export type VehicleAction = "park" | "drive" | "change_driver";
+// "Đổi tài xế", and the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau").
+export type VehicleAction = "change_driver" | "enroll_start" | "enroll_later";
 
 export interface HudSnapshot {
   connected: boolean;
@@ -216,6 +233,8 @@ export interface HudSnapshot {
   perclos_60s?: number;
   fps?: number;
   camera_lost?: boolean; // camera unplugged: driver not monitored, device reconnecting
+  processing_error?: boolean; // M28: frames keep failing: driver not monitored, the loop retries
+  low_fps?: boolean; // M28: too slow for a while: alerts may be late
   unavailable?: boolean; // face lost while moving (PRD FR-6): not monitored, no alerts
   trip_ended?: boolean; // the trip summary was built (device HUD server)
   vehicle?: HudVehicle;

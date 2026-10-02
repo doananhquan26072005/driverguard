@@ -1,5 +1,5 @@
 // Scripted HUD states for demos without a running edge agent (a 90 s loop). Every kind of
-// alert appears once, so each alert sound (chime.ts) can be heard with "Bật âm thanh"; from
+// alert appears once, so each alert sound (chime.ts) can be heard (sound is always on); from
 // UNAVAILABLE_FROM to UNAVAILABLE_TO the face is lost (monitoring unavailable, no alert).
 import type { HudAlert, HudSnapshot, Level, Reason, TripSummary } from "../lib/types";
 

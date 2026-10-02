@@ -4,7 +4,7 @@ import { ENROLL_HINTS, ENROLL_STEPS, ENROLL_TEXT } from "../lib/labels";
 import type { EnrollStep, HudEnrollment, HudSnapshot, Level, Reason } from "../lib/types";
 
 export type HudLink = "connecting" | "ok" | "down";
-export type SystemState = "down" | "camera_lost" | "unavailable" | "stale" | "connecting";
+export type SystemState = "down" | "camera_lost" | "error" | "unavailable" | "stale" | "connecting";
 
 /** Most urgent first: the headline shows one reason, the others go in the detail line. */
 export const REASON_PRIORITY: readonly Reason[] = [
@@ -47,6 +47,7 @@ export function systemState(
 ): SystemState | null {
   if (link === "down") return "down";
   if (cameraLost) return "camera_lost";
+  if (link === "ok" && snap?.connected && !stale && snap.processing_error) return "error"; // M28
   if (link === "ok" && snap?.connected && !stale && snap.unavailable) return "unavailable";
   if (stale) return "stale";
   if (link !== "ok" || !snap?.connected) return "connecting";
@@ -59,6 +60,22 @@ export function enrollStep(e: HudEnrollment | undefined): EnrollStep | null {
   return e && (ENROLL_STEP_ORDER as readonly string[]).includes(e.status) ? (e.status as EnrollStep) : null;
 }
 
+/** The driver is no longer watched because the HUD lost the loop (M28): no data, no link, or frames
+ *  failing. Each start of it is announced with a loud sound. */
+export function monitoringStopped(state: SystemState | null): boolean {
+  return state === "down" || state === "stale" || state === "error";
+}
+
+/** The vehicle link went quiet, driving or parked (M26): the HUD says so and plays a sound. */
+export function vehicleSignalLost(snap: HudSnapshot | null): boolean {
+  return snap?.vehicle?.signal_lost === true;
+}
+
+/** The consent screen (before the steps) replaces the status stage while no alert is up. */
+export function showConsentPanel(e: HudEnrollment | undefined, level: Level): boolean {
+  return level === 0 && e?.status === "consent";
+}
+
 /** The guided enrollment screen replaces the status stage, but never hides an alert. */
 export function showEnrollPanel(e: HudEnrollment | undefined, level: Level): boolean {
   return level === 0 && enrollStep(e) !== null;
@@ -68,6 +85,7 @@ export function showEnrollPanel(e: HudEnrollment | undefined, level: Level): boo
 export function enrollReminder(e: HudEnrollment | undefined): string | null {
   if (e?.status === "waiting") return ENROLL_TEXT.waiting;
   if (e?.status === "failed") return ENROLL_TEXT.failed;
+  if (e?.status === "later") return ENROLL_TEXT.later;
   return null;
 }
 

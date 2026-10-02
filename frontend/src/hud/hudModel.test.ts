@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { EnrollStatus, HudEnrollment, HudSnapshot } from "../lib/types";
-import { enrollCue, enrollReminder, orderedReasons, primaryReason, showEnrollPanel, systemState } from "./hudModel";
+import {
+  enrollCue,
+  enrollReminder,
+  monitoringStopped,
+  orderedReasons,
+  primaryReason,
+  showConsentPanel,
+  vehicleSignalLost,
+  showEnrollPanel,
+  systemState,
+} from "./hudModel";
 
 const snap = (connected = true): HudSnapshot => ({ connected, level: 0, reasons: [], alerts: [] });
 
@@ -41,9 +51,43 @@ describe("hudModel", () => {
     expect(showEnrollPanel(undefined, 0)).toBe(false);
   });
 
+  it("shows a processing error and treats it, no data and no link as monitoring stopped (M28)", () => {
+    const err = { ...snap(), processing_error: true };
+    expect(systemState("ok", err, false, false)).toBe("error");
+    expect(systemState("ok", err, false, true)).toBe("camera_lost"); // camera first
+    expect(systemState("ok", snap(), false, false)).toBeNull();
+    expect(monitoringStopped(systemState("ok", err, false, false))).toBe(true);
+    expect(monitoringStopped(systemState("down", null, false, false))).toBe(true);
+    expect(monitoringStopped(systemState("ok", snap(), true, false))).toBe(true); // stale
+    expect(monitoringStopped(systemState("ok", { ...snap(), unavailable: true }, false, false))).toBe(false); // has its own sound
+    expect(monitoringStopped(systemState("connecting", null, false, false))).toBe(false);
+  });
+
+  it("knows when the vehicle link was lost while driving (M26)", () => {
+    const lost = { ...snap(), vehicle: { source: "sim", connected: false, speed_kmh: null, turn_signal: null, driving: true, signal_lost: true } };
+    expect(vehicleSignalLost(lost)).toBe(true);
+    expect(vehicleSignalLost({ ...lost, vehicle: { ...lost.vehicle, signal_lost: false } })).toBe(false);
+    expect(vehicleSignalLost(snap())).toBe(false); // older agents send no flag
+    expect(vehicleSignalLost(null)).toBe(false);
+  });
+
+  it("asks for consent before the steps, never over an alert", () => {
+    expect(showConsentPanel(enroll("consent"), 0)).toBe(true);
+    expect(showConsentPanel(enroll("consent"), 1)).toBe(false);
+    expect(showConsentPanel(enroll("look_camera"), 0)).toBe(false);
+    expect(showEnrollPanel(enroll("consent"), 0)).toBe(false); // not a step yet
+    expect(enrollReminder(enroll("consent"))).toBeNull(); // the consent screen says it all
+  });
+
+  it("starts speaking only once the driver agreed", () => {
+    expect(enrollCue(enroll("waiting"), enroll("consent"))).toEqual({ beep: false, say: null });
+    expect(enrollCue(enroll("consent"), enroll("look_camera"))).toEqual({ beep: false, say: "Nhìn thẳng vào camera" });
+  });
+
   it("reminds an unenrolled driver, quietly", () => {
     expect(enrollReminder(enroll("waiting"))).toMatch(/Dừng xe/);
     expect(enrollReminder(enroll("failed"))).toMatch(/lần dừng xe sau/);
+    expect(enrollReminder(enroll("later"))).toMatch(/hỏi lại ở lần dừng xe sau/);
     expect(enrollReminder(enroll("done"))).toBeNull();
     expect(enrollReminder(enroll("off"))).toBeNull();
   });

@@ -2,6 +2,8 @@
 import type { HudSnapshot, TripDelivery, TripSummary, VehicleAction } from "../lib/types";
 
 export const EDGE_URL: string = import.meta.env.VITE_EDGE_URL ?? "http://127.0.0.1:8765";
+/** The driving simulator (tools/drive_sim.py): speed + turn signal for #/live. */
+export const DRIVE_SIM_URL: string = import.meta.env.VITE_DRIVE_SIM_URL ?? "http://127.0.0.1:8766/can";
 
 export async function fetchState(signal?: AbortSignal): Promise<HudSnapshot> {
   const resp = await fetch(`${EDGE_URL}/state`, { signal, cache: "no-store" });
@@ -38,7 +40,7 @@ export async function endEdgeTrip(): Promise<TripEnd> {
   return { summary: body.summary, delivery: "device" };
 }
 
-/** "Tạm dừng" / "Tiếp tục lái" / "Đổi tài xế": the edge agent applies it on its next frame. */
+/** "Đổi tài xế": the edge agent applies it on its next frame. */
 export async function sendVehicle(action: VehicleAction): Promise<boolean> {
   try {
     const resp = await fetch(`${EDGE_URL}/vehicle`, {

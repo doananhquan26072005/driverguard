@@ -146,9 +146,9 @@ export default function LiveScreen() {
                     <li>Nhắm mắt đến khi nghe tiếng bíp.</li>
                   </ol>
                   <p className="m-0 text-hud-label text-hud-ink-3">
-                    Bắt đầu là xe đang đỗ: hệ thống hướng dẫn từng bước bằng chữ và giọng nói (nhớ bật âm thanh), xong thì
-                    tự chuyển sang lái. Trên màn hình lái có nút “Tạm dừng” để đỗ xe, “Tiếp tục lái”, và “Đổi tài xế” để
-                    người lái mới đăng ký lại.
+                    Lúc bắt đầu xe đang đỗ (0 km/h): hệ thống hướng dẫn từng bước bằng chữ và giọng nói (nhớ bật âm
+                    thanh). Đỗ hay đang lái là theo tốc độ xe, lấy từ công cụ mô phỏng lái xe trên máy này; chưa chạy công
+                    cụ thì xe được coi là đang đỗ. Nút “Đổi tài xế” để người lái mới đăng ký lại.
                   </p>
                 </section>
 

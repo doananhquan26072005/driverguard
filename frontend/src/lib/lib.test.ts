@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALARM_REPEAT_S, alertSound, systemSound } from "../hud/chime";
+import { ALARM_REPEAT_S, alertSound, armAudio, play, systemSound } from "../hud/chime";
 import { DEMO_CYCLE_S, demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
 import { ago, changedValues, clockText, formatPercent, query, rangeStart } from "./format";
 import { linearScale, nearestIndex, niceTicks, timeTicks } from "./scale";
@@ -116,6 +116,21 @@ describe("HUD alert sounds", () => {
     expect(end).toBeLessThan(ALARM_REPEAT_S); // one siren ends before the next repeat
   });
 
+  it("has a loud, distinct sound when monitoring stops (M28)", () => {
+    const stop = systemSound("monitoring_stopped");
+    expect(stop.gain).toBe(systemSound("camera_lost").gain);
+    expect(stop.notes).not.toEqual(systemSound("camera_lost").notes);
+    expect(stop.notes).not.toEqual(systemSound("monitoring_unavailable").notes);
+  });
+
+  it("has a loud, distinct sound when the vehicle signal is lost while driving (M26)", () => {
+    const lost = systemSound("vehicle_signal_lost");
+    expect(lost.gain).toBe(systemSound("camera_lost").gain);
+    expect(lost.notes).not.toEqual(systemSound("camera_lost").notes);
+    expect(lost.notes).not.toEqual(systemSound("vehicle_signal_restored").notes);
+    expect(systemSound("vehicle_signal_restored").gain).toBeLessThan(lost.gain);
+  });
+
   it("has distinct system sounds for the camera", () => {
     expect(systemSound("camera_lost").kind).toBe("camera_lost");
     expect(JSON.stringify(systemSound("camera_lost").notes)).not.toBe(JSON.stringify(systemSound("camera_restored").notes));
@@ -133,5 +148,16 @@ describe("HUD alert sounds", () => {
     expect(s.level).toBe(0);
     expect(demoSnapshot(30, new Set()).unavailable).toBe(false);
     expect(systemSound("monitoring_unavailable").notes).not.toEqual(systemSound("monitoring_restored").notes);
+  });
+});
+
+describe("HUD sound always on", () => {
+  it("reports sound as blocked where there is no audio, and plays nothing", () => {
+    // jsdom / node has no AudioContext: the HUD shows the touch-to-enable strip instead of failing.
+    let on: boolean | null = null;
+    const cleanup = armAudio((v) => (on = v));
+    expect(on).toBe(false);
+    expect(() => play(alertSound(3, ["microsleep"]))).not.toThrow();
+    cleanup();
   });
 });
