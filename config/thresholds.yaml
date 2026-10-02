@@ -338,10 +338,11 @@ risk:
     l2: 70
     night_factor: 1.2           # score multipliers from context
     long_drive_factor: 1.2
-    # Highest drowsiness level while standing still (red light, context.stationary_kmh): a
-    # microsleep there still gets a chime, a driver resting the eyes after parking no strong
-    # alarm. 0 = off while standing still, 3 = no cap. Always off during a rest.
-    stationary_max_level: 1
+    # Highest drowsiness level while standing still (speed below context.stationary_kmh, i.e. 0 km/h).
+    # 0 (M30, 02/10): no alert at all when the vehicle stands still; distraction is already off below
+    # context.min_speed_kmh. Before it was 1 (a microsleep at a red light got a chime). Drowsiness signs
+    # are still measured (trip summary). 3 = no cap.
+    stationary_max_level: 0
   distraction:
     off_road_s: 2.0
     off_road_high_speed_s: 1.5

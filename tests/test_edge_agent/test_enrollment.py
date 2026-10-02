@@ -226,15 +226,18 @@ def test_closing_the_eyes_for_enrollment_raises_no_alert():
     assert alerts == []
 
 
-def test_a_real_microsleep_at_a_stop_after_enrollment_still_chimes():
+ENROLL_THEN_DRIVE = [(0, 0), (15, 0), (15.1, 60)]  # enrolls while parked, drives off at 15 s
+
+
+def test_a_real_microsleep_after_enrollment_is_still_l3():
     def sleepy(i, t, status):
         return obedient(i, t, status, ear=SHUT_EAR, blink=0.9) if 20 <= t < 24 else obedient(i, t, status)
 
-    results, alerts = run_pipeline(30, [(0, 0)], sleepy)
-    _, without = run_pipeline(30, [(0, 0)], sleepy, enroll_on=False)
+    results, alerts = run_pipeline(30, ENROLL_THEN_DRIVE, sleepy)
+    _, without = run_pipeline(30, ENROLL_THEN_DRIVE, sleepy, enroll_on=False)
     assert results[-1].enrollment.enrolled
-    assert [(level, reasons) for _, level, reasons in alerts] == [(1, ("microsleep",))]
-    assert alerts == without  # same chime as before enrollment existed
+    assert [(level, reasons) for _, level, reasons in alerts] == [(3, ("microsleep",))]
+    assert [a[1:] for a in alerts] == [a[1:] for a in without]  # as before enrollment existed
 
 
 def test_enrolled_eye_baseline_does_not_follow_drowsy_narrowing():
@@ -307,7 +310,7 @@ def test_alert_metrics_say_whether_the_driver_was_enrolled():
     def sleepy(i, t, status):
         return obedient(i, t, status, ear=SHUT_EAR, blink=0.9) if 20 <= t < 24 else obedient(i, t, status)
 
-    results, _ = run_pipeline(30, [(0, 0)], sleepy)
+    results, _ = run_pipeline(30, ENROLL_THEN_DRIVE, sleepy)
     r = next(r for r in results if r.alert.new_alert is not None)
     assert build_event(r.alert.new_alert, r, "trip-1")["metrics"]["enrolled"] == 1
 

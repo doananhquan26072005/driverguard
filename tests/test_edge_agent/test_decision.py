@@ -148,7 +148,7 @@ STILL = {"speed_kmh": 0.0, "moving": False, "stationary": True}
     [
         ({}, 3),  # driving
         ({"speed_kmh": 3.0, "moving": False}, 3),  # crawling in a jam is not a stop
-        ({**STILL, "stationary_s": 30.0}, 1),  # red light: capped (chime)
+        ({**STILL, "stationary_s": 30.0}, 0),  # red light: no alert at 0 km/h (M30)
         ({**STILL, "stationary_s": 200.0, "resting": True}, 0),  # parked for a rest
     ],
 )
