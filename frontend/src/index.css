@@ -8,6 +8,7 @@
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @source "./hud";
 @source "./live";
+@source "./drive"; /* M31 web driving controls: without it its classes are not generated */
 
 /* Self-hosted: the in-car screen must work offline. Vietnamese subset is picked by unicode-range. */
 @import "@fontsource/be-vietnam-pro/500.css";
