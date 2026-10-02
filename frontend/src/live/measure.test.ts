@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bbox, channelDiff, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
+import { bbox, channelDiff, concatFaces, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
 
 function image(w: number, h: number, rgb: (x: number, y: number) => [number, number, number]) {
   const px = new Uint8ClampedArray(w * h * 4);
@@ -55,5 +55,12 @@ describe("faces", () => {
     expect(bbox(big)).toEqual([0, 0, 50, 40]);
     expect(largestFace([small, big])).toBe(1);
     expect(largestFace([])).toBe(-1);
+  });
+
+  it("puts every face back to back for Python", () => {
+    const a = new Float32Array([1, 2, 3]);
+    const b = new Float32Array([4, 5, 6]);
+    expect(Array.from(concatFaces([a, b]))).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(concatFaces([]).length).toBe(0);
   });
 });

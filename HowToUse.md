@@ -116,6 +116,29 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 
 ---
 
+### 2.5 Một chuyến đi ở v2
+
+| Lúc | Tài xế thấy / làm | Ghi chú |
+|---|---|---|
+| Xe dừng, chưa đăng ký | Màn hình **"Đăng ký khuôn mặt"**: vì sao cần, ảnh không bị lưu / gửi. Bấm **"Đồng ý, bắt đầu đăng ký"** hoặc **"Để sau"** | "Để sau" vẫn lái được, hỏi lại ở lần dừng sau (M24) |
+| Đăng ký (~10 s) | Nhìn thẳng camera → nhìn ra đường → nhắm mắt tới khi nghe bíp; HUD đọc từng bước | Mốc riêng của tài xế, chỉ trong RAM một chuyến (M9) |
+| Đang lái | Màu, hình, câu hành động ("Nhìn về phía trước", "Mở mắt! Dừng xe nghỉ ngay") và âm thanh riêng cho từng loại | Âm thanh luôn bật; trình duyệt chặn thì dải vàng "Chạm vào màn hình để bật" (M23) |
+| Cúi nhìn điện thoại / bảng đồng hồ | L2 "Nhìn về phía trước", không phải L3 ngủ gật | M25 |
+| Đổi người lái | Nút **"Đổi tài xế"**: người mới được hỏi đồng ý và đăng ký lại khi xe dừng | M16, M24 |
+| Báo sai | Nút "Cảnh báo sai" trong 120 s sau cảnh báo | Gửi lên dashboard |
+| Hết chuyến | Nút **"Kết thúc chuyến"** → bảng tổng kết (đánh giá, biểu đồ từng phút, gợi ý nghỉ) | Quản lý / kỹ sư xem ở tab **"Báo cáo chuyến đi"** (M15) |
+
+**Khi hệ thống không giám sát được, HUD nói rõ** (và có âm báo; chi tiết: `docs/safety-fmea.md`):
+
+| HUD hiện | Nghĩa |
+|---|---|
+| "Tạm ngưng giám sát: không thấy mặt" | Mất mặt ≥ 3 s khi xe chạy (M10) |
+| "Mất camera" | Camera rút ra / hỏng, đang kết nối lại |
+| "Lỗi xử lý" | Xử lý frame lỗi liên tục ≥ 1 s; vòng lặp tự thử lại (M28) |
+| "Không nhận dữ liệu từ camera" / "Mất kết nối" | Vòng xử lý ngừng cập nhật / HUD không gọi được thiết bị (M28: có âm báo) |
+| Dải vàng "Mất tín hiệu xe" | Mất tín hiệu tốc độ: lúc chạy vẫn giám sát như đang chạy, lúc đỗ coi như đỗ (M26) |
+| Chip "Máy chậm: cảnh báo có thể trễ" | FPS dưới 15 kéo dài 5 s (M28) |
+
 ## 3. Kiến trúc
 
 ### 3.1 Luồng 14 khối
@@ -157,7 +180,7 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 | 4 YOLOv8n | `edge_agent/perception/phone_detector.py` | `PhoneResult` |
 | 5 Eye-state CNN | `edge_agent/perception/eye_state.py` | `EyeState` → `FrameFeatures.p_closed` |
 | 6 Feature extractor | `edge_agent/perception/features.py` | `FrameFeatures` |
-| 7 Nhánh buồn ngủ | `edge_agent/analysis/drowsiness.py` | `DrowsinessState` |
+| 7 Nhánh buồn ngủ | `edge_agent/analysis/drowsiness/` (mắt, miệng, đầu, chớp chậm, lông mày) | `DrowsinessState` |
 | 8 Nhánh mất tập trung | `edge_agent/analysis/distraction.py` | `DistractionState` |
 | 9 Risk engine | `edge_agent/decision/risk_engine.py` | `RiskAssessment` |
 | 10 Ngữ cảnh | `edge_agent/context/can_sim.py`, `vehicle_context.py` | `VehicleSignals`, `VehicleContext` |
@@ -166,7 +189,8 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 | 13 HUD | `edge_agent/hud/hud.py`, `server.py`; `frontend/src/hud/` | — |
 | 14 Publisher | `edge_agent/io/publisher.py` | JSON gửi `POST /api/v1/events` |
 | Nối 7–12 | `edge_agent/decision/pipeline.py` | `DecisionResult` |
-| Nối 1–14 | `edge_agent/main.py` | — |
+| Một chuyến quanh khối 6–14 (dùng chung thiết bị + web) | `edge_agent/runtime.py` | `TripRuntime`, `FrameStep` |
+| Nối 1–14 | `edge_agent/main.py` (thiết bị), `edge_agent/web/bridge.py` (web) | — |
 
 ### 3.3 Cổng mạng
 
@@ -175,6 +199,7 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 | Backend (FastAPI) | `http://localhost:8100` | Swagger: `/docs` |
 | Frontend (Vite dev) | `http://localhost:5173` | Backend và HUD server chỉ cho phép origin này |
 | HUD server của edge | `http://127.0.0.1:8765` | Chỉ nghe localhost, không mở ra mạng |
+| Mô phỏng lái xe (`tools/drive_sim.py`) | `http://127.0.0.1:8766/can` | Chỉ nghe localhost; edge agent và `#/live` đọc tốc độ, xi nhan từ đây |
 
 ---
 
@@ -200,6 +225,7 @@ P-135/
 │   ├── hud/                   13  HUD trên cửa sổ + server HUD cục bộ
 │   ├── io/                    14  publisher metadata, tải ngưỡng từ backend
 │   ├── config.py              Đọc thresholds.yaml
+│   ├── runtime.py             Một chuyến quanh khối 6–14, dùng chung cho main.py và web/bridge.py
 │   └── main.py                Chương trình chính (khối 1–14)
 ├── backend/                   FastAPI + SQLite
 │   ├── app.py                 Endpoint, phân quyền
@@ -343,7 +369,7 @@ python -m backend.manage create-device cam-001 --driver-id drv-001
 - `create-device` in **khóa thiết bị đúng một lần**. Hãy lưu nó vào `DG_DEVICE_KEY`.
 - `driver-id` của thiết bị là tài xế lái xe đó. Sự kiện của thiết bị được gán cho tài xế này.
 
-### 7.3 Toàn bộ hệ thống (3 terminal)
+### 7.3 Toàn bộ hệ thống (4 terminal)
 
 **Terminal 1 – Backend**
 
@@ -357,13 +383,14 @@ uvicorn backend.app:app --port 8100
 ```powershell
 .venv\Scripts\activate
 $env:DG_DEVICE_KEY = "dgk_..."          # khóa từ bước 7.2
-python -m edge_agent.main --source 0 --backend http://localhost:8100 --device-id cam-001 --scenario config\scenarios\highway_night.yaml
+python -m edge_agent.main --source 0 --backend http://localhost:8100 --device-id cam-001
 ```
 
 | Tùy chọn | Ý nghĩa |
 |---|---|
 | `--source` | Camera (`0`) hoặc file video |
-| `--scenario` | Kịch bản CAN giả lập: `city_day.yaml` (mặc định), `highway_night.yaml`, `parked.yaml` |
+| `--scenario` | Kịch bản CAN dựng sẵn (`city_day.yaml`, `highway_night.yaml`, `parked.yaml`) thay cho công cụ mô phỏng lái xe. Bỏ đi (mặc định) thì tốc độ lấy từ `tools/drive_sim.py` |
+| `--sim-url` | Địa chỉ công cụ mô phỏng lái xe (mặc định `http://127.0.0.1:8766/can`) |
 | `--backend`, `--device-id` | Bật gửi metadata (bỏ đi thì chạy hoàn toàn offline) |
 | `--hud-port` | Cổng server HUD (mặc định 8765, `0` = tắt) |
 | `--no-window` | Không mở cửa sổ, chỉ in ra terminal |
@@ -372,14 +399,44 @@ python -m edge_agent.main --source 0 --backend http://localhost:8100 --device-id
 
 Khi chạy, terminal in các dòng `[ALERT L2] phone -> sound + seat vibration ...` và dòng trạng thái định kỳ.
 
-**Terminal 3 – Frontend**
+**Terminal 3 – Mô phỏng lái xe** (thay cho CAN của xe thật; không phải nút trên giao diện)
+
+```powershell
+.venv\Scripts\activate
+python tools/drive_sim.py                                          # lái bằng bàn phím
+python tools/drive_sim.py --scenario config\scenarios\city_day.yaml   # hoặc chạy lại một kịch bản
+```
+
+| Phím | Tác dụng |
+|---|---|
+| `w` / `↑` | Tăng tốc (+10 km/h mục tiêu) |
+| `s` / `↓` | Giảm tốc (−10 km/h) |
+| `space` | Dừng (về 0 km/h) |
+| `c` | Chạy 50 km/h |
+| `a` / `←`, `d` / `→` | Xi nhan trái / phải (giữ bật đến khi tắt: bấm lại cùng phím, bấm bên kia, hoặc `x`) |
+| `x` | Tắt xi nhan |
+| `q` | Thoát |
+
+- Tốc độ tăng / giảm dần như xe thật (`config/drive_sim.yaml`).
+- **0 km/h = xe đang dừng / đỗ**: HUD hiện "Xe đang đỗ", không cảnh báo mất tập trung, đăng ký khuôn mặt
+  chạy được: HUD hỏi trước (vì sao cần đăng ký, ảnh khuôn mặt không bị lưu hay gửi đi), bấm **"Đồng ý,
+  bắt đầu đăng ký"** thì vào 3 bước, **"Để sau"** thì hỏi lại ở lần dừng sau. Không có nút "Tạm dừng"
+  nữa.
+- **Không chạy công cụ = xe đứng yên 0 km/h.** Tắt công cụ khi xe đang đỗ thì sau 1 s
+  (`context.vehicle_signal_stale_s`) xe vẫn là đỗ, HUD báo mất tín hiệu.
+- **Tắt công cụ khi xe đang chạy = mất tín hiệu xe** (M26): HUD báo "Mất tín hiệu xe: vẫn giám sát như đang
+  chạy" kèm âm báo, tốc độ hiện "–", hệ thống vẫn giám sát như xe đang chạy. Tắt công cụ khi xe đang đỗ cũng
+  được báo ("coi như đang đỗ đến khi có lại tốc độ"). Chạy lại công cụ thì có lại tín hiệu.
+- `#/live` trên trình duyệt cũng đọc công cụ này (cùng máy).
+
+**Terminal 4 – Frontend**
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo. Bấm **"Bật âm thanh"** (trình duyệt chỉ cho phát âm thanh sau một lần bấm): vòng mô phỏng 90 s lần lượt phát đủ các loại cảnh báo, nên nghe được tiếng của từng loại.
+- **HUD trong xe:** http://localhost:5173/#/hud. Không cần đăng nhập, đọc trạng thái từ edge agent. Nếu không có edge agent, bấm **"Chạy mô phỏng"** để demo. Âm thanh cảnh báo luôn bật, không có nút tắt; trình duyệt chỉ cho phát tiếng sau một lần chạm, nên lần chạm đầu tiên vào màn hình sẽ bật tiếng (dải vàng nhắc cho tới lúc đó): vòng mô phỏng 90 s lần lượt phát đủ các loại cảnh báo, nên nghe được tiếng của từng loại.
 - **Xem trước giao diện HUD:** http://localhost:5173/#/hud-preview. Chọn từng trạng thái (L0–L3, mất camera, mất kết nối, ngày / đêm) ở thanh dưới cùng, không cần edge agent. Mở thẳng một trạng thái: `#/hud-preview?s=l3&night=0`.
 - **Dashboard:** http://localhost:5173/#/dashboard. Đăng nhập bằng tài khoản ở bước 7.2.
 
@@ -441,6 +498,8 @@ timeline:
 ```
 
 Tốc độ được nội suy tuyến tính giữa các mốc. Xi nhan giữ nguyên trạng thái cho tới khi đổi.
+Dùng được theo hai cách: `python -m edge_agent.main --scenario ...` (chỉ thiết bị) hoặc
+`python tools/drive_sim.py --scenario ...` (cả thiết bị lẫn `#/live` cùng đọc).
 
 ---
 
@@ -537,12 +596,21 @@ python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\ben
 ## 10. Kiểm thử
 
 ```powershell
-pytest tests\test_edge_agent tests\test_backend -q       # 359 test, không cần camera hay video
+pytest tests\test_edge_agent tests\test_backend -q       # không cần camera hay video
 ruff check edge_agent backend tools tests
-cd frontend; npm test; npm run build                     # 18 test frontend
+cd frontend; npm test; npm run build                     # test frontend (vitest)
+cd frontend; npx playwright install chromium; npm run e2e   # test end to end #/live + dashboard (lần đầu)
 ```
 
 Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả**, không cần video (quy ước của `CLAUDE.md`).
+
+**Test end to end** (`frontend/e2e/`, Playwright, cũng chạy trong CI):
+- Tự dựng backend trên database tạm và bản build frontend có cổng test (`VITE_E2E=1`); không đụng vào
+  `data/driverguard.db`. Cần Python (requirements-dev) và mạng để tải Pyodide (~60 MB).
+- Camera là camera giả của Chrome; khối 3 nhận **landmark số tổng hợp** (`tools/e2e_setup.py`) thay cho
+  MediaPipe, YOLO tắt. Không có ảnh khuôn mặt nào, không cần file model. Khối 6–14 chạy thật trong Pyodide.
+- Kịch bản: đăng ký khi đỗ → lái → nhắm mắt thành L3 → kết thúc chuyến (dùng thử); tài xế đăng nhập → đổi
+  tài xế → đăng ký lại → kết thúc chuyến → quản lý thấy báo cáo trên dashboard.
 
 ---
 
@@ -623,5 +691,8 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | M5 | Khối 14 + backend FastAPI | Xong |
 | M6 | Dashboard React + HUD | Xong |
 | M7 | Script eval + benchmark FPS + dataset Kaggle | Công cụ xong, bảng FPS có số, số theo từng ảnh trên Kaggle; chờ video có nhãn thời gian |
+| M8 | Chạy toàn bộ trên trình duyệt (`#/live`) | Xong |
+| M9–M29 | **Version 2**: đăng ký tài xế, tạm ngưng giám sát, chớp chậm, gục / cúi, nhướn mày, giao diện cho tài xế, kết thúc chuyến + báo cáo, mô phỏng lái xe, xi nhan, lớp chung + e2e, FMEA, âm thanh luôn bật, đồng ý trước khi đăng ký, cúi nhìn xuống ≠ nhắm mắt, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu | Xong (v2.0.0 deploy 01/10 gồm M9–M18) |
 
-Chi tiết từng mốc: `docs/roadmap.md`. Quy ước làm việc: `CLAUDE.md`.
+Chi tiết từng mốc: `docs/roadmap.md`; thay đổi ở v2: `docs/release-v2.md`; việc chưa làm:
+`docs/improvements.md`. Quy ước làm việc: `CLAUDE.md`.

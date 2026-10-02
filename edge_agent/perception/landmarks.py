@@ -4,13 +4,20 @@ Wraps the MediaPipe Tasks API in VIDEO mode (uses tracking between frames, faste
 than per-image detection). Returns `FaceLandmarks` in pixel coordinates of the
 preprocessed image, or None when no face is found.
 
-When several faces are visible (e.g. a passenger), the largest one is taken as
-the driver, since the driver sits closest to the camera.
+When several faces are visible (e.g. a passenger), `DriverSelector` picks the driver:
+- before driver enrollment (block 6 stage, edge_agent/perception/enrollment.py): the largest
+  face, since the driver usually sits closest to the camera;
+- after it: the face whose shape signature (ratios of landmark distances, nearly constant
+  when the head turns) and position match the enrolled driver best. A driver turning to a
+  mirror shrinks in 2D and a passenger leaning in grows, so "largest" alone swaps people.
+Only numbers are kept (ratios, a centre, a size), never an image.
 
 With `blendshapes` on, the same model also outputs its 52 blendshape scores; the driver's
 eyeBlinkLeft / eyeBlinkRight (0 = open, 1 = shut) are kept. They are pretrained, need no
 per-driver baseline and cost no measurable time (NITYMED: AUC 0.986 for closed eyes, EAR
-0.987, eye CNN 0.881), so block 5 uses them as its eye-state score.
+0.987, eye CNN 0.881), so block 5 uses them as its eye-state score. browOuterUpLeft / Right
+(frontalis, FACS AU2) are kept too: drowsy drivers raise the brows to keep the eyes open
+(Vural et al. 2007), a drowsiness sign of block 7.
 """
 
 from __future__ import annotations
@@ -30,6 +37,10 @@ from edge_agent.perception.preprocess import PreprocessedFrame
 class LandmarkConfig:
     model_path: str = "models/face_landmarker.task"
     num_faces: int = 2
+    # Driver choice once enrolled: score = shape distance / driver_shape_tol
+    # + centre distance / (driver_position_tol x enrolled face size); lowest wins.
+    driver_shape_tol: float = 0.08
+    driver_position_tol: float = 2.0
     min_face_detection_confidence: float = 0.5
     min_face_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
@@ -58,6 +69,86 @@ class FaceLandmarks:
     timestamp: float
     # MediaPipe blendshapes eyeBlinkLeft, eyeBlinkRight of the driver (0 open .. 1 shut), None when off.
     eye_blink: tuple[float, float] | None = None
+    # MediaPipe blendshape browOuterUp, mean of both sides (0 rest .. 1 raised), None when off.
+    brow_up: float | None = None
+
+
+# Rigid points for the shape signature (no mouth / chin: they move when talking or yawning).
+EYE_OUTER = (33, 263)  # right, left eye outer corners: the inter-ocular distance unit
+SHAPE_PAIRS = (
+    (33, 133),  # right eye width
+    (362, 263),  # left eye width
+    (168, 1),  # nose length: between the eyes -> nose tip
+    (10, 168),  # forehead -> between the eyes
+    (234, 454),  # face width at the cheeks
+    (129, 358),  # nose width (alae)
+    (133, 362),  # inner eye corners
+)
+
+
+@dataclass(frozen=True)
+class DriverAnchor:
+    """The enrolled driver, as numbers only: who to pick among several faces."""
+
+    shape: tuple[float, ...]  # face_shape() of the driver
+    center: tuple[float, float]  # face centre / image width (x and y)
+    size: float  # inter-ocular distance / image width
+
+
+def face_shape(points: np.ndarray) -> tuple[float, ...]:
+    """Ratios of 3D landmark distances to the inter-ocular distance: a per-person signature."""
+    iod = float(np.linalg.norm(points[EYE_OUTER[0]] - points[EYE_OUTER[1]]))
+    if iod < 1e-6:
+        return tuple(0.0 for _ in SHAPE_PAIRS)
+    return tuple(float(np.linalg.norm(points[a] - points[b])) / iod for a, b in SHAPE_PAIRS)
+
+
+def face_center_size(points: np.ndarray, width: int) -> tuple[tuple[float, float], float]:
+    """Face centre (mean of the eye corners and nose tip) and inter-ocular distance, / image width."""
+    w = max(width, 1)
+    c = points[[EYE_OUTER[0], EYE_OUTER[1], 1], :2].mean(axis=0) / w
+    iod = float(np.linalg.norm(points[EYE_OUTER[0], :2] - points[EYE_OUTER[1], :2])) / w
+    return (float(c[0]), float(c[1])), iod
+
+
+def shape_distance(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """Mean relative difference of two shape signatures (0 = same)."""
+    return float(np.mean([abs(x - y) / max(abs(y), 1e-6) for x, y in zip(a, b, strict=True)]))
+
+
+class DriverSelector:
+    """Which of the detected faces is the driver. Keeps the driver's last position between frames."""
+
+    def __init__(self, config: LandmarkConfig | None = None) -> None:
+        self.config = config or LandmarkConfig()
+        self.anchor: DriverAnchor | None = None
+        self._last_center: tuple[float, float] | None = None
+
+    def set_anchor(self, anchor: DriverAnchor | None) -> None:
+        self.anchor = anchor
+        self._last_center = None if anchor is None else anchor.center
+
+    def choose(self, faces: list[np.ndarray], width: int) -> int:
+        """Index of the driver's face, -1 when there is none."""
+        if not faces:
+            return -1
+        if self.anchor is None or len(faces) == 1:
+            k = max(range(len(faces)), key=lambda i: bbox_area(faces[i]))
+        else:
+            k = min(range(len(faces)), key=lambda i: self._score(faces[i], width))
+        if self.anchor is not None:
+            self._last_center = face_center_size(faces[k], width)[0]
+        return k
+
+    def _score(self, points: np.ndarray, width: int) -> float:
+        cfg, anchor = self.config, self.anchor
+        assert anchor is not None
+        center, _ = face_center_size(points, width)
+        ref = self._last_center or anchor.center
+        moved = float(np.hypot(center[0] - ref[0], center[1] - ref[1]))
+        return shape_distance(face_shape(points), anchor.shape) / cfg.driver_shape_tol + moved / (
+            cfg.driver_position_tol * max(anchor.size, 1e-6)
+        )
 
 
 def bbox_area(points: np.ndarray) -> float:
@@ -97,6 +188,7 @@ class FaceLandmarkDetector:
         )
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._last_ts_ms = -1
+        self.selector = DriverSelector(self.config)
 
     def close(self) -> None:
         self._landmarker.close()
@@ -128,13 +220,15 @@ class FaceLandmarkDetector:
             np.array([(lm.x * w, lm.y * h, lm.z * w) for lm in face], dtype=np.float32)
             for face in result.face_landmarks
         ]
-        k = max(range(len(faces)), key=lambda i: bbox_area(faces[i]))
+        k = self.selector.choose(faces, w)
         driver = faces[k]
-        eye_blink = None
+        eye_blink = brow_up = None
         if result.face_blendshapes and k < len(result.face_blendshapes):
             scores = {c.category_name: c.score for c in result.face_blendshapes[k]}
             if "eyeBlinkLeft" in scores and "eyeBlinkRight" in scores:
                 eye_blink = (float(scores["eyeBlinkLeft"]), float(scores["eyeBlinkRight"]))
+            if "browOuterUpLeft" in scores and "browOuterUpRight" in scores:
+                brow_up = (float(scores["browOuterUpLeft"]) + float(scores["browOuterUpRight"])) / 2.0
         return FaceLandmarks(
             points=driver,
             image_width=w,
@@ -144,4 +238,5 @@ class FaceLandmarkDetector:
             frame_id=frame.frame_id,
             timestamp=frame.timestamp,
             eye_blink=eye_blink,
+            brow_up=brow_up,
         )

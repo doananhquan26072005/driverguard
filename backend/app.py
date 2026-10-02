@@ -23,7 +23,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import jwt
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -46,6 +46,7 @@ from backend.schemas import (
     TimelineOut,
     TokenOut,
     TripOut,
+    TripReportOut,
     UserIn,
     UserOut,
 )
@@ -108,11 +109,18 @@ def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str 
         row = smp.model_dump(mode="json")
         row["ts"] = smp.ts.astimezone(UTC).isoformat()
         samples += db.insert_sample(conn, dev, drv, row)
+    summaries = 0
+    for summ in batch.summaries:
+        row = summ.model_dump(mode="json")
+        row["started_at"] = summ.started_at.astimezone(UTC).isoformat()
+        row["ended_at"] = summ.ended_at.astimezone(UTC).isoformat()
+        summaries += db.upsert_summary(conn, dev, drv, row)
     return BatchResult(
         accepted=accepted,
         duplicates=len(batch.events) - accepted,
         feedback_applied=feedback,
         samples_accepted=samples,
+        summaries_accepted=summaries,
     )
 
 
@@ -313,6 +321,48 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         since: datetime | None = None,
     ) -> dict[str, Any]:
         return db.event_stats(conn, **scoped(user, driver_id, None), since=utc_iso(since))
+
+    @app.get("/api/v1/trip-reports", response_model=list[TripReportOut])
+    def get_trip_reports(
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        since: datetime | None = None,
+        unreviewed_only: bool = False,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> list[dict[str, Any]]:
+        """End-of-trip summaries, newest first. Drivers see their own; the higher roles see every
+        driver's, and which ones nobody has reviewed yet."""
+        return db.query_summaries(
+            conn, **scoped(user, driver_id, None), since=utc_iso(since), unreviewed_only=unreviewed_only, limit=limit
+        )
+
+    @app.get("/api/v1/trip-reports/{device_id}/{trip_id}", response_model=TripReportOut)
+    def get_trip_report(
+        device_id: Annotated[str, Path(pattern=ID_PATTERN)],
+        trip_id: Annotated[str, Path(pattern=ID_PATTERN)],
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+    ) -> dict[str, Any]:
+        own = scoped(user, None, None)["driver_id"]
+        report = db.get_summary(conn, device_id, trip_id, own)
+        if report is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such trip report")
+        return report
+
+    @app.post("/api/v1/trip-reports/{device_id}/{trip_id}/review", response_model=TripReportOut)
+    def review_trip_report(
+        device_id: Annotated[str, Path(pattern=ID_PATTERN)],
+        trip_id: Annotated[str, Path(pattern=ID_PATTERN)],
+        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))],
+        conn: Conn,
+    ) -> dict[str, Any]:
+        """A higher role has read the report (the driver's report reached someone)."""
+        if not db.review_summary(conn, device_id, trip_id, user["sub"]):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such trip report")
+        report = db.get_summary(conn, device_id, trip_id)
+        assert report is not None
+        return report
 
     @app.get("/api/v1/thresholds", response_model=ThresholdsOut)
     def get_thresholds(

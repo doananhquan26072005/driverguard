@@ -174,7 +174,9 @@ class YoloPhoneModel:
     """Synchronous YOLOv8n ONNX inference returning phone detections only."""
 
     def __init__(self, config: PhoneDetectorConfig | None = None) -> None:
-        import onnxruntime as ort  # imported here so the rest of the package works without it
+        from edge_agent.perception.onnx import load_ort  # imported here so the rest of the package works without it
+
+        ort = load_ort()
 
         self.config = config or PhoneDetectorConfig()
         model = self.config.resolved_model_path()

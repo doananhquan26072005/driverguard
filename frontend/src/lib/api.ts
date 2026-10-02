@@ -1,7 +1,7 @@
 // Backend client (FastAPI, backend/app.py). The JWT lives in sessionStorage only:
 // it is gone when the tab closes.
 import { query, type RangeKey, rangeStart } from "./format";
-import type { EventRecord, Role, Session, Stats, Thresholds, Timeline, Trip } from "./types";
+import type { EventRecord, Role, Session, Stats, Thresholds, Timeline, Trip, TripReport } from "./types";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 const SESSION_KEY = "driverguard.session";
@@ -102,6 +102,20 @@ export function getTrips(s: Session, range: RangeKey): Promise<Trip[]> {
 
 export function getTimeline(s: Session, tripId: string): Promise<Timeline> {
   return request(`/api/v1/timeline${query({ trip_id: tripId })}`, {}, s);
+}
+
+// End-of-trip reports: drivers get their own, the higher roles every driver's.
+export function getTripReports(s: Session, range: RangeKey, unreviewedOnly = false): Promise<TripReport[]> {
+  return request(
+    `/api/v1/trip-reports${query({ since: rangeStart(range), unreviewed_only: unreviewedOnly || undefined, limit: 200 })}`,
+    {},
+    s,
+  );
+}
+
+export function reviewTripReport(s: Session, r: Pick<TripReport, "device_id" | "trip_id">): Promise<TripReport> {
+  const path = `/api/v1/trip-reports/${encodeURIComponent(r.device_id)}/${encodeURIComponent(r.trip_id)}/review`;
+  return request(path, { method: "POST" }, s);
 }
 
 export function getThresholds(s: Session): Promise<Thresholds> {

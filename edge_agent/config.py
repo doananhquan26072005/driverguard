@@ -25,12 +25,15 @@ SECTIONS = frozenset(
         "landmarks",
         "eye_state",
         "features",
+        "enrollment",
         "phone",
         "drowsiness",
         "distraction",
         "context",
         "risk",
         "trip_memory",
+        "trip_summary",
+        "eval",
         "alert",
         "hud",
         "publisher",
@@ -46,6 +49,7 @@ MOVED_KEYS = {
 # Keys replaced by a different setting: the hint says what to use instead.
 REPLACED_KEYS = {
     "risk.drowsy.active_when_stopped": "risk.drowsy.stationary_max_level (0 = off while standing still)",
+    "risk.distraction.no_face_s": "risk.unavailable.no_face_s (no face now means monitoring unavailable, not L2)",
 }
 
 
@@ -66,7 +70,11 @@ CONSISTENCY_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("drowsiness.perclos_close_ratio", "<=", "drowsiness.eye.close_ratio", "PERCLOS counts closed, not narrowed eyes"),
     ("drowsiness.eye.cnn_closed", "<=", "drowsiness.microsleep_deep.cnn", "deep closure is closed (CNN)"),
     ("drowsiness.yawn.mar_close", "<", "drowsiness.yawn.mar_open", "yawn hysteresis"),
+    ("drowsiness.yawn.enrolled_close_above", "<", "drowsiness.yawn.enrolled_open_above", "enrolled yawn hysteresis"),
+    ("enrollment.closed_ear_ratio", "<=", "drowsiness.eye.close_ratio", "enrolled shut eyes read as closed"),
     ("drowsiness.nod.min_s", "<", "drowsiness.nod.max_s", "nod duration range"),
+    ("drowsiness.slow_blink.time_frac_low", "<", "drowsiness.slow_blink.time_frac_high", "blink time ramps up"),
+    ("drowsiness.slow_blink.reopen_ratio_low", "<", "drowsiness.slow_blink.reopen_ratio_high", "reopen ramps up"),
     ("drowsiness.nod.return_deg", "<", "drowsiness.nod.pitch_down_deg", "nod hysteresis"),
     ("context.min_speed_kmh", "<", "context.high_speed_kmh", "moving before high speed"),
     ("context.stationary_kmh", "<=", "context.min_speed_kmh", "standing still is not moving"),

@@ -1,12 +1,12 @@
 // #/live: DriverGuard on the visitor's own camera, everything computed in this browser.
-// Setup (who is driving, CAN scenario, privacy) -> loading steps -> the in-car HUD fed by
+// Setup (who is driving, face enrollment, privacy) -> loading steps -> the in-car HUD fed by
 // LiveAgent, with a small self-view so the driver can place the camera.
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Camera, Check, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
 import HudScreen from "../hud/HudScreen";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
-import type { Session } from "../lib/types";
-import { LiveAgent, SCENARIOS, STEPS, type LiveStats, type Scenario, type Step } from "./agent";
+import type { HudEnrollment, Session } from "../lib/types";
+import { LiveAgent, STEPS, shownStep, type LiveStats, type Step } from "./agent";
 
 const BTN =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-0 px-5 text-hud-label font-semibold transition-colors disabled:opacity-50";
@@ -22,22 +22,51 @@ function cameraError(err: unknown): string {
   return `Không khởi động được: ${String((err as Error)?.message ?? err)}`;
 }
 
+const TECH_KEY = "driverguard.live.tech"; // per-browser convenience only
+
+function readTech(): boolean {
+  try {
+    return localStorage.getItem(TECH_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeTech(on: boolean): void {
+  try {
+    localStorage.setItem(TECH_KEY, on ? "1" : "0");
+  } catch {
+    // storage unavailable (private mode): the toggle just won't be remembered
+  }
+}
+
+// Self-view line: how long enrollment took and how many steps were redone (to judge it in a test).
+function enrollText(e: HudEnrollment): string {
+  const redo = e.attempts ? ` · làm lại ${e.attempts}` : "";
+  if (e.status === "done") return `Đăng ký xong ${e.duration_s?.toFixed(1) ?? "–"} s${redo}`;
+  if (e.status === "failed") return `Đăng ký chưa được${redo}`;
+  if (e.status === "waiting") return "Chưa đăng ký (xe đang chạy)";
+  const step = ["look_camera", "look_road", "close_eyes"].indexOf(e.status) + 1;
+  return `Đăng ký bước ${step}/3 · ${Math.round(e.progress * 100)}%${redo}`;
+}
+
 export default function LiveScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [session, setSession] = useState<Session | null>(loadSession);
   const [guest, setGuest] = useState(false);
-  const [scenario, setScenario] = useState<Scenario>("highway_night");
   const [step, setStep] = useState<Step | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [agent, setAgent] = useState<LiveAgent | null>(null);
+  const [ended, setEnded] = useState(false); // trip ended: the summary is on screen, the camera is off
 
   useEffect(() => () => void agent?.stop(), [agent]);
 
   async function start() {
     if (!videoRef.current) return;
     setError(null);
+    setEnded(false);
     try {
-      setAgent(await LiveAgent.start(videoRef.current, scenario, guest ? null : session, setStep));
+      setAgent(await LiveAgent.start(videoRef.current, guest ? null : session, setStep));
     } catch (err) {
       setError(cameraError(err));
       setStep(null);
@@ -58,8 +87,8 @@ export default function LiveScreen() {
   const ready = agent != null;
   return (
     <>
-      {ready && <HudScreen source={agent} />}
-      <SelfView videoRef={videoRef} agent={agent} onStop={stop} />
+      {ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} />}
+      <SelfView videoRef={videoRef} agent={ended ? null : agent} onStop={stop} />
       {!ready && (
         <div className="min-h-dvh bg-hud-bg font-hud text-hud-ink antialiased [color-scheme:dark]">
           <main className="mx-auto grid max-w-2xl gap-6 px-4 py-8 sm:py-12">
@@ -67,7 +96,8 @@ export default function LiveScreen() {
               <p className="text-hud-label font-bold tracking-tight text-hud-system">DriverGuard</p>
               <h1 className="m-0 text-hud-title font-bold">Giám sát tài xế ngay trên trình duyệt</h1>
               <p className="m-0 text-hud-body text-hud-ink-2">
-                Dùng webcam của bạn để phát hiện buồn ngủ và mất tập trung, cảnh báo theo 4 mức L0–L3.
+                Dùng webcam của bạn để nhận biết khi bạn buồn ngủ hoặc mất tập trung, và nhắc bạn bằng màu, chữ và
+                âm thanh. Cuối chuyến có bản tổng kết.
               </p>
             </header>
 
@@ -109,27 +139,24 @@ export default function LiveScreen() {
                 </section>
 
                 <section className="grid gap-3">
-                  <h2 className="m-0 text-hud-body font-semibold">2. Tình huống xe (tốc độ giả lập)</h2>
-                  <div role="radiogroup" className="grid gap-2">
-                    {(Object.keys(SCENARIOS) as Scenario[]).map((s) => (
-                      <label
-                        key={s}
-                        className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-hud-sm px-4 py-2 ring-1 ${
-                          scenario === s ? "bg-hud-raised ring-hud-system" : "bg-hud-surface ring-hud-line"
-                        }`}
-                      >
-                        <input type="radio" name="scenario" checked={scenario === s} onChange={() => setScenario(s)} className="size-4 accent-[var(--color-hud-system)]" />
-                        <span className="text-hud-label">{SCENARIOS[s]}</span>
-                      </label>
-                    ))}
-                  </div>
+                  <h2 className="m-0 text-hud-body font-semibold">2. Đăng ký khuôn mặt (khoảng 10 giây)</h2>
+                  <ol className="m-0 grid gap-2 rounded-hud-sm bg-hud-surface p-4 pl-9 text-hud-label text-hud-ink-2 ring-1 ring-hud-line">
+                    <li>Nhìn thẳng vào camera.</li>
+                    <li>Nhìn ra đường phía trước như khi lái.</li>
+                    <li>Nhắm mắt đến khi nghe tiếng bíp.</li>
+                  </ol>
+                  <p className="m-0 text-hud-label text-hud-ink-3">
+                    Lúc bắt đầu xe đang đỗ (0 km/h): hệ thống hướng dẫn từng bước bằng chữ và giọng nói (nhớ bật âm
+                    thanh). Đỗ hay đang lái là theo tốc độ xe, lấy từ công cụ mô phỏng lái xe trên máy này; chưa chạy công
+                    cụ thì xe được coi là đang đỗ. Nút “Đổi tài xế” để người lái mới đăng ký lại.
+                  </p>
                 </section>
 
                 <section className="grid gap-3">
                   <h2 className="m-0 text-hud-body font-semibold">3. Bắt đầu</h2>
                   <p className="m-0 text-hud-label text-hud-ink-2">
-                    Đặt camera ngang mặt, nhìn thẳng 10–20 giây đầu để hệ thống học mắt và tư thế đầu của bạn. Nên dùng
-                    Chrome hoặc Edge trên máy tính.
+                    Đặt camera ngang mặt. Bấm “Kết thúc chuyến” khi xong để xem bản tổng kết. Nên dùng Chrome hoặc Edge
+                    trên máy tính.
                   </p>
                   <button
                     type="button"
@@ -205,27 +232,36 @@ function LoginBox({ onLogin, onGuest }: { onLogin: (s: Session) => void; onGuest
 
 function Progress({ step }: { step: Step }) {
   const order = Object.keys(STEPS) as (keyof typeof STEPS)[];
-  const current = step === "ready" ? order.length : order.indexOf(step);
+  const shown = shownStep(step);
+  const current = shown.step === "ready" ? order.length : order.indexOf(shown.step);
   return (
     <ol className="m-0 grid list-none gap-2 p-0" aria-live="polite">
       {order.map((s, i) => (
-        <li key={s} className="flex min-h-12 items-center gap-3 rounded-hud-sm bg-hud-surface px-4 ring-1 ring-hud-line">
-          {i < current ? (
-            <Check aria-hidden className="size-5 text-hud-safe" />
-          ) : i === current ? (
-            <LoaderCircle aria-hidden className="size-5 animate-spin text-hud-system" />
-          ) : (
-            <span aria-hidden className="size-5" />
+        <li key={s} className="grid min-h-12 gap-2 rounded-hud-sm bg-hud-surface px-4 py-3 ring-1 ring-hud-line">
+          <div className="flex items-center gap-3">
+            {i < current ? (
+              <Check aria-hidden className="size-5 text-hud-safe" />
+            ) : i === current ? (
+              <LoaderCircle aria-hidden className="size-5 animate-spin text-hud-system" />
+            ) : (
+              <span aria-hidden className="size-5" />
+            )}
+            <span className={`text-hud-label ${i <= current ? "text-hud-ink" : "text-hud-ink-3"}`}>{STEPS[s]}</span>
+          </div>
+          {s === "prepare" && i === current && (
+            <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(shown.progress * 100)} className="h-2 overflow-hidden rounded-full bg-hud-raised">
+              <div className="h-full origin-left bg-hud-system transition-transform duration-300" style={{ transform: `scaleX(${Math.max(shown.progress, 0.05)})` }} />
+            </div>
           )}
-          <span className={`text-hud-label ${i <= current ? "text-hud-ink" : "text-hud-ink-3"}`}>{STEPS[s]}</span>
         </li>
       ))}
     </ol>
   );
 }
 
-/** Small mirror of the driver's own camera (local only) with the live measurements and a stop button.
- * At L3 it shrinks to the stop button: the HUD then shows nothing but the stop message. */
+/** Small mirror of the driver's own camera (local only) with a plain status and a stop button.
+ * The measurements (EAR, angles, FPS, YOLO time) are for engineers: hidden unless "Chi tiết kỹ thuật"
+ * is switched on (remembered in this browser). At L3 it shrinks to the stop button. */
 function SelfView({
   videoRef,
   agent,
@@ -244,6 +280,11 @@ function SelfView({
   const m = stats?.measures;
   const fmt = (v: number | null | undefined, d = 2) => (v == null ? "–" : v.toFixed(d));
   const compact = stats?.level === 3;
+  const [tech, setTech] = useState(readTech);
+  const toggleTech = () => {
+    setTech(!tech);
+    writeTech(!tech);
+  };
 
   return (
     <div
@@ -260,18 +301,31 @@ function SelfView({
       )}
       {agent && !compact && (
         <div className="grid gap-1 p-2 text-[13px] leading-tight tabular-nums">
-          <span>
-            {m?.face ? "Có mặt" : "Không thấy mặt"} · EAR {fmt(m?.ear)} · {fmt(stats?.fps, 0)} FPS
+          <span className={m?.face ? "" : "text-hud-caution"}>
+            {m?.face ? "Đang theo dõi" : "Không thấy mặt, hãy chỉnh camera"}
           </span>
-          <span className="text-white/70">
-            Yaw {fmt(m?.yaw, 0)}° · Pitch {fmt(m?.pitch, 0)}° · ĐT{" "}
-            {stats?.phoneOn ? `${m?.phone ? "có" : "không"} (${fmt(stats.yoloMs, 0)} ms)` : "tắt"}
-          </span>
+          {tech && (
+            <>
+              <span className="text-white/70">
+                EAR {fmt(m?.ear)} · {fmt(stats?.fps, 0)} FPS
+              </span>
+              <span className="text-white/70">
+                Yaw {fmt(m?.yaw, 0)}° · Pitch {fmt(m?.pitch, 0)}° · ĐT{" "}
+                {stats?.phoneOn ? `${m?.phone ? "có" : "không"} (${fmt(stats.yoloMs, 0)} ms)` : "tắt"}
+              </span>
+              {stats?.enrollment && stats.enrollment.status !== "off" && (
+                <span className="text-white/70">{enrollText(stats.enrollment)}</span>
+              )}
+            </>
+          )}
           {stats?.sendError ? (
             <span className="text-hud-caution">{stats.sendError}</span>
           ) : (
-            stats && stats.sent > 0 && <span className="text-white/70">Đã lưu {stats.sent} cảnh báo</span>
+            tech && stats && stats.sent > 0 && <span className="text-white/70">Đã lưu {stats.sent} cảnh báo</span>
           )}
+          <button type="button" onClick={toggleTech} aria-pressed={tech} className="mt-1 min-h-8 rounded-full border-0 bg-transparent text-[12px] text-white/60 underline">
+            {tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
+          </button>
           <button type="button" onClick={onStop} className="mt-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-full border-0 bg-white/15 text-[13px] font-semibold text-white">
             <Square aria-hidden className="size-3.5" /> Dừng camera
           </button>

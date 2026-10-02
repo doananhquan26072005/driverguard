@@ -97,10 +97,14 @@ def test_batch_body_goes_to_the_users_browser_device(agent):
     assert "image" not in json.dumps(body)
 
 
-def test_no_face_while_driving_is_l2(agent):
+def test_no_face_while_driving_is_unavailable(agent):
     _, t, f = run(agent, 12, points=synthetic_face())
-    state, _, _ = run(agent, 4, t0=t, frame0=f, points=None)
-    assert state["level"] == 2 and "no_face" in state["reasons"]
+    state, t, f = run(agent, 4, t0=t, frame0=f, points=None)
+    assert state["unavailable"] and state["level"] == 0 and state["reasons"] == []
+    state, _, _ = run(agent, 1, t0=t, frame0=f, points=synthetic_face())
+    assert not state["unavailable"]
+    reasons = [e["reasons"] for e in events_of(agent)]
+    assert reasons == [["monitoring_unavailable"], ["monitoring_restored"]]
 
 
 def yolo_output_with_phone(box_xywh, num_boxes=8, classes=80):
@@ -179,3 +183,40 @@ def test_grey_frame_counts_as_infrared(agent):
     assert agent.eye_state.runs == 1  # IR: block 5 uses the eye-state score
     agent.frame(0.1, 1, W, H, face, 1, (0.05, 0.05), 12.0, 140.0)
     assert agent.eye_state.runs == 2  # held for eye_state.hold_s after IR
+
+
+def test_every_face_goes_in_and_the_largest_is_the_driver_before_enrollment(agent):
+    driver = synthetic_face(ear=0.30)
+    small = synthetic_face(ear=0.20)
+    small[:, :2] = (small[:, :2] - small[1, :2]) * 0.6 + (120, 300)  # a passenger further back
+    faces = np.stack([small, driver]).ravel()
+    state = json.loads(agent.frame(0.0, 0, W, H, faces, 2, (0.05, 0.05, 0.05, 0.05), 12.0, 140.0))
+    assert abs(state["measures"]["ear"] - 0.30) < 0.01
+
+
+def test_hud_state_carries_the_enrollment_step():
+    parked = WebAgent("web-an", "trip-web-2", scenario="parked")
+    state, t, n = run(parked, 0.2, points=synthetic_face())
+    assert state["enrollment"]["status"] == "consent"
+    assert parked.vehicle("enroll_start") == "ok"
+    state, _, _ = run(parked, 1, t0=t, points=synthetic_face(), frame0=n)
+    assert state["enrollment"]["status"] == "look_camera"
+    assert 0 < state["enrollment"]["progress"] < 1
+
+
+def test_a_failing_frame_is_caught_and_a_lasting_failure_shows_on_the_hud(agent, monkeypatch):
+    """M28: an exception in the frame path must not reach the page (it used to console.error every frame)."""
+    face = synthetic_face()
+    _, t, n = run(agent, 1, points=face)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(agent, "extractor", broken)
+    state, t, n = run(agent, 2, t0=t, points=face, frame0=n)
+    assert state["processing_error"] is True and state["measures"]["face"] is False
+    monkeypatch.undo()
+    state, _, _ = run(agent, 0.2, t0=t, points=face, frame0=n)
+    assert state["processing_error"] is False
+    reasons = [e["reasons"] for e in events_of(agent)]
+    assert ["agent_error"] in reasons and ["agent_recovered"] in reasons

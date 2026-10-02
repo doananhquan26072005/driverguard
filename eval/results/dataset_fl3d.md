@@ -47,24 +47,46 @@ Detected = the event falls inside the run ± 1 s.
 | ≥ 3 s | 11 | 11 (100.0%) |
 
 - Microsleep ≥ 1 s: delay p50 1.00 s after the labelled start.
-- Microsleep ≥ 1.5 s (should reach L3 at once): 72/95 got a new L3 alert (75.8%); risk level 3 reached on 75/95 (78.9%) (the gap is the L3 cooldown).
+- Microsleep ≥ 1.5 s (should reach L3 at once): 72/95 got a new L3 alert (75.8%); risk level 3 reached on 75/95 (78.9%) (no new alert: L3 was still active, or its cooldown).
 - Yawning runs: 76/99 got a yawn event (76.8%), delay p50 1.56 s.
 
 ## 5. Where predictions land
 
-hit = inside a matching labelled run ± 1 s (alerts: any microsleep / yawning run ± 3 s); false = on a frame labelled `alert`, away from every drowsy run; other = another drowsy label or an unlabelled stretch. 26.0 min of frames are labelled alert.
+hit = inside a matching labelled run ± 1 s (alerts: any microsleep / yawning run ± 3 s); false = on a frame labelled `alert`, away from every drowsy run; other = another drowsy label or an unlabelled stretch. 26.0 min (0.43 h) of frames are labelled alert: false alarms per hour are over those hours, with an exact Poisson 95 % CI. A few false alarms on 26 minutes say little: no PRD verdict (≤ 1.0 / h) while the CI still spans it.
 
-| Prediction | Total | Hit | False | Other | False / hour of alert frames |
+| Prediction | Total | Hit | False | Other | False / hour of alert frames (95% CI) |
 |---|---:|---:|---:|---:|---:|
-| microsleep event | 146 | 137 | 4 | 5 | 9.2 |
-| yawn event | 76 | 76 | 0 | 0 | 0.0 |
-| nod event | 118 | 115 | 1 | 2 | 2.3 |
-| perclos_high event | 15 | 5 | 5 | 5 | 11.6 |
-| L1 alert | 10 | 9 | 1 | 0 | 2.3 |
-| L2 alert | 13 | 9 | 3 | 1 | 6.9 |
-| L3 alert | 83 | 81 | 1 | 1 | 2.3 |
+| microsleep event | 146 | 137 | 4 | 5 | 9.2 (2.52–23.7) |
+| yawn event | 76 | 76 | 0 | 0 | 0.0 (0.00–8.5) |
+| nod event | 118 | 115 | 1 | 2 | 2.3 (0.06–12.9) |
+| perclos_high event | 15 | 5 | 5 | 5 | 11.6 (3.75–27.0) |
+| L1 alert | 9 | 7 | 2 | 0 | 4.6 (0.56–16.7) |
+| L2 alert | 16 | 11 | 3 | 2 | 6.9 (1.43–20.3) |
+| L3 alert | 83 | 81 | 1 | 1 | 2.3 (0.06–12.9) |
 
-Alerts by reason: drowsy_score fp 2, drowsy_score hit 16, drowsy_score other 1, microsleep fp 1, microsleep hit 81, microsleep other 1, off_road fp 2, off_road hit 2.
+Alerts by reason: drowsy_score fp 3, drowsy_score hit 16, drowsy_score other 2, microsleep fp 1, microsleep hit 81, microsleep other 1, off_road fp 2, off_road hit 2.
+
+False alerts by reason and level (an alert with two reasons counts under both):
+
+| Reason | Level | False | False / hour (95% CI) |
+|---|---:|---:|---:|
+| drowsy_score | L1 | 2 | 4.6 (0.56–16.7) |
+| drowsy_score | L2 | 1 | 2.3 (0.06–12.9) |
+| microsleep | L3 | 1 | 2.3 (0.06–12.9) |
+| off_road | L2 | 2 | 4.6 (0.56–16.7) |
+
+## 5b. FAR / MAR on windows (drowsiness)
+
+| Scored | Awake windows | FAR (95% CI) | Drowsy windows | MAR (95% CI) | Skipped |
+|---|---:|---:|---:|---:|---:|
+| Drowsiness, level ≥ L1 | 5 | 80.0% (37.6%–96.4%) | 2 | 0.0% (0.0%–65.8%) | 154 |
+| Drowsiness, level ≥ L2 | 5 | 40.0% (11.8%–76.9%) | 2 | 0.0% (0.0%–65.8%) | 154 |
+
+Windows of 10 s, not overlapping, from 30 s after each clip start (the start-up stretch is left out). Drowsy window: ≥ 50% inside a labelled episode; awake window: ≥ 50% known-awake and not touching an episode; others skipped. Predicted: the branch's risk level reaches the stated level in the window. Wilson CI; windows of one clip are correlated, so the CI is optimistic.
+
+Drowsy = FL3D microsleep / yawning frames; awake = frames labelled alert; frames FL3D left out are unlabelled. Distraction is not labelled in FL3D.
+
+Read with care: the videos are ~1 min (30 s start-up left out) and dense with microsleep / yawning runs, so few windows qualify. FL3D `alert` frames sit between the microsleeps of the same drowsy actor, and `drowsy_score` is meant to stay up for minutes after a microsleep: a high FAR here is not an awake driver disturbed. FAR / MAR are for long recordings (UTA-RLDD, DMD).
 
 ## 6. Per video
 
@@ -78,7 +100,7 @@ Alerts by reason: drowsy_score fp 2, drowsy_score hit 16, drowsy_score other 1, 
 | P1042772 | 2.1 | 93.7% | 14 (10) | 0 (0) | 0/1/8 | 0 |
 | P1042777 | 2.1 | 93.1% | 11 (11) | 0 (0) | 0/1/9 | 0 |
 | P1042780 | 0.7 | 96.8% | 0 (0) | 3 (3) | 0/0/0 | 0 |
-| P1042787 | 2.2 | 99.1% | 1 (1) | 1 (1) | 1/0/0 | 0 |
+| P1042787 | 2.2 | 99.1% | 1 (1) | 1 (1) | 1/1/0 | 1 |
 | P1042793 | 2.1 | 97.5% | 14 (13) | 0 (0) | 0/1/10 | 2 |
 | P1042797 | 2.1 | 98.3% | 18 (14) | 0 (0) | 1/0/10 | 0 |
 | P1043066 | 0.5 | 88.5% | 0 (0) | 5 (3) | 0/0/0 | 0 |
@@ -101,7 +123,7 @@ Alerts by reason: drowsy_score fp 2, drowsy_score hit 16, drowsy_score other 1, 
 | P1043119 | 0.3 | 100.0% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043120 | 0.3 | 100.0% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043121 | 0.4 | 100.0% | 0 (0) | 3 (3) | 0/0/0 | 0 |
-| P1043122 | 2.1 | 100.0% | 4 (2) | 0 (0) | 1/0/0 | 0 |
+| P1043122 | 2.1 | 100.0% | 4 (2) | 0 (0) | 0/2/0 | 0 |
 | P1043123 | 0.4 | 98.9% | 0 (0) | 3 (2) | 0/0/0 | 0 |
 | P1043124 | 0.4 | 100.0% | 0 (0) | 3 (2) | 0/0/0 | 0 |
 | P1043125 | 0.3 | 100.0% | 0 (0) | 3 (3) | 0/0/0 | 0 |
@@ -115,4 +137,4 @@ Alerts by reason: drowsy_score fp 2, drowsy_score hit 16, drowsy_score other 1, 
 | P1043134 | 0.4 | 100.0% | 0 (0) | 4 (3) | 0/0/0 | 0 |
 | P1043135 | 0.5 | 100.0% | 0 (0) | 4 (3) | 0/0/0 | 0 |
 
-False alerts (video, time, level, reasons): P1042793 86.4s L2 drowsy_score; P1042793 122.8s L3 microsleep; P1043106 31.0s L1 drowsy_score; P1042756 11.4s L2 off_road; P1042756 58.6s L2 off_road.
+False alerts (video, time, level, reasons): P1042787 77.9s L1 drowsy_score; P1043106 31.0s L1 drowsy_score; P1042793 86.4s L2 drowsy_score; P1042793 122.8s L3 microsleep; P1042756 11.4s L2 off_road; P1042756 58.6s L2 off_road.

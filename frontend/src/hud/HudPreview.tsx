@@ -1,8 +1,10 @@
 // #/hud-preview: every HUD state on demand, for design review and screenshots. Fixed
-// snapshots only (no edge agent, no sound); the live screen stays #/hud.
+// snapshots only (no edge agent, no sound played); the live screen stays #/hud.
 import { useEffect, useState } from "react";
 import type { HudAlert, HudSnapshot, Level, Reason } from "../lib/types";
+import { demoTripSummary } from "./demo";
 import HudView from "./HudView";
+import TripSummaryView from "./TripSummaryView";
 import type { HudLink } from "./hudModel";
 
 interface Scenario {
@@ -13,6 +15,7 @@ interface Scenario {
   patch?: Partial<HudSnapshot>;
   link?: HudLink;
   cameraLost?: boolean;
+  soundBlocked?: boolean; // the browser still blocks sound: the amber touch-to-enable strip
 }
 
 const SCENARIOS: Scenario[] = [
@@ -21,9 +24,56 @@ const SCENARIOS: Scenario[] = [
   { key: "l1t", label: "L1 xu hướng", level: 1, reasons: ["trend"], patch: { drowsy_score: 41 } },
   { key: "l2o", label: "L2 nhìn lệch", level: 2, reasons: ["off_road"], patch: { distraction_score: 100 } },
   { key: "l2p", label: "L2 điện thoại", level: 2, reasons: ["phone", "off_road"], patch: { distraction_score: 100 } },
-  { key: "l2f", label: "L2 mất mặt", level: 2, reasons: ["no_face"], patch: { distraction_score: 100 } },
+  { key: "off", label: "Tạm ngưng (mất mặt)", patch: { unavailable: true } },
+  { key: "mute", label: "Chưa có tiếng", soundBlocked: true },
+  { key: "err", label: "Lỗi xử lý", patch: { processing_error: true } },
+  { key: "slow", label: "Máy chậm", patch: { low_fps: true } },
   { key: "l3", label: "L3 ngủ gật", level: 3, reasons: ["microsleep"], patch: { drowsy_score: 71 } },
+  {
+    key: "en0",
+    label: "Đăng ký: xác nhận",
+    patch: { speed_kmh: 0, enrollment: { status: "consent", progress: 0, hint: null, attempts: 0 } },
+  },
+  {
+    key: "en1",
+    label: "Đăng ký 1",
+    patch: { speed_kmh: 0, enrollment: { status: "look_camera", progress: 0.4, hint: null, attempts: 0 } },
+  },
+  {
+    key: "en2",
+    label: "Đăng ký 2 (giữ yên)",
+    patch: { speed_kmh: 0, enrollment: { status: "look_road", progress: 0.2, hint: "hold_still", attempts: 1 } },
+  },
+  {
+    key: "en3",
+    label: "Đăng ký 3",
+    patch: { speed_kmh: 0, enrollment: { status: "close_eyes", progress: 0.7, hint: null, attempts: 0 } },
+  },
+  {
+    key: "enw",
+    label: "Chưa đăng ký",
+    patch: { enrollment: { status: "waiting", progress: 0, hint: "stop_vehicle", attempts: 0 } },
+  },
+  {
+    key: "turnl",
+    label: "Xi nhan trái",
+    patch: { speed_kmh: 32, vehicle: { source: "sim", connected: true, speed_kmh: 32, turn_signal: "left", driving: true } },
+  },
+  {
+    key: "park",
+    label: "Đỗ, chưa có tín hiệu xe",
+    patch: { speed_kmh: 0, vehicle: { source: "sim", connected: false, speed_kmh: 0, turn_signal: null, driving: false } },
+  },
+  {
+    key: "lost",
+    label: "Mất tín hiệu xe",
+    patch: {
+      speed_kmh: null,
+      vehicle: { source: "sim", connected: false, speed_kmh: null, turn_signal: null, driving: true, signal_lost: true },
+    },
+  },
   { key: "cam", label: "Mất camera", cameraLost: true },
+  { key: "trip", label: "Tổng kết chuyến" },
   { key: "down", label: "Mất kết nối", link: "down" },
 ];
 
@@ -46,6 +96,13 @@ function snapshotFor(s: Scenario, night: boolean, now: number, since: number): H
     perclos_60s: 0.06,
     fps: 30,
     feedback_window_s: 120,
+    vehicle: {
+      source: "sim",
+      connected: true,
+      speed_kmh: s.patch?.speed_kmh ?? 68,
+      turn_signal: null,
+      driving: !s.patch || s.patch.speed_kmh !== 0,
+    },
     alerts,
     ...s.patch,
   };
@@ -82,6 +139,9 @@ export default function HudPreview() {
 
   return (
     <>
+      {key === "trip" ? (
+        <TripSummaryView summary={demoTripSummary()} delivery="sent" onDone={() => pick("l0")} />
+      ) : (
       <HudView
         snap={snap}
         link={scenario.link ?? "ok"}
@@ -89,14 +149,21 @@ export default function HudPreview() {
         cameraLost={scenario.cameraLost ?? false}
         demo={false}
         now={now}
-        sound
+        sound={!scenario.soundBlocked}
         feedbackTarget={snap.alerts[0] ?? null}
         toast={toast}
         edgeUrl="(xem trước)"
-        onToggleSound={() => undefined}
+        onEnableSound={() => undefined}
         onToggleDemo={() => undefined}
         onFalseAlarm={() => setToast("Đã ghi nhận cảnh báo sai (xem trước)")}
+        onEndTrip={() => pick("trip")}
+        onVehicle={(action) =>
+          action === "enroll_start"
+            ? pick("en1")
+            : setToast(action === "enroll_later" ? "Để sau (xem trước)" : "Đổi tài xế (xem trước)")
+        }
       />
+      )}
       <nav
         aria-label="Kịch bản xem trước"
         className="fixed inset-x-2 bottom-2 z-40 flex flex-wrap justify-center gap-1 rounded-hud-sm bg-black/70 p-1.5 font-hud text-[13px] text-white backdrop-blur"

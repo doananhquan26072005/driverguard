@@ -8,7 +8,7 @@
 
 | Yêu cầu | Trạng thái | Ở đâu / cách kiểm tra |
 |---|:---:|---|
-| Phát hiện buồn ngủ / mất tập trung trên video mẫu | ✅ | `python -m edge_agent.main --source <video>` (HowToUse.md mục 7). Buồn ngủ: microsleep, PERCLOS, ngáp, gục đầu (khối 7). Mất tập trung: điện thoại, nhìn lệch, mất mặt (khối 8). Đã chạy trên video YawDD, NITYMED (FL3D), SUST-DDD |
+| Phát hiện buồn ngủ / mất tập trung trên video mẫu | ✅ | `python -m edge_agent.main --source <video>` (HowToUse.md mục 7). Buồn ngủ: microsleep, PERCLOS, ngáp, gục đầu (khối 7). Mất tập trung: điện thoại, nhìn lệch (khối 8). Mất mặt ≥ 3 s khi chạy: tạm ngưng giám sát (`unavailable`, v2). Đã chạy trên video YawDD, NITYMED (FL3D), SUST-DDD |
 | Phân cấp cảnh báo | ✅ | L0–L3 ở khối 9 (risk engine) + 12 (alert manager, cooldown). HUD: màu, icon, âm thanh theo mức; L3 đỏ toàn màn hình, còi lặp tới khi mở mắt |
 | Đăng nhập ≥ 2 vai trò | ✅ | 4 vai trò: `driver` (tài xế, chỉ thấy dữ liệu của mình), `engineer` (kỹ sư an toàn, chỉnh ngưỡng), `manager` (fleet manager, xem toàn đội, ngưỡng chỉ đọc), `admin`. JWT + mật khẩu scrypt, phân quyền kiểm ở backend (`backend/app.py`), test ở `tests/test_backend/` |
 | HITL cho hiệu chỉnh ngưỡng | ✅ | Vòng lặp: tài xế bấm **"Cảnh báo sai"** trên HUD → backend lưu phản hồi → dashboard tab *Ngưỡng* hiện tỉ lệ báo sai theo từng lý do → kỹ sư sửa ngưỡng (có min/max, backend từ chối bộ ngưỡng thiết bị sẽ bỏ qua) → lưu thành phiên bản mới kèm người sửa → thiết bị tải về khi khởi động |
@@ -58,33 +58,47 @@ Theo sự kiện:
 | Microsleep ≥ 3 s phát hiện | 11/11 (100%) |
 | Ngáp phát hiện | 76/99 (76.8%), trễ p50 1.56 s |
 
-Cảnh báo đúng / sai (sai = nằm trên đoạn nhãn tỉnh táo, xa mọi đoạn buồn ngủ; 26 phút nhãn tỉnh táo):
+Cảnh báo đúng / sai (sai = nằm trên đoạn nhãn tỉnh táo, xa mọi đoạn buồn ngủ). Mẫu số là **0,43 giờ**
+(26 phút) nhãn tỉnh táo; CI 95% Poisson chính xác:
 
-| Mức | Tổng | Đúng | Sai | Sai / giờ |
+| Mức | Tổng | Đúng | Sai | Sai / giờ (CI 95%) |
 |---|---:|---:|---:|---:|
-| L1 | 10 | 9 | 1 | 2.3 |
-| L2 | 13 | 9 | 3 | 6.9 |
-| L3 | 83 | 81 | 1 | 2.3 |
+| L1 | 9 | 7 | 2 | 4.6 (0.56–16.7) |
+| L2 | 16 | 11 | 3 | 6.9 (1.43–20.3) |
+| L3 | 83 | 81 | 1 | 2.3 (0.06–12.9) |
+
+CI rất rộng: 26 phút không đủ để nói gì về chỉ tiêu PRD ≤ 1,0 / giờ. Bảng tách theo lý do × mức, và
+FAR / MAR theo cửa sổ, ở `dataset_fl3d.md` (mục 5, 5b). FAR / MAR trên FL3D không đọc được: video
+~1 phút, chỉ 7 cửa sổ hợp lệ sau khi bỏ 30 s khởi động.
 
 → Precision cảnh báo L3: 81/83 = 97.6%.
 
+v2 (01/10): thêm thành phần chớp chậm vào `drowsy_score` (ngưỡng tạm). Trước đó: L1 10 (9 đúng, 1 sai),
+L2 13 (9 đúng, 3 sai). Chớp chậm nâng vài cảnh báo L1 đúng lên L2, và thêm 1 cảnh báo L1
+`drowsy_score` sai (P1042787, 77,9 s). Gục đầu giữ nguyên như v1, vì phép thử "giật lên nhanh" đang
+tắt mặc định. Nhướn mày chưa đo được, vì trace cũ không có blendshape lông mày. Chi tiết ở
+`docs/release-v2.md`.
+
 ### 2.3 Trên video có nhãn theo clip
 
-**YawDD** (319 video, 124 phút; `dataset_yawdd.md`):
+**YawDD** (319 video, 124 phút; `dataset_yawdd.md`, chấm từ trace):
 
-| Hành vi | Precision | Recall | F1 | FP / giờ |
-|---|---:|---:|---:|---:|
-| Ngáp | 100.0% | 82.5% | 0.90 | 0.0 |
-| Cảnh báo L1–L3 bất kỳ (clip không buồn ngủ) | – | – | – | 4.8 |
+| Hành vi | Precision | Recall | F1 | Giờ đo | FP / giờ (CI 95%) |
+|---|---:|---:|---:|---:|---:|
+| Ngáp | 100.0% | 82.5% | 0.90 | 1.45 | 0.0 (0.00–2.5) |
+| Cảnh báo L1–L3 bất kỳ (clip không ngáp) | – | – | – | 1.45 | 6.9 (3.31–12.7) |
+
+Trước 01/10 số này là 4,8 / giờ vì chia cho cả 124 phút, gồm cả clip ngáp (ở đó không thể có cảnh
+báo sai). Nay chia cho 1,45 giờ clip không ngáp. 10 cảnh báo sai không đổi.
 
 **SUST-DDD** (2074 clip ~10 s quay trên xe thật; `dataset_sust_ddd.md`):
 
-| Luật | Recall (clip buồn ngủ) | FPR (clip không buồn ngủ) | Precision |
-|---|---:|---:|---:|
-| Đạt L3 | 1.1% | 0.2% | 84.6% |
-| Cảnh báo L1–L3 bất kỳ | 1.6% | 2.9% | 33.3% |
+| Luật | Recall (clip buồn ngủ) | FPR (clip không buồn ngủ) | Precision | Cảnh báo / giờ trên clip không buồn ngủ (CI 95%) |
+|---|---:|---:|---:|---:|
+| Đạt L3 | 1.1% | 0.2% | 84.6% | |
+| Cảnh báo L1–L3 bất kỳ | 1.6% | 2.4% | 38.1% | 8.5 (5.56–12.5), trên 3,05 giờ |
 
-Clip SUST chỉ dài 10 s, ngắn hơn thời gian khởi động PERCLOS (30 s) và mốc EAR riêng (10 s), nên recall thấp là do dataset, không phải hệ thống bỏ sót khi lái lâu. Cảnh báo sai chủ yếu là `off_road` khi tài xế quay đầu thật (25/34).
+Clip SUST chỉ dài 10 s, ngắn hơn thời gian khởi động PERCLOS (30 s) và mốc EAR riêng (10 s), nên recall thấp là do dataset, không phải hệ thống bỏ sót khi lái lâu. Cảnh báo sai chủ yếu là `off_road` khi tài xế quay đầu thật (24/26). Từ 01/10 (v2) mất mặt ≥ 3 s khi xe chạy là `unavailable`, không cảnh báo (PRD FR-6): bớt 7 cảnh báo L2 `no_face` và 1 `off_road` được giữ trong lúc mất mặt (trước: FPR 2,9 %, 34 cảnh báo sai).
 
 ### 2.4 Tỉ lệ báo sai từ thực tế (HITL)
 

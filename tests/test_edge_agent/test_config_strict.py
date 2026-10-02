@@ -12,13 +12,16 @@ from edge_agent.decision.alert_manager import AlertConfig
 from edge_agent.decision.pipeline import DecisionPipeline
 from edge_agent.decision.risk_engine import RiskConfig
 from edge_agent.decision.trip_memory import TripMemoryConfig
+from edge_agent.decision.trip_summary import TripSummaryConfig
 from edge_agent.hud.server import HudConfig
 from edge_agent.io.publisher import PublisherConfig
 from edge_agent.perception import PreprocessConfig
+from edge_agent.perception.enrollment import EnrollmentConfig
 from edge_agent.perception.eye_state import EyeStateConfig
 from edge_agent.perception.features import FeatureConfig
 from edge_agent.perception.landmarks import LandmarkConfig
 from edge_agent.perception.phone_detector import PhoneDetectorConfig
+from tools.metrics import EvalConfig
 
 CONFIGS = {
     "capture": CaptureConfig,
@@ -26,12 +29,15 @@ CONFIGS = {
     "landmarks": LandmarkConfig,
     "eye_state": EyeStateConfig,
     "features": FeatureConfig,
+    "enrollment": EnrollmentConfig,
     "phone": PhoneDetectorConfig,
     "drowsiness": DrowsinessConfig,
     "distraction": DistractionConfig,
     "context": ContextConfig,
     "risk": RiskConfig,
     "trip_memory": TripMemoryConfig,
+    "trip_summary": TripSummaryConfig,
+    "eval": EvalConfig,
     "alert": AlertConfig,
     "hud": HudConfig,
     "publisher": PublisherConfig,

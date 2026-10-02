@@ -249,3 +249,49 @@ def test_camera_lost_event_is_listed_but_not_counted_as_an_alert(client, enginee
     assert next(e for e in events if e["type"] == "system")["reasons"] == ["camera_lost"]
     stats = client.get("/api/v1/stats", headers=engineer).json()
     assert stats["total"] == 1 and "camera_lost" not in stats["by_reason"]
+
+
+def test_unavailable_and_enrolled_events_are_accepted_as_system_events(client, engineer):
+    from edge_agent.io.publisher import build_system_event
+
+    records = [
+        build_system_event("monitoring_unavailable", "trip-20261001-090000", 60.0),
+        build_system_event("monitoring_restored", "trip-20261001-090000", 60.0),
+        build_system_event("driver_enrolled", "trip-20261001-090000", 0.0, metrics={"enroll_s": 9.6, "enroll_redo": 1}),
+    ]
+    assert batch(client, events=records).status_code == 200
+    events = client.get("/api/v1/events", headers=engineer).json()
+    assert sorted(e["reasons"][0] for e in events) == [
+        "driver_enrolled",
+        "monitoring_restored",
+        "monitoring_unavailable",
+    ]
+    assert client.get("/api/v1/stats", headers=engineer).json()["total"] == 0
+
+
+def test_vehicle_signal_lost_and_restored_are_system_events(client, engineer):
+    from edge_agent.io.publisher import build_system_event
+
+    records = [
+        build_system_event("vehicle_signal_lost", "trip-20261002-090000", None),
+        build_system_event("vehicle_signal_restored", "trip-20261002-090000", 58.0),
+    ]
+    assert batch(client, events=records).status_code == 200
+    events = client.get("/api/v1/events", headers=engineer).json()
+    assert sorted(e["reasons"][0] for e in events) == ["vehicle_signal_lost", "vehicle_signal_restored"]
+    assert client.get("/api/v1/stats", headers=engineer).json()["total"] == 0
+
+
+def test_loop_health_events_are_system_events(client, engineer):
+    from edge_agent.io.publisher import build_system_event
+
+    trip = "trip-20261002-100000"
+    records = [
+        build_system_event("agent_error", trip, 50.0),
+        build_system_event("agent_recovered", trip, 50.0),
+        build_system_event("low_fps", trip, 50.0, metrics={"fps": 9.8}),
+        build_system_event("fps_restored", trip, 50.0, metrics={"fps": 29.5}),
+    ]
+    assert batch(client, events=records).status_code == 200
+    events = client.get("/api/v1/events", headers=engineer).json()
+    assert len(events) == 4 and client.get("/api/v1/stats", headers=engineer).json()["total"] == 0

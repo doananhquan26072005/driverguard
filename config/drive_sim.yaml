@@ -1,0 +1,8 @@
+# Driving simulator (tools/drive_sim.py): stands in for the vehicle's CAN bus during tests.
+# Not detection thresholds (those are in thresholds.yaml): only how the simulated car behaves.
+port: 8766                  # 127.0.0.1:<port>/can, read by edge_agent.main (--sim-url) and #/live
+tick_hz: 20                 # physics steps per second
+speed_step_kmh: 10          # one press of accelerate / decelerate changes the target speed by this
+max_kmh: 120
+accel_kmh_per_s: 8          # ~0-50 km/h in 6 s, an ordinary car
+brake_kmh_per_s: 15         # decelerate / stop

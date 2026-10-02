@@ -1,11 +1,13 @@
 """Block 14 - Metadata publisher.
 
-Sends metadata (never images) to the backend in batches, with an offline queue. Three
+Sends metadata (never images) to the backend in batches, with an offline queue. Four
 kinds of records share the queue and the batches:
 - events:   one per emitted alert (`build_event`), plus system events such as the camera
             being lost / back (`build_system_event`: type "system", level 0)
 - feedback: the driver pressed "false alarm" on the HUD for an event (`publish_feedback`)
 - samples:  one fatigue-timeline point per minute of driving (`build_sample`)
+- summaries: one per trip when it ends (block 11 `TripSummary.to_dict()`), for the driver and
+            the higher roles
 
 - `publish()` only checks the event and appends it to a persistent outbox (SQLite file,
   metadata JSON only), so the main loop never waits on the network.
@@ -51,7 +53,7 @@ BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
 
 # body (JSON-ready dict) -> HTTP status code; raises OSError when the backend is unreachable
 Transport = Callable[[dict[str, Any]], int]
-KINDS = {"event": "events", "feedback": "feedback", "sample": "samples"}  # record kind -> batch field
+KINDS = {"event": "events", "feedback": "feedback", "sample": "samples", "summary": "summaries"}  # kind -> field
 
 
 @dataclass(frozen=True)
@@ -121,6 +123,10 @@ def build_event(alert: Alert, r: DecisionResult, trip_id: str, now: datetime | N
             "nod_count_5min": d.nod_count_5min,
             "off_road_duration": _round(x.off_road_duration, 2),
             "phone_ratio_2s": _round(x.phone_ratio_2s),
+            "blink_time_frac": _round(d.blink_time_frac),  # v2: time in blinks (slow blinks)
+            "reopen_ratio": _round(d.reopen_ratio, 2),  # v2: eyelid reopening vs the driver's own start
+            "brow_raise_count_5min": d.brow_raise_count_5min,  # v2: brows raised to keep the eyes open
+            "enrolled": int(r.enrollment.enrolled),  # judged with the driver's own baselines
         },
     }
 
@@ -140,9 +146,15 @@ def build_sample(
 
 
 def build_system_event(
-    reason: str, trip_id: str, speed_kmh: float | None = None, now: datetime | None = None
+    reason: str,
+    trip_id: str,
+    speed_kmh: float | None = None,
+    now: datetime | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Device status change (camera_lost / camera_restored): the driver is (not) monitored from now on."""
+    """Device status change: camera_lost / camera_restored and monitoring_unavailable /
+    monitoring_restored (the driver is (not) monitored from now on), driver_enrolled (from now on
+    with the driver's own baselines)."""
     return {
         "event_id": str(uuid.uuid4()),
         "ts": (now or datetime.now(UTC)).isoformat(),
@@ -153,8 +165,15 @@ def build_system_event(
         "drowsy_score": 0.0,
         "distraction_score": 0.0,
         "speed_kmh": _round(speed_kmh, 1),
-        "metrics": {},
+        "metrics": dict(metrics or {}),
     }
+
+
+def build_enrolled_event(r: DecisionResult, trip_id: str, now: datetime | None = None) -> dict[str, Any]:
+    """Driver enrollment done: how long it took and how many steps were redone. Never the profile."""
+    e = r.enrollment
+    metrics = {"enroll_s": _round(e.duration_s, 1), "enroll_redo": e.attempts}
+    return build_system_event("driver_enrolled", trip_id, r.context.speed_kmh, now, metrics)
 
 
 def build_feedback(event_id: str, now: datetime | None = None) -> dict[str, Any]:
@@ -287,6 +306,16 @@ class MetadataPublisher:
 
     def publish_sample(self, sample: dict[str, Any]) -> None:
         self._enqueue("sample", sample)
+
+    def publish_summary(self, summary: dict[str, Any]) -> None:
+        """The trip ended: its summary (block 11), for the driver and the higher roles."""
+        self._enqueue("summary", summary)
+
+    def publish_record(self, kind: str, data: dict[str, Any]) -> None:
+        """A record built elsewhere (edge_agent.runtime): kind "event", "sample", "feedback" or "summary"."""
+        if kind not in KINDS:
+            raise ValueError(f"unknown record kind {kind!r}")
+        self._enqueue(kind, data)
 
     def _enqueue(self, kind: str, data: dict[str, Any]) -> None:
         check_metadata_only(data)

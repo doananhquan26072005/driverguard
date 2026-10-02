@@ -1,5 +1,7 @@
-// Alert sounds with WebAudio (no audio files). Browsers only allow sound after a user
-// gesture, so the HUD has a "Bật âm thanh" button that calls unlock().
+// Alert sounds with WebAudio (no audio files). Sound is always on: armAudio() creates the audio
+// context as the HUD opens and resumes it on the first touch / key anywhere (browsers only allow
+// sound after a user gesture; the APK can allow it from the start). While it is still blocked the
+// HUD asks the driver to touch the screen.
 //
 // Each kind of alert has its own sound, so the driver knows what happened without looking:
 // - drowsiness (drowsy_score, blink_rate): soft descending sine notes ("time to rest")
@@ -7,9 +9,13 @@
 // - microsleep below L3 (red light: capped at L1): two low "wake up" pulses
 // - off_road: rising two-note triangle, twice ("look ahead")
 // - phone: fast high square beeps ("put the phone down")
-// - no_face: low buzzing pulses (driver out of view)
+// - no_face (v1 events only): low buzzing pulses (driver out of view)
 // - L3 (microsleep): loud alternating siren, repeated while the eyes stay closed
 // - camera lost / back: descending buzz / rising two notes (system, not the driver)
+// - monitoring unavailable (face lost while moving) / back: low buzzing pulses / rising two notes
+// - vehicle signal lost while driving / back (M26): two falling triangle notes, twice / rising two notes
+// - monitoring stopped (M28: HUD gets no data / no link / frames failing): three long falling buzzes
+// - driver enrollment: one short clear beep when a step ends ("open your eyes" after step 3)
 // The level sets the volume. alertSound() is pure (tested); play() does the WebAudio part.
 import type { Level, Reason } from "../lib/types";
 
@@ -22,7 +28,13 @@ export type SoundKind =
   | "no_face"
   | "alarm"
   | "camera_lost"
-  | "camera_restored";
+  | "camera_restored"
+  | "enroll_beep"
+  | "monitoring_unavailable"
+  | "monitoring_restored"
+  | "vehicle_signal_lost"
+  | "vehicle_signal_restored"
+  | "monitoring_stopped";
 
 export interface Note {
   at: number; // seconds from the start of the sound
@@ -75,6 +87,18 @@ function notesFor(kind: SoundKind, level: Level): Note[] {
       return seq([440, 294, 196], 0.25, 0.3, "sawtooth");
     case "camera_restored":
       return seq([523, 784], 0.18, 0.25, "sine");
+    case "monitoring_unavailable":
+      return seq([330, 330, 330], 0.32, 0.22, "sawtooth");
+    case "monitoring_restored":
+      return seq([523, 784], 0.18, 0.25, "sine");
+    case "enroll_beep":
+      return seq([1047], 0, 0.25, "sine");
+    case "vehicle_signal_lost":
+      return [...seq([660, 440], 0.22, 0.2, "triangle"), ...seq([660, 440], 0.22, 0.2, "triangle", 0.6)];
+    case "vehicle_signal_restored":
+      return seq([440, 660], 0.18, 0.25, "sine");
+    case "monitoring_stopped":
+      return seq([587, 440, 294], 0.32, 0.3, "sawtooth");
   }
 }
 
@@ -85,20 +109,71 @@ export function alertSound(level: Level, reasons: readonly Reason[]): Sound | nu
   return { kind, gain: GAIN[level], notes: notesFor(kind, level) };
 }
 
-export function systemSound(kind: "camera_lost" | "camera_restored"): Sound {
-  return { kind, gain: kind === "camera_lost" ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
+export type SystemSoundKind =
+  | "camera_lost"
+  | "camera_restored"
+  | "enroll_beep"
+  | "monitoring_unavailable"
+  | "monitoring_restored"
+  | "vehicle_signal_lost"
+  | "vehicle_signal_restored"
+  | "monitoring_stopped";
+
+export function systemSound(kind: SystemSoundKind): Sound {
+  const loud =
+    kind === "camera_lost" || kind === "monitoring_unavailable" || kind === "vehicle_signal_lost" || kind === "monitoring_stopped";
+  return { kind, gain: loud ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
+}
+
+/** Spoken prompt (Vietnamese voice when the browser has one). Same user-gesture rule as sound. */
+export function say(text: string): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "vi-VN";
+  window.speechSynthesis.cancel(); // only the latest prompt matters
+  window.speechSynthesis.speak(u);
 }
 
 let ctx: AudioContext | null = null;
 
+/** Sound is playing (the audio context runs). False until the browser allows it. */
+export function audioOn(): boolean {
+  return ctx?.state === "running";
+}
+
+/** Resume the audio context; call it from a touch / click (also done by armAudio's listeners). */
 export function unlock(): boolean {
   try {
     ctx ??= new AudioContext();
-    void ctx.resume();
+    void ctx.resume().catch(() => undefined);
     return true;
   } catch {
     return false;
   }
+}
+
+const GESTURES = ["pointerdown", "touchstart", "keydown"] as const;
+
+/** Sound on from the start: create the audio context now, resume it on the first gesture anywhere,
+ *  and report every change (running / blocked). Returns the clean-up. */
+export function armAudio(onChange: (on: boolean) => void): () => void {
+  if (typeof window === "undefined" || !unlock() || !ctx) {
+    onChange(false);
+    return () => undefined;
+  }
+  const audio = ctx;
+  const report = () => onChange(audio.state === "running");
+  const onGesture = () => {
+    unlock();
+    report();
+  };
+  audio.addEventListener("statechange", report);
+  GESTURES.forEach((e) => window.addEventListener(e, onGesture, { capture: true, passive: true }));
+  report();
+  return () => {
+    audio.removeEventListener("statechange", report);
+    GESTURES.forEach((e) => window.removeEventListener(e, onGesture, { capture: true }));
+  };
 }
 
 function tone(at: number, note: Note, gain: number): void {
@@ -116,7 +191,8 @@ function tone(at: number, note: Note, gain: number): void {
 }
 
 export function play(sound: Sound | null): void {
-  if (!ctx || !sound) return;
+  // Not while blocked: notes scheduled on a suspended context would all sound at once on resume.
+  if (!ctx || ctx.state !== "running" || !sound) return;
   const t = ctx.currentTime;
   for (const note of sound.notes) tone(t + note.at, note, sound.gain);
 }

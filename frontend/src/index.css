@@ -37,6 +37,7 @@
   --color-hud-danger: #dc2626; /* L3, filled: white text 4.8:1 */
   --color-hud-danger-deep: #7f1d1d; /* L3 pulse phase, white text 10:1 */
   --color-hud-system: #60a5fa; /* device / camera / link: not the driver */
+  --color-hud-turn: #34d399; /* turn signal arrows only, like the car's own dashboard */
 
   /* Type scale (tablet at 60-80 cm) */
   --text-hud-label: 16px;
@@ -58,11 +59,21 @@
   --animate-hud-in-fast: hud-in 150ms ease-out both;
   --animate-hud-in-slow: hud-in 600ms ease-out both;
   --animate-hud-pulse: hud-pulse 1s ease-in-out infinite;
+  /* Turn signal: on / off like a real indicator, 1.4 Hz (<= 3 flashes/s). */
+  --animate-hud-blink: hud-blink 0.7s steps(1, end) infinite;
 
   @keyframes hud-in {
     from {
       opacity: 0;
       transform: translateY(8px) scale(0.98);
+    }
+  }
+  @keyframes hud-blink {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.15;
     }
   }
   @keyframes hud-pulse {

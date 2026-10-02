@@ -50,11 +50,17 @@ def test_score_metrics_and_fp_per_hour():
     assert (phone.tp, phone.fp, phone.episodes) == (1, 2, 2)
     assert phone.precision == pytest.approx(1 / 3) and phone.recall == pytest.approx(0.5)
     assert phone.f1 == pytest.approx(2 * (1 / 3) * 0.5 / (1 / 3 + 0.5))
-    assert phone.fp_per_hour == pytest.approx(2.0)
+    # false positives per hour over the time where one can happen: 1 h minus the 2 phone episodes ± 1 s
+    assert phone.exposure_h == pytest.approx((3600 - 24) / 3600)
+    assert phone.fp_per_hour == pytest.approx(2 / ((3600 - 24) / 3600))
+    assert phone.fp_ci_low == pytest.approx(0.2422 / phone.exposure_h, rel=1e-3)  # exact Poisson, k = 2
+    assert phone.fp_ci_high == pytest.approx(7.2247 / phone.exposure_h, rel=1e-3)
     assert s["yawn"].precision == 1.0 and s["yawn"].recall == 1.0 and s["yawn"].fp_per_hour == 0.0
     assert s["nod"].precision is None and s["nod"].recall is None  # nothing labelled, nothing predicted
     alert = s[ALERT]
-    assert (alert.tp, alert.fp, alert.fp_per_hour) == (1, 1, 1.0) and alert.recall is None
+    assert (alert.tp, alert.fp) == (1, 1) and alert.recall is None
+    assert alert.exposure_h == pytest.approx((3600 - 24 - 6) / 3600)  # every episode ± 1 s left out
+    assert s[f"{ALERT} L2"].fp == 1 and s[f"{ALERT} L1"].predictions == 0
 
 
 def test_negative_clip_counts_driving_time():
@@ -65,7 +71,28 @@ def test_negative_clip_counts_driving_time():
 
 def test_report_is_markdown():
     text = ev.report(ev.score([], [], {"v": 60.0}), {"v": 60.0}, 1.0)
-    assert "| microsleep |" in text and "**all alerts**" in text
+    assert "| microsleep |" in text and "**all alerts**" in text and "**all alerts L3**" in text
+    assert "95% CI" in text
+
+
+def test_window_far_mar_from_recorded_levels():
+    from tools.metrics import EvalConfig
+
+    cfg = EvalConfig(window_s=10, warmup_s=30, positive_frac=0.5, min_level=1)
+    eps = [Episode("v", "microsleep", 60.0, 80.0)]
+    drowsy = [0] * 120
+    for sec in (45, 62, 63):  # one false call while awake, the episode's first window caught
+        drowsy[sec] = 1
+    levels = {"v": {"drowsy": drowsy, "distraction": [0] * 120}}
+    rows = dict(ev.window_rows(eps, {"v": 120.0}, levels, cfg, tolerance_s=1.0))
+    d = rows["Drowsiness, level ≥ L1"]
+    # windows from 30 s: 30-40, 40-50 awake (1 false), 50-60 touches the widened episode -> skipped,
+    # 60-70, 70-80 drowsy (70-80 missed), 80-90 skipped, 90-100, 100-110, 110-120 awake
+    assert (d.awake, d.false_alarms, d.drowsy, d.misses, d.skipped) == (5, 1, 2, 1, 2)
+    assert rows["Drowsiness, level ≥ L2"].misses == 2
+    assert rows["Distraction, level ≥ L1"].drowsy == 0  # no distraction label: awake windows only
+    text = ev.report(ev.score(eps, [], {"v": 120.0}), {"v": 120.0}, 1.0, list(rows.items()), cfg)
+    assert "## FAR / MAR on windows" in text and "| Drowsiness, level ≥ L1 | 5 | 20.0%" in text
 
 
 # ---------------------------------------------------------------- files

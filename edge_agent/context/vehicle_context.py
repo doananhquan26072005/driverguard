@@ -1,8 +1,9 @@
 """Block 10 - Vehicle context.
 
 Turns raw vehicle signals (speed, turn signal, drive time, time of day) into the
-flags the risk engine uses: moving, high speed, night, long drive, and whether
-looking sideways is expected right now (turn signal on, plus a short grace period).
+flags the risk engine uses: moving, high speed, night, long drive, and to which side
+looking sideways is expected right now (turn signal on, plus a short grace period:
+`turn_side`, used by block 8 to widen the yaw limit on that side only).
 
 This is the only place that decides whether the vehicle is moving: the distraction
 branch (block 8) and the risk engine (block 9) both use `VehicleContext.moving`.
@@ -34,6 +35,7 @@ class ContextConfig:
     turn_signal_grace_s: float = 2.0
     stationary_kmh: float = 1.0
     rest_after_s: float = 120.0
+    vehicle_signal_stale_s: float = 1.0  # external speed source silent this long = standing still
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> ContextConfig:
@@ -63,6 +65,7 @@ class VehicleContext:
     stationary: bool = False  # speed below stationary_kmh (a stop, not a crawl)
     stationary_s: float = 0.0  # seconds the vehicle has stood still, 0 otherwise
     resting: bool = False  # stood still for rest_after_s: a rest (parked), not a red light
+    turn_side: str | None = None  # "left" / "right" while turning (the last signalled side)
 
 
 def in_hours(hour: float, windows: tuple[tuple[float, float], ...]) -> bool:
@@ -79,12 +82,14 @@ class ContextTracker:
     def __init__(self, config: ContextConfig | None = None) -> None:
         self.config = config or ContextConfig()
         self._last_signal_t: float | None = None
+        self._last_side: str | None = None
         self._stationary_since: float | None = None
 
     def update(self, s: VehicleSignals) -> VehicleContext:
         cfg = self.config
         if s.turn_signal is not None:
             self._last_signal_t = s.t
+            self._last_side = s.turn_signal
         turning = self._last_signal_t is not None and s.t - self._last_signal_t <= cfg.turn_signal_grace_s
         stationary = s.speed_kmh is not None and s.speed_kmh < cfg.stationary_kmh
         if not stationary:
@@ -105,4 +110,5 @@ class ContextTracker:
             stationary=stationary,
             stationary_s=stationary_s,
             resting=stationary and stationary_s >= cfg.rest_after_s,
+            turn_side=self._last_side if turning else None,
         )

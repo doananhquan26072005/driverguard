@@ -36,7 +36,7 @@ ENV PATH=/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     DG_DB_PATH=/app/data/driverguard.db \
     DG_STATIC_DIR=/app/static \
-    APP_VERSION=1.1.0
+    APP_VERSION=2.0.0
 WORKDIR /app
 COPY --from=deps /venv /venv
 COPY backend/ backend/

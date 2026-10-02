@@ -129,7 +129,9 @@ def quantize_yolo(fp32: Path, int8: Path, calib: list[np.ndarray], input_size: i
 
     class Reader(CalibrationDataReader):
         def __init__(self) -> None:
-            import onnxruntime as ort
+            from edge_agent.perception.onnx import load_ort
+
+            ort = load_ort()
 
             name = ort.InferenceSession(str(fp32), providers=["CPUExecutionProvider"]).get_inputs()[0].name
             blobs = (cv2.dnn.blobFromImage(letterbox(f, input_size)[0], 1 / 255.0, swapRB=True) for f in calib)
@@ -207,7 +209,10 @@ def main_loop(frames: list[np.ndarray], th: dict[str, Any], yolo_model: Any, war
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     import mediapipe
-    import onnxruntime as ort
+
+    from edge_agent.perception.onnx import load_ort
+
+    ort = load_ort()
 
     from edge_agent.capture import Frame
     from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
