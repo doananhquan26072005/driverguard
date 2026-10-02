@@ -31,11 +31,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 
 from backend import db
+from backend.drive_link import DriveLinks
 from backend.schemas import (
+    DRIVE_CODE_PATTERN,
     THRESHOLD_SPECS,
     BatchResult,
     DeviceIn,
     DeviceOut,
+    DriveSignalIn,
+    DriveSignalOut,
     EventBatch,
     EventOut,
     LoginIn,
@@ -187,6 +191,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     app = FastAPI(title="DriverGuard backend", version="0.1.0")
     app.state.settings = settings
     app.state.jwt_secret = secret
+    drive_links = DriveLinks()  # M31: #/drive -> #/live relay, in memory only
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -205,6 +210,20 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    # Web driving controls (M31): no login, a pairing code shown by #/live; numbers only, in memory.
+    @app.put("/api/v1/drive/{code}", status_code=status.HTTP_204_NO_CONTENT)
+    def put_drive(body: DriveSignalIn, code: Annotated[str, Path(pattern=DRIVE_CODE_PATTERN)]) -> None:
+        drive_links.put(code, body.speed_kmh, body.turn_signal)
+
+    @app.get("/api/v1/drive/{code}", response_model=DriveSignalOut)
+    def get_drive(code: Annotated[str, Path(pattern=DRIVE_CODE_PATTERN)]) -> DriveSignalOut:
+        reading = drive_links.get(code)
+        if reading is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no driving controls for this code")
+        return DriveSignalOut(
+            speed_kmh=reading.speed_kmh, turn_signal=reading.turn_signal, age_s=round(reading.age_s, 2)
+        )
 
     @app.post("/auth/login", response_model=TokenOut)
     def login(body: LoginIn, conn: Conn) -> TokenOut:

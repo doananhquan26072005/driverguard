@@ -7,6 +7,7 @@
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
+import { newDriveCode } from "../drive/sim";
 import { DRIVE_SIM_URL, type FeedbackResult, type HudSource, type TripEnd } from "../hud/edge";
 import { bbox, channelDiff, concatFaces, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
@@ -111,10 +112,14 @@ function tripId(d = new Date()): string {
   return `trip-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-// One default mode (bridge scenario "sim"): speed and turn signal come from the driving simulator
-// (tools/drive_sim.py on 127.0.0.1, polled by pollSim); none running = parked at 0 km/h.
-// Time of day = real clock.
+// One default mode (bridge scenario "sim"): speed and turn signal come from the web driving controls
+// (#/drive?code=<driveCode>, relayed by the backend, M31) or else from the driving simulator
+// (tools/drive_sim.py on 127.0.0.1); both polled by pollSim. None = parked at 0 km/h. Time of day =
+// real clock.
 const SIM_POLL_MS = 250;
+// A remote reading older than this is not passed on: the vehicle signal goes stale (M26). Same as
+// context.vehicle_signal_stale_s in config/thresholds.yaml.
+const REMOTE_FRESH_S = 1.0;
 async function loadPython(session: Session | null): Promise<{ agent: PyAgent; settings: Settings }> {
   const mod = (await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`)) as {
     loadPyodide(o: { indexURL: string }): Promise<Pyodide>;
@@ -140,6 +145,8 @@ async function loadPython(session: Session | null): Promise<{ agent: PyAgent; se
 
 export class LiveAgent implements HudSource {
   address = "trình duyệt này";
+  /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
+  readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
   private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null };
   private stopped = false;
@@ -417,12 +424,23 @@ export class LiveAgent implements HudSource {
     }
   }
 
-  /** One reading of the driving simulator. Not running / unreachable: nothing is passed on, and
-   *  the bridge falls back to 0 km/h (parked) once the last reading is stale. */
+  /** One reading of the vehicle: the web driving controls first (#/drive paired with driveCode),
+   *  else the terminal driving simulator. None: nothing is passed on, and the bridge reads parked /
+   *  signal lost once the last reading is stale (M26). A paired remote that went quiet is not
+   *  replaced by the local simulator: that is a lost signal. */
   private async pollSim() {
     if (this.simBusy || this.stopped) return;
     this.simBusy = true;
     try {
+      const remote = await fetch(`${API_URL}/api/v1/drive/${this.driveCode}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(SIM_POLL_MS * 2),
+      }).catch(() => null);
+      if (remote?.ok) {
+        const r = (await remote.json()) as { speed_kmh: number; turn_signal: string | null; age_s: number };
+        if (r.age_s < REMOTE_FRESH_S && !this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+        return;
+      }
       const resp = await fetch(DRIVE_SIM_URL, { cache: "no-store", signal: AbortSignal.timeout(SIM_POLL_MS * 2) });
       if (resp.ok) {
         const r = (await resp.json()) as { speed_kmh?: number; turn_signal?: string | null };
