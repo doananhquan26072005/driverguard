@@ -9,7 +9,7 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 |---|---|
 | **Phiên bản** | Version 2 (v2.0.0 deploy 01/10/2026; các mốc M19 trở đi làm thêm 01–02/10) |
 | **Sản phẩm cuối** | App APK chạy trên hub gắn trên xe, bọc chính code web; bản web để xem thử |
-| **Web v2** | https://driveguard-v2-production.up.railway.app (giám sát trên trình duyệt: `/#/live`) |
+| **Web v2** | https://driveguard-v2-production.up.railway.app (giám sát trên trình duyệt: `/#/live`; điều khiển tốc độ / xi nhan: nút "Điều khiển xe" trên `#/live`, mở `/#/drive?code=…`) |
 | **Kiến trúc** | 14 khối (camera → tiền xử lý → MediaPipe / YOLO / CNN mắt → đặc trưng → buồn ngủ + mất tập trung → risk engine → cảnh báo → HUD + gửi metadata) |
 
 **Một chuyến đi ở v2:** xe dừng → HUD hỏi đồng ý rồi hướng dẫn đăng ký khuôn mặt (~10 s) → lái, hệ thống

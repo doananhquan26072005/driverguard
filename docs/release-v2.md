@@ -14,7 +14,7 @@
 | **Image Docker** | `quanpk07/driveguard:v2` (cũng là `latest`), 72,7 MB; v1 giữ ở `v1.1` và `v1-backup` (cùng digest `5de7028…`) |
 | **Triển khai** | Railway project DriveGuard: service `driveguard-v2` (volume riêng `driveguard-v2-volume`), service v1 `driveguard` không đổi. Database v2 khởi đầu bằng bản sao database v1 lúc 01/10 (tài khoản, lịch sử), sau đó tách riêng |
 | **Định hướng sản phẩm** (chốt 02/10) | Sản phẩm cuối là **app APK chạy trên hub gắn trên xe**, bọc chính code web (Capacitor). Bản web chỉ để xem thử app hoạt động và giao diện |
-| **Mốc trong lộ trình** | M9 (đăng ký tài xế), M10 (mất mặt → tạm ngưng giám sát), M11 (chớp chậm), M12 (gục đầu / cúi đầu), M13 (nhướn mày), M14 (giao diện cho tài xế), M15 (kết thúc chuyến + bảng tổng kết), M16 (một chế độ mặc định, tạm dừng / đổi tài xế), M17 (sửa cách đo báo sai), M18 (FAR / MAR theo cửa sổ), M19 (đỗ / lái theo tốc độ, công cụ mô phỏng lái xe), M20 (xi nhan theo phía), M21 (trả nợ kỹ thuật, test e2e), M22 (bảng phân tích lỗi các trạng thái im lặng), M23 (âm thanh cảnh báo luôn bật), M24 (xác nhận trước khi đăng ký khuôn mặt), M25 (cúi nhìn xuống không còn bị hiểu là nhắm mắt), M26 (mất tín hiệu xe khi đang chạy), M27 (tổng kết không tính bước nhắm mắt của đăng ký là ngủ gật), M28 (báo khi vòng xử lý dừng hoặc chậm), M29 (tài liệu v2), xem [roadmap.md](roadmap.md) |
+| **Mốc trong lộ trình** | M9 (đăng ký tài xế), M10 (mất mặt → tạm ngưng giám sát), M11 (chớp chậm), M12 (gục đầu / cúi đầu), M13 (nhướn mày), M14 (giao diện cho tài xế), M15 (kết thúc chuyến + bảng tổng kết), M16 (một chế độ mặc định, tạm dừng / đổi tài xế), M17 (sửa cách đo báo sai), M18 (FAR / MAR theo cửa sổ), M19 (đỗ / lái theo tốc độ, công cụ mô phỏng lái xe), M20 (xi nhan theo phía), M21 (trả nợ kỹ thuật, test e2e), M22 (bảng phân tích lỗi các trạng thái im lặng), M23 (âm thanh cảnh báo luôn bật), M24 (xác nhận trước khi đăng ký khuôn mặt), M25 (cúi nhìn xuống không còn bị hiểu là nhắm mắt), M26 (mất tín hiệu xe khi đang chạy), M27 (tổng kết không tính bước nhắm mắt của đăng ký là ngủ gật), M28 (báo khi vòng xử lý dừng hoặc chậm), M29 (tài liệu v2), M30 (0 km/h không cảnh báo), M31 (trang điều khiển xe trên web), xem [roadmap.md](roadmap.md) |
 
 ---
 
@@ -50,6 +50,8 @@
 | **Sửa** | Bảng tổng kết không còn tính bước nhắm mắt của đăng ký, hay lúc nghỉ đỗ xe nhắm mắt, là "ngủ gật khi đang lái" | M27 | 02/10 |
 | **Thêm** | Báo khi vòng xử lý dừng hoặc chậm: lỗi frame không làm dừng thiết bị, "Lỗi xử lý" + âm báo; HUD đứng hình / mất kết nối có âm báo; chip "Máy chậm" | M28 | 02/10 |
 | **Sửa** | Tài liệu theo v2: README mở đầu bằng DriverGuard, sơ đồ kiến trúc có phần v2, HowToUse có luồng một chuyến đi | M29 | 02/10 |
+| **Sửa** | Xe đứng yên (0 km/h) thì không có cảnh báo nào (trước: microsleep ở đèn đỏ vẫn có chuông L1) | M30 | 02/10 |
+| **Thêm** | Trang điều khiển xe trên web `#/drive?code=…` (tốc độ, dừng, xi nhan), mở được trên máy khác; `#/live` chạy theo | M31 | 02/10 |
 | **Bỏ** | Chống chói đèn pha bằng phần mềm: giao cho yêu cầu đầu vào camera (camera IR) | — | 01/10 |
 | **Bỏ** | Việc "bám tài xế" riêng: do bước đăng ký đảm nhận | — | 01/10 |
 | **Bỏ** | Bật lại cảnh báo theo nhịp chớp mắt (`blink_rate`) chuẩn hoá theo tài xế: nguồn dẫn ra không ủng hộ, giữ "chỉ ghi chú" | — | 02/10 |
@@ -622,6 +624,25 @@ không biết. FPS tụt dưới 15 kéo dài cũng không ai biết (FMEA dòng
 **Còn lại:** hạ tải khi máy chậm (chờ có hub); tiến trình chết hẳn thì backend chưa biết ngay (chưa có nhịp
 "còn sống").
 
+### 3.12 Xe đứng yên thì không cảnh báo (M30)
+
+**Trước:** đứng yên (dưới 1 km/h) thì mất tập trung đã tắt, nhưng buồn ngủ vẫn tới L1: nhắm mắt ở đèn đỏ có
+tiếng chuông; đứng ≥ 120 s mới tắt hẳn.
+
+**Bây giờ:** `risk.drowsy.stationary_max_level: 0`: xe đứng yên thì **không có cảnh báo nào**. Dấu hiệu buồn
+ngủ vẫn được đo và vào bản tổng kết. Xe chạy lại thì mọi luật như cũ (nhắm mắt vẫn L3 ngay). Đánh đổi: ngủ gật
+lúc dừng đèn đỏ không còn chuông (FMEA dòng 12).
+
+### 2.14 Trang điều khiển xe trên web (M31)
+
+- Khung camera của `#/live` có nút **"Điều khiển xe · mã XXXXXX"**, mở `#/drive?code=XXXXXX`; link này mở được
+  trên **máy khác** (vd. điện thoại người ngồi cạnh).
+- Nút **Tăng tốc / Giảm tốc / Chạy đều 50 / Dừng xe**, xi nhan **Trái / Tắt / Phải**; phím như
+  `tools/drive_sim.py`. Tốc độ tăng giảm dần như xe thật (cùng thông số `config/drive_sim.yaml`).
+- Backend chuyển tiếp tốc độ / xi nhan mới nhất theo mã (`/api/v1/drive/{code}`): chỉ số, trong bộ nhớ, không
+  vào database, hết hạn 10 phút. `#/live` ưu tiên kênh này, không có thì đọc công cụ terminal như cũ.
+- Đóng trang điều khiển khi xe đang chạy: `#/live` báo "Mất tín hiệu xe" (M26).
+
 ### 3.11 Tài liệu theo v2 (M29)
 
 README mở đầu bằng DriverGuard (README template khoá giữ phía dưới); `docs/architecture_diagram.md` thêm
@@ -690,6 +711,9 @@ giám sát được.
   thống kê cảnh báo.
 - **Eval:** công cụ eval cho xe chạy 60 km/h từ đầu nên không bao giờ đăng ký: số đo vẫn dùng mốc tự
   học như v1. SUST-DDD đổi vì mục 3.1. FL3D đổi vì chớp chậm (mục 2.5). Gục đầu giữ như v1.
+- **M31:** backend thêm `PUT` / `GET /api/v1/drive/{code}` (không cần đăng nhập, không đụng database).
+- **M30:** đổi `risk.drowsy.stationary_max_level` 1 → 0 (bộ ngưỡng chỉnh từ dashboard có giá trị cũ thì vẫn ghi
+  đè: kiểm tra lại tab Ngưỡng).
 - **M28:** backend nhận thêm lý do `agent_error`, `agent_recovered`, `low_fps`, `fps_restored` và
   `metrics.fps`; HUD nhận `processing_error`, `low_fps`. Deploy backend trước.
 - **M26:** backend nhận thêm lý do `vehicle_signal_lost` / `vehicle_signal_restored` và trường tuỳ chọn
@@ -704,9 +728,9 @@ giám sát được.
 
 | | v1 | v2 |
 |---|---:|---:|
-| Test Python | 434 | **580** |
-| Test frontend | 25 | **45** |
-| Test end-to-end (Playwright, CI) | 0 | **2** |
+| Test Python | 434 | **585** |
+| Test frontend | 25 | **50** |
+| Test end-to-end (Playwright, CI) | 0 | **3** |
 
 - Đăng ký tài xế: 23 test bằng chuỗi số giả ở 15 FPS, với tài xế giả làm theo lời nhắc. Các trường
   hợp đã test:
@@ -781,6 +805,8 @@ giám sát được.
   - Kịch bản 2, tài xế đăng nhập: đổi tài xế → đăng ký lại → kết thúc chuyến, tổng kết gửi lên → quản lý
     thấy báo cáo trên dashboard, chi tiết ghi "Đổi tài xế 1 lần".
   - 2/2 pass, khoảng 1 phút.
+- 0 km/h không cảnh báo (M30): 3 kịch bản mới, 3 test cũ sửa theo. Trang điều khiển xe (M31): 3 test
+  backend, 5 test frontend, kịch bản e2e thứ 3 (ghép mã, lái từ `#/drive`, đóng trang → mất tín hiệu xe).
 - Vòng xử lý dừng / chậm (M28): 5 test Python (lỗi frame ngắn / kéo dài / hồi lại, FPS thấp / đúng 15 FPS,
   bridge web không ném lỗi ra trang, backend nhận 4 lý do mới), 2 test frontend.
 - Tổng kết không tính nhắm mắt có chủ ý (M27): 3 test (đăng ký rồi tổng kết; nghỉ đỗ xe nhắm mắt; microsleep
@@ -821,7 +847,7 @@ giám sát được.
 - **Lỗi gặp khi deploy:** domain v2 tạo với cổng 8000 nhưng Railway cấp `PORT=8080` → 502. Sửa bằng biến
   `PORT=8000` cho service v2.
 - **Quay về v1:** v1 vẫn chạy; nếu cần dựng lại thì dùng image `v1-backup` + file backup database.
-- **Sau v2.0.0:** M19–M29 (đỗ / lái theo tốc độ, xi nhan theo phía, lớp chung + e2e, FMEA, âm thanh luôn
+- **Sau v2.0.0:** M19–M31 (đỗ / lái theo tốc độ, xi nhan theo phía, lớp chung + e2e, FMEA, âm thanh luôn
   bật, xác nhận trước khi đăng ký, cúi nhìn xuống, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu) **chưa deploy**. URL v2 đang chạy vẫn là bản M9–M18.
   Khi deploy: HUD và edge agent cùng phiên bản (mục 5), build lại `#/live` (`npm run prepare-live`) để
   web nhận code Python mới.
@@ -835,8 +861,9 @@ giám sát được.
 - **Chữ ký mặt chưa đo trên nhiều người thật trong xe.** Đổi tài xế mới làm bằng nút, chưa tự phát
   hiện người khác ngồi vào.
 - **Tốc độ vẫn là giả lập** (`tools/drive_sim.py`), chưa đọc CAN / OBD-II của xe thật. `#/live` chỉ đọc
-  được công cụ chạy trên cùng máy với trình duyệt. Trang điều khiển xe riêng cho bản web (tốc độ, xi
-  nhan, dừng xe, mở được trên máy khác) sẽ làm cùng lúc làm bản web (improvements).
+  được công cụ chạy trên cùng máy với trình duyệt, hoặc trang `#/drive` (M31, mở được trên máy khác).
+- **Trang `#/drive` không cần đăng nhập:** ai biết mã ghép 6 ký tự của một phiên `#/live` thì chỉnh được tốc độ
+  của phiên đó (chỉ trong bản xem thử; không đụng dữ liệu).
 - **Mốc mắt nhắm** dùng để kiểm tra đăng ký và làm thang đo tốc độ chớp. Chưa dùng để đổi thang
   `close_ratio`.
 - **Chớp chậm, nhướn mày: ngưỡng tạm**, chưa dò trên dataset.
