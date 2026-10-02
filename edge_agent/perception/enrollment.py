@@ -1,7 +1,8 @@
 """Block 6 stage - Driver enrollment at the start of a trip.
 
-While the vehicle stands still, the HUD guides the driver through three short steps and
-this module learns the driver's own reference values from FrameFeatures:
+While the vehicle stands still, the HUD first explains why the face is enrolled and what
+happens to the data (`consent`); once the driver agrees, it guides three short steps and this
+module learns the driver's own reference values from FrameFeatures:
 
   1 look_camera  "look straight at the camera"  look_camera_s  open-eye EAR, closed-mouth MAR,
                                                                resting brow height, face signature
@@ -16,6 +17,10 @@ brow), block 8
 skips its automatic 5 s road calibration.
 
 Rules (enrollment is mandatory, but monitoring never waits for it):
+- Consent first (`require_consent`): at a stop the status is `consent` until the driver answers on
+  the HUD (`consent(True)`: the steps start; `consent(False)`, "Để sau": `later`, asked again at
+  the next stop). Asked once per driver: after agreeing, an aborted or failed enrollment restarts
+  the steps at the next stop without asking again. A new driver ("Đổi tài xế") is asked again.
 - Only while the vehicle stands still (block 10). Driving off mid-way aborts the step;
   monitoring runs on the self-learnt baselines meanwhile, and the HUD asks the driver to
   enroll at the next stop.
@@ -50,6 +55,7 @@ STEPS = ("look_camera", "look_road", "close_eyes")
 @dataclass(frozen=True)
 class EnrollmentConfig:
     enabled: bool = True
+    require_consent: bool = True  # the driver agrees on the HUD before the steps start
     look_camera_s: float = 2.0
     look_road_s: float = 3.0
     close_eyes_s: float = 2.0
@@ -85,7 +91,8 @@ class DriverProfile:
 
 @dataclass(frozen=True)
 class EnrollmentState:
-    # off (disabled) | waiting (for a stop) | look_camera | look_road | close_eyes | done | failed
+    # off (disabled) | waiting (for a stop) | consent (asking the driver) | later (said "later",
+    # until the next stop) | look_camera | look_road | close_eyes | done | failed
     status: str
     progress: float = 0.0  # 0..1 of the current step
     hint: str | None = None  # why the step is not moving on (the HUD words it)
@@ -122,6 +129,7 @@ class DriverEnrollment:
         self.ear_min, self.ear_max, self.road_max_deg = ear_min, ear_max, road_max_deg
         self.profile: DriverProfile | None = None
         self._status = "waiting" if self.config.enabled else "off"
+        self._consented = not self.config.require_consent
         self._attempts_total = 0  # steps redone, whole trip
         self._tries = 0  # tries of the current step
         self._started_at: float | None = None
@@ -157,6 +165,19 @@ class DriverEnrollment:
         self._begin(self._status, t)
         self._retry_hint = hint
 
+    # ------------------------------------------------------------------ driver's answer
+    def consent(self, agree: bool) -> bool:
+        """The driver's answer on the consent screen: agree (the steps start on the next frame) or
+        "later" (asked again at the next stop). False when nothing was being asked."""
+        if self._status != "consent":
+            return False
+        if agree:
+            self._consented = True
+            self._status = "waiting"
+        else:
+            self._status = "later"
+        return True
+
     # ------------------------------------------------------------------ per frame
     def update(self, f: FrameFeatures, stationary: bool) -> EnrollmentState:
         cfg = self.config
@@ -164,8 +185,8 @@ class DriverEnrollment:
         events: list[str] = []
         if self._status in ("off", "done"):
             return self._state(events)
-        if self._status == "failed":
-            if not stationary:  # moved on: try again at the next stop
+        if self._status in ("failed", "later"):
+            if not stationary:  # moved on: try again (failed) / ask again (later) at the next stop
                 self._status, self._tries, self._values = "waiting", 0, {}
             return self._state(events)
         if not stationary:
@@ -173,6 +194,10 @@ class DriverEnrollment:
                 self._status, self._tries, self._values = "waiting", 0, {}
                 self._step_reset()
             self._hint = "stop_vehicle"
+            return self._state(events)
+        if self._status == "waiting" and not self._consented:
+            self._status, self._hint = "consent", None
+        if self._status == "consent":  # the HUD explains, the driver answers (consent())
             return self._state(events)
         if self._status == "waiting":
             self._started_at = t

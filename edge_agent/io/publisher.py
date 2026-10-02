@@ -311,6 +311,12 @@ class MetadataPublisher:
         """The trip ended: its summary (block 11), for the driver and the higher roles."""
         self._enqueue("summary", summary)
 
+    def publish_record(self, kind: str, data: dict[str, Any]) -> None:
+        """A record built elsewhere (edge_agent.runtime): kind "event", "sample", "feedback" or "summary"."""
+        if kind not in KINDS:
+            raise ValueError(f"unknown record kind {kind!r}")
+        self._enqueue(kind, data)
+
     def _enqueue(self, kind: str, data: dict[str, Any]) -> None:
         check_metadata_only(data)
         overflow = self._outbox.put({"kind": kind, "data": data}, self.config.max_queue)

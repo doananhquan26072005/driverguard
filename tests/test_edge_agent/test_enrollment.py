@@ -53,8 +53,9 @@ def obedient(i, t, status, **over):
     return frame(i, t, **{**kw, **over})
 
 
-def enroll(seconds, stationary=lambda t: True, driver=obedient, config=None):
-    """Run DriverEnrollment alone. Returns the states."""
+def enroll(seconds, stationary=lambda t: True, driver=obedient, config=None, agree=True):
+    """Run DriverEnrollment alone. Returns the states. agree: the driver taps "Đồng ý" on the
+    consent screen as soon as it shows (False: "Để sau"; None: taps nothing)."""
     e = DriverEnrollment(config or EnrollmentConfig(), ear_min=0.18, ear_max=0.42, road_max_deg=45)
     states, status = [], "waiting"
     for i in range(round(seconds * FPS)):
@@ -62,6 +63,8 @@ def enroll(seconds, stationary=lambda t: True, driver=obedient, config=None):
         s = e.update(driver(i, t, status), stationary(t))
         status = s.status
         states.append(s)
+        if status == "consent" and agree is not None:
+            e.consent(agree)
     return states
 
 
@@ -212,6 +215,8 @@ def run_pipeline(seconds, speeds, driver, enroll_on=True):
         results.append(r)
         if r.alert.new_alert is not None:
             alerts.append((round(t, 1), r.alert.new_alert.level, r.alert.new_alert.reasons))
+        if status == "consent":  # the driver taps "Đồng ý" on the HUD
+            pipeline.enrollment_answer(True)
     return results, alerts
 
 
@@ -353,3 +358,58 @@ def test_a_single_face_is_always_taken():
     selector.set_anchor(DriverAnchor(face_shape(driver), center, size))
     assert selector.choose([place(synthetic_mesh(2), 1.0, 400, 240)], 640) == 0
     assert selector.choose([], 640) == -1
+
+
+# ---------------------------------------------------------------- consent before the steps
+
+
+def test_steps_wait_for_the_driver_to_agree():
+    states = enroll(20, agree=None)
+    assert {st.status for st in states} == {"consent"}  # never starts on its own
+    assert not any(st.events for st in states)
+    assert states[0].progress == 0.0 and states[0].hint is None
+
+
+def test_agreeing_starts_step_one_at_once():
+    states = enroll(20)
+    assert states[0].status == "consent"
+    assert states[1].status == "look_camera"
+    assert any("enrolled" in st.events for st in states)
+
+
+def test_later_asks_again_at_the_next_stop():
+    stopped = lambda t: t < 3 or t >= 6  # noqa: E731  stop, drive 3 s, stop again
+    states = enroll(10, stationary=stopped, agree=False)
+    statuses = [st.status for st in states]
+    assert statuses[0] == "consent" and statuses[1] == "later"
+    assert set(statuses[1 : 3 * FPS]) == {"later"}  # not asked again while parked
+    assert statuses[4 * FPS] == "waiting"  # driving
+    assert statuses[6 * FPS] == "consent"  # next stop: asked again
+    assert not any(s in statuses for s in ("look_camera", "look_road", "close_eyes"))
+
+
+def test_agreed_once_per_driver_steps_restart_without_asking():
+    stopped = lambda t: t < 3 or t >= 6  # noqa: E731  drives off in the middle of the steps
+    states = enroll(20, stationary=stopped)
+    assert [st.status for st in states].count("consent") == 1
+    assert states[6 * FPS].status == "look_camera"
+    assert any("enrolled" in st.events for st in states)
+
+
+def test_consent_screen_closes_when_driving_off():
+    states = enroll(6, stationary=lambda t: t < 2, agree=None)
+    assert states[2 * FPS + 1].status == "waiting" and states[2 * FPS + 1].hint == "stop_vehicle"
+
+
+def test_consent_answer_only_counts_on_the_consent_screen():
+    e = DriverEnrollment(EnrollmentConfig(), ear_min=0.18, ear_max=0.42, road_max_deg=45)
+    assert e.consent(True) is False  # nothing asked yet (driving)
+    assert e.update(frame(0, 0.0), stationary=True).status == "consent"
+    assert e.consent(True) is True
+    assert e.consent(True) is False  # already answered
+
+
+def test_no_consent_needed_when_turned_off():
+    states = enroll(20, config=EnrollmentConfig(require_consent=False), agree=None)
+    assert states[0].status == "look_camera"
+    assert any("enrolled" in st.events for st in states)

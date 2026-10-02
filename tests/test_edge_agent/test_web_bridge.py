@@ -196,6 +196,27 @@ def test_every_face_goes_in_and_the_largest_is_the_driver_before_enrollment(agen
 
 def test_hud_state_carries_the_enrollment_step():
     parked = WebAgent("web-an", "trip-web-2", scenario="parked")
-    state, _, _ = run(parked, 1, points=synthetic_face())
+    state, t, n = run(parked, 0.2, points=synthetic_face())
+    assert state["enrollment"]["status"] == "consent"
+    assert parked.vehicle("enroll_start") == "ok"
+    state, _, _ = run(parked, 1, t0=t, points=synthetic_face(), frame0=n)
     assert state["enrollment"]["status"] == "look_camera"
     assert 0 < state["enrollment"]["progress"] < 1
+
+
+def test_a_failing_frame_is_caught_and_a_lasting_failure_shows_on_the_hud(agent, monkeypatch):
+    """M28: an exception in the frame path must not reach the page (it used to console.error every frame)."""
+    face = synthetic_face()
+    _, t, n = run(agent, 1, points=face)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(agent, "extractor", broken)
+    state, t, n = run(agent, 2, t0=t, points=face, frame0=n)
+    assert state["processing_error"] is True and state["measures"]["face"] is False
+    monkeypatch.undo()
+    state, _, _ = run(agent, 0.2, t0=t, points=face, frame0=n)
+    assert state["processing_error"] is False
+    reasons = [e["reasons"] for e in events_of(agent)]
+    assert ["agent_error"] in reasons and ["agent_recovered"] in reasons

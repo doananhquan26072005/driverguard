@@ -28,8 +28,17 @@ Anti false-positive rules:
   cannot reset it either.
 - Face partly out of frame (FrameFeatures.face_reliable False): head pose is not trusted,
   handled like a lost pose (previous state kept), but it is not "no face".
+- Turn signal (block 10 `turn_side`, held through its grace period): the yaw limit towards the
+  signalled side grows by `turn_signal_extra_yaw_deg` (left signal: the driver may look further
+  left before it counts as off road). The other side and pitch keep their limits, so looking
+  right with the left signal on, or down at a phone, still counts. Which yaw sign is the
+  driver's left is `left_yaw_sign` (unmirrored camera facing the driver: the driver's left is
+  image right, yaw > 0). The baseline never learns from such widened-band samples.
 - Face lost: keep the previous state (turning far away often loses the face, while an
   occlusion when looking forward should not start the timer).
+- Looking down with the head only partly bowed (block 7 `gaze_down`: head bowed, lids lowered,
+  not firmly shut): the eyes are off the road even when the head is within the pitch limit, so the
+  frame counts as off road. Such frames never teach the baseline.
 
 Pure logic on timestamps: no image, no clock, testable with fake sequences.
 """
@@ -61,6 +70,8 @@ class DistractionConfig:
     baseline_pitch_deg: float = 0.0
     baseline_calibrate_s: float = 0.0  # 0 = no start-up calibration
     baseline_calibrate_max_deg: float = 45.0
+    turn_signal_extra_yaw_deg: float = 30.0
+    left_yaw_sign: float = 1.0  # sign of yaw when the driver turns to their own left
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DistractionConfig:
@@ -102,10 +113,15 @@ class DistractionAnalyzer:
         self._phone: deque[tuple[float, bool]] = deque()
         self._last_t: float | None = None
 
-    def _head_off_road(self, yaw_off: float, pitch_off: float) -> bool:
+    def _head_off_road(self, yaw_off: float, pitch_off: float, turn_side: str | None = None) -> bool:
         cfg = self.config
+        yaw_limit = cfg.yaw_off_road_deg
+        if turn_side in ("left", "right"):
+            side_sign = cfg.left_yaw_sign if turn_side == "left" else -cfg.left_yaw_sign
+            if yaw_off * side_sign > 0:  # looking towards the signalled side
+                yaw_limit += cfg.turn_signal_extra_yaw_deg
         return (
-            abs(yaw_off) > cfg.yaw_off_road_deg
+            abs(yaw_off) > yaw_limit
             or pitch_off > cfg.pitch_down_off_road_deg
             or pitch_off < -cfg.pitch_up_off_road_deg
         )
@@ -157,7 +173,10 @@ class DistractionAnalyzer:
         features: FrameFeatures,
         phone_near_face: bool | None,
         moving: bool,
+        turn_side: str | None = None,
+        gaze_down: bool = False,
     ) -> DistractionState:
+        """gaze_down: block 7 sees the driver looking down (head bowed, lids lowered): off road."""
         t = features.timestamp
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         self._last_t = t
@@ -179,8 +198,8 @@ class DistractionAnalyzer:
         elif has_pose:
             yaw_off = features.yaw - self.baseline_yaw
             pitch_off = features.pitch - self.baseline_pitch
-            head_off = self._head_off_road(yaw_off, pitch_off)
-            if not head_off:
+            head_off = self._head_off_road(yaw_off, pitch_off, turn_side) or gaze_down
+            if not (self._head_off_road(yaw_off, pitch_off) or gaze_down):  # not widened band, not looking down
                 self._adapt_baseline(features.yaw, features.pitch, dt)
         else:
             head_off = self._off_road  # face lost: hold previous state

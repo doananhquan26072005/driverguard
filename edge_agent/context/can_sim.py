@@ -15,10 +15,18 @@ Plays vehicle signals from a YAML scenario, as a real CAN reader would deliver t
 Speed is interpolated linearly between keyframes; turn_signal holds until changed.
 `sample(t)` must be called with non-decreasing t (drive time is integrated).
 
-`ManualVehicle` (scenario `manual`, the default mode of the HUD / #/live) has no timeline: the
-vehicle is parked or driving at `cruise_kmh` as the driver says on the HUD ("Tạm dừng" /
-"Tiếp tục lái"; "Đổi tài xế" parks it). It starts parked, so driver enrollment runs first. The
-time of day is the real clock.
+`ExternalVehicle` (the default of edge_agent.main and #/live) has no timeline: speed and turn
+signal come from outside the agent, today from tools/drive_sim.py (the driving simulator the
+tester runs next to it), later from a real CAN reader. No fresh signal for
+`context.vehicle_signal_stale_s` (simulator not running, link lost):
+- never had a signal, or the last one said the vehicle stood still (below `stationary_kmh`):
+  standing still at 0 km/h, parked until a speed says otherwise;
+- either way, once a signal had come in, the link is lost (`link_lost`) and the driver is told (M26);
+- the last signal said the vehicle was driving: `signal_lost`, the speed is unknown (None). Block 10 then treats the vehicle as moving (`assume_moving_when_speed_unknown`),
+  so monitoring goes on and the stop never becomes a rest; the runtime tells the driver and the
+  backend. Before this, a lost link while driving read as parked: distraction off, drowsiness
+  capped at L1, then off after `rest_after_s` (docs/safety-fmea.md, row 2).
+The time of day is the real clock.
 """
 
 from __future__ import annotations
@@ -26,6 +34,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -144,64 +153,116 @@ class CanSimulator:
         )
 
 
-MANUAL = "manual"
+SIM = "sim"  # scenario name of the default vehicle source: ExternalVehicle fed by tools/drive_sim.py
+DEFAULT_SIM_URL = "http://127.0.0.1:8766/can"
 
 
-class ManualVehicle:
-    """Vehicle signals driven by the HUD buttons instead of a scenario (see module doc)."""
+class ExternalVehicle:
+    """Vehicle signals pushed from outside (see module doc). Thread-safe enough for one writer
+    (the link) and one reader (the main loop): plain attribute swaps."""
 
-    def __init__(self, cruise_kmh: float = 50.0, moving_kmh: float = 5.0) -> None:
-        self.cruise_kmh = cruise_kmh
+    def __init__(
+        self, stale_s: float = 1.0, moving_kmh: float = 5.0, clock: Any = time.monotonic, stationary_kmh: float = 1.0
+    ) -> None:
+        self.stale_s = stale_s
         self.moving_kmh = moving_kmh
-        self.driving = False  # starts parked: enrollment first
-        self.drive_after_enrollment = True  # set again by a driver change
+        self.stationary_kmh = stationary_kmh  # last reading below this when lost = parked, not lost
+        self._clock = clock
         now = time.localtime()
         self._clock0 = float(now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec)
+        self._speed = 0.0
+        self._turn: str | None = None
+        self._received: float | None = None  # clock() of the last update
         self._drive_time = 0.0
         self._last_t: float | None = None
-        self._last_speed = 0.0
+        self._last_moving = False
 
-    def park(self) -> None:
-        self.driving = False
+    def update(self, speed_kmh: float, turn_signal: str | None) -> None:
+        """A fresh reading (km/h, "left" / "right" / None)."""
+        self._speed = max(0.0, float(speed_kmh))
+        self._turn = turn_signal if turn_signal in ("left", "right") else None
+        self._received = self._clock()
 
-    def drive(self) -> None:
-        self.driving = True
-        self.drive_after_enrollment = False
+    @property
+    def connected(self) -> bool:
+        return self._received is not None and self._clock() - self._received <= self.stale_s
 
-    def change_driver(self) -> None:
-        """Park for the new driver to enroll; drive on once they are enrolled."""
-        self.driving = False
-        self.drive_after_enrollment = True
+    @property
+    def link_lost(self) -> bool:
+        """A signal had come in and the link went quiet (driving or parked): the driver is told."""
+        return self._received is not None and not self.connected
 
-    def on_enrollment(self, events: tuple[str, ...]) -> None:
-        """Enrollment just finished (block 6 stage): start driving if that is what we waited for."""
-        if "enrolled" in events and self.drive_after_enrollment:
-            self.drive()
-
-    def state(self) -> dict:
-        return {"manual": True, "driving": self.driving}
+    @property
+    def signal_lost(self) -> bool:
+        """The link went quiet while the last reading said the vehicle was driving: speed unknown."""
+        return self._received is not None and not self.connected and self._speed >= self.stationary_kmh
 
     def sample(self, t: float) -> VehicleSignals:
-        speed = self.cruise_kmh if self.driving else 0.0
-        if self._last_t is not None and t > self._last_t and self._last_speed >= self.moving_kmh:
+        live = self.connected
+        speed: float | None = self._speed if live else (None if self.signal_lost else 0.0)
+        moving = speed is None or speed >= self.moving_kmh  # lost while driving: still driving
+        if self._last_t is not None and t > self._last_t and self._last_moving:
             self._drive_time += t - self._last_t
-        self._last_t, self._last_speed = t, speed
+        self._last_t, self._last_moving = t, moving
         return VehicleSignals(
             t=t,
             speed_kmh=speed,
-            turn_signal=None,
+            turn_signal=self._turn if live else None,
             drive_time_s=self._drive_time,
             clock_hour=((self._clock0 + t) % 86400) / 3600.0,
         )
 
 
-def load_manual(path: str | Path) -> ManualVehicle:
-    """config/scenarios/manual.yaml: {mode: manual, cruise_kmh: ...}."""
-    with open(path, encoding="utf-8") as f:
-        d = yaml.safe_load(f) or {}
-    return ManualVehicle(cruise_kmh=float(d.get("cruise_kmh", 50.0)))
+def hud_vehicle(
+    source: str, connected: bool, signals: VehicleSignals | None, stationary_kmh: float, signal_lost: bool = False
+) -> dict:
+    """The HUD's vehicle card: where the speed comes from, and parked / driving by the speed alone
+    (below `context.stationary_kmh` = stopped / parked). signal_lost: the link went quiet while driving,
+    speed unknown (None), still counted as driving; with `driving` False the link went quiet while parked."""
+    speed = signals.speed_kmh if signals is not None else 0.0
+    return {
+        "source": source,
+        "connected": connected,
+        "speed_kmh": None if speed is None else round(speed, 1),
+        "turn_signal": None if signals is None else signals.turn_signal,
+        "driving": speed is None or speed >= stationary_kmh,
+        "signal_lost": signal_lost,
+    }
 
 
-def is_manual(path: str | Path) -> bool:
-    with open(path, encoding="utf-8") as f:
-        return (yaml.safe_load(f) or {}).get("mode") == MANUAL
+class SignalLink:
+    """Device side: polls tools/drive_sim.py (GET url -> {"speed_kmh", "turn_signal"}) on a thread
+    and feeds an ExternalVehicle. Only numbers go through it."""
+
+    def __init__(self, vehicle: ExternalVehicle, url: str = DEFAULT_SIM_URL, period_s: float = 0.2) -> None:
+        import threading
+
+        self.vehicle, self.url, self.period_s = vehicle, url, period_s
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="SignalLink", daemon=True)
+
+    def start(self) -> SignalLink:
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+
+    def poll_once(self) -> bool:
+        import json
+        import urllib.request
+
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 127.0.0.1: no proxy lookup
+            with opener.open(self.url, timeout=self.period_s * 2) as resp:
+                d = json.loads(resp.read())
+            self.vehicle.update(float(d.get("speed_kmh", 0.0)), d.get("turn_signal"))
+            return True
+        except (OSError, ValueError):
+            return False  # simulator not running: the vehicle goes stale -> parked
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self.poll_once()
+            self._stop.wait(self.period_s)

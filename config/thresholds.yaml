@@ -82,6 +82,10 @@ features:
 # not move the median. Monitoring runs on the self-learnt baselines until it is done.
 enrollment:
   enabled: true
+  # The HUD first explains why the face is enrolled and that no image is stored or sent; the steps
+  # start only when the driver taps "Đồng ý" ("Để sau": asked again at the next stop). Once per
+  # driver. Off on a device run without HUD (--hud-port 0): nobody could answer.
+  require_consent: true
   look_camera_s: 2.0            # step 1: open-eye EAR, closed-mouth MAR, face signature
   look_road_s: 3.0              # step 2: head pose when looking at the road
   close_eyes_s: 2.0             # step 3: closed-eye EAR (ends with a beep)
@@ -168,6 +172,14 @@ drowsiness:
     # glasses, a head tilted down, narrow eyes before the baseline is learnt. NITYMED false microsleeps
     # 16 -> 7 / h with the same L3 recall; YawDD false microsleeps 7 -> 4.
     blink: 0.5
+    # Head bowed (phone, dashboard): the upper lids follow the gaze down, EAR ~0.5 x and eyeBlink ~0.6,
+    # which read as a deep closure (L3 "Mở mắt!" while just looking down). Bowed >= bowed_pitch_deg
+    # below the usual pose: a deep EAR frame needs EAR <= bowed_ear_ratio x baseline. FL3D real
+    # microsleeps with the head bowed: EAR p90 0.33-0.41 x; 0.35 keeps all 83 L3 alerts (0.30: 81).
+    # Lowered lids that are not that shut count as looking off the road (block 8, L2). TEMPORARY:
+    # no dataset has drivers looking down at a phone; to be checked on own recordings.
+    bowed_pitch_deg: 10         # 0 = off
+    bowed_ear_ratio: 0.35
   # Eyes squeeze shut while yawning: closed-eye time is not counted in closed_duration
   # while the mouth is wide open (yawn.mar_open .. yawn.mar_close) and for hold_s after.
   # Stops after the mouth has been open max_open_s (slack jaw in sleep is not a yawn).
@@ -264,6 +276,11 @@ distraction:
   pitch_down_off_road_deg: 20       # looking down (lap, phone)
   pitch_up_off_road_deg: 25
   on_road_confirm_s: 0.3            # must look back this long before the timer resets
+  # Turn signal on (and context.turn_signal_grace_s after): looking towards that side is
+  # allowed this much further (left signal: up to 30 + 30 = 60 deg to the left). The other
+  # side keeps 30 deg. Provisional, to check on real drives with a turn / lane change.
+  turn_signal_extra_yaw_deg: 30
+  left_yaw_sign: 1                  # yaw sign of the driver's own left (unmirrored camera: +1)
   phone_window_s: 2.0               # window for phone_ratio_2s
   baseline:                         # "looking at the road" head pose, per camera mount
     adapt: true                     # learn slowly from on-road samples
@@ -285,13 +302,18 @@ context:
   high_speed_kmh: 80            # off-road threshold tightens above this
   long_drive_s: 7200            # 2 h of driving = long drive
   night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
-  turn_signal_grace_s: 2.0      # looking sideways stays expected this long after the blinker stops
+  turn_signal_grace_s: 2.0      # looking to the signalled side stays widened this long after the blinker stops
   # Standing still = speed below stationary_kmh (crawling in a jam at 2-4 km/h is not a stop).
   # Drowsiness while standing still is capped at risk.drowsy.stationary_max_level; standing
   # still for rest_after_s is a rest (parked): no drowsiness alerts, and what was gathered
   # since the stop (eyes closed to rest) is dropped when driving resumes.
   stationary_kmh: 1.0
   rest_after_s: 120             # longer than most red lights
+  # Default vehicle source = tools/drive_sim.py (later a real CAN reader). No fresh speed for this
+  # long (simulator not running, link lost): never had one, or the last said standing still = parked
+  # at 0 km/h; the last said driving = signal lost, speed unknown, monitored as moving (M26) and the
+  # driver / backend are told (vehicle_signal_lost).
+  vehicle_signal_stale_s: 1.0
 
 # Block 9 - Risk engine (rule table: docs/workflow/workflow_full_4.jpg)
 risk:
@@ -372,6 +394,15 @@ alert:
 # Block 13 - In-car HUD server
 hud:
   feedback_window_s: 120        # the driver can press "false alarm" on an alert for this long
+  # Processing loop health (M28, docs/safety-fmea.md rows 3, 9). Frames failing (exception in blocks
+  # 2-14) for this long: "Lỗi xử lý" on the HUD with a loud sound, agent_error to the backend; the
+  # loop goes on and agent_recovered follows the next good frame.
+  processing_error_s: 1.0
+  # FPS (smoothed) below low_fps_below for low_fps_s: the HUD warns that alerts may be late, low_fps
+  # to the backend. 15 FPS is the CLAUDE.md minimum; 0.5 of slack for the measurement. Load shedding
+  # (docs/improvements.md, hardware task) comes with the hub.
+  low_fps_below: 14.5
+  low_fps_s: 5.0
 
 # Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
 publisher:

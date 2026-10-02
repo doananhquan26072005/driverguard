@@ -18,8 +18,9 @@ told the driver is not monitored instead. Exception: a closure that block 7 keep
 a head drop (eyes seen closed, then the head fell out of view) is evidence, not a lost face, so
 it stays monitored and the microsleep L3 alarm goes on.
 
-Context: distraction rules only while moving; off-road is expected while the turn
-signal is on. Drowsiness rules while standing still (block 10) are capped at
+Context: distraction rules only while moving. The turn signal does not switch off-road off:
+block 8 only widens the yaw limit towards the signalled side (looking the other way, or
+further than the widened limit, still counts). Drowsiness rules while standing still (block 10) are capped at
 `drowsy.stationary_max_level`: a microsleep at a red light still gets a chime, a driver
 closing the eyes to rest after parking gets no strong alarm. Once the stop is a rest
 (context.rest_after_s) they are off, and so they are while driver enrollment asks the driver
@@ -188,7 +189,7 @@ class RiskEngine:
 
         # Distraction branch: only while moving (block 8 already resets when stopped).
         off_road_thr = self.off_road_threshold(ctx)
-        off_road = 0.0 if ctx.turning else x.off_road_duration
+        off_road = x.off_road_duration  # turn signal: already widened towards that side in block 8
         distraction = 0.0
         if x.active and ctx.moving:
             distraction = 100.0 * min(max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio), 1.0)

@@ -6,6 +6,12 @@ level and reason, drowsiness signs (microsleeps, yawns, nods, brow raises), dist
 monitoring coverage (face seen, unavailable, camera lost), the drowsy_score of every minute,
 the minute fatigue first showed, a trip assessment and suggestions.
 
+Frames the pipeline does not judge for drowsiness (`DecisionResult.observed` False: a rest after
+parking, enrollment's eyes-closed step) add no drowsiness signs, no closure length and no minute
+score, as in trip memory: closing the eyes for enrollment or to rest is not "nhắm mắt ngủ gật khi
+đang lái" (bug found in M21, fixed in M27). A microsleep at a red light (standing still, not a rest)
+still counts.
+
 The assessment describes the trip, it does not grade the driver (alerts can be false, the
 driver may flag them): "good" / "attention" / "risk", with the reasons that set it, by rules
 in thresholds.yaml (trip_summary). Suggestions are codes with numbers; the HUD and the
@@ -77,6 +83,7 @@ class TripSummary:
     monitored_frac: float | None  # driving time with a face seen / driving time
     unavailable_s: float
     camera_lost_s: float
+    vehicle_signal_lost_s: float  # vehicle link lost while driving (speed unknown, monitored as moving)
     enrolled: bool
     driver_changes: int
     drowsy_mean: float
@@ -155,16 +162,20 @@ class TripCollector:
             self.off_road += dt
         if "phone" in hit_reasons:
             self.phone += dt
-        for ev in r.drowsiness.events:
-            if ev in self.counts:
-                self.counts[ev] += 1
-        self.longest_closure = max(self.longest_closure, r.drowsiness.closed_duration)
+        observed = getattr(r, "observed", True)  # drowsiness not judged: a rest, enrollment's eyes-closed step
+        if observed:
+            for ev in r.drowsiness.events:
+                if ev in self.counts:
+                    self.counts[ev] += 1
+            self.longest_closure = max(self.longest_closure, r.drowsiness.closed_duration)
         alert = r.alert.new_alert
         if alert is not None and alert.level > 0:
             self.alerts_by_level[str(alert.level)] += 1
             for reason in alert.reasons:
                 self.alerts_by_reason[reason] = self.alerts_by_reason.get(reason, 0) + 1
         self.enrolled = self.enrolled or r.enrollment.enrolled
+        if not observed:  # no minute score from it either (its drowsy_score reads the eyes closed on purpose)
+            return
         m = int((t - self._t0) // 60)
         acc = self._minutes.setdefault(m, [0.0, 0, 0, 0])
         acc[0] += r.risk.drowsy_score
@@ -187,6 +198,7 @@ class TripCollector:
         false_alarms: int = 0,
         camera_lost_s: float = 0.0,
         speed_source: str = "simulated",
+        vehicle_signal_lost_s: float = 0.0,
     ) -> TripSummary:
         cfg = self.config
         minutes = self.minutes()
@@ -223,6 +235,7 @@ class TripCollector:
             monitored_frac=None if monitored is None else round(monitored, 3),
             unavailable_s=round(self.unavailable, 1),
             camera_lost_s=round(camera_lost_s, 1),
+            vehicle_signal_lost_s=round(vehicle_signal_lost_s, 1),
             enrolled=self.enrolled,
             driver_changes=self.driver_changes,
             drowsy_mean=round(float(scores.mean()), 1),

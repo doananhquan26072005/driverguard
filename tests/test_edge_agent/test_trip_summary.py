@@ -57,6 +57,43 @@ def test_alert_drive_is_good_and_adds_up():
     assert s.speed_source == "simulated"
 
 
+def test_enrollment_eyes_closed_step_is_not_a_microsleep_in_the_summary():
+    """Bug (M21 e2e, fixed in M27): step 3 of enrollment (eyes shut ~2 s, parked) raised no alert but the
+    summary counted it as a microsleep and rated a 0 s drive "risk: nhắm mắt ngủ gật khi đang lái"."""
+    from tests.test_edge_agent.test_enrollment import obedient
+
+    th = load_thresholds()
+    pipeline = DecisionPipeline(th)
+    can = CanSimulator(
+        scenario_from_dict({"name": "t", "start_clock": "15:00", "timeline": [{"t": 0, "speed_kmh": 0}]})
+    )
+    status, events = "waiting", []
+    for i in range(round(20 * FPS)):
+        t = i / FPS
+        r = pipeline.step(obedient(i, t, status), False, can.sample(t))
+        status = r.enrollment.status
+        events += r.drowsiness.events
+        if status == "consent":
+            pipeline.enrollment_answer(True)
+    assert r.enrollment.enrolled and "microsleep" in events  # block 7 did see a long closure
+    s = summarize(pipeline, 20)
+    assert s.microsleeps == 0 and s.longest_closure_s < 1.0
+    assert s.rating == "good" and "microsleep" not in s.rating_reasons
+    assert all(p.drowsy_score < s.score_l1 for p in s.minutes)
+
+
+def test_resting_the_eyes_after_parking_is_not_a_microsleep_in_the_summary():
+    # Parked longer than context.rest_after_s, then eyes shut 5 s: a rest, as the risk engine sees it.
+    s = summarize(drive(200, [(0, 0)], ear=lambda t: 0.06 if 150 <= t < 155 else 0.30), 200)
+    assert s.rests == 1 and s.microsleeps == 0 and s.rating == "good"
+
+
+def test_microsleep_at_a_red_light_still_counts():
+    # Standing still but not a rest yet (red light): a real microsleep, still in the summary.
+    s = summarize(drive(60, [(0, 60), (20, 0)], ear=lambda t: 0.06 if 30 <= t < 33 else 0.30), 60)
+    assert s.microsleeps == 1 and s.rating == "risk"
+
+
 def test_microsleep_while_driving_is_risk():
     s = summarize(drive(120, [(0, 60)], ear=lambda t: 0.06 if 60 <= t < 63 else 0.30), 120)
     assert s.alerts_by_level["3"] == 1 and s.microsleeps == 1

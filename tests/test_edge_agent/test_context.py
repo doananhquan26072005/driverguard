@@ -88,9 +88,10 @@ def test_context_flags_and_turn_grace():
     assert not ctx[0.0].moving and ctx[15.0].moving and ctx[15.0].high_speed
     assert not ctx[0.0].night  # 23:30 is outside the default 00-05 window
     assert ContextTracker(ContextConfig(night_hours=((22, 5),))).update(can.sample(30.5)).night
-    assert ctx[22.0].turning
-    assert ctx[26.5].turning  # 1.5 s after the blinker stopped: still in grace
-    assert not ctx[27.5].turning
+    assert ctx[22.0].turning and ctx[22.0].turn_side == "left"
+    assert ctx[26.5].turning and ctx[26.5].turn_side == "left"  # 1.5 s after the blinker stopped: grace
+    assert not ctx[27.5].turning and ctx[27.5].turn_side is None
+    assert ctx[15.0].turn_side is None
     assert ctx[29.0].long_drive  # 100 s initial + ~20 s moving >= 120 s
 
 

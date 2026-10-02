@@ -1,6 +1,0 @@
-# Default mode of the HUD / #/live: no scripted timeline. The vehicle starts parked (driver
-# enrollment first), drives at cruise_kmh once the driver is enrolled or presses "Tiếp tục lái",
-# parks on "Tạm dừng" / "Đổi tài xế". Time of day = the real clock. Speed is simulated.
-name: manual
-mode: manual
-cruise_kmh: 50

@@ -229,6 +229,46 @@ def test_glance_at_dashboard_after_blink_is_not_l3():
     assert all(level < 3 for _, level, _ in alerts)
 
 
+def ramp(start, end, rise_s, peak):
+    """0 before `start`, rises to `peak` over `rise_s`, holds until `end`, then 0."""
+    return lambda t: 0.0 if not start <= t < end else peak * min(1.0, (t - start) / rise_s)
+
+
+LOOK_DOWN_EAR = 0.15  # lids follow the gaze down: ~0.5 x the open-eye EAR, not shut
+
+
+def test_looking_down_at_the_phone_with_the_head_partly_bowed_is_distraction_not_sleep():
+    # Head bowed 18 deg (under eye.max_pitch_down_deg: eyes still judged), lids lowered, 4 s.
+    alerts, results = drive(
+        24, constant_speed(60), ear=between(20, 24, LOOK_DOWN_EAR, OPEN_EAR), pitch=ramp(20, 24, 0.8, 18.0)
+    )
+    assert all(level < 3 for _, level, _ in alerts) and not any(r.drowsiness.microsleep for r in results)
+    assert [(lv, r) for _, lv, r in alerts] == [(2, ("off_road",))]  # "Nhìn về phía trước"
+    assert any(r.drowsiness.gaze_down for r in results)
+
+
+def test_slowly_bowing_to_the_lap_with_lids_lowered_is_not_carried():
+    # Head goes down to 40 deg over 1.5 s: the lids were lowered > 0.5 s before it passed 25 deg.
+    alerts, results = drive(
+        26, constant_speed(60), ear=between(20, 25, LOOK_DOWN_EAR, OPEN_EAR), pitch=ramp(20, 25, 1.5, 40.0)
+    )
+    assert not any(r.drowsiness.head_drop for r in results)
+    assert all(level < 3 for _, level, _ in alerts)
+    assert ("off_road",) in [r for _, _, r in alerts]
+
+
+def test_eyes_shut_with_the_head_bowed_is_still_a_microsleep():
+    # Falling asleep with the head sagging 18 deg: the eyes are really shut (0.27 x).
+    alerts, _ = drive(24, constant_speed(60), ear=between(20, 24, 0.08, OPEN_EAR), pitch=ramp(20, 24, 0.8, 18.0))
+    assert alerts[0][1:] == (3, ("microsleep",))
+
+
+def test_eyes_shut_then_a_slow_head_drop_is_still_carried():
+    alerts, results = drive(26, constant_speed(60), ear=between(20, 25, 0.08, OPEN_EAR), pitch=ramp(20, 25, 1.5, 40.0))
+    assert any(r.drowsiness.head_drop for r in results)
+    assert alerts[0][1:] == (3, ("microsleep",))
+
+
 def test_face_lost_while_moving_is_unavailable_without_alert():
     alerts, results = drive(15, constant_speed(60), face=between(5, 10, False, True))
     assert alerts == []

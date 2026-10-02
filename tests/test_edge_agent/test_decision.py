@@ -96,9 +96,10 @@ def test_off_road_threshold_depends_on_speed(off_road, high_speed, level):
     assert r.level == level
 
 
-def test_turn_signal_suppresses_off_road():
-    r = assess(x=replace(X0, off_road=True, off_road_duration=5.0), c=replace(C0, turning=True))
-    assert r.level == 0
+def test_turn_signal_no_longer_switches_off_road_off():
+    """Block 8 widens the yaw limit towards the signalled side; an off-road it still reports counts."""
+    r = assess(x=replace(X0, off_road=True, off_road_duration=5.0), c=replace(C0, turning=True, turn_side="left"))
+    assert r.level == 2 and "off_road" in r.reasons
 
 
 @pytest.mark.parametrize(("ratio", "level"), [(0.59, 0), (0.6, 2)])

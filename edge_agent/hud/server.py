@@ -4,8 +4,9 @@ A tiny HTTP server on the device (127.0.0.1 only, never exposed to the network) 
 the in-car HUD screen talks to:
 - GET  /state     current level, reasons, scores, speed and the latest alerts
 - POST /feedback  {"event_id": ...}: the driver pressed "false alarm" on an alert
-- POST /vehicle   {"action": "park" | "drive" | "change_driver"}: "Tạm dừng", "Tiếp tục lái",
-                  "Đổi tài xế" (park / drive only in the manual vehicle mode); the main loop applies it
+- POST /vehicle   {"action": "change_driver"}: "Đổi tài xế"; {"action": "enroll_start" | "enroll_later"}:
+                  the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau"). The main
+                  loop applies them (parked / driving is not a button: it follows the speed)
 - POST /end-trip  the driver pressed "end trip": the main loop builds the trip summary
                   (block 11), sends it to the backend, and the reply carries it for the HUD
 
@@ -32,13 +33,16 @@ from edge_agent.decision.pipeline import DecisionResult
 log = logging.getLogger("driverguard.hud")
 
 MAX_BODY = 1024
-VEHICLE_ACTIONS = ("park", "drive", "change_driver")
+VEHICLE_ACTIONS = ("change_driver", "enroll_start", "enroll_later")
 END_TRIP_WAIT_S = 10.0  # the main loop answers on its next frame
 
 
 @dataclass(frozen=True)
 class HudConfig:
     feedback_window_s: float = 120.0  # the driver can flag an alert for this long after it fired
+    processing_error_s: float = 1.0  # frames failing this long: "processing error" (not monitored)
+    low_fps_below: float = 14.5  # smoothed FPS below this ...
+    low_fps_s: float = 5.0  # ... for this long: "alerts may be late"
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> HudConfig:
@@ -54,22 +58,28 @@ class HudState:
         self._snapshot: dict[str, Any] = {"connected": False, "level": 0, "reasons": []}
         self._alerts: deque[dict[str, Any]] = deque(maxlen=recent_alerts)
         self._camera_lost = False
+        self._processing_error = False  # frames keep failing: not monitored (M28)
+        self._low_fps = False  # FPS too low for a while: alerts may be late (M28)
         self.false_alarms = 0  # flagged by the driver this trip (for the trip summary)
         self._end_requested = threading.Event()
         self._summary_ready = threading.Event()
         self._summary_delivered = threading.Event()
         self._summary: dict[str, Any] | None = None
-        self._vehicle: dict[str, Any] = {"manual": False, "driving": None}
+        self._vehicle: dict[str, Any] = {
+            "source": None,
+            "connected": False,
+            "speed_kmh": 0.0,
+            "turn_signal": None,
+            "driving": False,
+        }
         self._actions: deque[str] = deque(maxlen=8)
 
     # ------------------------------------------------------------------ vehicle buttons
     def request_vehicle(self, action: str) -> str:
-        """'queued', or 'unsupported' (park / drive need the manual vehicle mode)."""
+        """'queued', or 'unknown'."""
         if action not in VEHICLE_ACTIONS:
             return "unknown"
         with self._lock:
-            if action != "change_driver" and not self._vehicle["manual"]:
-                return "unsupported"
             self._actions.append(action)
         return "queued"
 
@@ -114,6 +124,17 @@ class HudState:
     def set_camera_lost(self, lost: bool) -> None:
         with self._lock:
             self._camera_lost = lost
+
+    def set_processing_error(self, error: bool) -> None:
+        """Frames keep failing: the HUD shows it. The snapshot is kept fresh, so the HUD says "processing
+        error" rather than "no data from the camera"."""
+        with self._lock:
+            self._processing_error = error
+            self._snapshot = {**self._snapshot, "updated_at": time.time()}
+
+    def set_low_fps(self, low: bool) -> None:
+        with self._lock:
+            self._low_fps = low
 
     def add_alert(self, event_id: str, level: int, reasons: tuple[str, ...]) -> None:
         with self._lock:
@@ -169,8 +190,10 @@ class HudState:
             return {
                 **self._snapshot,
                 "camera_lost": self._camera_lost,  # driver not monitored, reconnecting
+                "processing_error": self._processing_error,  # frames keep failing: not monitored (M28)
+                "low_fps": self._low_fps,  # too slow for a while: alerts may be late (M28)
                 "trip_ended": self._summary is not None,
-                "vehicle": dict(self._vehicle),  # manual mode: the HUD shows park / drive buttons
+                "vehicle": dict(self._vehicle),  # speed source, parked / driving by the speed
                 "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it
                 "alerts": [dict(a) for a in reversed(self._alerts)],
             }

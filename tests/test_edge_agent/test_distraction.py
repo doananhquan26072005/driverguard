@@ -13,12 +13,12 @@ def feats(t, yaw=0.0, pitch=0.0, face=True):
     return FrameFeatures(int(t * FPS), t, True, 1.0, ear=0.3, mar=0.0, pitch=pitch, yaw=yaw, roll=0.0)
 
 
-def run(analyzer, t0, seconds, moving=True, phone=False, **pose):
+def run(analyzer, t0, seconds, moving=True, phone=False, turn=None, **pose):
     """Feed `seconds` of identical frames starting at t0. Returns (last state, next t)."""
     state = None
     n = round(seconds * FPS)
     for i in range(n):
-        state = analyzer.update(feats(t0 + i * DT, **pose), phone, moving)
+        state = analyzer.update(feats(t0 + i * DT, **pose), phone, moving, turn)
     return state, t0 + n * DT
 
 
@@ -197,3 +197,83 @@ def test_partial_face_holds_state_and_is_not_no_face():
         s = a.update(f, False, True)
     assert s.off_road and s.off_road_duration == pytest.approx(3.0 - DT, abs=DT)
     assert s.no_face_duration == 0.0
+
+
+# ---------------------------------------------------------------- turn signal: wider on that side
+# Unmirrored camera facing the driver (left_yaw_sign = +1): the driver's left is yaw > 0.
+
+
+@pytest.mark.parametrize(
+    ("turn", "yaw", "off"),
+    [
+        (None, 45.0, True),  # no signal: 30 deg either way
+        (None, -45.0, True),
+        ("left", 45.0, False),  # left signal: may look up to 60 deg left
+        ("left", 59.0, False),
+        ("left", 65.0, True),  # ... not further
+        ("left", -45.0, True),  # looking right with the left signal on still counts
+        ("right", -45.0, False),
+        ("right", 45.0, True),
+    ],
+)
+def test_turn_signal_widens_only_the_signalled_side(turn, yaw, off):
+    s, _ = run(no_adapt(), 0.0, 3.0, turn=turn, yaw=yaw)
+    assert s.off_road is off
+    assert (s.off_road_duration > 2.5) is off
+
+
+def test_turn_signal_does_not_widen_pitch():
+    s, _ = run(no_adapt(), 0.0, 3.0, turn="left", yaw=20.0, pitch=30.0)  # left and down at the lap
+    assert s.off_road
+
+
+def test_left_yaw_sign_for_a_mirrored_camera():
+    s, _ = run(no_adapt(left_yaw_sign=-1.0), 0.0, 1.0, turn="left", yaw=-45.0)
+    assert not s.off_road
+    s, _ = run(no_adapt(left_yaw_sign=-1.0), 0.0, 1.0, turn="left", yaw=45.0)
+    assert s.off_road
+
+
+def test_signal_off_back_to_normal_limit():
+    a = no_adapt()
+    s, t = run(a, 0.0, 2.0, turn="left", yaw=45.0)
+    assert not s.off_road
+    s, _ = run(a, t, 1.0, turn=None, yaw=45.0)  # still looking left after the grace period
+    assert s.off_road and s.off_road_duration == pytest.approx(1.0 - DT, abs=0.05)
+
+
+def test_baseline_does_not_learn_from_the_widened_band():
+    a = DistractionAnalyzer(DistractionConfig(baseline_tau_s=1.0))
+    s, _ = run(a, 0.0, 5.0, turn="left", yaw=45.0)
+    assert not s.off_road and s.baseline_yaw == 0.0
+
+
+@pytest.mark.parametrize(("turn", "yaw", "alert"), [("left", 45.0, False), ("left", -45.0, True), (None, 45.0, True)])
+def test_pipeline_turn_signal_from_the_vehicle(turn, yaw, alert):
+    """Block 10's turn signal reaches block 8: 5 s looking 45 deg aside at 50 km/h, after calibration."""
+    from edge_agent.config import load_thresholds
+    from edge_agent.context.can_sim import VehicleSignals
+    from edge_agent.decision.pipeline import DecisionPipeline
+
+    p = DecisionPipeline(load_thresholds())
+    reasons = set()
+    for i in range(int(15 * FPS)):
+        t = i * DT
+        look = yaw if t >= 8.0 else 0.0
+        f = FrameFeatures(i, t, True, 1.0, ear=0.3, mar=0.05, pitch=0.0, yaw=look, roll=0.0)
+        r = p.step(f, False, VehicleSignals(t, 50.0, turn if t >= 7.0 else None, 0.0, 12.0))
+        reasons.update(r.risk.reasons)
+    assert ("off_road" in reasons) is alert
+
+
+def test_looking_down_from_block_7_counts_as_off_road_and_never_moves_the_baseline():
+    d = DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=0.0))
+    for i in range(30):  # 1 s on the road
+        d.update(FrameFeatures(i, i / 30, True, 1.0, yaw=0.0, pitch=0.0), False, moving=True)
+    s = None
+    for i in range(30, 120):  # 3 s head bowed 12 deg (within the pitch limit), lids lowered
+        s = d.update(FrameFeatures(i, i / 30, True, 1.0, yaw=0.0, pitch=12.0), False, moving=True, gaze_down=True)
+    assert s.off_road and s.off_road_duration == pytest.approx(3.0, abs=0.1)
+    assert d.baseline_pitch == 0.0
+    s = d.update(FrameFeatures(120, 4.0, True, 1.0, yaw=0.0, pitch=12.0), False, moving=True)
+    assert s.off_road  # back needs on_road_confirm_s
