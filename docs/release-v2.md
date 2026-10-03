@@ -52,6 +52,7 @@
 | **Sửa** | Tài liệu theo v2: README mở đầu bằng DriverGuard, sơ đồ kiến trúc có phần v2, HowToUse có luồng một chuyến đi | M29 | 02/10 |
 | **Sửa** | Xe đứng yên (0 km/h) thì không có cảnh báo nào (trước: microsleep ở đèn đỏ vẫn có chuông L1) | M30 | 02/10 |
 | **Thêm** | Trang điều khiển xe trên web `#/drive?code=…` (tốc độ, dừng, xi nhan), mở được trên máy khác; `#/live` chạy theo | M31 | 02/10 |
+| **Sửa** | README viết lại theo dự án và yêu cầu khoá: vấn đề / giải pháp, Quick start đủ bước, bảng biến môi trường, API kèm ví dụ `curl`, deliverables, team; bỏ phần template sai với DriverGuard | — | 03/10 |
 | **Bỏ** | Chống chói đèn pha bằng phần mềm: giao cho yêu cầu đầu vào camera (camera IR) | — | 01/10 |
 | **Bỏ** | Việc "bám tài xế" riêng: do bước đăng ký đảm nhận | — | 01/10 |
 | **Bỏ** | Bật lại cảnh báo theo nhịp chớp mắt (`blink_rate`) chuẩn hoá theo tài xế: nguồn dẫn ra không ủng hộ, giữ "chỉ ghi chú" | — | 02/10 |
@@ -648,6 +649,12 @@ lúc dừng đèn đỏ không còn chuông (FMEA dòng 12).
 README mở đầu bằng DriverGuard (README template khoá giữ phía dưới); `docs/architecture_diagram.md` thêm
 mục 5 "Phần thêm ở v2"; `HowToUse.md` thêm mục 2.5 "Một chuyến đi ở v2" và các trạng thái HUD khi không
 giám sát được.
+
+README viết lại (03/10): theo khung `README_boilerplate.md` và checklist chương 9 của guide. Thêm vấn đề /
+giải pháp, vai trò và mức cảnh báo, sơ đồ 14 khối (Mermaid), tech stack thật (không LLM), Quick start 4 bước
+có khởi tạo backend, bảng biến môi trường (`DG_*`, `VITE_*`, cả `DG_MAX_BODY_BYTES`, `DG_STATIC_DIR` trước chưa
+ghi ở đâu), bảng endpoint + 8 ví dụ `curl`, bảng deliverables, team. Phần template khoá thu gọn còn hook ghi
+log AI và ghi chú `src/`, `Dockerfile` là code mẫu. Video demo và pitch deck vẫn chưa có.
 
 ---
 
