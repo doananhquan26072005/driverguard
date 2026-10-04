@@ -1,7 +1,7 @@
 # Architecture Diagram — DriverGuard
 
 Sơ đồ kiến trúc theo code trên nhánh DAQuan. Hình 1–4 vẽ từ 30/09/2026 (sau M8, bản v1.1) và vẫn đúng
-về khung 14 khối; **phần thêm ở v2 (đến M28, 02/10/2026) ở [mục 5](#5-phần-thêm-ở-v2)**. Năm hình, mỗi
+về khung 14 khối; **phần thêm ở v2 (đến M31, 02/10/2026) ở [mục 5](#5-phần-thêm-ở-v2)**. Năm hình, mỗi
 hình trả lời một câu hỏi:
 
 1. [Thành phần và luồng dữ liệu](#1-thành-phần-và-luồng-dữ-liệu): 14 khối nối với nhau thế nào, dữ liệu rời thiết bị ở đâu.
@@ -12,7 +12,7 @@ hình trả lời một câu hỏi:
    `TripRuntime`, các đường HUD → agent, khi nào hệ thống báo "không giám sát".
 
 Thời gian mỗi khối lấy từ [`eval/results/benchmark.md`](../eval/results/benchmark.md)
-(Mac ARM, video YawDD 640×480). Mã `M0`…`M8` là mốc trong [`roadmap.md`](roadmap.md) đã làm ra khối đó.
+(Mac ARM, video YawDD 640×480). Mã `M0`…`M31` là mốc trong [`roadmap.md`](roadmap.md) đã làm ra khối đó.
 
 ---
 
@@ -119,6 +119,7 @@ flowchart LR
 | 4 Điện thoại | YOLOv8n ONNX, luồng riêng | onnxruntime-web trong Web Worker, cùng model |
 | 5 Trạng thái mắt | CNN `open_closed_eye.onnx` | blendshape `eyeBlink` |
 | 6–12 | Python | **cùng Python, chạy trong Pyodide** |
+| 10 Tín hiệu xe | `tools/drive_sim.py` qua `GET /can` (M19) | trang `#/drive?code=…` qua backend (M31); không có thì hỏi `drive_sim.py` trên `127.0.0.1` |
 | 13 HUD | HUD server `127.0.0.1:8765` + trang `#/hud` | `HudScreen` ngay trong trang |
 | 14 Gửi đi | outbox SQLite, `X-Device-Key` | trang gửi lô, token của người đăng nhập (thiết bị `web-<username>`) |
 
@@ -181,11 +182,13 @@ flowchart LR
         LIVE["<b>…/#/live</b><br/>cả pipeline trong trang"]
     end
 
+    REMOTE["<b>…/#/drive?code=…</b><br/>tốc độ, xi nhan · M31<br/>(có thể là máy khác)"]
+
     MGR["<b>Quản lý / kỹ sư</b><br/>…/#/dashboard"]
 
-    subgraph RW["Railway · image quanpk07/driveguard:v1.1 · 72,6 MB"]
+    subgraph RW["Railway · service driveguard-v2 · image quanpk07/driveguard:v2.2"]
         direction TB
-        APIR["<b>FastAPI</b><br/>/auth, /api/v1/*"]
+        APIR["<b>FastAPI</b><br/>/auth, /api/v1/*<br/>relay /api/v1/drive (RAM)"]
         STATIC["<b>File tĩnh</b><br/>React, edge_agent.zip, 2 model"]
         VOL[("Volume /app/data<br/>driverguard.db")]
         APIR --> VOL
@@ -196,6 +199,8 @@ flowchart LR
     EA == "metadata JSON<br/>X-Device-Key" ==> APIR
     LIVE == "metadata JSON<br/>token người dùng" ==> APIR
     MGR -- "REST + JWT" --> APIR
+    REMOTE -- "PUT /api/v1/drive/{code}<br/>chỉ số" --> APIR
+    APIR -. "GET /api/v1/drive/{code}" .-> LIVE
     LIVE -. runtime .-> CDN
 ```
 
@@ -209,8 +214,11 @@ flowchart LR
 - **Backend và frontend cùng domain**, nên dashboard gọi API không cần cấu hình CORS.
   `--hud-origin` cho phép trang HUD trên Railway đọc HUD server ở `127.0.0.1` của chính máy đó.
 - **`Dockerfile` ở gốc repo vẫn là app mẫu của khoá học** (`src.main:app`), không dùng cho DriverGuard.
-- **v2 (01/10):** service riêng `driveguard-v2`, image `quanpk07/driveguard:v2`, volume riêng; v1 vẫn chạy
-  song song. Chi tiết ở [`release-v2.md`](release-v2.md) mục 7.
+- **Hai service chạy song song:** hình vẽ service `driveguard-v2` (từ 01/10, volume và JWT secret riêng), đang
+  chạy image `quanpk07/driveguard:v2.2` (02/10, đến M31). Service `driveguard` của v1 vẫn chạy image `v1.1`
+  (72,6 MB), không có `#/drive`. Chi tiết ở [`release-v2.md`](release-v2.md) mục 7.
+- **`#/drive`** (M31) gửi tốc độ / xi nhan lên backend theo mã ghép; `#/live` hỏi lại backend bằng mã đó.
+  Backend chỉ giữ số mới nhất trong bộ nhớ (hết hạn sau 10 phút, không ghi database).
 - **Sản phẩm cuối (chốt 02/10):** app APK chạy trên hub gắn trên xe, bọc chính code web (Capacitor), mọi model
   và Pyodide đóng gói sẵn trong app; bản web trên Railway chỉ để xem thử. Chưa làm
   ([`improvements.md`](improvements.md)).
@@ -286,7 +294,7 @@ flowchart LR
 | Khối 6 Đặc trưng | EAR, MAR, solvePnP | `edge_agent/perception/features.py` | M1 |
 | Khối 7 Buồn ngủ | PERCLOS 60 s, microsleep, ngáp, gật | `edge_agent/analysis/drowsiness/` | M2 |
 | Khối 8 Mất tập trung | off_road, phone_ratio_2s, no_face | `edge_agent/analysis/distraction.py` | M3 |
-| Khối 9–12 Quyết định | risk engine, trip memory, alert manager | `edge_agent/decision/` | M4 |
+| Khối 9–12 Quyết định | risk engine, trip memory, alert manager; 0 km/h thì không cảnh báo | `edge_agent/decision/` | M4, M30 |
 | Khối 10 Ngữ cảnh | tốc độ CAN giả lập theo kịch bản | `edge_agent/context/` | M4 |
 | Khối 13 HUD | HTTP server cục bộ + React | `edge_agent/hud/`, `frontend/src/hud/` | M6 |
 | Khối 14 Publisher | outbox SQLite, lô, backoff | `edge_agent/io/publisher.py` | M5 |
@@ -298,6 +306,7 @@ flowchart LR
 | Đăng ký tài xế | màn hình đồng ý + 3 bước, mốc riêng từng tài xế (RAM, một chuyến) | `edge_agent/perception/enrollment.py` | M9, M24 |
 | Tổng kết chuyến | cộng dồn từng frame, đánh giá chuyến, gợi ý nghỉ | `edge_agent/decision/trip_summary.py` | M15, M27 |
 | Mô phỏng lái xe | tốc độ, xi nhan từ terminal, thay CAN thật | `tools/drive_sim.py`, `edge_agent/context/can_sim.py` | M19, M26 |
+| Điều khiển xe trên web | trang `#/drive`, backend relay theo mã ghép (trong bộ nhớ) | `frontend/src/drive/`, `backend/drive_link.py` | M31 |
 | Báo cáo chuyến đi | bảng `trip_summaries`, `/api/v1/trip-reports`, tab dashboard | `backend/`, `frontend/src/dashboard/` | M15 |
 
 Tất cả model là pretrained, không train mới.
