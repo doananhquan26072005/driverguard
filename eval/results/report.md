@@ -52,20 +52,20 @@ Theo frame (mắt nhắm vs tỉnh táo; ngáp vs tỉnh táo):
 
 Theo sự kiện:
 
-| Hành vi | Kết quả |
-|---|---|
-| Microsleep ≥ 1.5 s đạt L3 | 75/95 (78.9%) |
-| Microsleep ≥ 3 s phát hiện | 11/11 (100%) |
-| Ngáp phát hiện | 76/99 (76.8%), trễ p50 1.56 s |
+| Hành vi | Kết quả | Nhận định |
+|---|---|---|
+| Microsleep ≥ 1.5 s đạt L3 | 75/95 (78.9%) | Chưa đạt mục tiêu ≥ 90% lần của PRD §7 |
+| Microsleep ≥ 3 s phát hiện | 11/11 (100%) | Đạt, nhưng chỉ 11 lần và là cảnh diễn |
+| Ngáp phát hiện | 76/99 (76.8%), trễ p50 1.56 s | Chưa đạt ≥ 90%; ngáp chỉ là một thành phần của `drowsy_score`, không tự phát cảnh báo |
 
 Cảnh báo đúng / sai (sai = nằm trên đoạn nhãn tỉnh táo, xa mọi đoạn buồn ngủ). Mẫu số là **0,43 giờ**
 (26 phút) nhãn tỉnh táo; CI 95% Poisson chính xác:
 
-| Mức | Tổng | Đúng | Sai | Sai / giờ (CI 95%) |
-|---|---:|---:|---:|---:|
-| L1 | 9 | 7 | 2 | 4.6 (0.56–16.7) |
-| L2 | 16 | 11 | 3 | 6.9 (1.43–20.3) |
-| L3 | 83 | 81 | 1 | 2.3 (0.06–12.9) |
+| Mức | Tổng | Đúng | Sai | Sai / giờ (CI 95%) | Nhận định (mục tiêu PRD ≤ 1,0 / giờ) |
+|---|---:|---:|---:|---:|---|
+| L1 | 9 | 7 | 2 | 4.6 (0.56–16.7) | Chưa kết luận được: ước lượng trên 1,0 nhưng CI chứa 1,0 |
+| L2 | 16 | 11 | 3 | 6.9 (1.43–20.3) | Chưa đạt: cả cận dưới CI đã trên 1,0 |
+| L3 | 83 | 81 | 1 | 2.3 (0.06–12.9) | Chưa kết luận được: CI chứa 1,0 |
 
 CI rất rộng: 26 phút không đủ để nói gì về chỉ tiêu PRD ≤ 1,0 / giờ. Bảng tách theo lý do × mức, và
 FAR / MAR theo cửa sổ, ở `dataset_fl3d.md` (mục 5, 5b). FAR / MAR trên FL3D không đọc được: video
@@ -108,12 +108,14 @@ Dashboard (ô *Tài xế báo sai*, tab *Ngưỡng*) tính `false_alarms / tổn
 
 Mac ARM, 10 nhân, video YawDD 640×480 có mặt thật (`benchmark.md`):
 
-| Metric | Mục tiêu | Thực tế | Trạng thái |
-|---|---|---|:---:|
-| FPS vòng lặp chính (khối 2–12) | ≥ 15 | 151.8 (FP32) / 152.2 (INT8) | ✅ |
-| Latency / frame | – | p50 6.5 ms, p95 7.2 ms | ✅ |
-| Tổng kích thước model | – | 16.7 MB (FP32) / 7.4 MB (INT8) | ✅ |
-| Ảnh khuôn mặt ra khỏi RAM | 0 | 0 (chỉ gửi metadata JSON; test `tests/test_backend/test_privacy.py`) | ✅ |
+| Metric | Mục tiêu | Thực tế | Trạng thái | Nhận định |
+|---|---|---|:---:|---|
+| FPS vòng lặp chính (khối 2–12) | ≥ 15 | 151.8 (FP32) / 152.2 (INT8) | ✅ | Đạt trên máy dev (Mac ARM, 10 nhân). Không nói gì về hub gắn trên xe: chưa đo |
+| Latency / frame | – | p50 6.5 ms, p95 7.2 ms | ✅ | Máy dev, 300 frame; đây là độ trễ xử lý một frame, không phải thời gian tới cảnh báo (chưa đo) |
+| Tổng kích thước model | – | 16.7 MB (FP32) / 7.4 MB (INT8) | ✅ | Không phụ thuộc máy |
+| Ảnh khuôn mặt ra khỏi RAM | 0 | 0 (chỉ gửi metadata JSON; test `tests/test_backend/test_privacy.py`) | ✅ | Đạt, có test ở cả thiết bị và máy chủ |
+
+Bảng tiêu chí đầy đủ để chạy thử trên xe thật: [`docs/pilot-readiness.md`](../../docs/pilot-readiness.md).
 
 ## 4. Test
 

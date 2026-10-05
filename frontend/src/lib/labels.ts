@@ -1,5 +1,5 @@
 // User-facing text (Vietnamese). Keys and code stay in English.
-import type { EnrollHint, EnrollStep, Level, Reason, Role } from "./types";
+import type { EnrollHint, EnrollStep, FleetDevice, FleetStatus, Level, MonitorState, Reason, Role } from "./types";
 
 export const LEVELS: Record<Level, { short: string; title: string; action: string; icon: string }> = {
   0: { short: "L0", title: "Bình thường", action: "Tỉnh táo, tiếp tục lái an toàn", icon: "✓" },
@@ -16,6 +16,7 @@ export const REASONS: Record<Reason, string> = {
   no_face: "Không thấy mặt tài xế",
   trend: "Mệt mỏi tăng dần",
   blink_rate: "Nhịp chớp mắt bất thường",
+  repeated_l1: "Đã nhắc nhiều lần",
   camera_lost: "Mất camera: ngừng giám sát",
   camera_restored: "Camera hoạt động lại",
   driver_enrolled: "Đã đăng ký tài xế",
@@ -39,6 +40,32 @@ export const ROLES: Record<Role, string> = {
 
 export function reasonText(reason: string): string {
   return REASONS[reason as Reason] ?? reason;
+}
+
+// Fleet overview (M33): is the vehicle heard from, and what its last heartbeat said.
+export const FLEET_STATUS: Record<FleetStatus, { title: string; badge: string }> = {
+  online: { title: "Đang hoạt động", badge: "level-0" },
+  offline: { title: "Mất liên lạc", badge: "level-3" },
+  ended: { title: "Đã kết thúc chuyến", badge: "" },
+  never: { title: "Chưa từng kết nối", badge: "" },
+};
+
+export const MONITOR_STATES: Record<MonitorState, string> = {
+  monitoring: "Đang giám sát",
+  unavailable: "Tạm ngưng giám sát: không thấy mặt",
+  camera_lost: "Mất camera: không giám sát",
+  stalled: "Không nhận khung hình: không giám sát",
+  error: "Lỗi xử lý: không giám sát",
+  ended: "Đã kết thúc chuyến",
+};
+
+/** What the vehicle is doing, in words. Offline: what it last said, marked as such. */
+export function fleetStateText(d: Pick<FleetDevice, "status" | "state" | "moving">): string {
+  if (d.status === "never" || d.status === "ended") return "–";
+  if (d.state == null) return d.status === "online" ? "Không rõ (thiết bị không gửi trạng thái)" : "–";
+  const motion = d.state === "monitoring" && d.moving != null ? (d.moving ? " · xe đang chạy" : " · xe đang đỗ") : "";
+  const text = MONITOR_STATES[d.state] + motion;
+  return d.status === "offline" ? `Lần cuối: ${text}` : text;
 }
 
 // Threshold keys the backend lets engineers tune (backend/schemas.py THRESHOLD_SPECS).
@@ -84,6 +111,7 @@ export const REASON_ACTIONS: Record<Reason, string> = {
   drowsy_score: "Hãy tìm chỗ dừng nghỉ",
   trend: "Nên nghỉ ở trạm dừng tới",
   blink_rate: "Nên nghỉ ngơi sớm",
+  repeated_l1: "Đã nhắc nhiều lần: hãy dừng nghỉ",
   off_road: "Nhìn về phía trước",
   phone: "Bỏ điện thoại xuống",
   no_face: "Ngồi đúng vị trí lái",
@@ -142,18 +170,34 @@ export const ENROLL_TEXT = {
 // Shown before the steps: why the face is enrolled and what happens to the data. Must stay true to
 // the code: enrollment.py keeps a few numbers in RAM for this trip only, publisher.py sends only
 // "enrolled", how long it took and how many steps were redone, and no frame is ever stored or sent.
+// Data policy (docs/data-policy.md): days the server keeps alert numbers / trip summaries before
+// deleting them. Must equal the backend defaults (backend/settings.py retention_*_days); a Python
+// test compares the two.
+export const RETENTION_DAYS = { events: 60, summaries: 365 };
+
 export const ENROLL_CONSENT = {
   title: "Đăng ký khuôn mặt",
   lead: "Để nhận biết buồn ngủ và mất tập trung chính xác nhất, hệ thống cần làm quen với khuôn mặt của bạn. Mất khoảng 10 giây, khi xe đang dừng.",
   privacy: [
     "Không chụp, không lưu ảnh khuôn mặt. Hình ảnh camera chỉ được xử lý ngay trên thiết bị này.",
     "Chỉ ghi nhớ vài con số như độ mở mắt, miệng, tư thế đầu, và xoá khi kết thúc chuyến.",
-    "Không gửi khuôn mặt hay các con số đó lên máy chủ. Quản lý chỉ biết bạn đã đăng ký.",
+    `Không gửi khuôn mặt hay các con số đó lên máy chủ. Số liệu cảnh báo tự xoá sau ${RETENTION_DAYS.events} ngày, bản tổng kết chuyến sau ${RETENTION_DAYS.summaries} ngày.`,
   ],
   agree: "Đồng ý, bắt đầu đăng ký",
   later: "Để sau",
   laterNote: "Chưa đăng ký vẫn được lái, nhưng nhận biết kém chính xác hơn.",
 };
+
+// Dashboard footer (data policy): what the numbers may be used for, and how long they are kept.
+// days = 0: kept until deleted by hand.
+export function policyNote(p: { retention_events_days: number; retention_summaries_days: number }): string {
+  const keep = (days: number) => (days > 0 ? `tự xoá sau ${days} ngày` : "chưa đặt thời hạn xoá");
+  return (
+    "Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế. " +
+    `Số liệu cảnh báo ${keep(p.retention_events_days)}, bản tổng kết chuyến ${keep(p.retention_summaries_days)}. ` +
+    "Không có ảnh hay video khuôn mặt nào được lưu."
+  );
+}
 
 // Shown while the browser still blocks sound (hud/chime.ts armAudio): one touch turns it on.
 export const SOUND_BLOCKED_TEXT = "Âm thanh cảnh báo chưa bật. Chạm vào màn hình để bật.";

@@ -2,7 +2,8 @@
 
 Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm xong thì cập nhật dòng của mốc đó ở
 **Tổng quan** và thêm phần **Chi tiết** bên dưới. Những gì đã thêm / sửa / bỏ ở v2 cũng ghi trong
-[release-v2.md](release-v2.md); việc chưa làm nằm ở [improvements.md](improvements.md).
+[release-v2.md](release-v2.md), từ M32 (05/10) ghi trong [release-v3.md](release-v3.md); việc chưa làm nằm ở
+[improvements.md](improvements.md).
 
 ## Tổng quan
 
@@ -47,6 +48,17 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M29](#m29) | Cập nhật tài liệu theo v2: README, sơ đồ kiến trúc, HowToUse | README mở đầu bằng DriverGuard; sơ đồ có phần v2; HowToUse có luồng một chuyến đi và các trạng thái không giám sát | ✅ Xong · 02/10 |
 | [M30](#m30) | Xe đứng yên (0 km/h) thì không có cảnh báo nào (khối 9) | Dừng xe rồi nhắm mắt / cầm điện thoại: không có chuông; chạy lại thì nhắm mắt vẫn L3 | ✅ Xong · 02/10 |
 | [M31](#m31) | Trang điều khiển xe trên web `#/drive` (khối 10, backend, frontend) | `#/live` hiện "Điều khiển xe · mã …"; mở `#/drive?code=…` (cả trên máy khác) để tăng / giảm tốc, dừng, xi nhan; `#/live` chạy theo | ✅ Xong · 02/10 |
+
+### Version 3 (M32–M37)
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [M32](#m32) | Leo thang cảnh báo theo thời gian: L1 lặp lại thì nâng L2 (khối 12) | Cùng một lý do L1 báo lần thứ 3 trong 10 phút: lần đó là L2 "Đã nhắc nhiều lần: hãy dừng nghỉ"; một L1 đơn lẻ không đổi | ✅ Xong · 05/10 |
+| [M33](#m33) | Nhịp "còn sống" và tổng quan đội xe (khối 14, backend, dashboard) | Dashboard có tab "Đội xe": xe nào đang hoạt động, xe nào mất liên lạc, xe nào đã kết thúc chuyến, cảnh báo trong ngày, sự kiện gần nhất | ✅ Xong · 05/10 |
+| [M34](#m34) | Test hồi quy bằng trace trong CI (khối 5, 7–12) | Đổi logic hay ngưỡng làm lệch sự kiện / cảnh báo / `drowsy_score` trên 36 video cố định thì `pytest` đỏ, kèm lệnh cập nhật có lý do | ✅ Xong · 05/10 |
+| [M35](#m35) | Prototype offline: thời lượng chớp mắt so với chính tài xế (khối 7, chỉ đo) | Báo cáo `eval/results/blink_duration_fl3d.md` trả lời có nên thêm `duration_ratio` hay không | ✅ Xong · 05/10 (kết luận: không thêm) |
+| [M36](#m36) | Trang tiêu chí sẵn sàng pilot; cột "Nhận định" trong bảng kết quả | `docs/pilot-readiness.md`: 24 tiêu chí có mục tiêu, số hiện có, trạng thái; lộ trình 4 giai đoạn | ✅ Xong · 05/10 |
+| [M37](#m37) | Chính sách dữ liệu và tự xoá theo thời hạn (backend, HUD, dashboard) | `docs/data-policy.md`; cảnh báo cũ hơn 60 ngày và tổng kết cũ hơn 365 ngày tự xoá; lệnh xoá dữ liệu một tài xế; màn hình đồng ý ghi thời hạn | ✅ Xong · 05/10 |
 
 ---
 
@@ -506,4 +518,100 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - `frontend/src/drive/`: mô hình xe giống `tools/drive_sim.py` (`sim.ts`, test so thông số với `config/drive_sim.yaml`), trang `DriveScreen` (nút to, phím W / S / Space / C / A / D / X, gửi 5 lần / s)
 - `#/live`: mã ghép mỗi phiên, nút "Điều khiển xe · mã …" mở `#/drive?code=…`; mỗi 250 ms đọc kênh, số cũ hơn 1 s không dùng (thành mất tín hiệu xe, M26); không có kênh thì đọc `drive_sim` trên cùng máy như cũ
 - Test: 3 test backend, 5 test frontend (mô hình xe, mã ghép), 1 kịch bản e2e (ghép mã, "Chạy đều 50" + xi nhan trái → `#/live` thấy đang chạy, rẽ trái; đóng trang điều khiển → "Mất tín hiệu xe")
+
+### Version 3 (M32–M37)
+
+<a id="m32"></a>
+
+#### M32: Leo thang cảnh báo theo thời gian: L1 lặp lại thì nâng L2 (khối 12)
+
+**Xong là thấy gì:** Cùng một lý do L1 báo lần thứ 3 trong 10 phút: lần đó là L2 "Đã nhắc nhiều lần: hãy dừng nghỉ"; một L1 đơn lẻ không đổi
+
+**Trạng thái:** Xong (05/10) (việc 14 trong docs/improvements.md)
+
+- `AlertManager` (`edge_agent/decision/alert_manager.py`): đếm các cảnh báo L1 **đã phát** theo từng lý do. Lần thứ `alert.l1_repeat_count` (3) của cùng một lý do trong `alert.l1_repeat_window_s` (600 s) được phát ở L2, thêm lý do `repeated_l1`. Mức hiển thị là L2 trong `fall_hold_s` rồi về L1, không phát thêm cảnh báo. `l1_repeat_count: 0` là tắt
+- Không làm tăng báo sai đơn lẻ: một hoặc hai L1 không đổi; L1 bị cooldown chặn không được đếm; hai lý do L1 khác nhau không cộng dồn. Với cooldown L1 120 s, 3 lần cần ít nhất 4 phút
+- Nghỉ đỗ xe (`context.rest_after_s`) rồi chạy tiếp, hoặc đổi tài xế: đếm lại từ đầu (`DecisionPipeline` gọi `forget_repeats`)
+- Backend nhận lý do `repeated_l1`; nhãn dashboard "Đã nhắc nhiều lần"; dòng chính trên HUD "Đã nhắc nhiều lần: hãy dừng nghỉ" (đứng trước lý do gốc). Loại sự kiện vẫn theo lý do gốc (`drowsiness`)
+- Ngưỡng tạm: chưa dataset nào có chuyến đủ dài để kiểm chứng. Replay trace FL3D và YawDD có và không có luật này cho cùng một báo cáo (không cảnh báo nào bị nâng)
+- Test: 9 test khối 12 bằng chuỗi mức giả, 1 test pipeline (nghỉ thì đếm lại), 1 test backend, 1 test frontend
+
+<a id="m33"></a>
+
+#### M33: Nhịp "còn sống" và tổng quan đội xe (khối 14, backend, dashboard)
+
+**Xong là thấy gì:** Dashboard có tab "Đội xe": xe nào đang hoạt động, xe nào mất liên lạc, xe nào đã kết thúc chuyến, cảnh báo trong ngày, sự kiện gần nhất
+
+**Trạng thái:** Xong (05/10) (việc 24 trong docs/improvements.md, FMEA dòng 3, 4)
+
+- `TripRuntime` phát bản ghi `heartbeat` mỗi `publisher.heartbeat_interval_s` (30 s) và ngay khi trạng thái giám sát đổi: `monitoring`, `unavailable`, `camera_lost`, `stalled`, `error`, `ended`. Nội dung: thời điểm, chuyến, trạng thái, xe đang chạy hay đỗ. Không có vị trí, không có số đo của tài xế
+- `idle(clock)` giữ nhịp khi không có frame (mất camera, trang chạy nền). Không có frame quá `publisher.heartbeat_stalled_s` (10 s) mà camera không báo mất: `stalled`, không còn nói "đang giám sát". Kết thúc chuyến gửi `ended`
+- Nhịp không vào hàng đợi: chỉ giữ nhịp mới nhất, gửi bằng một POST riêng trước các bản ghi (thiết bị: `MetadataPublisher`; web: `bridge.take_heartbeat` + `agent.ts`). Backend cũ từ chối (422) thì bỏ nhịp, sự kiện vẫn gửi được
+- Backend: bảng `device_status` (lần cuối thấy theo giờ máy chủ, trạng thái từ nhịp mới nhất); mọi lô gửi lên đều tính là còn sống. `GET /api/v1/fleet?since&until`: `online` / `offline` (im quá `DG_DEVICE_OFFLINE_AFTER_S`, mặc định 90 s) / `ended` / `never`, cảnh báo theo mức và sự kiện gần nhất trong khoảng hỏi. Tài xế chỉ thấy xe của mình
+- Dashboard: tab "Đội xe" cho quản lý / kỹ sư / admin: 4 ô tổng quan, bảng xe (mất liên lạc xếp trước), lọc theo trạng thái và ngày, nhãn tiếng Việt
+- Test: 8 test runtime, 4 test publisher, 3 test bridge web, 15 test backend (chuỗi nhịp giả: đến, ngắt, đến lại, đến trễ), 3 test frontend, kịch bản e2e thứ hai thêm bước xem tab "Đội xe". Tổng 627 Python + 54 frontend + 3 e2e pass, ruff / typecheck / build sạch
+- Chưa làm: màn hình đội xe trực tiếp có âm báo và "Bạn còn ở đó không?" (improvements: "cảnh báo cần xác nhận"); chưa deploy
+
+<a id="m34"></a>
+
+#### M34: Test hồi quy bằng trace trong CI (khối 5, 7–12)
+
+**Xong là thấy gì:** Đổi logic hay ngưỡng làm lệch sự kiện / cảnh báo / `drowsy_score` trên 36 video cố định thì `pytest` đỏ, kèm lệnh cập nhật có lý do
+
+**Trạng thái:** Xong (05/10) (việc 1 trong docs/improvements.md)
+
+- `tools/regression_traces.py`: `build` chọn video từ trace đầy đủ trên máy (8 FL3D, 12 YawDD, 16 SUST; mỗi loại hành vi một video ngắn nhất, rồi lấp bằng video ngắn nhất còn lại), `check` so với kết quả đã chốt, `update --reason` chốt lại kèm lý do (lưu trong file)
+- Dữ liệu trong repo: `tests/fixtures/regression/traces.npz` (563 KB; 36 video, 17 763 frame; 14 cột số mỗi frame như EAR, MAR, góc đầu, eyeBlink, độ sáng; không có ảnh) và `expected.json`
+- Mỗi video chốt: số frame, số sự kiện theo loại, từng cảnh báo (frame, mức, lý do), mức cao nhất, `drowsy_score` ở 4 điểm (sai số cho phép 0,05 điểm). Có đủ L1, L2, L3 và 30 video không cảnh báo
+- `tests/test_edge_agent/test_trace_regression.py` chạy trong `pytest` (CI có sẵn), khoảng 3 s. Đã thử: đổi 4 ngưỡng (`microsleep_l3_s`, `yawn.min_s`, `off_road_s`, `drowsy.l1`) đều bị bắt
+- `tools/seq_eval.py replay` thêm tham số `observe` (không đổi hành vi)
+- Chưa kiểm chứng: test mới chạy trên Mac ARM; CI là Linux x86, nếu số thực lệch ở bit cuối làm đổi một frame cảnh báo thì phải chốt lại trên CI
+- Test: 11 test (khớp kết quả chốt, bắt 4 ngưỡng, độ phủ, chỉ có số, có lý do, hàm chọn / so / lưu)
+
+<a id="m35"></a>
+
+#### M35: Prototype offline: thời lượng chớp mắt so với chính tài xế (khối 7, chỉ đo)
+
+**Xong là thấy gì:** Báo cáo `eval/results/blink_duration_fl3d.md` trả lời có nên thêm `duration_ratio` hay không
+
+**Trạng thái:** Xong (05/10) (việc 3 trong docs/improvements.md). **Kết luận: không thêm `duration_ratio`**, engine không đổi
+
+- `tools/blink_duration.py` chạy lại khối 5, 7–12 trên `fl3d_v2.pkl` (44 video, 47,2 phút), lấy thời lượng từng lần chớp do khối 7 đo; đo thêm bằng một bộ đếm offline trên EAR và trên eyeBlink
+- Khối 7 đo được 482 lần chớp (10,2 / phút), trung vị 304 ms. Chỉ 5 / 44 video có đủ 20 lần chớp làm mốc + 5 lần để so: clip quá ngắn cho một tỉ lệ "so với đầu chuyến"
+- FL3D không có nhãn "đoạn buồn ngủ" (chỉ alert / microsleep / yawning), nên dùng hai cách thay thế: video có microsleep so với video không có (AUC 0,54), và trong cùng video, chớp cách microsleep ≤ 10 s so với phần còn lại (AUC 0,54; trung vị tỉ lệ theo video 1,00 trên 5 video)
+- Thời lượng và thời gian mở mắt lại gần như cùng một thông tin: Spearman 0,92 trên 482 lần chớp
+- Hai mốc quyết định (AUC ≥ 0,65 và |rho| ≤ 0,8) được chọn sau khi đã xem sơ số liệu, không phải đặt trước; kết quả nằm xa cả hai mốc
+- Ghi nhận thêm: bộ đếm offline thấy 1 178 lần chớp trên EAR, gấp 2,4 lần khối 7; chưa tìm hiểu vì sao
+- Giới hạn: buồn ngủ diễn, ban đêm, 25 FPS (40 ms / frame). UTA-RLDD (cùng một người ở các mức KSS) mới trả lời chắc được
+- Test: 9 test bằng chuỗi số giả
+
+<a id="m36"></a>
+
+#### M36: Trang tiêu chí sẵn sàng pilot; cột "Nhận định" trong bảng kết quả
+
+**Xong là thấy gì:** `docs/pilot-readiness.md`: 24 tiêu chí có mục tiêu, số hiện có, trạng thái; lộ trình 4 giai đoạn
+
+**Trạng thái:** Xong (05/10) (việc 24 trong docs/improvements.md). Chỉ tài liệu
+
+- 24 tiêu chí trong 5 nhóm (phát hiện đúng, không im lặng, thiết bị, dữ liệu, con người và vận hành): 4 đạt, 6 một phần, 5 chưa đạt, 9 chưa đo / chưa có. Kết luận ghi ngay đầu trang: chưa sẵn sàng pilot
+- Mục tiêu lấy từ PRD §6, §7, CLAUDE.md, và hai quy định EU đã đọc văn bản gốc: 2021/1341 (DDAW: KSS ≥ 8, độ nhạy trung bình > 40 %, cận dưới CI 90 % > 20 %, ≥ 10 người; âm báo 200–8 000 Hz, 50–90 dB) và 2023/2590 (ADDW: cảnh báo trong 3,5 s ở ≥ 50 km/h, 6 s ở 20–50 km/h). Euro NCAP 2026 chỉ có nguồn thứ cấp, ghi rõ
+- Lộ trình 5 bậc (0 hiện tại → 4 mở rộng), mỗi bậc có cổng theo mã tiêu chí; bảng những chỗ DriverGuard cố ý làm khác quy định EU
+- Cột "Nhận định" thêm vào bảng kết quả của README (và 2 dòng mới: ngủ gật 75/95, cảnh báo sai / giờ) và 3 bảng của `eval/results/report.md`
+- Việc trong improvements được dẫn bằng tên + liên kết, không bằng số (số đổi mỗi lần xoá việc)
+
+<a id="m37"></a>
+
+#### M37: Chính sách dữ liệu và tự xoá theo thời hạn (backend, HUD, dashboard)
+
+**Xong là thấy gì:** `docs/data-policy.md`; cảnh báo cũ hơn 60 ngày và tổng kết cũ hơn 365 ngày tự xoá; lệnh xoá dữ liệu một tài xế; màn hình đồng ý ghi thời hạn
+
+**Trạng thái:** Xong (05/10) (việc 25 trong docs/improvements.md)
+
+- `docs/data-policy.md`: dữ liệu nào được thu (theo đúng schema) và không thu, dùng vào việc gì, ai xem được gì, giữ bao lâu, quyền của tài xế, bảo mật, bảng căn cứ, việc của đơn vị triển khai, giới hạn
+- Hai quyết định được giao cho mình chọn: (1) thời hạn **60 ngày** cho cảnh báo / sự kiện / mẫu theo phút và **365 ngày** cho bản tổng kết, theo mốc 2 tháng / 1 năm của CNIL cho định vị xe người lao động (luật Việt Nam không đặt con số); (2) **có làm xoá tự động**, bật mặc định
+- Backend: `DG_RETENTION_EVENTS_DAYS`, `DG_RETENTION_SUMMARIES_DAYS` (0 = không xoá); xoá lúc khởi động và mỗi ngày một lần khi có thiết bị gửi dữ liệu; `GET /api/v1/policy`; `python -m backend.manage purge` và `delete-driver-data <mã> --yes` (Luật 91/2025/QH15 Điều 25 khoản 2 điểm c)
+- Màn hình đồng ý: dòng thứ ba ghi thời hạn lưu (thay câu "Quản lý chỉ biết bạn đã đăng ký", không thêm dòng vì màn hình đã chật ở 1024×600). Dashboard: dòng cuối mọi tab nhắc không dùng một cảnh báo đơn lẻ để kỷ luật, kèm thời hạn lưu đang cấu hình
+- Nguồn đã đọc văn bản gốc: Luật 91/2025/QH15 (Điều 3, 14, 25), hai quy định EU, hướng dẫn CNIL. Nguồn thứ cấp (ghi rõ): EDPB 01/2020, ICO
+- Chưa làm: mã hoá database, nhật ký truy cập, xuất dữ liệu một tài xế, xoá tài khoản, tự xoá bản sao lưu; chưa có ý kiến pháp lý
+- Test: 10 test backend (xoá đúng hạn, 0 ngày giữ nguyên, xoá lúc khởi động và mỗi ngày, endpoint, xoá một tài xế, lệnh `manage`, tài xế đọc được dữ liệu của mình, câu chữ khớp mặc định backend), 2 test frontend. Tổng 657 Python + 56 frontend + 3 e2e pass, ruff / typecheck / build sạch
 

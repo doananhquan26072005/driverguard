@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ALARM_REPEAT_S, alertSound, armAudio, play, systemSound } from "../hud/chime";
 import { DEMO_CYCLE_S, demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
-import { ago, changedValues, clockText, formatPercent, query, rangeStart } from "./format";
+import { ago, changedValues, clockText, dayKey, dayRange, formatPercent, query, rangeStart } from "./format";
+import { ENROLL_CONSENT, fleetStateText, policyNote, reasonText, REASON_ACTIONS, RETENTION_DAYS } from "./labels";
+import { fleetCounts, sortFleet } from "../dashboard/FleetView";
+import { primaryReason } from "../hud/hudModel";
+import type { FleetDevice } from "./types";
 import { linearScale, nearestIndex, niceTicks, timeTicks } from "./scale";
 
 describe("scale", () => {
@@ -159,5 +163,75 @@ describe("HUD sound always on", () => {
     expect(on).toBe(false);
     expect(() => play(alertSound(3, ["microsleep"]))).not.toThrow();
     cleanup();
+  });
+});
+
+describe("fleet overview (M33)", () => {
+  const device = (over: Partial<FleetDevice>): FleetDevice => ({
+    device_id: "cam-001",
+    driver_id: "drv-001",
+    status: "online",
+    state: "monitoring",
+    moving: true,
+    trip_id: "trip-1",
+    last_seen: "2026-10-05T08:00:00Z",
+    alerts_by_level: { "1": 0, "2": 0, "3": 0 },
+    last_event: null,
+    ...over,
+  });
+
+  it("turns a local day into its start and the next midnight", () => {
+    const r = dayRange("2026-10-05")!;
+    expect(new Date(r.since).getHours()).toBe(0);
+    expect(Date.parse(r.until) - Date.parse(r.since)).toBe(24 * 3600_000);
+    expect(dayKey(new Date(r.since))).toBe("2026-10-05");
+    expect(dayRange("hôm nay")).toBeNull();
+  });
+
+  it("says what the vehicle is doing in words, never a raw code", () => {
+    expect(fleetStateText(device({}))).toBe("Đang giám sát · xe đang chạy");
+    expect(fleetStateText(device({ moving: false }))).toBe("Đang giám sát · xe đang đỗ");
+    expect(fleetStateText(device({ moving: null }))).toBe("Đang giám sát");
+    expect(fleetStateText(device({ state: "camera_lost" }))).toBe("Mất camera: không giám sát");
+    expect(fleetStateText(device({ status: "offline" }))).toBe("Lần cuối: Đang giám sát · xe đang chạy");
+    expect(fleetStateText(device({ status: "ended", state: "ended" }))).toBe("–");
+    expect(fleetStateText(device({ state: null }))).toContain("Không rõ");
+  });
+
+  it("lists lost vehicles first and counts by status", () => {
+    const list = [
+      device({ device_id: "b", status: "ended" }),
+      device({ device_id: "c", status: "online", alerts_by_level: { "1": 1, "2": 2, "3": 0 } }),
+      device({ device_id: "a", status: "offline", alerts_by_level: { "1": 0, "2": 0, "3": 1 } }),
+      device({ device_id: "d", status: "never" }),
+    ];
+    expect(sortFleet(list).map((d) => d.device_id)).toEqual(["a", "c", "b", "d"]);
+    expect(fleetCounts(list)).toEqual({ total: 4, online: 1, offline: 1, alerts: 4 });
+  });
+});
+
+describe("repeated L1 raised as L2 (M32)", () => {
+  it("has its own words and leads the HUD headline", () => {
+    expect(reasonText("repeated_l1")).toBe("Đã nhắc nhiều lần");
+    expect(primaryReason(["drowsy_score", "repeated_l1"])).toBe("repeated_l1");
+    expect(REASON_ACTIONS.repeated_l1).toContain("dừng nghỉ");
+    expect(primaryReason(["microsleep", "repeated_l1"])).toBe("microsleep");
+  });
+});
+
+describe("data policy texts (M37)", () => {
+  it("tells the driver how long the numbers are kept, before enrolling", () => {
+    const line = ENROLL_CONSENT.privacy.join(" ");
+    expect(line).toContain(`${RETENTION_DAYS.events} ngày`);
+    expect(line).toContain(`${RETENTION_DAYS.summaries} ngày`);
+    expect(ENROLL_CONSENT.privacy).toHaveLength(3); // no extra line: the screen is already tight at 1024x600
+  });
+
+  it("reminds the dashboard reader what one alert may not be used for", () => {
+    const note = policyNote({ retention_events_days: 60, retention_summaries_days: 365 });
+    expect(note).toContain("không dùng một cảnh báo đơn lẻ để kỷ luật");
+    expect(note).toContain("tự xoá sau 60 ngày");
+    expect(note).toContain("tự xoá sau 365 ngày");
+    expect(policyNote({ retention_events_days: 0, retention_summaries_days: 365 })).toContain("chưa đặt thời hạn xoá");
   });
 });

@@ -6,7 +6,7 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +72,15 @@ CREATE TABLE IF NOT EXISTS trip_summaries (
     UNIQUE (device_id, trip_id)
 );
 CREATE INDEX IF NOT EXISTS idx_summaries_driver ON trip_summaries (driver_id, started_at);
+CREATE TABLE IF NOT EXISTS device_status (
+    device_id TEXT PRIMARY KEY,
+    driver_id TEXT,
+    last_seen TEXT NOT NULL,
+    trip_id   TEXT,
+    state     TEXT,
+    moving    INTEGER,
+    state_ts  TEXT
+);
 CREATE TABLE IF NOT EXISTS threshold_versions (
     version    INTEGER PRIMARY KEY,
     vals       TEXT NOT NULL,
@@ -165,6 +174,94 @@ def create_device(conn: sqlite3.Connection, device_id: str, key_hash: str, drive
 
 def get_device_by_key_hash(conn: sqlite3.Connection, key_hash: str) -> sqlite3.Row | None:
     return conn.execute("SELECT * FROM devices WHERE key_hash = ?", (key_hash,)).fetchone()
+
+
+# --------------------------------------------------------------------------- fleet overview (M33)
+
+
+def touch_device(conn: sqlite3.Connection, device_id: str, driver_id: str | None) -> None:
+    """The device (or a user's browser) just posted something: it is alive now (server time)."""
+    conn.execute(
+        """INSERT INTO device_status (device_id, driver_id, last_seen) VALUES (?, ?, ?)
+           ON CONFLICT (device_id) DO UPDATE SET driver_id = excluded.driver_id, last_seen = excluded.last_seen""",
+        (device_id, driver_id, now_iso()),
+    )
+
+
+def apply_heartbeat(conn: sqlite3.Connection, device_id: str, h: dict[str, Any]) -> bool:
+    """Trip / monitoring state from a heartbeat; False if a newer one (device time) is already stored."""
+    cur = conn.execute(
+        """UPDATE device_status SET trip_id = ?, state = ?, moving = ?, state_ts = ?
+           WHERE device_id = ? AND (state_ts IS NULL OR state_ts <= ?)""",
+        (h["trip_id"], h["state"], h["moving"], h["ts"], device_id, h["ts"]),
+    )
+    return cur.rowcount == 1
+
+
+def fleet_devices(conn: sqlite3.Connection, driver_id: str | None = None) -> list[dict[str, Any]]:
+    """Every registered device plus every device heard from (browsers are not registered), by id."""
+    rows = conn.execute(
+        """SELECT d.device_id, COALESCE(s.driver_id, d.driver_id) AS driver_id,
+                  s.last_seen, s.trip_id, s.state, s.moving
+           FROM devices d LEFT JOIN device_status s ON s.device_id = d.device_id
+           UNION ALL
+           SELECT s.device_id, s.driver_id, s.last_seen, s.trip_id, s.state, s.moving
+           FROM device_status s WHERE s.device_id NOT IN (SELECT device_id FROM devices)
+           ORDER BY 1"""
+    ).fetchall()
+    out = [dict(r) for r in rows if driver_id is None or r["driver_id"] == driver_id]
+    for d in out:
+        d["moving"] = None if d["moving"] is None else bool(d["moving"])
+    return out
+
+
+def fleet_alerts(conn: sqlite3.Connection, since: str | None, until: str | None) -> dict[str, dict[int, int]]:
+    """device_id -> {level: alerts} in the period (system events are not alerts)."""
+    where, args = _where(since=since, until=until)
+    rows = conn.execute(
+        f"SELECT device_id, level, COUNT(*) AS n FROM events WHERE {where} AND type != 'system' "
+        "GROUP BY device_id, level",
+        args,
+    ).fetchall()
+    out: dict[str, dict[int, int]] = {}
+    for r in rows:
+        out.setdefault(r["device_id"], {})[r["level"]] = r["n"]
+    return out
+
+
+def last_event(conn: sqlite3.Connection, device_id: str, since: str | None, until: str | None) -> dict[str, Any] | None:
+    where, args = _where(device_id=device_id, since=since, until=until)
+    row = conn.execute(
+        f"SELECT ts, type, level, reasons FROM events WHERE {where} ORDER BY ts DESC LIMIT 1", args
+    ).fetchone()
+    if row is None:
+        return None
+    return {**dict(row), "reasons": json.loads(row["reasons"])}
+
+
+# --------------------------------------------------------------------------- data policy (M37)
+
+
+def purge_expired(conn: sqlite3.Connection, now: datetime, events_days: int, summaries_days: int) -> dict[str, int]:
+    """Delete metadata past its retention period (0 days = keep). Returns rows deleted per table."""
+    out = {"events": 0, "fatigue_samples": 0, "trip_summaries": 0}
+    if events_days > 0:
+        cutoff = (now - timedelta(days=events_days)).astimezone(UTC).isoformat()
+        out["events"] = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
+        out["fatigue_samples"] = conn.execute("DELETE FROM fatigue_samples WHERE ts < ?", (cutoff,)).rowcount
+    if summaries_days > 0:
+        cutoff = (now - timedelta(days=summaries_days)).astimezone(UTC).isoformat()
+        out["trip_summaries"] = conn.execute("DELETE FROM trip_summaries WHERE started_at < ?", (cutoff,)).rowcount
+    return out
+
+
+def delete_driver_data(conn: sqlite3.Connection, driver_id: str) -> dict[str, int]:
+    """Everything stored about one driver (the driver left, or asks for deletion). Accounts and
+    device registrations are not touched. Returns rows deleted per table."""
+    return {
+        table: conn.execute(f"DELETE FROM {table} WHERE driver_id = ?", (driver_id,)).rowcount
+        for table in ("events", "fatigue_samples", "trip_summaries", "device_status")
+    }
 
 
 # --------------------------------------------------------------------------- events

@@ -1,0 +1,638 @@
+{
+ "about": "Pinned results of tools/regression_traces.py. Do not edit by hand: run `update --reason`.",
+ "updates": [
+  {
+   "date": "2026-10-05",
+   "reason": "M34: fixture built from fl3d_v2 / yawdd_v2 / sust_v2 traces with the thresholds of M33"
+  }
+ ],
+ "videos": {
+  "fl3d/P1042762": {
+   "frames": 3095,
+   "events": {
+    "blink": 42,
+    "bow": 4,
+    "microsleep": 9,
+    "nod": 9,
+    "perclos_high": 1,
+    "yawn": 1
+   },
+   "alerts": [
+    [
+     232,
+     1,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
+     1505,
+     2,
+     [
+      "off_road"
+     ]
+    ],
+    [
+     1643,
+     2,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
+     1935,
+     3,
+     [
+      "microsleep"
+     ]
+    ],
+    [
+     2183,
+     3,
+     [
+      "microsleep"
+     ]
+    ],
+    [
+     2855,
+     3,
+     [
+      "microsleep"
+     ]
+    ]
+   ],
+   "max_level": 3,
+   "drowsy_score": [
+    50.0,
+    50.0,
+    100.0,
+    96.033
+   ]
+  },
+  "fl3d/P1043115": {
+   "frames": 3055,
+   "events": {
+    "blink": 66,
+    "bow": 1,
+    "microsleep": 4,
+    "nod": 7,
+    "perclos_high": 1
+   },
+   "alerts": [
+    [
+     142,
+     3,
+     [
+      "microsleep"
+     ]
+    ],
+    [
+     853,
+     1,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
+     914,
+     2,
+     [
+      "drowsy_score"
+     ]
+    ]
+   ],
+   "max_level": 3,
+   "drowsy_score": [
+    35.0,
+    88.486,
+    77.325,
+    80.216
+   ]
+  },
+  "fl3d/P1043116": {
+   "frames": 525,
+   "events": {
+    "blink": 15,
+    "bow": 2,
+    "yawn": 2
+   },
+   "alerts": [],
+   "max_level": 2,
+   "drowsy_score": [
+    5.0,
+    5.0,
+    5.0,
+    10.0
+   ]
+  },
+  "fl3d/P1043117": {
+   "frames": 480,
+   "events": {
+    "blink": 18,
+    "yawn": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    5.0,
+    10.0,
+    15.0
+   ]
+  },
+  "fl3d/P1043120": {
+   "frames": 418,
+   "events": {
+    "blink": 20,
+    "yawn": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    10.0,
+    10.0,
+    15.0
+   ]
+  },
+  "fl3d/P1043125": {
+   "frames": 473,
+   "events": {
+    "blink": 8,
+    "yawn": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    10.0,
+    10.0,
+    15.0
+   ]
+  },
+  "fl3d/P1043127": {
+   "frames": 470,
+   "events": {
+    "blink": 7,
+    "yawn": 2
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    5.0,
+    5.0,
+    10.0
+   ]
+  },
+  "fl3d/P1043130": {
+   "frames": 370,
+   "events": {
+    "blink": 5,
+    "yawn": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    10.0,
+    15.0,
+    15.0
+   ]
+  },
+  "sust/drowsiness/d_100.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_101.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 3
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_102.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 2
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_103.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 2
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_104.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 2
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_105.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 6
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_106.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 4
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_107.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 5
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_108.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 5
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_132.mp4": {
+   "frames": 250,
+   "events": {},
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_291.mp4": {
+   "frames": 299,
+   "events": {
+    "blink": 1,
+    "microsleep": 1
+   },
+   "alerts": [
+    [
+     233,
+     3,
+     [
+      "microsleep"
+     ]
+    ]
+   ],
+   "max_level": 3,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    25.0,
+    25.0
+   ]
+  },
+  "sust/drowsiness/d_736.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 5,
+    "bow": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "sust/drowsiness/d_740.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 2,
+    "microsleep": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    25.0,
+    25.0
+   ]
+  },
+  "sust/drowsiness/d_781.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 4,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    5.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  },
+  "sust/drowsiness/d_782.mp4": {
+   "frames": 250,
+   "events": {
+    "blink": 5,
+    "nod": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    10.0,
+    10.0,
+    10.0
+   ]
+  },
+  "sust/not drowsiness/n_677.mp4": {
+   "frames": 250,
+   "events": {},
+   "alerts": [
+    [
+     216,
+     2,
+     [
+      "off_road"
+     ]
+    ]
+   ],
+   "max_level": 2,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "yawdd/Mirror/Female_mirror/25-FemaleNoGlasses-Normal.avi": {
+   "frames": 308,
+   "events": {
+    "blink": 5
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "yawdd/Mirror/Female_mirror/25-FemaleNoGlasses-Yawning.avi": {
+   "frames": 268,
+   "events": {
+    "blink": 6,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Female_mirror/26-FemaleGlasses-Yawning.avi": {
+   "frames": 338,
+   "events": {
+    "blink": 7,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Female_mirror/3-FemaleGlasses-Yawning.avi": {
+   "frames": 363,
+   "events": {
+    "blink": 10,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Female_mirror/5-FemaleGlasses-Normal.avi": {
+   "frames": 673,
+   "events": {
+    "blink": 27,
+    "microsleep": 1
+   },
+   "alerts": [
+    [
+     360,
+     3,
+     [
+      "microsleep"
+     ]
+    ]
+   ],
+   "max_level": 3,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    25.0,
+    25.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/13-MaleGlasses-Yawning.avi": {
+   "frames": 213,
+   "events": {
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/16-MaleNoGlasses-Talking.avi": {
+   "frames": 263,
+   "events": {},
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/23-MaleGlassesBeard-TalkingYawning.avi": {
+   "frames": 461,
+   "events": {
+    "blink": 1,
+    "yawn": 1
+   },
+   "alerts": [
+    [
+     360,
+     2,
+     [
+      "off_road"
+     ]
+    ]
+   ],
+   "max_level": 2,
+   "drowsy_score": [
+    5.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/47-MaleNoGlasses-Yawning.avi": {
+   "frames": 543,
+   "events": {
+    "blink": 5,
+    "microsleep": 1,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    25.0,
+    30.0,
+    30.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/5-MaleNoGlasses-Yawning.avi": {
+   "frames": 548,
+   "events": {
+    "blink": 3,
+    "bow": 1,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    5.0,
+    5.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/6-MaleNoGlasses-Talking.avi": {
+   "frames": 552,
+   "events": {
+    "blink": 9,
+    "nod": 1
+   },
+   "alerts": [],
+   "max_level": 2,
+   "drowsy_score": [
+    0.0,
+    0.0,
+    10.0,
+    10.0
+   ]
+  },
+  "yawdd/Mirror/Male_mirror Avi Videos/6-MaleNoGlasses-Yawning.avi": {
+   "frames": 298,
+   "events": {
+    "blink": 2,
+    "yawn": 1
+   },
+   "alerts": [],
+   "max_level": 0,
+   "drowsy_score": [
+    0.0,
+    5.0,
+    5.0,
+    5.0
+   ]
+  }
+ }
+}

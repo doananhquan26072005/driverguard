@@ -12,12 +12,13 @@ export const REASON_PRIORITY: readonly Reason[] = [
   "no_face",
   "phone",
   "off_road",
+  "repeated_l1", // before the cause it repeats: the headline says the driver was told several times
   "drowsy_score",
   "trend",
   "blink_rate",
 ];
 
-const DROWSY_REASONS: ReadonlySet<Reason> = new Set(["microsleep", "drowsy_score", "trend", "blink_rate"]);
+const DROWSY_REASONS: ReadonlySet<Reason> = new Set(["microsleep", "drowsy_score", "trend", "blink_rate", "repeated_l1"]);
 const DISTRACTION_REASONS: ReadonlySet<Reason> = new Set(["off_road", "phone", "no_face"]);
 
 export function primaryReason(reasons: readonly Reason[]): Reason | null {

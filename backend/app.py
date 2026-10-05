@@ -18,6 +18,7 @@ import json
 import logging
 import secrets
 import sqlite3
+import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -42,7 +43,9 @@ from backend.schemas import (
     DriveSignalOut,
     EventBatch,
     EventOut,
+    FleetDeviceOut,
     LoginIn,
+    PolicyOut,
     StatsOut,
     ThresholdsIn,
     ThresholdsOut,
@@ -68,6 +71,7 @@ from edge_agent.config import load_thresholds
 from edge_agent.io.remote_config import apply_overrides
 
 log = logging.getLogger("driverguard.backend")
+PURGE_EVERY_S = 24 * 3600  # data policy: expired metadata is deleted at start-up, then at most this often
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -101,8 +105,23 @@ def web_device_id(username: str) -> str:
     return f"web-{username}"[:48]
 
 
+def fleet_status(row: dict[str, Any], now: datetime, offline_after_s: int) -> str:
+    """online / offline / ended / never for one device of the fleet overview (M33)."""
+    if row["last_seen"] is None:
+        return "never"
+    if row["state"] == "ended":
+        return "ended"
+    quiet_s = (now - datetime.fromisoformat(row["last_seen"])).total_seconds()
+    return "offline" if quiet_s > offline_after_s else "online"
+
+
 def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str | None) -> BatchResult:
     accepted = feedback = samples = 0
+    db.touch_device(conn, dev, drv)  # any post is a sign of life (M33)
+    if batch.heartbeat is not None:
+        beat = batch.heartbeat.model_dump(mode="json")
+        beat["ts"] = batch.heartbeat.ts.astimezone(UTC).isoformat()
+        db.apply_heartbeat(conn, dev, beat)
     for e in batch.events:  # events first: feedback in the same batch may refer to them
         row = e.model_dump(mode="json")
         row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
@@ -191,6 +210,21 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     app = FastAPI(title="DriverGuard backend", version="0.1.0")
     app.state.settings = settings
     app.state.jwt_secret = secret
+    app.state.next_purge = 0.0  # monotonic time of the next retention purge
+
+    def purge_if_due(conn: sqlite3.Connection) -> None:
+        """Data policy (M37): delete metadata past its retention period. Counts only in the log."""
+        if time.monotonic() < app.state.next_purge:
+            return
+        app.state.next_purge = time.monotonic() + PURGE_EVERY_S
+        deleted = db.purge_expired(
+            conn, datetime.now(UTC), settings.retention_events_days, settings.retention_summaries_days
+        )
+        if any(deleted.values()):
+            log.info("retention: deleted %s", deleted)
+
+    with db.closing(settings.db_path) as conn:
+        purge_if_due(conn)
     drive_links = DriveLinks()  # M31: #/drive -> #/live relay, in memory only
     app.add_middleware(
         CORSMiddleware,
@@ -223,6 +257,14 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no driving controls for this code")
         return DriveSignalOut(
             speed_kmh=reading.speed_kmh, turn_signal=reading.turn_signal, age_s=round(reading.age_s, 2)
+        )
+
+    @app.get("/api/v1/policy", response_model=PolicyOut)
+    def get_policy() -> PolicyOut:
+        """How long metadata is kept (docs/data-policy.md). Public: two numbers, shown on the dashboard."""
+        return PolicyOut(
+            retention_events_days=settings.retention_events_days,
+            retention_summaries_days=settings.retention_summaries_days,
         )
 
     @app.post("/auth/login", response_model=TokenOut)
@@ -259,6 +301,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         request: Request, device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn
     ) -> BatchResult:
         batch = await read_batch(request, device["device_id"])
+        purge_if_due(conn)
         return await run_in_threadpool(store_batch, conn, batch, device["device_id"], device["driver_id"])
 
     @app.post("/api/v1/web/events", response_model=BatchResult)
@@ -271,6 +314,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         so a driver cannot post for someone else.
         """
         batch = await read_batch(request, web_device_id(user["sub"]))
+        purge_if_due(conn)
         return await run_in_threadpool(store_batch, conn, batch, batch.device_id, user.get("driver_id"))
 
     @app.get("/api/v1/web/thresholds", response_model=ThresholdsOut)
@@ -340,6 +384,31 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         since: datetime | None = None,
     ) -> dict[str, Any]:
         return db.event_stats(conn, **scoped(user, driver_id, None), since=utc_iso(since))
+
+    @app.get("/api/v1/fleet", response_model=list[FleetDeviceOut])
+    def get_fleet(
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
+        conn: Conn,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fleet overview (M33): which vehicles are running, which went quiet, and their alerts in
+        [since, until]. Drivers only get the devices bound to their own driver_id."""
+        lo, hi = utc_iso(since), utc_iso(until)
+        now = datetime.now(UTC)
+        alerts = db.fleet_alerts(conn, lo, hi)
+        out = []
+        for row in db.fleet_devices(conn, scoped(user, None, None)["driver_id"]):
+            by_level = alerts.get(row["device_id"], {})
+            out.append(
+                {
+                    **row,
+                    "status": fleet_status(row, now, settings.device_offline_after_s),
+                    "alerts_by_level": {level: by_level.get(level, 0) for level in (1, 2, 3)},
+                    "last_event": db.last_event(conn, row["device_id"], lo, hi),
+                }
+            )
+        return out
 
     @app.get("/api/v1/trip-reports", response_model=list[TripReportOut])
     def get_trip_reports(

@@ -212,6 +212,7 @@ def main(argv: list[str] | None = None) -> int:
                     if source.ended:
                         print("[main] end of stream")
                         break
+                    runtime.idle(time.monotonic())  # 14: heartbeat goes on without frames
                     continue
 
                 try:
@@ -240,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as e:  # noqa: BLE001 - one bad frame must not stop monitoring (M28)
                     if runtime.last_error != type(e).__name__:  # once per kind of error in a row
                         print(f"[main] frame failed: {type(e).__name__}: {e}")  # local log only, never sent
-                    runtime.frame_failed(frame.timestamp, type(e).__name__)
+                    runtime.frame_failed(frame.timestamp, type(e).__name__, clock=time.monotonic())
                     continue
                 r, signals, fps = step.result, step.signals, runtime.fps
                 if r.enrollment.events:

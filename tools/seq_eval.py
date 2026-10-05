@@ -241,13 +241,15 @@ def run_traces(
 # --------------------------------------------------------------------------- what-if replay (blocks 7-12 only)
 
 
-def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace") -> dict:
+def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace", observe: Any = None) -> dict:
     """Blocks 7-12 again on a trace's features, e.g. with other thresholds, without re-running the models.
 
     eye: which p_closed block 7 gets. "trace" = what the pipeline used (reproduces the run),
     "ear" = never the CNN (EAR only), "cnn" = the CNN on every frame, "block5" = block 5 decided
     again with `thresholds` (trigger + hold, score from eye_state.source; needs the raw columns
     of a trace made after the block 5 fix). No phone flag (none is traced).
+    observe: called as observe(i, pipeline, result) after every frame, for tools that need more than
+    the returned columns (tools/blink_duration.py reads block 7's blink timings).
     """
     from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
     from edge_agent.decision.pipeline import DecisionPipeline
@@ -310,6 +312,8 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace") -> dict:
         events += [(i, ev) for ev in d.events]
         if r.alert.new_alert is not None:
             alerts.append((i, r.alert.new_alert.level, tuple(r.alert.new_alert.reasons)))
+        if observe is not None:
+            observe(i, pipeline, r)
     return {**tr, "cols": {**c, **out}, "events": events, "alerts": alerts}
 
 

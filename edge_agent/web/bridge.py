@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import copy
 import json
+import traceback
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -75,6 +76,15 @@ def _floats(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=np.float32)
 
 
+def _error_site(e: BaseException) -> str:
+    """file:line of the innermost edge_agent frame of an error (code location only, no data)."""
+    site = "?"
+    for fs in traceback.extract_tb(e.__traceback__):
+        if "edge_agent" in fs.filename:
+            site = f"{fs.filename.rsplit('edge_agent/', 1)[-1]}:{fs.lineno}"
+    return site
+
+
 @dataclass(frozen=True)
 class _PhoneResult:
     detections: tuple[PhoneDetection, ...]
@@ -119,10 +129,14 @@ class WebAgent:
             can = CanSimulator(load_scenario(scenario_path), moving_kmh=ctx_cfg.min_speed_kmh)
         self._phone: _PhoneResult | None = None
         self._records: list[dict[str, Any]] = []
+        self._heartbeat: dict[str, Any] | None = None  # newest one not taken yet (M33)
         self.runtime = TripRuntime(th, trip_id, can, scenario, self.selector, emit=self._queue)
         self.hud = self.runtime.hud
 
     def _queue(self, kind: str, data: dict[str, Any]) -> None:
+        if kind == "heartbeat":  # only the newest matters: never queued behind the records
+            self._heartbeat = data
+            return
         self._records.append({"kind": kind, "data": data})
 
     def settings(self) -> str:
@@ -178,9 +192,13 @@ class WebAgent:
         try:
             return self._frame(t, *args, **kwargs)
         except Exception as e:  # noqa: BLE001 - one bad frame must not stop monitoring
+            where = _error_site(e)
+            if self.runtime.last_error != type(e).__name__:  # once per kind of error in a row
+                print(f"[agent] frame failed at {where}\n{traceback.format_exc()}")  # browser console only
             self.runtime.frame_failed(t, type(e).__name__)
             state = self.hud.to_json()
             state["measures"] = {"face": False, "ear": None, "mar": None, "yaw": None, "pitch": None, "phone": None}
+            state["error"] = f"{type(e).__name__} · {where}"  # for "Chi tiết kỹ thuật" of #/live
             return json.dumps(state)
 
     def _frame(
@@ -281,6 +299,19 @@ class WebAgent:
         return json.dumps(self.runtime.end_trip())
 
     # ------------------------------------------------------------------ block 14 (the browser posts it)
+    def idle(self, t: float) -> None:
+        """Called on the page's send timer: the heartbeat goes on while no frame arrives (camera
+        lost, page in the background), and says "stalled" then."""
+        self.runtime.idle(t)
+
+    def take_heartbeat(self) -> str | None:
+        """The newest heartbeat as a POST body of its own (JSON), or None. The page keeps only the
+        latest one and sends it after the pending batches."""
+        heartbeat, self._heartbeat = self._heartbeat, None
+        if heartbeat is None:
+            return None
+        return json.dumps({"device_id": self.device_id, "heartbeat": heartbeat})
+
     def take_batch(self) -> str | None:
         """Pending records as one POST body (JSON), or None. The browser re-sends it on failure."""
         if not self._records:

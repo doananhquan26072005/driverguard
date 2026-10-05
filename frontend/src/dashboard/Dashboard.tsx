@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { type EventFilters, getEvents, getStats, getThresholds, getTripReports, loadSession, saveSession } from "../lib/api";
+import { type EventFilters, getEvents, getPolicy, getStats, getThresholds, getTripReports, loadSession, saveSession } from "../lib/api";
 import { RANGES, type RangeKey } from "../lib/format";
-import { LEVELS, ROLES } from "../lib/labels";
+import { LEVELS, policyNote, ROLES } from "../lib/labels";
 import type { EventRecord, Session, Stats, Thresholds } from "../lib/types";
 import EventLog from "./EventLog";
+import FleetView from "./FleetView";
 import Login from "./Login";
 import StatsTiles from "./StatsTiles";
 import ThresholdsView from "./ThresholdsView";
 import TimelineView from "./TimelineView";
 import TripReports from "./TripReports";
 
-type Tab = "events" | "timeline" | "reports" | "thresholds";
+type Tab = "events" | "fleet" | "timeline" | "reports" | "thresholds";
 const REFRESH_MS = 15_000;
 const DEFAULT_L1 = 40; // config/thresholds.yaml risk.drowsy.l1 / l2
 const DEFAULT_L2 = 70;
@@ -27,6 +28,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [unreviewed, setUnreviewed] = useState(0); // trip reports no higher role has read yet
+  const [policy, setPolicy] = useState<string | null>(null); // data policy line under every tab
 
   const logout = useCallback(() => {
     saveSession(null);
@@ -70,6 +72,10 @@ export default function Dashboard() {
   }, [session, filters, refreshKey, logout]);
 
   useEffect(() => {
+    if (session) getPolicy().then((p) => setPolicy(policyNote(p))).catch(() => undefined);
+  }, [session]);
+
+  useEffect(() => {
     if (session && canReadThresholds) getThresholds(session).then(setThresholds).catch(() => undefined);
   }, [session, canReadThresholds]);
 
@@ -93,6 +99,7 @@ export default function Dashboard() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "events", label: "Nhật ký sự kiện" },
+    ...(canReadThresholds ? [{ key: "fleet" as Tab, label: "Đội xe" }] : []),
     { key: "timeline", label: "Timeline mệt mỏi" },
     { key: "reports", label: unreviewed ? `Báo cáo chuyến đi (${unreviewed} mới)` : "Báo cáo chuyến đi" },
     ...(canReadThresholds ? [{ key: "thresholds" as Tab, label: "Ngưỡng" }] : []),
@@ -131,16 +138,18 @@ export default function Dashboard() {
 
       <main className="dash-main">
         <div className="filters" role="group" aria-label="Bộ lọc">
-          <label className="field-inline">
-            Thời gian
-            <select value={filters.range} onChange={(e) => setFilters({ ...filters, range: e.target.value as RangeKey })}>
-              {RANGES.map((r) => (
-                <option key={r.key} value={r.key}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {tab !== "fleet" && (
+            <label className="field-inline">
+              Thời gian
+              <select value={filters.range} onChange={(e) => setFilters({ ...filters, range: e.target.value as RangeKey })}>
+                {RANGES.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {tab === "events" && (
             <>
               <label className="field-inline">
@@ -190,7 +199,8 @@ export default function Dashboard() {
             {error}
           </p>
         )}
-        <StatsTiles stats={stats} />
+        {tab !== "fleet" && <StatsTiles stats={stats} />}
+        {tab === "fleet" && canReadThresholds && <FleetView session={session} refreshKey={refreshKey} />}
 
         {tab === "events" && (
           <section className="card">
@@ -222,6 +232,7 @@ export default function Dashboard() {
         {tab === "thresholds" && canReadThresholds && (
           <ThresholdsView session={session} stats={stats} onSaved={setThresholds} />
         )}
+        {policy && <p className="muted small">{policy}</p>}
       </main>
     </div>
   );

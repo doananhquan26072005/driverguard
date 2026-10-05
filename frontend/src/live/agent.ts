@@ -61,6 +61,7 @@ export interface LiveStats {
   sendError: string | null;
   measures: Measures | null;
   enrollment: HudEnrollment | null;
+  lastError: string | null; // M28: last frame error "Type · file:line" (code location only)
 }
 
 export interface Measures {
@@ -97,6 +98,8 @@ interface PyAgent {
   vehicle(action: string): string;
   vehicle_signal(speed: number, turn: string | null): void;
   take_batch(): string | undefined;
+  idle(t: number): void;
+  take_heartbeat(): string | undefined;
   destroy(): void;
 }
 interface Pyodide {
@@ -148,7 +151,7 @@ export class LiveAgent implements HudSource {
   /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
   readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -156,6 +159,7 @@ export class LiveAgent implements HudSource {
   private yoloBusy = false;
   private lastYoloT = -Infinity;
   private pendingBodies: string[] = [];
+  private heartbeatBody: string | null = null; // M33: newest heartbeat not sent yet (never queued)
   private sending = false;
   private flushTimer: number | undefined;
   private simTimer: number | undefined;
@@ -359,10 +363,11 @@ export class LiveAgent implements HudSource {
     this.maybeRunYolo(t, w, h); // 4, own thread
     const frameId = this.frameId++;
     const json = this.py.frame(t, frameId, w, h, points, faces.length, blink, diff, brightness, brow); // 6-13
-    const state = JSON.parse(json) as HudSnapshot & { measures: Measures };
+    const state = JSON.parse(json) as HudSnapshot & { measures: Measures; error?: string };
     this.stats.level = state.level;
     this.stats.fps = state.fps ?? 0;
     this.stats.measures = state.measures;
+    if (state.error) this.stats.lastError = state.error; // kept after recovery: what failed, where
     this.stats.enrollment = state.enrollment ?? null;
     this.snap = state;
     if (E2E) window.__dgState = state;
@@ -400,10 +405,14 @@ export class LiveAgent implements HudSource {
 
   // ------------------------------------------------------------------ block 14
   private async flush() {
+    // M33: the heartbeat goes on while no frame arrives (camera lost, page in the background).
+    if (!this.stopped) this.py.idle(performance.now() / 1000);
+    const beat = this.py.take_heartbeat();
+    if (beat && this.session) this.heartbeatBody = beat;
     for (let body = this.py.take_batch(); body; body = this.py.take_batch()) {
       if (this.session) this.pendingBodies.push(body); // guest mode: nothing leaves the browser
     }
-    if (!this.session || this.sending || !this.pendingBodies.length) return;
+    if (!this.session || this.sending || !(this.pendingBodies.length || this.heartbeatBody)) return;
     this.sending = true;
     try {
       while (this.pendingBodies.length) {
@@ -412,6 +421,7 @@ export class LiveAgent implements HudSource {
         this.stats.sent += r.accepted;
         this.stats.sendError = null;
       }
+      await this.sendHeartbeat(this.session);
     } catch (err) {
       const e = err as ApiError;
       if (e.status === 401) this.stats.sendError = "Phiên đăng nhập hết hạn: sự kiện chưa được lưu";
@@ -422,6 +432,20 @@ export class LiveAgent implements HudSource {
     } finally {
       this.sending = false;
     }
+  }
+
+  /** The newest heartbeat, in a POST of its own after the batches. A failure never touches the
+   *  batches: unreachable = kept for the next round (a newer one replaces it), refused = dropped. */
+  private async sendHeartbeat(session: Session) {
+    const body = this.heartbeatBody;
+    if (!body) return;
+    try {
+      await postWebBatch(session, body);
+    } catch (err) {
+      const status = (err as ApiError).status;
+      if (!status || status >= 500 || status === 401) return;
+    }
+    if (this.heartbeatBody === body) this.heartbeatBody = null;
   }
 
   /** One reading of the vehicle: the web driving controls first (#/drive paired with driveCode),

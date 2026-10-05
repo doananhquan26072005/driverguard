@@ -289,3 +289,74 @@ def test_decision_pipeline_to_backend(tmp_path):
     assert (e["level"], e["reasons"], e["type"]) == (2, ["phone"], "distraction")
     assert (e["device_id"], e["driver_id"], e["trip_id"]) == ("cam-001", "drv-001", "trip-e2e")
     assert e["speed_kmh"] == 50.0 and e["metrics"]["phone_ratio_2s"] >= 0.6
+
+
+# ---------------------------------------------------------------- heartbeat (M33)
+
+
+class BeatBackend:
+    """Transport stub that tells heartbeat POSTs from record batches."""
+
+    def __init__(self, heartbeat_status=200):
+        self.bodies = []
+        self.down = False
+        self.heartbeat_status = heartbeat_status
+
+    def __call__(self, body):
+        if self.down:
+            raise OSError("connection refused")
+        self.bodies.append(body)
+        return self.heartbeat_status if "heartbeat" in body else 200
+
+    @property
+    def states(self):
+        return [b["heartbeat"]["state"] for b in self.bodies if "heartbeat" in b]
+
+
+def beat(state="monitoring"):
+    return {"ts": "2026-10-05T08:00:00+00:00", "trip_id": "trip-1", "state": state, "moving": True}
+
+
+def test_heartbeat_is_sent_alone_and_never_queued(outbox_path):
+    backend = BeatBackend()
+    pub = make(outbox_path, backend)
+    pub.publish_record("heartbeat", beat())
+    assert pub.queued == 0
+    assert pub.flush_once() == 0  # no record accepted, but the heartbeat went out
+    assert backend.bodies == [{"device_id": "cam-001", "heartbeat": beat()}]
+    assert pub.online is True and pub.sent == 0
+    pub.flush_once()
+    assert len(backend.bodies) == 1  # sent once
+
+
+def test_only_the_newest_heartbeat_survives_an_outage(outbox_path):
+    backend, clock = BeatBackend(), Clock()
+    backend.down = True
+    pub = make(outbox_path, backend, clock)
+    pub.publish(event(0))
+    for state in ("monitoring", "unavailable", "camera_lost"):
+        pub.publish_record("heartbeat", beat(state))
+        pub.flush_once()
+    assert pub.online is False and pub.queued == 1
+    backend.down = False
+    clock.t += 1000
+    assert pub.flush_once() == 1
+    assert backend.states == ["camera_lost"]
+    assert "heartbeat" in backend.bodies[0] and len(backend.bodies[1]["events"]) == 1  # heartbeat first
+
+
+def test_backend_without_heartbeats_still_gets_the_records(outbox_path):
+    backend = BeatBackend(heartbeat_status=422)  # a backend older than M33 refuses the unknown field
+    pub = make(outbox_path, backend)
+    pub.publish(event(0))
+    pub.publish_record("heartbeat", beat())
+    assert pub.flush_once() == 1
+    assert pub.queued == 0 and pub.online is True and pub.dropped == 0
+    pub.flush_once()
+    assert backend.states == ["monitoring"]  # dropped, not retried
+
+
+def test_heartbeat_is_checked_for_image_data(outbox_path):
+    pub = make(outbox_path, BeatBackend())
+    with pytest.raises(ValueError):
+        pub.publish_record("heartbeat", {**beat(), "frame": "x"})

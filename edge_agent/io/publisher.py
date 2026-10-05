@@ -9,6 +9,12 @@ kinds of records share the queue and the batches:
 - summaries: one per trip when it ends (block 11 `TripSummary.to_dict()`), for the driver and
             the higher roles
 
+Heartbeat (M33, `build_heartbeat`): "still alive" every `heartbeat_interval_s` and on every change
+of the monitoring state, so the backend can tell a vehicle that is running from one that went
+quiet. Only the newest one matters, so it never enters the outbox: it is kept in memory and sent
+in a POST of its own before the queued records. A backend that does not know it yet refuses it
+(422) and it is dropped; the records still go through.
+
 - `publish()` only checks the event and appends it to a persistent outbox (SQLite file,
   metadata JSON only), so the main loop never waits on the network.
 - A background thread flushes up to `batch_size` events every `flush_interval_s`
@@ -65,6 +71,8 @@ class PublisherConfig:
     max_queue: int = 10000
     backoff_initial_s: float = 1.0
     backoff_max_s: float = 60.0
+    heartbeat_interval_s: float = 30.0  # 0 = no heartbeat
+    heartbeat_stalled_s: float = 10.0  # no frame for this long (camera not reported lost): "stalled"
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PublisherConfig:
@@ -174,6 +182,12 @@ def build_enrolled_event(r: DecisionResult, trip_id: str, now: datetime | None =
     e = r.enrollment
     metrics = {"enroll_s": _round(e.duration_s, 1), "enroll_redo": e.attempts}
     return build_system_event("driver_enrolled", trip_id, r.context.speed_kmh, now, metrics)
+
+
+def build_heartbeat(state: str, trip_id: str, moving: bool | None, now: datetime | None = None) -> dict[str, Any]:
+    """Still alive: the trip, the monitoring state (edge_agent.runtime.MONITOR_STATES) and whether the
+    vehicle moves (None: speed unknown). No position, no measurement of the driver."""
+    return {"ts": (now or datetime.now(UTC)).isoformat(), "trip_id": trip_id, "state": state, "moving": moving}
 
 
 def build_feedback(event_id: str, now: datetime | None = None) -> dict[str, Any]:
@@ -295,6 +309,8 @@ class MetadataPublisher:
         self.failed_attempts = 0
         self.online: bool | None = None  # None until the first attempt
         self._queued_at_stop: int | None = None
+        self._heartbeat: dict[str, Any] | None = None  # newest one not sent yet (never in the outbox)
+        self._heartbeat_refused = False
 
     # ------------------------------------------------------------------ API for the main loop
     def publish(self, event: dict[str, Any]) -> None:
@@ -312,7 +328,12 @@ class MetadataPublisher:
         self._enqueue("summary", summary)
 
     def publish_record(self, kind: str, data: dict[str, Any]) -> None:
-        """A record built elsewhere (edge_agent.runtime): kind "event", "sample", "feedback" or "summary"."""
+        """A record built elsewhere (edge_agent.runtime): kind "event", "sample", "feedback", "summary",
+        or "heartbeat" (kept apart: only the newest one is sent)."""
+        if kind == "heartbeat":
+            check_metadata_only(data)
+            self._heartbeat = data
+            return
         if kind not in KINDS:
             raise ValueError(f"unknown record kind {kind!r}")
         self._enqueue(kind, data)
@@ -364,10 +385,35 @@ class MetadataPublisher:
             log.info("backend unreachable: %s", e)
             return None
 
+    def _send_heartbeat(self) -> bool:
+        """Send the waiting heartbeat, if any. False: the backend is unreachable or failing, try later."""
+        heartbeat = self._heartbeat
+        if heartbeat is None:
+            return True
+        try:
+            status = self._transport({"device_id": self.device_id, "heartbeat": heartbeat})
+        except OSError as e:
+            log.info("backend unreachable: %s", e)
+            status = None
+        if status is not None and 200 <= status < 300:
+            self._succeeded(0)
+        elif status in DROP_STATUSES:  # a backend older than M33: go on without heartbeats
+            if not self._heartbeat_refused:
+                log.warning("backend refused the heartbeat (HTTP %s): it will not see this device as online", status)
+            self._heartbeat_refused = True
+        else:
+            self._failed(status)
+            return False
+        if self._heartbeat is heartbeat:  # a newer one may have arrived meanwhile
+            self._heartbeat = None
+        return True
+
     def flush_once(self) -> int:
         """Try to send one batch. Returns the number of events the backend accepted."""
         with self._send_lock:
             if self._clock() < self._next_attempt:
+                return 0
+            if not self._send_heartbeat():
                 return 0
             rows = self._outbox.peek(self.config.batch_size)
             if not rows:
