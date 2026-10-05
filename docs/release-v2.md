@@ -855,9 +855,16 @@ log AI và ghi chú `src/`, `Dockerfile` là code mẫu. Video demo và pitch de
   `PORT=8000` cho service v2.
 - **Quay về v1:** v1 vẫn chạy; nếu cần dựng lại thì dùng image `v1-backup` + file backup database.
 - **Sau v2.0.0:** M19–M31 (đỗ / lái theo tốc độ, xi nhan theo phía, lớp chung + e2e, FMEA, âm thanh luôn
-  bật, xác nhận trước khi đăng ký, cúi nhìn xuống, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu) **chưa deploy**. URL v2 đang chạy vẫn là bản M9–M18.
-  Khi deploy: HUD và edge agent cùng phiên bản (mục 5), build lại `#/live` (`npm run prepare-live`) để
-  web nhận code Python mới.
+  bật, xác nhận trước khi đăng ký, cúi nhìn xuống, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu,
+  0 km/h không cảnh báo, trang điều khiển xe) đã deploy lên cùng service `driveguard-v2`, cùng URL:
+  - **v2.1** (02/10, M19–M29): backup `data/backups/driverguard-v2.0.0-2026-10-02.db`, image `v2.1`,
+    `APP_VERSION=2.1.0`.
+  - **v2.2** (02/10, + M30, M31): backup `data/backups/driverguard-v2.1-2026-10-02.db` (integrity ok),
+    image `v2.2` (= `v2` = `latest`), `APP_VERSION=2.2.0`. Sau khi đẩy: health ok, `PUT` / `GET
+    /api/v1/drive/{mã}` chạy, mã sai trả 422, `#/live` có `stationary_max_level: 0`, trang `#/drive` có
+    giao diện; v1 vẫn 200.
+  - Quay lại bản trước: `railway service source connect --image docker.io/quanpk07/driveguard:v2.1` (hoặc
+    `v2.0.0`) + file backup database tương ứng.
 
 ## 8. Giới hạn đã biết
 

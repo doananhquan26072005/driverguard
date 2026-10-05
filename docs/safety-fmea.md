@@ -123,8 +123,12 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
     `agent_error`; frame tốt tiếp theo: `agent_recovered`. Chỉ ghi tên lớp lỗi vào log trên máy.
   - HUD vào "Lỗi xử lý", "Không nhận dữ liệu từ camera" hoặc "Mất kết nối": **âm báo to** riêng
     (`monitoring_stopped`); hết thì âm "giám sát lại". Không kêu sau khi đã kết thúc chuyến.
-- **Còn lại:** tiến trình chết hẳn (máy treo, hết bộ nhớ) thì backend vẫn không biết ngay; chỉ thấy chuyến
-  không có tổng kết. Chưa có nhịp "còn sống" gửi lên backend.
+- **Từ M33:** nhịp "còn sống" mỗi 30 s lên backend. Tiến trình chết hẳn (máy treo, hết bộ nhớ, app bị hệ
+  điều hành dừng): sau 90 s tab "Đội xe" của dashboard hiện xe đó **"Mất liên lạc"**, khác với "Đã kết thúc
+  chuyến". Vòng lặp còn sống mà không có frame: nhịp báo `stalled`.
+- **Còn lại:** quản lý phải đang mở tab "Đội xe" mới thấy; chưa có âm báo hay thông báo đẩy (improvements:
+  "cảnh báo cần xác nhận, báo quản lý ngay"). Tài xế trong xe vẫn không được báo khi tiến trình chết hẳn
+  (improvements: "kênh cảnh báo vật lý").
 - **Test:** `test_frames_failing_for_a_while_are_a_processing_error_then_recover`,
   `test_a_failing_frame_is_caught_and_a_lasting_failure_shows_on_the_hud`,
   `test_loop_health_events_are_system_events`; frontend: trạng thái "error", âm báo dừng giám sát.

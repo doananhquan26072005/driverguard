@@ -185,6 +185,9 @@ Backend đọc `.env` ở thư mục gốc (tiền tố `DG_`); frontend đọc 
 | `DG_TOKEN_TTL_MIN` | backend | `60` | Thời hạn đăng nhập (phút, 1–1440) |
 | `DG_CORS_ORIGINS` | backend | `http://localhost:3000,http://localhost:5173` | Origin được gọi API, cách nhau bằng dấu phẩy |
 | `DG_MAX_BODY_BYTES` | backend | `262144` | Giới hạn kích thước một request (byte) |
+| `DG_DEVICE_OFFLINE_AFTER_S` | backend | `90` | Thiết bị im lặng quá số giây này thì tab "Đội xe" hiện "Mất liên lạc" (nhịp "còn sống" mỗi 30 s) |
+| `DG_RETENTION_EVENTS_DAYS` | backend | `60` | Số ngày giữ cảnh báo, sự kiện và mẫu theo phút trước khi tự xoá (0 = không tự xoá). Xem [docs/data-policy.md](docs/data-policy.md) |
+| `DG_RETENTION_SUMMARIES_DAYS` | backend | `365` | Số ngày giữ bản tổng kết chuyến trước khi tự xoá (0 = không tự xoá) |
 | `DG_STATIC_DIR` | `deploy/railway_app.py` | `static` | Thư mục dashboard đã build, phục vụ cùng origin với API (Railway) |
 | `DG_DEVICE_KEY` | edge agent | (trống) | Khóa thiết bị từ `create-device`; thiếu thì agent chạy offline, không gửi metadata (hoặc truyền `--device-key`) |
 | `VITE_API_URL` | frontend | `http://localhost:8100` | Địa chỉ backend |
@@ -205,9 +208,11 @@ Swagger đầy đủ: http://localhost:8100/docs (local) hoặc https://drivegua
 |---|---|---|
 | `GET /health` | ai cũng được | Kiểm tra server |
 | `POST /auth/login`, `GET /auth/me` | người dùng | Đăng nhập (JWT), xem mình là ai |
-| `POST /api/v1/events` | thiết bị (`X-Device-Key`) | Gửi lô sự kiện / phản hồi / mẫu timeline / tổng kết chuyến |
+| `POST /api/v1/events` | thiết bị (`X-Device-Key`) | Gửi lô sự kiện / phản hồi / mẫu timeline / tổng kết chuyến / nhịp "còn sống" |
 | `POST /api/v1/web/events` | người dùng (`#/live`) | Như trên, từ trình duyệt |
 | `GET /api/v1/events`, `/trips`, `/timeline`, `/stats` | mọi vai trò (tài xế chỉ thấy của mình) | Nhật ký, chuyến, timeline mệt mỏi, thống kê |
+| `GET /api/v1/policy` | không cần đăng nhập | Thời hạn lưu dữ liệu đang cấu hình (hai con số) |
+| `GET /api/v1/fleet` | mọi vai trò (tài xế chỉ thấy xe của mình) | Tổng quan đội xe: đang hoạt động / mất liên lạc / đã kết thúc chuyến, cảnh báo trong khoảng `since`–`until` |
 | `GET /api/v1/trip-reports[/{device}/{trip}]`, `POST …/review` | mọi vai trò / quản lý, kỹ sư, admin | Báo cáo cuối chuyến, đánh dấu đã xem |
 | `GET`, `PUT /api/v1/thresholds` | xem: quản lý, kỹ sư, admin; sửa: kỹ sư, admin | Ngưỡng theo phiên bản |
 | `GET /api/v1/device/thresholds` | thiết bị | Thiết bị tải ngưỡng khi khởi động |
@@ -275,11 +280,15 @@ cd frontend && npm run typecheck && npm test && npm run e2e
 Logic theo thời gian (khối 7–12) được test bằng chuỗi số giả, không cần video. Đánh giá độ chính xác và
 tốc độ:
 
-| Gì | Kết quả | Chi tiết |
-|---|---|---|
-| CNN mắt nhắm (MRL Eye, 4000 ảnh) | Accuracy 99,4%, FPR 0,2% | [eval/results/report.md](eval/results/report.md) |
-| Ngáp theo MAR (yawn-eye, test) | Accuracy 91,6%, precision 100% | [eval/results/report.md](eval/results/report.md) |
-| Tốc độ vòng lặp chính (Mac ARM, CPU) | ~146 FPS, MediaPipe ~5,7 ms/frame | [eval/results/benchmark.md](eval/results/benchmark.md) |
+| Gì | Kết quả | Nhận định | Chi tiết |
+|---|---|---|---|
+| CNN mắt nhắm (MRL Eye, 4000 ảnh) | Accuracy 99,4%, FPR 0,2% | Lạc quan: CNN được học trên chính MRL Eye. Trên ảnh khác (yawn-eye) accuracy 88,1% | [eval/results/report.md](eval/results/report.md) |
+| Ngáp theo MAR (yawn-eye, test) | Accuracy 91,6%, precision 100% | Đo trên ảnh đơn, 215 ảnh. Trên video (FL3D) bắt được 76/99 lần ngáp | [eval/results/report.md](eval/results/report.md) |
+| Ngủ gật ≥ 1,5 s đạt L3 (FL3D, video lái đêm, diễn) | 75/95 (78,9%) | **Chưa đạt** mục tiêu ≥ 90% của PRD | [eval/results/report.md](eval/results/report.md) |
+| Cảnh báo sai mỗi giờ (FL3D / YawDD / SUST) | 2,3–8,5 / giờ tuỳ bộ và mức, CI 95% rộng | **Chưa đạt** mục tiêu ≤ 1,0 / giờ; chưa có giờ lái thật có nhãn | [eval/results/report.md](eval/results/report.md) |
+| Tốc độ vòng lặp chính (Mac ARM, CPU) | ~146 FPS, MediaPipe ~5,7 ms/frame | Đạt ≥ 15 FPS **trên máy dev**; chưa đo trên hub gắn trên xe | [eval/results/benchmark.md](eval/results/benchmark.md) |
+
+Toàn bộ tiêu chí để chạy thử trên xe thật và trạng thái từng tiêu chí: [docs/pilot-readiness.md](docs/pilot-readiness.md).
 
 Công cụ: `tools/eval.py` (video có nhãn theo thời gian), `tools/dataset.py` (dataset Kaggle),
 `tools/seq_eval.py` (nhãn theo frame / clip), `tools/benchmark.py` (FPS). Cách chạy ở
@@ -320,7 +329,9 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 10 | Evaluation evidence | [eval/results/](eval/results/) | ✅ |
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
-(thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/safety-fmea.md](docs/safety-fmea.md) (những lúc hệ thống
+(thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (từ 05/10, chưa deploy),
+[docs/pilot-readiness.md](docs/pilot-readiness.md) (còn thiếu gì để chạy thử trên xe thật),
+[docs/data-policy.md](docs/data-policy.md) (thu dữ liệu gì, ai xem, giữ bao lâu), [docs/safety-fmea.md](docs/safety-fmea.md) (những lúc hệ thống
 không cảnh báo được), [docs/improvements.md](docs/improvements.md) (việc chưa làm),
 [CLAUDE.md](CLAUDE.md) (ràng buộc và quy ước).
 
