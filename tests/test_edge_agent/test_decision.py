@@ -373,3 +373,82 @@ def test_reason_gone_longer_than_fall_hold_is_new_again():
     out = emitted_reasons(run_reasons(m, steps))
     assert out[0] == (0.5, 2, ("off_road", "phone"))
     assert out[-1][2][0] == "phone" and out[-1][0] == pytest.approx(36.5, abs=0.11)
+
+
+# ---------------------------------------------------------------- repeated L1 -> L2 (M32)
+
+
+def l1_episode(manager, t0, reasons=("drowsy_score",), hold_s=6.0):
+    """L1 for 2 s from t0, then nothing for hold_s (longer than fall_hold_s)."""
+    steps = [(1, reasons)] * 20 + [(0, ())] * round(hold_s * 10)
+    return run_reasons(manager, steps, t0=t0)
+
+
+def test_third_l1_of_the_same_reason_within_the_window_goes_out_as_l2():
+    m = AlertManager(CFG)
+    assert emitted_reasons(l1_episode(m, 0.0)) == [(1.0, 1, ("drowsy_score",))]
+    assert emitted_reasons(l1_episode(m, 130.0)) == [(131.0, 1, ("drowsy_score",))]
+    out = l1_episode(m, 260.0)
+    assert emitted_reasons(out) == [(261.0, 2, ("drowsy_score", "repeated_l1"))]
+    assert out[10].active_level == 2 and out[10].active_reasons == ("drowsy_score", "repeated_l1")
+
+
+def test_escalated_alert_falls_back_to_l1_without_a_new_alert():
+    m = AlertManager(CFG)
+    l1_episode(m, 0.0)
+    l1_episode(m, 130.0)
+    out = run_reasons(m, [(1, ("drowsy_score",))] * 100, t0=260.0)  # the L1 cause goes on for 10 s
+    assert emitted_reasons(out) == [(261.0, 2, ("drowsy_score", "repeated_l1"))]
+    assert out[30].active_level == 2  # held for fall_hold_s
+    assert out[-1].active_level == 1 and out[-1].active_reasons == ("drowsy_score",)
+
+
+def test_l1_alerts_spread_wider_than_the_window_stay_l1():
+    m = AlertManager(CFG)
+    levels = [a[1] for t0 in (0.0, 400.0, 800.0, 1200.0) for a in emitted_reasons(l1_episode(m, t0))]
+    assert levels == [1, 1, 1, 1]
+
+
+def test_l1_alerts_of_different_reasons_do_not_add_up():
+    m = AlertManager(CFG)
+    out = [
+        emitted_reasons(l1_episode(m, t0, (reason,)))
+        for t0, reason in ((0.0, "drowsy_score"), (10.0, "trend"), (130.0, "drowsy_score"), (140.0, "trend"))
+    ]
+    assert [a[0][1] for a in out] == [1, 1, 1, 1]
+
+
+def test_l1_alert_held_back_by_cooldown_does_not_count():
+    m = AlertManager(CFG)
+    for t0 in (0.0, 10.0, 20.0, 30.0):  # one alert, three held back
+        l1_episode(m, t0)
+    assert emitted_reasons(l1_episode(m, 130.0)) == [(131.0, 1, ("drowsy_score",))]
+
+
+def test_repeat_escalation_can_be_switched_off():
+    m = AlertManager(replace(CFG, l1_repeat_count=0))
+    levels = [a[1] for t0 in (0.0, 130.0, 260.0, 390.0) for a in emitted_reasons(l1_episode(m, t0))]
+    assert levels == [1, 1, 1, 1]
+
+
+def test_a_rest_restarts_the_repeat_count():
+    m = AlertManager(CFG)
+    l1_episode(m, 0.0)
+    l1_episode(m, 130.0)
+    m.forget_repeats()
+    assert emitted_reasons(l1_episode(m, 260.0)) == [(261.0, 1, ("drowsy_score",))]
+
+
+def test_real_l2_of_the_same_reason_right_after_the_escalation_is_not_a_second_sound():
+    m = AlertManager(CFG)
+    l1_episode(m, 0.0)
+    l1_episode(m, 130.0)
+    out = run_reasons(m, [(1, ("drowsy_score",))] * 20 + [(2, ("drowsy_score",))] * 50, t0=260.0)
+    assert emitted_reasons(out) == [(261.0, 2, ("drowsy_score", "repeated_l1"))]
+
+
+def test_repeat_thresholds_come_from_the_yaml():
+    from edge_agent.config import load_thresholds
+
+    cfg = AlertConfig.from_dict(load_thresholds()["alert"])
+    assert (cfg.l1_repeat_count, cfg.l1_repeat_window_s) == (3, 600.0)

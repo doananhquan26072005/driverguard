@@ -123,14 +123,26 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await agree(page); // the new driver is asked again
   await enrolled(page); // the new driver (same synthetic face) enrolls
 
-  await endTrip(page);
-  await expect(page.getByText("Đã gửi bản tổng kết cho quản lý đội xe.")).toBeVisible();
-
+  // M33: while the trip runs, the manager's fleet overview has this browser as a vehicle that is alive.
   const manager = await (await browser.newContext()).newPage();
   await manager.goto("/#/dashboard");
   await manager.getByLabel("Tên đăng nhập").fill("quanly");
   await manager.getByLabel("Mật khẩu").fill(PASSWORD);
   await manager.getByRole("button", { name: "Đăng nhập" }).click();
+  await manager.getByRole("tab", { name: "Đội xe" }).click();
+  const vehicle = manager.getByRole("row").filter({ hasText: "web-an" });
+  const fleetShows = (text: string) =>
+    expect(async () => {
+      await manager.getByRole("button", { name: "Làm mới" }).click();
+      await expect(vehicle).toContainText(text, { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+  await fleetShows("Đang hoạt động");
+  await expect(vehicle).toContainText("drv-001");
+
+  await endTrip(page);
+  await expect(page.getByText("Đã gửi bản tổng kết cho quản lý đội xe.")).toBeVisible();
+  await fleetShows("Đã kết thúc chuyến"); // an ended trip, not a lost vehicle
+
   await manager.getByRole("tab", { name: /Báo cáo chuyến đi/ }).click();
   const row = manager.getByRole("row").filter({ hasText: "drv-001" });
   await expect(row).toHaveCount(1);

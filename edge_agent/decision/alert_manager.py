@@ -13,6 +13,11 @@ Turns the per-frame risk level into stable alerts:
   reasons was already emitted at that level within cooldown_s[level]. A higher level
   is always emitted (escalation). L3 has no cooldown by default: after fall_hold_s of open
   eyes, a new closure is a new microsleep and gets its own siren and event.
+- Escalation over time (M32): an L1 alert whose reason was already alerted at L1 often enough
+  (l1_repeat_count alerts within l1_repeat_window_s, this one included) goes out as L2 with the
+  extra reason "repeated_l1": the driver was told several times and did not rest. The active
+  level is L2 for that alert, then falls back to L1 after fall_hold_s without a new alert. A
+  single L1 is unchanged, and a rest or a driver change starts the count again.
 
 `active_level` is what the HUD shows; `new_alert` is set only on the frame an alert
 is emitted (chime / sound / seat vibration, metadata event).
@@ -32,6 +37,7 @@ LEVEL_ACTIONS = {
     2: "sound + seat vibration",
     3: "strong alarm, suggest a break",
 }
+REPEATED_L1 = "repeated_l1"  # added to the reasons of an L1 alert escalated to L2 (M32)
 
 
 def _levels(d: dict[Any, Any] | None, default: dict[int, float]) -> dict[int, float]:
@@ -45,6 +51,8 @@ class AlertConfig:
     rise_confirm_s: dict[int, float] = field(default_factory=lambda: {1: 1.0, 2: 0.5, 3: 0.0})
     fall_hold_s: float = 3.0
     cooldown_s: dict[int, float] = field(default_factory=lambda: {1: 120.0, 2: 30.0, 3: 0.0})
+    l1_repeat_count: int = 3  # this many L1 alerts of one reason within the window -> L2; 0 = off
+    l1_repeat_window_s: float = 600.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:
@@ -55,6 +63,8 @@ class AlertConfig:
             rise_confirm_s=_levels(d.get("rise_confirm_s"), default.rise_confirm_s),
             fall_hold_s=float(d.get("fall_hold_s", default.fall_hold_s)),
             cooldown_s=_levels(d.get("cooldown_s"), default.cooldown_s),
+            l1_repeat_count=int(d.get("l1_repeat_count", default.l1_repeat_count)),
+            l1_repeat_window_s=float(d.get("l1_repeat_window_s", default.l1_repeat_window_s)),
         )
 
 
@@ -92,6 +102,23 @@ class AlertManager:
         self._alerted: set[str] = set()  # reasons already covered by an alert at the active level
         self._new_reason_since: float | None = None
         self._reason_seen: dict[str, float] = {}  # reason -> last time it was a hit at the active level
+        self._l1_emits: dict[str, list[float]] = {}  # reason -> times of its recent L1 alerts (M32)
+
+    def forget_repeats(self) -> None:
+        """The driver rested: earlier L1 alerts no longer count towards the escalation."""
+        self._l1_emits.clear()
+
+    def _repeated(self, t: float, reasons: tuple[str, ...]) -> bool:
+        """Count this L1 alert; True when one of its reasons reached l1_repeat_count in the window."""
+        cfg = self.config
+        if cfg.l1_repeat_count <= 0:
+            return False
+        repeated = False
+        for k in reasons:
+            times = [x for x in self._l1_emits.get(k, []) if t - x < cfg.l1_repeat_window_s] + [t]
+            self._l1_emits[k] = times
+            repeated = repeated or len(times) >= cfg.l1_repeat_count
+        return repeated
 
     def _emit(self, r: RiskAssessment, level: int, reasons: tuple[str, ...]) -> AlertOutput:
         t = r.t
@@ -102,6 +129,12 @@ class AlertManager:
             return AlertOutput(t, level, self._active_reasons, None, suppressed=True)
         for k in keys:
             self._last_emit[(level, k)] = t
+        if level == 1 and self._repeated(t, reasons):
+            level, reasons = 2, (*reasons, REPEATED_L1)  # original reasons first: they set the event kind
+            self.active_level, self._active_reasons = level, reasons
+            self._alerted.add(REPEATED_L1)
+            for k in keys:  # the same cause turning into a real L2 right after is not a second sound
+                self._last_emit[(level, k)] = t
         alert = Alert(t, level, reasons, r.drowsy_score, r.distraction_score)
         return AlertOutput(t, level, self._active_reasons, alert)
 

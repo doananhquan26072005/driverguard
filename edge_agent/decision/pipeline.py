@@ -102,6 +102,7 @@ class DecisionPipeline:
         elif self._rest_from is not None and not ctx.stationary:  # driving off after a rest
             self.drowsiness.forget_since(self._rest_from)
             self.trip.forget_since(self._rest_from)
+            self.alerts.forget_repeats()  # 12: the driver rested, repeated-L1 escalation starts again
             self._rest_from = None
 
     def _track_enrollment(self, e: EnrollmentState, t: float) -> None:

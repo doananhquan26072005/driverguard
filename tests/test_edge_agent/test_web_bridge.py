@@ -220,3 +220,38 @@ def test_a_failing_frame_is_caught_and_a_lasting_failure_shows_on_the_hud(agent,
     assert state["processing_error"] is False
     reasons = [e["reasons"] for e in events_of(agent)]
     assert ["agent_error"] in reasons and ["agent_recovered"] in reasons
+
+
+def test_a_failing_frame_names_the_error_and_its_code_location(agent, monkeypatch, capsys):
+    """The page shows what failed and where (type + edge_agent file:line, no data); the traceback goes to
+    the browser console once per kind of error, not every frame."""
+    monkeypatch.setattr(agent, "eye_state", None)  # calling it fails inside bridge.py
+    state, _, _ = run(agent, 0.5, points=synthetic_face())
+    assert state["error"].startswith("TypeError · web/bridge.py:")
+    assert capsys.readouterr().out.count("[agent] frame failed") == 1
+
+
+def test_heartbeat_is_a_body_of_its_own_and_only_the_newest(agent):
+    """M33: heartbeats never ride in the record batches; the page gets the latest one to POST."""
+    assert agent.take_heartbeat() is None
+    run(agent, 40, points=synthetic_face())  # t = 0 and t = 30: two heartbeats, one kept
+    assert agent.take_batch() is None
+    body = json.loads(agent.take_heartbeat())
+    assert body["device_id"] == "web-an" and set(body) == {"device_id", "heartbeat"}
+    assert body["heartbeat"]["state"] == "monitoring" and body["heartbeat"]["trip_id"] == "trip-web-1"
+    assert agent.take_heartbeat() is None
+
+
+def test_page_timer_keeps_the_heartbeat_going_and_reports_stalled_frames(agent):
+    _, t, _ = run(agent, 2, points=synthetic_face())
+    agent.take_heartbeat()
+    agent.idle(t + 5)
+    assert agent.take_heartbeat() is None  # frames only 5 s old, no beat due
+    agent.idle(t + 12)
+    assert json.loads(agent.take_heartbeat())["heartbeat"]["state"] == "stalled"
+
+
+def test_end_trip_leaves_an_ended_heartbeat(agent):
+    run(agent, 2, points=synthetic_face())
+    agent.end_trip()
+    assert json.loads(agent.take_heartbeat())["heartbeat"]["state"] == "ended"

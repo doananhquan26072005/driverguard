@@ -391,6 +391,12 @@ alert:
   # L3 has none: fall_hold_s already keeps it from flickering, so a new L3 means the eyes were open
   # >= 3 s and closed again, a new microsleep (NITYMED: new L3 alert on 55 -> 76 % of microsleeps).
   cooldown_s: {1: 120, 2: 30, 3: 0}
+  # Escalation over time (M32): the l1_repeat_count-th L1 alert of the same reason within
+  # l1_repeat_window_s goes out as L2 (reason repeated_l1 added): told several times, still not
+  # resting. With the 120 s L1 cooldown, 3 alerts take at least 4 minutes. A rest (context.rest_after_s)
+  # or a driver change restarts the count. 0 = off. Provisional: no dataset has drives this long.
+  l1_repeat_count: 3
+  l1_repeat_window_s: 600
 
 # Block 13 - In-car HUD server
 hud:
@@ -414,6 +420,12 @@ publisher:
   max_queue: 10000              # oldest events dropped beyond this
   backoff_initial_s: 1.0        # retry delay after a failure, doubling up to backoff_max_s
   backoff_max_s: 60.0
+  # Heartbeat (M33): "still alive" to the backend this often, and at once when the monitoring state
+  # changes. The backend calls a device offline after DG_DEVICE_OFFLINE_AFTER_S (90 s = 3 beats). 0 = off.
+  heartbeat_interval_s: 30.0
+  # The loop is alive but no frame came for this long while the camera is not reported lost
+  # (page in the background, camera thread stuck): the heartbeat says "stalled", not "monitoring".
+  heartbeat_stalled_s: 10.0
 
 # Evaluation tools only (tools/metrics.py, used by tools/eval.py and tools/seq_eval.py), never read
 # by the agent. FAR / MAR on fixed windows, next to false alarms per hour (docs/improvements.md §2).

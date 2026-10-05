@@ -15,7 +15,13 @@ it and go on). Failing for `hud.processing_error_s` = "processing error" on the 
 `hud.low_fps_below` for `hud.low_fps_s` = `low_fps` (alerts may be late) until it is back up
 (`fps_restored`). Only the error's class name is logged, never data.
 
-Records go to `emit(kind, data)` with kind "event", "sample", "feedback" or "summary": the device
+Heartbeat (M33): every `publisher.heartbeat_interval_s` of the caller's clock, and at once when the
+monitoring state changes, a "heartbeat" record says the trip is alive and in which state
+(MONITOR_STATES). `idle(clock)` keeps it going while no frame arrives (camera lost, loop stuck): after
+`publisher.heartbeat_stalled_s` without a frame the state is "stalled". The end of the trip sends "ended",
+so the backend can tell a finished trip from a device that went quiet.
+
+Records go to `emit(kind, data)` with kind "event", "sample", "feedback", "summary" or "heartbeat": the device
 hands them to MetadataPublisher, the browser queues them for its own POST. The callers keep only
 their own I/O: camera, HTTP servers and preview window on the device, Pyodide on the web.
 
@@ -36,9 +42,11 @@ from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.decision.pipeline import DecisionPipeline, DecisionResult
 from edge_agent.hud.server import HudConfig, HudState
 from edge_agent.io.publisher import (
+    PublisherConfig,
     build_enrolled_event,
     build_event,
     build_feedback,
+    build_heartbeat,
     build_sample,
     build_system_event,
 )
@@ -46,6 +54,9 @@ from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.landmarks import DriverSelector
 
 Emit = Callable[[str, dict[str, Any]], None]
+
+# Monitoring state in a heartbeat, most specific first (backend/schemas.py MonitorState).
+MONITOR_STATES = ("ended", "camera_lost", "stalled", "error", "unavailable", "monitoring")
 
 
 @dataclass(frozen=True)
@@ -95,6 +106,12 @@ class TripRuntime:
         self._signal_lost = False  # the vehicle link went quiet while driving (speed unknown)
         self._signal_lost_s = 0.0
         self._last_t: float | None = None
+        self._pub_cfg = PublisherConfig.from_dict(thresholds.get("publisher"))
+        self._clock: float | None = None  # latest caller clock seen (frames and idle calls)
+        self._frame_clock: float | None = None  # ... of the last frame, good or failed
+        self._beat_clock: float | None = None  # ... of the last periodic heartbeat
+        self._beat_state: str | None = None
+        self._ended = False
         self.hud.set_vehicle(self._vehicle_state(None))
 
     @property
@@ -124,6 +141,40 @@ class TripRuntime:
             self._signal_lost = lost
             self._system_event("vehicle_signal_lost" if lost else "vehicle_signal_restored")
 
+    # ------------------------------------------------------------------ heartbeat (M33)
+    def monitor_state(self) -> str:
+        """One of MONITOR_STATES: what the fleet overview shows for this vehicle."""
+        if self._ended:
+            return "ended"
+        if self._lost_since is not None:
+            return "camera_lost"
+        stalled_s = self._pub_cfg.heartbeat_stalled_s
+        if self._frame_clock is None or (self._clock is not None and self._clock - self._frame_clock >= stalled_s):
+            return "stalled"
+        if self._processing_error:
+            return "error"
+        return "unavailable" if self._unavailable else "monitoring"
+
+    def _heartbeat(self, force: bool = False) -> None:
+        """Emit a heartbeat when one is due, or when the monitoring state changed (or `force`)."""
+        interval = self._pub_cfg.heartbeat_interval_s
+        if interval <= 0:
+            return
+        state = self.monitor_state()
+        due = self._beat_clock is None or (self._clock is not None and self._clock - self._beat_clock >= interval)
+        if not (force or due or state != self._beat_state):
+            return
+        if due:
+            self._beat_clock = self._clock
+        self._beat_state = state
+        moving = None if self.last_speed is None else self.last_speed >= self.stationary_kmh
+        self._record("heartbeat", build_heartbeat(state, self.trip_id, moving))
+
+    def idle(self, clock: float) -> None:
+        """No frame right now (camera lost, waiting): keep the heartbeat going. Same clock as `step`."""
+        self._clock = clock
+        self._heartbeat()
+
     # ------------------------------------------------------------------ per frame
     def step(self, features: FrameFeatures, phone_flag: bool | None, t: float, clock: float | None = None) -> FrameStep:
         """One frame at time t. clock: what the FPS is measured on (the device's wall clock), default t."""
@@ -144,6 +195,7 @@ class TripRuntime:
             self._record("event", build_enrolled_event(r, self.trip_id))
 
         clock = t if clock is None else clock
+        self._clock = self._frame_clock = clock
         if self._last_clock is not None and clock > self._last_clock:
             dt = clock - self._last_clock
             self.fps = 1.0 / dt if self.fps == 0 else 0.9 * self.fps + 0.1 / dt
@@ -167,18 +219,22 @@ class TripRuntime:
                 )
                 self._record("sample", sample)
             self._minute_max_level = r.alert.active_level
+        self._heartbeat()  # 14: still alive
         return FrameStep(r, signals, event_id, changed)
 
     # ------------------------------------------------------------------ loop health (M28)
-    def frame_failed(self, t: float, error: str) -> None:
-        """A frame failed in blocks 2-14 (the caller caught it and goes on). t: its frame time."""
+    def frame_failed(self, t: float, error: str, clock: float | None = None) -> None:
+        """A frame failed in blocks 2-14 (the caller caught it and goes on). t: its frame time;
+        clock: as in `step` (default t)."""
         self.last_error = error
+        self._clock = self._frame_clock = t if clock is None else clock
         if self._failing_since is None:
             self._failing_since = t
         if not self._processing_error and t - self._failing_since >= self._hud_cfg.processing_error_s:
             self._processing_error = True
             self.hud.set_processing_error(True)
             self._system_event("agent_error")
+        self._heartbeat()
 
     def _frame_ok(self) -> None:
         self._failing_since = None
@@ -235,6 +291,7 @@ class TripRuntime:
             self._camera_lost_s += time.monotonic() - self._lost_since
             self._lost_since = None
         self._system_event("camera_lost" if lost else "camera_restored")
+        self._heartbeat()
 
     # ------------------------------------------------------------------ end of trip
     def end_trip(self) -> dict[str, Any]:
@@ -249,4 +306,6 @@ class TripRuntime:
             vehicle_signal_lost_s=self._signal_lost_s,
         ).to_dict()
         self._record("summary", summary)
+        self._ended = True
+        self._heartbeat(force=True)  # "ended": a finished trip, not a device that went quiet
         return summary

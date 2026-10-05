@@ -11,6 +11,7 @@ export type Reason =
   | "no_face" // v1 only: a lost face is now "monitoring unavailable", not an alert
   | "trend"
   | "blink_rate"
+  | "repeated_l1" // M32: added to an L1 alert raised as L2 because it kept coming back
   | "camera_lost" // system events: the device stopped / resumed monitoring
   | "camera_restored"
   | "driver_enrolled" // system event: from now on judged with the driver's own baselines
@@ -73,6 +74,22 @@ export interface Trip {
   end: string;
   events: number;
   max_level: Level;
+}
+
+// Fleet overview (backend /api/v1/fleet, M33). state / moving / trip_id come from the last heartbeat.
+export type FleetStatus = "online" | "offline" | "ended" | "never";
+export type MonitorState = "monitoring" | "unavailable" | "camera_lost" | "stalled" | "error" | "ended";
+
+export interface FleetDevice {
+  device_id: string;
+  driver_id: string | null;
+  status: FleetStatus;
+  state: MonitorState | null; // null: an agent that sends no heartbeat
+  moving: boolean | null;
+  trip_id: string | null;
+  last_seen: string | null;
+  alerts_by_level: Record<string, number>; // "1" | "2" | "3", in the asked day
+  last_event: { ts: string; type: EventRecord["type"]; level: Level; reasons: Reason[] } | null;
 }
 
 export interface Stats {

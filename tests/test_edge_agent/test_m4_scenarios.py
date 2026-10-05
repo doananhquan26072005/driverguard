@@ -219,6 +219,20 @@ def test_microsleep_after_a_rest_is_still_l3():
     assert [(lv, r) for t, lv, r in alerts if t > 190] == [(3, ("microsleep",))]
 
 
+def test_a_rest_restarts_the_repeated_l1_count():
+    """M32: L1 alerts before a rest do not count towards the L1 -> L2 escalation after it."""
+    pipeline = DecisionPipeline(load_thresholds())
+    pipeline.alerts._l1_emits["drowsy_score"] = [0.0, 1.0]  # two L1 alerts before parking
+    can = CanSimulator(parked_until(130))
+    for i in range(140 * FPS):
+        t = i / FPS
+        f = FrameFeatures(i, t, True, 1.0, ear=OPEN_EAR, mar=0.05, pitch=0.0, yaw=0.0, roll=0.0)
+        pipeline.step(f, False, can.sample(t))
+        if t < 125:
+            assert pipeline.alerts._l1_emits  # a stop shorter than a rest keeps them
+    assert pipeline.alerts._l1_emits == {}
+
+
 # ---------------------------------------------------------------- safety gaps (head drop, no face, new reason)
 
 

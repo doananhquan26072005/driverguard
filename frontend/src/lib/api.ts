@@ -1,7 +1,7 @@
 // Backend client (FastAPI, backend/app.py). The JWT lives in sessionStorage only:
 // it is gone when the tab closes.
-import { query, type RangeKey, rangeStart } from "./format";
-import type { EventRecord, Role, Session, Stats, Thresholds, Timeline, Trip, TripReport } from "./types";
+import { dayRange, query, type RangeKey, rangeStart } from "./format";
+import type { EventRecord, FleetDevice, Role, Session, Stats, Thresholds, Timeline, Trip, TripReport } from "./types";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 const SESSION_KEY = "driverguard.session";
@@ -116,6 +116,16 @@ export function getTripReports(s: Session, range: RangeKey, unreviewedOnly = fal
 export function reviewTripReport(s: Session, r: Pick<TripReport, "device_id" | "trip_id">): Promise<TripReport> {
   const path = `/api/v1/trip-reports/${encodeURIComponent(r.device_id)}/${encodeURIComponent(r.trip_id)}/review`;
   return request(path, { method: "POST" }, s);
+}
+
+// Fleet overview (M33): every vehicle, online or quiet, with its alerts of one local day.
+export function getFleet(s: Session, day: string): Promise<FleetDevice[]> {
+  return request(`/api/v1/fleet${query({ ...dayRange(day) })}`, {}, s);
+}
+
+// Data policy numbers (public): how long the server keeps metadata.
+export function getPolicy(): Promise<{ retention_events_days: number; retention_summaries_days: number }> {
+  return request("/api/v1/policy");
 }
 
 export function getThresholds(s: Session): Promise<Thresholds> {

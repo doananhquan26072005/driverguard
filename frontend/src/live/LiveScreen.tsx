@@ -316,6 +316,7 @@ function SelfView({
               {stats?.enrollment && stats.enrollment.status !== "off" && (
                 <span className="text-white/70">{enrollText(stats.enrollment)}</span>
               )}
+              {stats?.lastError && <span className="break-all text-hud-caution">Lỗi gần nhất: {stats.lastError}</span>}
             </>
           )}
           <a

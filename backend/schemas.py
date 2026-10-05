@@ -28,6 +28,7 @@ Reason = Literal[
     "no_face",  # v1 only (now monitoring_unavailable, no alert): kept for events already stored
     "trend",
     "blink_rate",
+    "repeated_l1",  # M32: added to an L1 alert raised as L2 because it kept coming back
     "camera_lost",
     "camera_restored",  # system events: the device stopped / resumed monitoring
     "driver_enrolled",  # system event: from now on judged with the driver's own baselines
@@ -214,8 +215,22 @@ class TripSummaryIn(StrictModel):
     minutes: list[MinuteIn] = Field(max_length=MAX_TRIP_MINUTES + 1)
 
 
+# Monitoring state of a heartbeat (edge_agent.runtime.MONITOR_STATES).
+MonitorState = Literal["monitoring", "unavailable", "camera_lost", "stalled", "error", "ended"]
+
+
+class HeartbeatIn(StrictModel):
+    """Still alive (M33): the trip, the monitoring state, whether the vehicle moves. No position."""
+
+    ts: AwareDatetime
+    trip_id: str = Identifier
+    state: MonitorState
+    moving: bool | None = None  # None: speed unknown
+
+
 class EventBatch(StrictModel):
     device_id: str = Identifier
+    heartbeat: HeartbeatIn | None = None  # agents older than M33 send none
     events: list[EventIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
     feedback: list[FeedbackIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
     samples: list[SampleIn] = Field(default_factory=list, max_length=MAX_EVENTS_PER_BATCH)
@@ -231,7 +246,7 @@ class EventBatch(StrictModel):
 
     @model_validator(mode="after")
     def not_empty(self) -> EventBatch:
-        if not (self.events or self.feedback or self.samples or self.summaries):
+        if not (self.events or self.feedback or self.samples or self.summaries or self.heartbeat):
             raise ValueError("batch is empty")
         return self
 
@@ -298,6 +313,39 @@ class TripReportOut(BaseModel):
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
     summary: dict[str, Any]
+
+
+FleetStatus = Literal["online", "offline", "ended", "never"]
+
+
+class FleetEventOut(BaseModel):
+    ts: datetime
+    type: EventType
+    level: int
+    reasons: list[str]
+
+
+class FleetDeviceOut(BaseModel):
+    """One vehicle in the fleet overview (M33). status: online = heard from within the offline limit;
+    offline = went quiet without ending its trip; ended = the trip was ended; never = registered,
+    never heard from. state / moving / trip_id: from its last heartbeat."""
+
+    device_id: str
+    driver_id: str | None
+    status: FleetStatus
+    state: MonitorState | None
+    moving: bool | None
+    trip_id: str | None
+    last_seen: datetime | None
+    alerts_by_level: dict[int, int]  # alerts (not system events) in the asked period
+    last_event: FleetEventOut | None  # newest event in the asked period, system events included
+
+
+class PolicyOut(BaseModel):
+    """Data policy numbers the pages show (docs/data-policy.md). 0 days = kept until deleted by hand."""
+
+    retention_events_days: int
+    retention_summaries_days: int
 
 
 class ReasonStats(BaseModel):

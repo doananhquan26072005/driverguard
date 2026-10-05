@@ -15,10 +15,17 @@ FPS = 15
 class Recorder:
     def __init__(self) -> None:
         self.records: list[tuple[str, dict]] = []
+        self.beats: list[dict] = []  # heartbeats (M33), kept apart from the records
 
     def __call__(self, kind: str, data: dict) -> None:
         check_metadata_only(data)
+        if kind == "heartbeat":
+            self.beats.append(data)
+            return
         self.records.append((kind, data))
+
+    def states(self) -> list[str]:
+        return [b["state"] for b in self.beats]
 
     def kinds(self) -> list[str]:
         return [k for k, _ in self.records]
@@ -288,4 +295,77 @@ def test_publisher_takes_runtime_records_and_rejects_unknown_kinds(tmp_path):
     with pytest.raises(ValueError):
         pub.publish_record("image", {})
     pub.stop()
-    assert [len(b.get("events", [])) for b in sent] == [1] and len(sent[0]["summaries"]) == 1
+    assert sent[0] == {"device_id": "cam-1", "heartbeat": sent[0]["heartbeat"]}  # newest only, own POST
+    assert sent[0]["heartbeat"]["state"] == "ended" and sent[0]["heartbeat"]["trip_id"] == "trip-1"
+    assert [len(b.get("events", [])) for b in sent[1:]] == [1] and len(sent[1]["summaries"]) == 1
+
+
+# ---------------------------------------------------------------- heartbeat (M33)
+
+
+def test_heartbeat_at_the_first_frame_then_every_interval():
+    rt, rec, _ = make()
+    run(rt, 65)
+    assert rec.states() == ["monitoring"] * 3  # t = 0, 30, 60
+    assert rec.beats[0]["trip_id"] == "trip-1" and rec.beats[0]["moving"] is True
+    assert set(rec.beats[0]) == {"ts", "trip_id", "state", "moving"}
+
+
+def test_heartbeat_follows_the_monitoring_state_at_once():
+    rt, rec, _ = make()
+    _, t = run(rt, 5)
+    no_face = lambda i, t, status: FrameFeatures(i, t, False, 0.0)  # noqa: E731
+    _, t = run(rt, 5, t0=t, driver=no_face)  # face lost while moving: unavailable after 3 s
+    run(rt, 3, t0=t)
+    assert rec.states() == ["monitoring", "unavailable", "monitoring"]
+
+
+def test_heartbeat_says_camera_lost_and_goes_on_without_frames():
+    rt, rec, _ = make()
+    _, t = run(rt, 2)
+    rt.camera(True)
+    for i in range(1, 70):  # the caller's loop keeps calling idle() while no frame arrives
+        rt.idle(t + i)
+    rt.camera(False)
+    run(rt, 1, t0=t + 70)
+    assert rec.states() == ["monitoring", "camera_lost", "camera_lost", "camera_lost", "stalled", "monitoring"]
+
+
+def test_no_frames_without_a_lost_camera_is_stalled_not_monitoring():
+    rt, rec, _ = make()
+    _, t = run(rt, 2)
+    for i in range(1, 15):
+        rt.idle(t + i)
+    assert rec.states() == ["monitoring", "stalled"]
+
+
+def test_failing_frames_show_as_error_in_the_heartbeat():
+    rt, rec, _ = make()
+    _, t = run(rt, 2)
+    for i in range(30):
+        rt.frame_failed(t + i / FPS, "ValueError")
+    run(rt, 1, t0=t + 2)
+    assert rec.states() == ["monitoring", "error", "monitoring"]
+
+
+def test_end_of_trip_sends_an_ended_heartbeat():
+    rt, rec, _ = make()
+    run(rt, 2)
+    rt.end_trip()
+    assert rec.states() == ["monitoring", "ended"]
+
+
+def test_heartbeat_can_be_switched_off():
+    th = load_thresholds()
+    th["publisher"] = {**th["publisher"], "heartbeat_interval_s": 0}
+    rec = Recorder()
+    rt = TripRuntime(th, "trip-1", CanSimulator(scenario([(0, 60)])), "t", FakeSelector(), emit=rec)
+    run(rt, 40)
+    rt.end_trip()
+    assert rec.beats == []
+
+
+def test_parked_vehicle_reports_not_moving():
+    rt, rec, _ = make(speeds=((0, 0),))
+    run(rt, 1)
+    assert rec.beats[0]["moving"] is False

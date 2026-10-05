@@ -56,6 +56,23 @@ export function rangeStart(range: RangeKey, now: number = Date.now()): string | 
   return hours ? new Date(now - hours * 3600_000).toISOString() : undefined;
 }
 
+/** Local calendar day "YYYY-MM-DD" of a moment (the value of an <input type="date">). */
+export function dayKey(now: number | Date = Date.now()): string {
+  const d = new Date(now);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** [start, end) of a local calendar day "YYYY-MM-DD" as ISO strings, or null when it is not a date. */
+export function dayRange(day: string): { since: string; until: string } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!m) return null;
+  const start = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+  return { since: start.toISOString(), until: end.toISOString() };
+}
+
 /** Query string from an object, skipping empty values. */
 export function query(params: Record<string, string | number | boolean | undefined | null>): string {
   const q = new URLSearchParams();
