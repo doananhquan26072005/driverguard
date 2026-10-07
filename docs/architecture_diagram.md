@@ -116,7 +116,7 @@ flowchart LR
 | 1 Camera | OpenCV, webcam hoặc file video | `getUserMedia` |
 | 2 Tiền xử lý | resize + CLAHE trên kênh Y | resize trên canvas, không CLAHE |
 | 3 Landmark | MediaPipe Python | MediaPipe Tasks JS, cùng model |
-| 4 Điện thoại | YOLOv8n ONNX, luồng riêng | onnxruntime-web trong Web Worker, cùng model |
+| 4 Điện thoại | YOLOv8n ONNX, luồng riêng | onnxruntime-web trong Web Worker, cùng model; chạy trên WebGPU khi trình duyệt có GPU thật, không thì wasm (M67) |
 | 5 Trạng thái mắt | CNN `open_closed_eye.onnx` | blendshape `eyeBlink` |
 | 6–12 | Python | **cùng Python, chạy trong Pyodide** |
 | 10 Tín hiệu xe | `tools/drive_sim.py` qua `GET /can` (M19) | trang `#/drive?code=…` qua backend (M31); không có thì hỏi `drive_sim.py` trên `127.0.0.1` |

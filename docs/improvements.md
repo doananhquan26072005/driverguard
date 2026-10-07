@@ -71,14 +71,15 @@ gói. Việc 29 (thêm lại 06/10) mang số cuối để không phải đánh 
 | 29 | [Tốc độ xe từ GPS của thiết bị](#viec-gps) | Thêm lại 06/10: Android box không đọc được CAN (*suy luận*), GPS là nguồn tốc độ duy nhất trên VF e34. Tốc độ từ `navigator.geolocation`, làm mượt; mất GPS thì coi là đang chạy (M26). Chỉ dùng tốc độ, không lưu và không gửi toạ độ |  |
 
 ### Nhóm 4: hiệu năng bản web / APK
-Phần còn lại sau M49–M51 ([M49](roadmap.md#m49), [M50](roadmap.md#m50), [M51](roadmap.md#m51)). Chỗ chậm và
-chưa có số nằm ở bản web, tức code của APK. Không việc nào bỏ frame hay thêm model. Cả ba chờ thứ ngoài code:
-số đo máy đích của việc 8 (13, 14), phiên có điện thoại của việc 1 (13, 15), APK của việc 10 (13, 15).
+Phần còn lại sau M49–M51 và M67 ([M49](roadmap.md#m49), [M50](roadmap.md#m50), [M51](roadmap.md#m51),
+[M67](roadmap.md#m67)). Chỗ chậm và chưa có số nằm ở bản web, tức code của APK. Không việc nào bỏ frame hay thêm
+model. Phần lớn chờ thứ ngoài code: số đo máy đích của việc 8 (13, 14), quyết định của anh về cỡ ảnh (13), APK của
+việc 10 (13, 15).
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 13 | [YOLO trong bản web: còn chậm gấp 5 lần bản thiết bị](#viec-yolo-web) | Từ M51 chạy 2 luồng trên trang được cách ly: 172 → 91 ms / lần (thiết bị: 17 ms); máy quá chậm thì được báo (M50). Trong APK chỉ có **một luồng**: WebView của Android không cho trang cách ly ([phụ lục J](#phu-luc-j)), tức quay về 172 ms trên Mac, chậm hơn nhiều trên QCM6125. Còn lại: cắt vùng tài xế để chạy ảnh nhỏ hơn (cần bản ghi có điện thoại), thử WebGPU trên Adreno 610, hoặc chạy YOLO bằng plugin native (để sau) |  |
-| 14 | [Đường đi của frame trong trình duyệt: phần còn lại](#viec-duong-frame) | Đã đo trong Chromium (M51): sao chép pixel 0,5–1,8 ms, đưa thẳng video cho MediaPipe không lợi, 30 FPS với 2–7 / 300 frame bị bỏ. Trên Mac không còn gì để cắt. Còn lại, chỉ khi số của máy đích đòi: đọc lại riêng vùng mặt, chuyển vòng lặp sang Worker |  |
+| 13 | [YOLO trong bản web: phần còn lại](#viec-yolo-web) | Trình duyệt có GPU thật: YOLO chạy bằng WebGPU, 94 → 16 ms / lần, 10 lần / giây (M67). Không có GPU thật: wasm 2 luồng, 91 ms, 5 lần / giây như cũ; máy quá chậm thì được báo (M50). Trong APK: WebView không cho luồng ([phụ lục J](#phu-luc-j)), chưa biết có WebGPU trên Adreno 610 không; trang tự chọn nên chỉ cần mở trên thiết bị rồi đọc "Chi tiết kỹ thuật". Còn lại: ảnh đầu vào nhỏ hơn hoặc cắt vùng tài xế (đã có số trên 3MDAD, chờ anh quyết định), số luồng wasm theo máy, plugin native (để sau) |  |
+| 14 | [Đường đi của frame trong trình duyệt: phần còn lại](#viec-duong-frame) | Đo M51, M67 trong Chromium: vòng lặp bận 11–13 ms mỗi frame, 30 FPS; sao chép pixel 0,5–1,9 ms. 0–3 % frame camera không được xử lý dù luồng chính rảnh, và có lần chạy mọi frame chờ thêm khoảng 15 ms: do `requestVideoFrameCallback` đi theo nhịp vẽ màn hình. Còn lại: lấy frame thẳng từ camera (`MediaStreamTrackProcessor`); đọc lại riêng vùng mặt và chuyển vòng lặp sang Worker chỉ khi số của máy đích đòi |  |
 | 15 | [Độ trễ cảnh báo: phần còn lại](#viec-tre-canh-bao) | `#/live` đã đẩy cảnh báo ngay và dùng giờ chụp của frame (M50). Bản ghi M52: ngủ gật p95 1,67 s, điện thoại 2,30–2,77 s, nhìn sang bên / ra sau 2,83–3,04 s (sát mốc 3 s của PRD). Còn lại: thử `rise_confirm_s` trên bản ghi; HUD của bản thiết bị vẫn hỏi 300 ms một lần; đo độ trễ âm thanh trên hub; cột "tới tai tài xế" trong báo cáo |  |
 
 ### Nhóm 5: phần cứng thêm, tuỳ loại hub và camera
@@ -485,11 +486,11 @@ Android thật) và camera USB; cách mang project lên đó là APK ở [việc
 | 3 MediaPipe | 5,8 ms | 8,9 ms (CPU) · 10,4 ms (GPU thật) | Trước M51 trên máy không có GPU thật: 45 ms |
 | Đo pixel (độ sáng, IR, độ nét) | trong khối 2 và 6 | 0,2 ms | |
 | 6–14 (đặc trưng, quyết định, HUD, JSON) | 0,15 ms | 0,9–1,2 ms | Trong Node: 0,61 ms; trước M49: 1,97 ms |
-| 4 YOLO, mỗi lần chạy | 16,8 ms (2 luồng) | **91 ms** (2 luồng wasm) | Trước M51: 172 ms, một luồng. Tuổi kết quả khi dùng p95 331 ms (hạn 600) |
-| Cả vòng lặp | 107 FPS khi có mặt | 10,6–14,6 ms mỗi frame, 30 FPS | 2–7 / 300 frame camera không kịp xử lý |
+| 4 YOLO, mỗi lần chạy | 16,8 ms (2 luồng) | **16 ms** (WebGPU, GPU thật) · 91 ms (2 luồng wasm) | Trước M67: 91–94 ms ở cả hai; trước M51: 172 ms, một luồng. Tuổi kết quả khi dùng p95: WebGPU khoảng 100 ms, wasm 267 ms (trước M67: 333; hạn 600) |
+| Cả vòng lặp | 107 FPS khi có mặt | 10,7–13,5 ms mỗi frame, 30 FPS | 0–3 % frame camera không được xử lý (nhịp của `requestVideoFrameCallback`, không phải do bận) |
 
-- Cột bản web: [`eval/results/benchmark_live.md`](../eval/results/benchmark_live.md) (M51), bản build thật trong
-  Chromium không giao diện với camera giả phát một clip YawDD có mặt, 30 giây; hai giá trị là máy vẽ WebGL bằng
+- Cột bản web: [`eval/results/benchmark_live.md`](../eval/results/benchmark_live.md) (M51, M67), bản build thật trong
+  Chromium không giao diện với camera giả phát một clip YawDD có mặt; hai giá trị là máy vẽ WebGL bằng
   phần mềm và máy có GPU thật. Số p50.
 - Dòng 6–14 trong Node: [`benchmark_web.md`](../eval/results/benchmark_web.md) (M49).
 - Node cùng engine V8 với Chrome / WebView nhưng không phải trình duyệt, và Mac không phải hub.
@@ -498,16 +499,17 @@ Android thật) và camera USB; cách mang project lên đó là APK ở [việc
 **Đọc bảng:**
 - Bản thiết bị không có điểm nghẽn: dư khoảng 7 lần so với 15 FPS, lý do của mục
   [đã bỏ "giảm xử lý từng frame"](#bo-subsampling) vẫn đúng.
-- Bản web là sản phẩm (APK). Sau M49–M51, trên Mac nó chậm hơn bản thiết bị khoảng 1,5–2 lần ở MediaPipe, 6 lần
-  ở Python và 5 lần ở YOLO, giữ được 30 FPS của camera. Trên máy đích (chưa chọn, nhân chậm hơn) chưa có số nào.
+- Bản web là sản phẩm (APK). Sau M49–M51 và M67, trên Mac nó chậm hơn bản thiết bị khoảng 1,5–2 lần ở MediaPipe,
+  6 lần ở Python; YOLO ngang bản thiết bị khi có GPU thật (WebGPU) và chậm 5 lần khi không có (wasm). Giữ được
+  30 FPS của camera. Trên máy đích (nhân chậm hơn, chưa biết có WebGPU) chưa có số nào.
 - Bài học của M51: cùng một máy, cùng code, model mặt chạy 45 ms hay 9 ms tuỳ WebGL có GPU thật hay không. Hub
   có GPU thật không, và WebView của nó có dùng GPU đó không, là câu hỏi đầu tiên khi chọn hub
   ([việc 8](#viec-do-web): "Chi tiết kỹ thuật" nay ghi rõ điều này).
 - Không đề xuất nào ở đây bỏ frame của MediaPipe hay thêm model: các việc dưới bỏ phần tính thừa, phần sao
   chép thừa và phần chờ thừa.
 
-**Về độ chính xác:** hai việc trong nhóm có tác động tới độ chính xác: [15](#viec-yolo-web) (cắt vùng tài xế làm
-điện thoại to hơn trong ảnh) và [16](#viec-duong-frame) (đổi cách lấy pixel có thể làm lệch số độ nét). Đòn bẩy lớn nhất
+**Về độ chính xác:** hai việc trong nhóm có tác động tới độ chính xác: [13](#viec-yolo-web) (ảnh đầu vào nhỏ hơn
+hoặc cắt vùng tài xế) và [14](#viec-duong-frame) (đổi cách lấy pixel có thể làm lệch số độ nét). Đòn bẩy lớn nhất
 về độ chính xác vẫn là các việc [1](#viec-prd), [7](#viec-cnn-toi) và [phần còn lại sau UTA-RLDD](#viec-toi-uu-nguong), không nằm
 trong nhóm này.
 
@@ -710,57 +712,64 @@ chứng*), GPS của thiết bị là nguồn tốc độ duy nhất chứ khôn
 
 <a id="viec-yolo-web"></a>
 
-### Việc 13: YOLO trong bản web, còn chậm gấp 5 lần bản thiết bị
+### Việc 13: YOLO trong bản web, phần còn lại
 
-**Số đo (06/10, onnxruntime-web 1.30.0, wasm, trong Node, Mac ARM, đầu vào 640×640):**
+**Số đo (08/10, onnxruntime-web 1.30.0, Chromium trên Mac ARM, đầu vào 640×640 trừ khi ghi khác;
+[`benchmark_live.md`](../eval/results/benchmark_live.md)):**
 
-| Model | Luồng | Mỗi lần chạy |
-|---|---:|---:|
-| `yolov8n.onnx` FP32, bản thiết bị (onnxruntime) | 2 | 16,8 ms |
-| `yolov8n.onnx` FP32, wasm | 1 | 166 ms |
-| `yolov8n_int8.onnx`, wasm | 1 | 172 ms |
-| `yolov8n.onnx` FP32, trong Chromium (đọc từ `#/live`, M50) | 1 | 175 ms (p95 200) |
-| `yolov8n.onnx` FP32, trong Chromium, trang được cách ly (M51) | 2 | 91 ms (p95 105) |
+| Cách chạy `yolov8n.onnx` FP32 | Mỗi lần chạy |
+|---|---:|
+| Bản thiết bị (onnxruntime, 2 luồng) | 16,8 ms |
+| Trong trang, WebGPU trên GPU thật ([M67](roadmap.md#m67)) | 16 ms |
+| Trong trang, wasm 2 luồng (trang được cách ly, M51) | 91 ms |
+| Riêng model trong một worker, wasm 1 / 2 / 3 / 4 / 6 luồng | 168 / 88 / 61 / 50 / 67 ms |
+| Riêng model, wasm 2 luồng, ảnh 480 / 416 / 320 | 51 / 38 / 24 ms |
+| Riêng model, WebGPU, ảnh 640 / 416 | 11 / 6 ms |
 
-Hai luồng trên trang được cách ly và báo khi model không còn cho kết quả đã làm ở [M50](roadmap.md#m50),
-[M51](roadmap.md#m51).
+Đã làm ở [M50](roadmap.md#m50), [M51](roadmap.md#m51), [M67](roadmap.md#m67): báo khi model không còn cho kết
+quả; hai luồng wasm; WebGPU khi trình duyệt có GPU thật (tự lùi về wasm khi lỗi), 10 lần / giây; nhịp chạy đúng
+tần số cấu hình. Tuổi kết quả khi dùng p95: WebGPU khoảng 100 ms, wasm 267 ms (hạn 600 ms).
 
-**Rủi ro: mất nhánh điện thoại trên máy chậm.**
-- Kết quả YOLO cũ hơn `phone.max_result_age_s` (0,6 s) được coi là "không rõ", và `phone_ratio_2s` bỏ qua mẫu
-  "không rõ". Trong Chromium trên Mac tuổi kết quả khi dùng là p50 230 / p95 331 ms.
-- Máy chậm hơn Mac này khoảng 6,5 lần mỗi nhân (600 / 91) thì **mọi** kết quả đều quá hạn: không bao giờ có
-  cảnh báo `phone`. Nếu WebView của APK không cho luồng thì con số đó là 3,5 lần.
-- Trường hợp đó nay được báo ("Không phát hiện được điện thoại", M50), nhưng báo ra không phải là sửa: nhánh
-  điện thoại vẫn tắt. Ngưỡng `phone.unknown_*` là tạm, chưa có dữ liệu.
-- **Thiết bị của VF e34 nhiều khả năng rơi vào vùng này (*suy luận*, chưa đo):** QCM6125 chậm hơn Mac khoảng
-  7 lần mỗi nhân (Geekbench 6 một nhân 334 so với 2 369 của Apple M1), và WebView không cho luồng nên mốc là
-  3,5 lần ([phụ lục J](#phu-luc-j)). Việc này từ "tối ưu" thành điều kiện để nhánh điện thoại hoạt động trong APK.
+**Rủi ro còn lại: mất nhánh điện thoại trên máy chậm không có WebGPU.**
+- Kết quả cũ hơn `phone.max_result_age_s` (0,6 s) là "không rõ". Máy chậm hơn Mac này khoảng 6 lần mỗi nhân thì
+  mọi kết quả wasm đều quá hạn; trong WebView của APK (một luồng) con số đó là 3,5 lần.
+- **Thiết bị của VF e34 nhiều khả năng rơi vào vùng này (*suy luận*, chưa đo):** QCM6125 chậm hơn khoảng 7 lần mỗi
+  nhân ([phụ lục J](#phu-luc-j)). Lối ra đầu tiên nay là WebGPU: trang tự chọn nó khi `navigator.gpu` trả về một
+  adapter thật, và đường WebGPU không cần luồng nên chạy được cả trên trang không cách ly. *Chưa kiểm chứng:*
+  WebView của thiết bị có WebGPU trên Adreno 610 không, và nhanh tới đâu.
 
 **Hướng làm, theo thứ tự:**
-1. **Luồng trong APK: không có.** WebView của Android không hỗ trợ trang cách ly (Chromium đóng yêu cầu này ở
-   trạng thái không sửa, [phụ lục J](#phu-luc-j)); hai luồng của M51 chỉ có trong Chrome. Chỉ còn việc xác nhận
-   `crossOriginIsolated` là `false` trên thiết bị, làm cùng [việc 10](#viec-apk).
-2. **Cắt vùng tài xế rồi mới chạy YOLO:** chỉ điện thoại trong vùng quanh mặt mới được tính
-   (`phone_near_face`), nhưng YOLO đang quét cả khung hình ở 640. Cắt vùng tài xế (hộp mặt mở rộng, đã có
-   `driver_zone` và `FaceBoxMemory`) rồi đưa vào ở 320 hoặc 416: ít điểm ảnh hơn khoảng 2,4–4 lần, và
-   điện thoại chiếm phần lớn hơn của ảnh. Cần xuất lại ONNX của cùng trọng số pretrained ở cỡ mới (không
-   train). Mất mặt quá `face_memory_s` thì quay về quét cả khung.
-   - Phải đo độ chính xác trước khi đổi mặc định: cần clip có điện thoại ở góc camera hướng mặt, tức bản
-     ghi của [việc 1](#viec-prd), cùng điều kiện chặn với lượng tử hoá YOLO (đã bỏ, roadmap M54).
-   - Áp dụng được cho cả bản thiết bị.
-3. **WebGPU** (`onnxruntime-web/webgpu`): thử trên Adreno 610 nếu WebView của thiết bị có (*chưa kiểm chứng*;
-   phụ thuộc phiên bản WebView và bản Android thật); giữ wasm làm đường lùi.
-4. **Chạy YOLO bằng plugin native** (ONNX Runtime bản Android trong một plugin Capacitor, nhiều luồng, có thể dùng
-   GPU / NNAPI), trang chỉ gửi frame và nhận hộp. Cùng file `yolov8n.onnx` pretrained; khối 5–12 vẫn là Python
-   trong Pyodide nên không phải viết lại logic. Đổi lại: thêm code native phải giữ, và bản web xem thử chạy đường
-   khác với APK. **Để sau (anh quyết định 06/10):** xét lại khi mục 2 và 3 đo ra vẫn quá hạn 0,6 s. Cùng cách này
-   áp dụng được cho model mặt nếu MediaPipe trong WebView không đạt 15 FPS.
-5. **INT8:** trên wasm một luồng không nhanh hơn (172 so với 166 ms); file INT8 hiện có đã bỏ (roadmap M54).
+1. **Mở `#/live` trên thiết bị** (làm cùng [việc 8](#viec-do-web)): dòng "ĐT … · WebGPU" hay "… luồng" của "Chi tiết
+   kỹ thuật" trả lời câu hỏi trên. Xác nhận luôn `crossOriginIsolated` là `false` trong WebView.
+2. **Ảnh đầu vào nhỏ hơn, cùng trọng số pretrained xuất lại (chờ anh quyết định).** Đo trên 3MDAD, 50 tài xế,
+   mỗi lịch chạy 6 lần ([`phone_web_3mdad.md`](../eval/results/phone_web_3mdad.md)):
 
-**Việc nhỏ đi kèm:** `toChw` (0,6 ms) và phần vẽ letterbox đang chạy trên luồng giao diện 5 lần / giây;
-chuyển sang worker bằng `ImageBitmap` khi làm mục 2 (đo trong Chromium: 1,4 ms mỗi lần).
+   | Ảnh | wasm 2 luồng | Chuỗi có điện thoại ra cảnh báo `phone` | Cảnh báo `phone` sai | Frame thấy điện thoại khi gọi tay phải / tay trái |
+   |---|---:|---:|---:|---:|
+   | 640 (đang dùng) | 88 ms | 131 / 1200 | 1 | 7,5 % / 2,8 % |
+   | 480 | 51 ms | 130 / 1200 | 0 | 6,8 % / 2,0 % |
+   | 416 | 38 ms | 132 / 1200 | 0 | 6,0 % / 1,5 % |
+   | 320 | 24 ms | 87 / 1200 | 0 | 2,2 % / 0,8 % |
 
-**Liên quan:** lượng tử hoá YOLO (đã bỏ, roadmap M54), [việc 4](#viec-goi-nhan), [FMEA](safety-fmea.md).
+   480 và 416 giữ số cảnh báo, ít thấy nhầm ở hành động khác hơn, nhưng thấy điện thoại lúc gọi ít hơn một chút;
+   320 mất một phần ba. 3MDAD là đoạn diễn 3–5 giây ở một góc camera, và bản tự ghi không giữ ảnh nên không chạy lại
+   được: đủ để nói 320 không dùng được, chưa đủ để đổi mặc định sang 416. Đổi thì phải thêm file model thứ hai
+   (12,7 MB) và cả hai bản cùng đổi `phone.input_size`.
+3. **Cắt vùng tài xế rồi mới chạy YOLO** (hộp mặt mở rộng, đã có `driver_zone` và `FaceBoxMemory`): điện thoại
+   chiếm phần lớn hơn của ảnh nhỏ. Chưa đo; cần một lượt `tools/phone_study.py detect` trên ảnh đã cắt.
+4. **Số luồng wasm theo máy:** 3–4 luồng cho 61–50 ms trên máy 4 nhân hiệu năng cao này, 6 luồng lại chậm đi.
+   `phone.num_threads` dùng chung với bản thiết bị và chưa đo máy 4 nhân, nên chưa đổi.
+5. **Chạy YOLO bằng plugin native** (ONNX Runtime bản Android trong một plugin Capacitor): **để sau (anh quyết định
+   06/10)**, xét lại khi mục 1 đo ra vẫn quá hạn 0,6 s.
+
+**Đã thử ở M67 và không giữ:** wasm 10 lần / giây (tuổi p95 230 ms thay cho 267 nhưng CPU của trang 216 % một
+nhân thay cho 136 %). INT8: trên wasm một luồng không nhanh hơn (172 so với 166 ms) và file hiện có không phát hiện
+được gì (roadmap M54).
+
+**Việc nhỏ đi kèm:** `toChw` và phần vẽ letterbox chạy trên luồng giao diện 1,5–2,0 ms mỗi lần YOLO chạy; chuyển
+sang worker bằng `ImageBitmap` khi làm mục 3.
+
+**Liên quan:** [việc 4](#viec-goi-nhan), [FMEA](safety-fmea.md).
 
 ---
 
@@ -768,28 +777,42 @@ chuyển sang worker bằng `ImageBitmap` khi làm mục 2 (đo trong Chromium: 
 
 ### Việc 14: đường đi của frame trong trình duyệt, phần còn lại
 
-**Đã đo (M51, Chromium trên Mac, có mặt trong khung; [`benchmark_live.md`](../eval/results/benchmark_live.md)):**
+**Đã đo (M51, M67, Chromium trên Mac, có mặt trong khung; [`benchmark_live.md`](../eval/results/benchmark_live.md)):**
 
 | Bước của mỗi frame (luồng giao diện) | p50 |
 |---|---:|
 | Từ lúc camera chụp tới lúc bắt đầu xử lý | 0,2–15 ms |
-| `drawImage` vào canvas + `getImageData` cả khung 640×480 | 0,5–1,8 ms |
-| MediaPipe | 8,9–10,4 ms |
+| `drawImage` vào canvas + `getImageData` cả khung 640×480 | 0,5–1,9 ms |
+| Chuẩn bị ảnh cho YOLO (chỉ ở frame đưa cho YOLO) | 1,5–2,0 ms |
+| MediaPipe | 8,7–11,9 ms |
 | Đo pixel bằng JS | 0,2 ms |
-| Python (khối 6–14) + JSON | 0,9–1,2 ms |
-| Cả frame | 10,6–14,6 ms, 30 FPS, 2–7 / 300 frame camera không kịp xử lý |
+| Python (khối 6–14) + JSON | 0,9–1,3 ms |
+| Cả frame | 10,7–15,1 ms, 30 FPS |
 
 Model mặt chọn GPU / CPU và `frameRate` của camera đã làm ở [M51](roadmap.md#m51); đưa thẳng thẻ video cho
-MediaPipe đã đo và bỏ ([phụ lục H](#bo-video-truc-tiep)).
+MediaPipe đã đo và bỏ ([phụ lục H](#bo-video-truc-tiep)). Từ [M67](roadmap.md#m67) ảnh được đưa cho YOLO trước khi
+MediaPipe chạy, nên hai model chạy cùng lúc.
 
-**Còn lại, chỉ khi số của máy đích ([việc 8](#viec-do-web)) đòi:**
-1. **Chỉ đọc lại vùng mặt** thay cho cả khung, ba số cả khung lấy từ một bản vẽ thu nhỏ. Trên Mac bước này chỉ
-   0,5–1,8 ms nên chưa đáng; số cả khung sẽ lệch nhẹ, phải chạy lại `tools/light_study.py` và kiểm các ngưỡng
+**Phát hiện của M67: frame bị bỏ không phải do bận.** Trong 60 giây, 0–3 % frame camera không được xử lý. Ở 20 / 21
+lần như vậy luồng giao diện đang rảnh 35–40 ms: không có tác vụ dài, hàm của timer và của kết quả YOLO chỉ tốn
+0,2–0,5 ms. `requestVideoFrameCallback` chỉ gọi khi trình duyệt vẽ màn hình, nên frame camera đến lệch nhịp vẽ thì
+bị frame sau đè lên trước khi tới lượt. Có lần chạy mọi frame còn chờ thêm khoảng 15 ms (một nhịp vẽ) trước khi
+được xử lý. Con số dao động giữa các lần chạy của cùng một bản build, nên không dùng nó để so hai bản.
+
+**Còn lại:**
+1. **Lấy frame thẳng từ camera** bằng `MediaStreamTrackProcessor` thay cho `requestVideoFrameCallback`: mọi frame
+   tới ngay khi camera giao, không phụ thuộc nhịp vẽ. Lợi ước tính trên Mac: 0–3 % frame và tới 15 ms độ trễ mỗi
+   frame. Phải giữ đường cũ cho trình duyệt không có API này (Firefox; Safari chỉ có trong Worker), phải tự bỏ
+   frame cũ khi vòng lặp chậm, và giờ của frame không còn lấy từ `captureTime`. **Đổi hành vi:** vòng lặp sẽ
+   chạy cả khi tab bị che (hiện tại nó dừng và nhịp "còn sống" báo `stalled`); anh quyết định có muốn vậy không.
+   *Chưa kiểm chứng:* camera thật (số trên là camera giả của Chrome phát file), WebView của hub.
+2. **Chỉ đọc lại vùng mặt** thay cho cả khung, ba số cả khung lấy từ một bản vẽ thu nhỏ. Trên Mac bước này chỉ
+   0,5–1,9 ms nên chưa đáng; số cả khung sẽ lệch nhẹ, phải chạy lại `tools/light_study.py` và kiểm các ngưỡng
    `quality.*`, `preprocess.ir_channel_diff_max` trước khi nhận.
-2. **Chuyển vòng lặp sang Web Worker:** MediaPipe và Pyodide rời luồng giao diện. Việc lớn nhất của nhóm; trên
+3. **Chuyển vòng lặp sang Web Worker:** MediaPipe và Pyodide rời luồng giao diện. Việc lớn nhất của nhóm; trên
    Mac vòng lặp chỉ chiếm 11–15 ms của 33 ms mỗi frame nên chưa có lý do. *Chưa kiểm chứng:* MediaPipe
-   tasks-vision trong worker, lấy frame bằng `MediaStreamTrackProcessor` trong WebView của hub.
-3. Camera tự hạ FPS khi cabin tối (*chưa kiểm chứng* trên camera của hub): lúc đó nghẽn là camera, không phải
+   tasks-vision trong worker trong WebView của hub.
+4. Camera tự hạ FPS khi cabin tối (*chưa kiểm chứng* trên camera của hub): lúc đó nghẽn là camera, không phải
    code; số "frame camera giao" của "Chi tiết kỹ thuật" cho thấy điều này.
 
 **Không đề xuất:** đo pixel thưa hơn theo thời gian (mỗi N frame). Khối 5 và M43 dùng độ sáng mặt của
