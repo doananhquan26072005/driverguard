@@ -43,6 +43,13 @@ Records go to `emit(kind, data)` with kind "event", "sample", "feedback", "summa
 hands them to MetadataPublisher, the browser queues them for its own POST. The callers keep only
 their own I/O: camera, HTTP servers and preview window on the device, Pyodide on the web.
 
+What the HUD shows of the running trip (M65) is read from the agent, not counted by the screen, so a
+HUD that reloads loses nothing: continuous driving of the current driver and the drowsy_score of the
+last `hud.trend_minutes` minutes (block 11's TripCollector.hud_view), the numbers behind each alert
+(`alert_detail`), and since when the driver is not monitored (camera lost / processing error) with
+the id of the system event sent for it; the device loop adds reopen attempts and whether the
+backend has the event. The trip summary is built from the same collector, unchanged.
+
 Pure logic on the timestamps it is given (plus a monotonic clock for camera-lost time): no
 image, testable with fake sequences.
 """
@@ -77,6 +84,19 @@ Emit = Callable[[str, dict[str, Any]], None]
 
 # Monitoring state in a heartbeat, most specific first (backend/schemas.py MonitorState).
 MONITOR_STATES = ("ended", "camera_lost", "stalled", "error", "unavailable", "monitoring")
+
+
+def alert_detail(r: DecisionResult, signals: VehicleSignals) -> dict[str, Any]:
+    """The numbers behind an alert, for its detail line on the HUD (M65): how long the driver looked
+    away, how long the eyes were closed, the phone share of the last 2 s, and the turn signal side
+    (block 10, with its grace period) when it fired. Numbers only."""
+    side = r.context.turn_side or signals.turn_signal
+    return {
+        "off_road_s": round(r.distraction.off_road_duration, 1),
+        "eyes_closed_s": round(r.drowsiness.closed_duration, 1),
+        "phone_ratio": round(r.distraction.phone_ratio_2s, 2),
+        "turn_signal": side,
+    }
 
 
 @dataclass(frozen=True)
@@ -161,8 +181,11 @@ class TripRuntime:
                 data["versions"] = self.versions
         self._emit(kind, data)
 
-    def _system_event(self, reason: str, metrics: dict[str, Any] | None = None) -> None:
-        self._record("event", build_system_event(reason, self.trip_id, self.last_speed, metrics=metrics))
+    def _system_event(self, reason: str, metrics: dict[str, Any] | None = None) -> str:
+        """Returns the event_id (the HUD tells the driver once the backend has it, M65)."""
+        event = build_system_event(reason, self.trip_id, self.last_speed, metrics=metrics)
+        self._record("event", event)
+        return event["event_id"]
 
     def _vehicle_state(self, signals: VehicleSignals | None) -> dict[str, Any]:
         connected = self.vehicle.connected if isinstance(self.vehicle, ExternalVehicle) else True
@@ -255,14 +278,14 @@ class TripRuntime:
         self._track_fps(clock)
         self._track_phone(t, phone_flag is not None)
 
-        self.hud.update(r, self.fps)  # 13
+        self.hud.update(r, self.fps, self.decisions.trip_log.hud_view(self._hud_cfg.trend_minutes))  # 13
         self._minute_max_level = max(self._minute_max_level, r.alert.active_level)
         self._minute_max_ratio = max(self._minute_max_ratio, r.distraction.off_road_ratio)
         event_id = None
         if r.alert.new_alert is not None:  # 13, 14
             event = build_event(r.alert.new_alert, r, self.trip_id)
             event_id = event["event_id"]
-            self.hud.add_alert(event_id, r.alert.new_alert.level, r.alert.new_alert.reasons)
+            self.hud.add_alert(event_id, r.alert.new_alert.level, r.alert.new_alert.reasons, alert_detail(r, signals))
             self._record("event", event)
         if r.trip.bins_completed > self._bins_sent:  # a minute just closed: one fatigue timeline point
             self._bins_sent = r.trip.bins_completed
@@ -291,7 +314,7 @@ class TripRuntime:
         if not self._processing_error and t - self._failing_since >= self._hud_cfg.processing_error_s:
             self._processing_error = True
             self.hud.set_processing_error(True)
-            self._system_event("agent_error")
+            self.hud.start_incident("processing_error", self._system_event("agent_error"))
         self._heartbeat()
 
     def _frame_ok(self) -> None:
@@ -300,6 +323,7 @@ class TripRuntime:
         if self._processing_error:
             self._processing_error = False
             self.hud.set_processing_error(False)
+            self.hud.end_incident("processing_error")
             self._system_event("agent_recovered")
 
     def _track_fps(self, clock: float) -> None:
@@ -386,7 +410,11 @@ class TripRuntime:
         elif self._lost_since is not None:
             self._camera_lost_s += time.monotonic() - self._lost_since
             self._lost_since = None
-        self._system_event("camera_lost" if lost else "camera_restored")
+        event_id = self._system_event("camera_lost" if lost else "camera_restored")
+        if lost:
+            self.hud.start_incident("camera_lost", event_id)
+        else:
+            self.hud.end_incident("camera_lost")
         self._heartbeat()
 
     # ------------------------------------------------------------------ end of trip

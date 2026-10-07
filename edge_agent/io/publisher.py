@@ -40,6 +40,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -62,6 +63,7 @@ BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
 # body (JSON-ready dict) -> HTTP status code; raises OSError when the backend is unreachable
 Transport = Callable[[dict[str, Any]], int]
 KINDS = {"event": "events", "feedback": "feedback", "sample": "samples", "summary": "summaries"}  # kind -> field
+DELIVERED_KEEP = 64  # accepted event_ids remembered for the HUD (M65): a few minutes of events
 
 
 @dataclass(frozen=True)
@@ -391,6 +393,9 @@ class MetadataPublisher:
         self._queued_at_stop: int | None = None
         self._heartbeat: dict[str, Any] | None = None  # newest one not sent yet (never in the outbox)
         self._heartbeat_refused = False
+        # event_ids the backend accepted, newest last (M65: the HUD says "Đã báo cho quản lý" only then)
+        self._delivered: deque[str] = deque(maxlen=DELIVERED_KEEP)
+        self._delivered_lock = threading.Lock()  # not _send_lock: that one is held during network I/O
 
     # ------------------------------------------------------------------ API for the main loop
     def publish(self, event: dict[str, Any]) -> None:
@@ -501,6 +506,7 @@ class MetadataPublisher:
             status = self._send([rec for _, rec in rows])
             if status is not None and 200 <= status < 300:
                 self._outbox.delete([i for i, _ in rows])
+                self._mark_delivered([rec for _, rec in rows])
                 self._succeeded(len(rows))
                 return len(rows)
             if status in DROP_STATUSES:
@@ -514,6 +520,7 @@ class MetadataPublisher:
             status = self._send([rec])
             if status is not None and 200 <= status < 300:
                 accepted += 1
+                self._mark_delivered([rec])
             elif status in DROP_STATUSES:
                 self.dropped += 1
                 log.error("backend refused a %s record (HTTP %s): dropped", rec["kind"], status)
@@ -524,6 +531,20 @@ class MetadataPublisher:
             self._outbox.delete([row_id])
         self._succeeded(accepted)
         return accepted
+
+    def _mark_delivered(self, records: list[dict[str, Any]]) -> None:
+        ids = [
+            rec["data"]["event_id"]
+            for rec in records
+            if rec.get("kind") == "event" and "event_id" in rec.get("data", {})
+        ]
+        with self._delivered_lock:
+            self._delivered.extend(ids)
+
+    def delivered(self, event_id: str) -> bool:
+        """The backend accepted this event (one of the last DELIVERED_KEEP)."""
+        with self._delivered_lock:
+            return event_id in self._delivered
 
     def _succeeded(self, n: int) -> None:
         self.sent += n
