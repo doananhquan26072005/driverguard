@@ -23,6 +23,7 @@ import {
 } from "./measure";
 import { frameTimeMs, type FrameMetadata } from "./frameTime";
 import { chooseDelegate, gpuKind, webglRenderer, type GpuKind } from "./gpu";
+import { YoloPacer } from "./pace";
 import { urgentKey } from "../hud/hudModel";
 import { PerfWindow, type PerfSnapshot, type PerfTotals } from "./perf";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
@@ -219,7 +220,7 @@ export class LiveAgent implements HudSource {
   private lastTsMs = -1;
   private lastVideoTime = -1;
   private yoloBusy = false;
-  private lastYoloT = -Infinity;
+  private yoloPacer: YoloPacer;
   private pendingBodies: string[] = [];
   private heartbeatBody: string | null = null; // M33: newest heartbeat not sent yet (never queued)
   private sending = false;
@@ -253,6 +254,7 @@ export class LiveAgent implements HudSource {
   ) {
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloCtx = this.yoloCanvas.getContext("2d", { willReadFrequently: true })!;
+    this.yoloPacer = new YoloPacer(settings.phone.target_fps);
   }
 
   /** Ask for the camera, load the models, start the loop. onStep reports progress for the setup screen. */
@@ -481,9 +483,14 @@ export class LiveAgent implements HudSource {
     this.ctx.drawImage(this.video, 0, 0, w, h);
     const px = this.ctx.getImageData(0, 0, w, h).data;
 
-    const nowMs = performance.now();
-    this.perf.add("capture", nowMs - started);
+    const captured = performance.now();
+    this.perf.add("capture", captured - started);
     const t = frameMs / 1000;
+    // Block 4 first (M67): it only needs the pixels, and its worker then runs while MediaPipe does,
+    // so the answer is that much younger when a frame uses it.
+    const fedYolo = this.maybeRunYolo(t, w, h); // own thread
+    const nowMs = performance.now();
+    if (fedYolo) this.perf.add("yolo_prep", nowMs - captured);
     const ts = Math.max(Math.round(nowMs), this.lastTsMs + 1); // VIDEO mode: strictly increasing
     this.lastTsMs = ts;
     let faces: Float32Array[];
@@ -520,7 +527,6 @@ export class LiveAgent implements HudSource {
     const measured = performance.now();
     this.perf.add("measure", measured - landmarksDone);
 
-    if (this.maybeRunYolo(t, w, h)) this.perf.add("yolo_prep", performance.now() - measured); // 4, own thread
     if (this.yoloResultT != null) this.perf.add("yolo_age", (t - this.yoloResultT) * 1000);
     const frameId = this.frameId++;
     const pythonStart = performance.now();
@@ -551,9 +557,8 @@ export class LiveAgent implements HudSource {
 
   /** True when this frame was handed to the YOLO worker. */
   private maybeRunYolo(t: number, w: number, h: number): boolean {
-    const cfg = this.settings.phone;
-    if (!this.yolo || this.yoloBusy || cfg.target_fps <= 0 || t - this.lastYoloT < 1 / cfg.target_fps) return false;
-    const size = cfg.input_size;
+    if (!this.yolo || !this.yoloPacer.take(t, this.yoloBusy)) return false;
+    const size = this.settings.phone.input_size;
     const g = letterboxGeometry(w, h, size);
     if (this.yoloCanvas.width !== size) [this.yoloCanvas.width, this.yoloCanvas.height] = [size, size];
     this.yoloCtx.fillStyle = "rgb(114,114,114)";
@@ -561,7 +566,6 @@ export class LiveAgent implements HudSource {
     this.yoloCtx.drawImage(this.canvas, 0, 0, w, h, g.padX, g.padY, g.w, g.h);
     const input = toChw(this.yoloCtx.getImageData(0, 0, size, size).data, size);
     this.yoloBusy = true;
-    this.lastYoloT = t;
     this.yoloGeometry = { ...g, w, h };
     const req: YoloRequest = { type: "run", input, size, t };
     this.yolo.postMessage(req, [input.buffer]);
