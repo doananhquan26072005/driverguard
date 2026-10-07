@@ -12,10 +12,10 @@ venv/
 .venv/
 env/
 
-# Environment variables
+# Environment variables (only the *.example placeholders are tracked)
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # IDE
 .vscode/
@@ -28,16 +28,23 @@ env/
 .DS_Store
 Thumbs.db
 
-# Data (never commit large data)
+# Data (never commit large data, databases or anything a database / outbox holds)
 data/
 *.db
+*.db-wal
+*.db-shm
+*.db.bak-*
+*.sqlite
 *.sqlite3
 
 # Logs
 logs/
 *.log
 
-# Test coverage
+# Test and lint caches, coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
 htmlcov/
 .coverage
 coverage.xml
@@ -50,15 +57,25 @@ node_modules/
 .next/
 out/
 .nuxt/
+*.tsbuildinfo
+test-results/
+playwright-report/
 
-# Build
-*.pyc
-*.pyo
+# Notebooks and Kaggle
+.ipynb_checkpoints/
+kaggle.json
 
-# AI logs — tracked structure, ignored content
+# AI logs: tracked structure, ignored content
 .ai-log/*.jsonl
 .ai-log/archive/
 push ai log phoenix.txt
+
+# AI coding tools: per-machine settings and installed skills
+# (skills are pinned in skills-lock.json and restored from it)
+.claude/settings.local.json
+.claude/skills/
+.agents/skills/
+
 # Downloaded pretrained models (python tools/download_models.py)
 models/*.task
 models/*.onnx
