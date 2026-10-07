@@ -651,6 +651,11 @@ export class LiveAgent implements HudSource {
     }
   }
 
+  /** The camera stream, for the enrollment frame of this page (shown only, in memory). */
+  cameraStream(): MediaStream | null {
+    return this.stream;
+  }
+
   async stop() {
     if (this.stopped) return;
     this.stopped = true;

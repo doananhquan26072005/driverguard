@@ -107,7 +107,7 @@ class DecisionPipeline:
         """Another driver took the wheel (see module doc). The caller clears block 3's anchor."""
         self._new_driver()
         self._rest_from = None
-        self.trip_log.driver_changes += 1
+        self.trip_log.driver_changed()
 
     def _track_rest(self, ctx: VehicleContext, t: float) -> None:
         if ctx.resting:

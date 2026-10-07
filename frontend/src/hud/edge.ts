@@ -64,6 +64,9 @@ export interface HudSource {
   falseAlarm(eventId: string): Promise<FeedbackResult>;
   endTrip?(): Promise<TripEnd>;
   vehicle?(action: VehicleAction): Promise<boolean>;
+  /** The camera of this page (#/live only), shown in the enrollment frame. Never stored or sent; the
+   *  device HUD has none: the edge agent never hands an image to the screen. */
+  cameraStream?(): MediaStream | null;
 }
 
 export const edgeSource: HudSource = {

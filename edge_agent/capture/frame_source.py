@@ -92,6 +92,7 @@ class FrameSource:
         self._last_frame_t = 0.0
         self.dropped_frames = 0
         self.reconnects = 0
+        self.reopen_attempts = 0  # tries to reopen the camera since it was lost (HUD "Lần thử N", M65)
         self.source_fps = 0.0
 
     # ------------------------------------------------------------------ lifecycle
@@ -189,6 +190,7 @@ class FrameSource:
                 continue
             failures = 0
             self._lost = False
+            self.reopen_attempts = 0
             self._last_frame_t = time.monotonic()
 
             if pace:
@@ -223,6 +225,7 @@ class FrameSource:
         """Camera lost: reopen it every reconnect_interval_s. False when stopped meanwhile."""
         self._lost = True
         while not self._stop_event.wait(self.config.reconnect_interval_s):
+            self.reopen_attempts += 1
             if self._cap is not None:
                 self._cap.release()
             try:

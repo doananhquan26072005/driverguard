@@ -84,7 +84,7 @@ async function enrolled(page: Page) {
 async function endTrip(page: Page) {
   await page.getByRole("button", { name: "Kết thúc chuyến" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
-  await expect(page.getByText("DriverGuard · Tổng kết chuyến đi")).toBeVisible();
+  await expect(page.getByText(/^Tổng kết chuyến đi · /)).toBeVisible();
 }
 
 test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the trip ends with a summary", async ({ page }) => {
@@ -93,7 +93,7 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await startLive(page);
   const car = page.getByRole("region", { name: "Xe", exact: true });
   await agree(page);
-  await expect(car.getByText("Xe đang đỗ · đang đăng ký khuôn mặt")).toBeVisible();
+  await expect(page.getByText("Xe đang đỗ · 0 km/h")).toBeVisible(); // the enrollment steps fill the screen (M58)
   await enrolled(page);
 
   sim.speed = 60;
@@ -141,7 +141,7 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await manager.getByLabel("Tên đăng nhập").fill("quanly");
   await manager.getByLabel("Mật khẩu").fill(PASSWORD);
   await manager.getByRole("button", { name: "Đăng nhập" }).click();
-  await manager.getByRole("tab", { name: "Đội xe" }).click();
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
   const vehicle = manager.getByRole("row").filter({ hasText: "web-an" });
   const fleetShows = (text: string) =>
     expect(async () => {
@@ -157,11 +157,14 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   // M49: the page timed its own loop and the heartbeat carried the numbers to the fleet overview.
   await expect(vehicle).toContainText(/p95 [\d,.]+ ms/);
 
-  await manager.getByRole("tab", { name: /Báo cáo chuyến đi/ }).click();
-  const row = manager.getByRole("row").filter({ hasText: "drv-001" });
-  await expect(row).toHaveCount(1);
-  await row.getByRole("button").click();
-  await expect(manager.getByRole("row", { name: /^Đổi tài xế/ })).toContainText("1 lần"); // report detail
+  // M62: the manager reviews the report (list + detail), and marks it read.
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  const report = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
+  await expect(report).toHaveCount(1);
+  await report.click();
+  await expect(manager.getByText(/đổi tài 1 lần/)).toBeVisible(); // report detail: the story of the trip
+  await manager.getByRole("button", { name: "Đánh dấu đã xem" }).click();
+  await expect(manager.getByText(/quanly đã xem lúc/)).toBeVisible();
 });
 
 test("web driving controls: #/drive on another page drives #/live; closing it is a lost vehicle signal", async ({ page, context }) => {
@@ -169,7 +172,7 @@ test("web driving controls: #/drive on another page drives #/live; closing it is
   await obedientDriver(page);
   await startLive(page);
   const link = page.getByRole("link", { name: /Điều khiển xe · mã/ });
-  const code = /mã ([A-Z0-9]{6})/.exec((await link.textContent()) ?? "")?.[1];
+  const code = /mã ([A-Z0-9]{6})/.exec((await link.getAttribute("aria-label")) ?? "")?.[1];
   expect(code).toBeTruthy();
   expect(await link.getAttribute("href")).toBe(`#/drive?code=${code}`);
 

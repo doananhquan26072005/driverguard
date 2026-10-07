@@ -204,6 +204,29 @@ export interface HudAlert {
   reasons: Reason[];
   at: number; // seconds epoch
   feedback: "false_alarm" | null;
+  // M65: the numbers behind the alert when it fired, for its detail line (agents older than M65: none)
+  metrics?: { off_road_s: number; eyes_closed_s: number; phone_ratio: number; turn_signal: "left" | "right" | null };
+}
+
+/** M65: the running trip as the agent keeps it (block 11), so a HUD reload loses nothing. */
+export interface HudTrip {
+  drive_run_s: number; // continuous driving of the current driver: reset by a rest or "Đổi tài xế"
+  driving_s: number; // driving time of the whole trip
+  score_l1: number; // risk.drowsy.l1 / l2 of this trip: colour bands of the fatigue chart
+  score_l2: number;
+  window_min?: number; // the chart's width in minutes (hud.trend_minutes); recent_minutes may be shorter
+  // drowsy_score of each of the last hud.trend_minutes minutes, oldest first, the running minute last;
+  // null = no judged frame that minute (a rest, enrollment's eyes-closed step): a gap, not 0
+  recent_minutes: ({ minute: number; drowsy_score: number; max_level: Level } | null)[];
+}
+
+/** M65: the driver is not monitored since `since` (camera lost / processing error). */
+export interface HudIncident {
+  kind: "camera_lost" | "processing_error";
+  since: number; // seconds epoch
+  attempts: number | null; // camera reopen attempts so far; null = not counted here (#/live, errors)
+  event_id: string | null;
+  reported: boolean | null; // the backend accepted the event; null = not known here (no publisher, #/live)
 }
 
 // Driver enrollment (edge_agent/perception/enrollment.py): at a stop, the driver agrees on the consent
@@ -350,6 +373,8 @@ export interface HudSnapshot {
   quality?: { issue: UnavailableCause | null; score: number }; // M43: block 6 quality stage
   // M44: "Bạn còn ở đó không?" while the driver is out of view; unanswered = asked, nobody tapped.
   presence?: { asking: boolean; remaining_s: number; unanswered: boolean };
+  trip?: HudTrip; // M65
+  incident?: HudIncident | null; // M65
   trip_ended?: boolean; // the trip summary was built (device HUD server)
   vehicle?: HudVehicle;
   feedback_window_s?: number; // "false alarm" button hidden this long after an alert

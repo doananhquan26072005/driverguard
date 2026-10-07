@@ -2,7 +2,11 @@
 
 A tiny HTTP server on the device (127.0.0.1 only, never exposed to the network) that
 the in-car HUD screen talks to:
-- GET  /state     current level, reasons, scores, speed and the latest alerts
+- GET  /state     current level, reasons, scores, speed and the latest alerts (with the numbers behind
+                  each one); M65: `trip` (continuous driving, the drowsy_score of the last
+                  hud.trend_minutes minutes) and `incident` (since when the driver is not monitored,
+                  camera reopen attempts, whether the backend has the event). The agent keeps them for
+                  the whole trip, so a HUD that reloads shows them again at once
 - POST /feedback  {"event_id": ...}: the driver pressed "false alarm" on an alert
 - POST /vehicle   {"action": "change_driver"}: "Đổi tài xế"; {"action": "enroll_start" | "enroll_later"}:
                   the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau");
@@ -44,6 +48,7 @@ class HudConfig:
     processing_error_s: float = 1.0  # frames failing this long: "processing error" (not monitored)
     low_fps_below: float = 14.5  # smoothed FPS below this ...
     low_fps_s: float = 5.0  # ... for this long: "alerts may be late"
+    trend_minutes: int = 15  # minutes of drowsy_score in the HUD's fatigue chart (M65)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> HudConfig:
@@ -62,6 +67,9 @@ class HudState:
         self._processing_error = False  # frames keep failing: not monitored (M28)
         self._low_fps = False  # FPS too low for a while: alerts may be late (M28)
         self._phone_unavailable = False  # the phone detector gives no fresh results (M50)
+        # M65: since when the driver is not monitored (camera lost / processing error), how many times
+        # the camera was reopened meanwhile, and whether the backend has the event (None: not known here).
+        self._incident: dict[str, Any] | None = None
         self.false_alarms = 0  # flagged by the driver this trip (for the trip summary)
         self._end_requested = threading.Event()
         self._summary_ready = threading.Event()
@@ -95,7 +103,9 @@ class HudState:
         with self._lock:
             self._vehicle = dict(state)
 
-    def update(self, r: DecisionResult, fps: float) -> None:
+    def update(self, r: DecisionResult, fps: float, trip: dict[str, Any] | None = None) -> None:
+        """trip: TripCollector.hud_view (M65): continuous driving and the recent minutes. It lives in
+        the agent for the whole trip, so a HUD that reloads reads it back at once."""
         c = r.context
         snapshot = {
             "connected": True,
@@ -127,6 +137,8 @@ class HudState:
                 "duration_s": None if r.enrollment.duration_s is None else round(r.enrollment.duration_s, 1),
             },
         }
+        if trip is not None:
+            snapshot["trip"] = trip
         with self._lock:
             self._snapshot = snapshot
 
@@ -149,10 +161,52 @@ class HudState:
         with self._lock:
             self._phone_unavailable = unavailable
 
-    def add_alert(self, event_id: str, level: int, reasons: tuple[str, ...]) -> None:
+    # ------------------------------------------------------------------ not monitored (M65)
+    def start_incident(self, kind: str, event_id: str | None, since: float | None = None) -> None:
+        """kind: "camera_lost" or "processing_error". event_id: the system event sent for it."""
+        with self._lock:
+            self._incident = {
+                "kind": kind,
+                "since": time.time() if since is None else since,
+                "attempts": None,  # camera reopen attempts, set by the device loop
+                "event_id": event_id,
+                "reported": None,  # True once the backend accepted the event; None: no publisher here
+            }
+
+    def end_incident(self, kind: str) -> None:
+        with self._lock:
+            if self._incident is not None and self._incident["kind"] == kind:
+                self._incident = None
+
+    def set_incident_attempts(self, attempts: int) -> None:
+        with self._lock:
+            if self._incident is not None:
+                self._incident["attempts"] = attempts
+
+    def incident_event_id(self) -> str | None:
+        with self._lock:
+            return None if self._incident is None else self._incident["event_id"]
+
+    def set_incident_reported(self, reported: bool) -> None:
+        with self._lock:
+            if self._incident is not None:
+                self._incident["reported"] = reported
+
+    def add_alert(
+        self, event_id: str, level: int, reasons: tuple[str, ...], metrics: dict[str, Any] | None = None
+    ) -> None:
+        """metrics: what the alert's detail line says (M65): off_road_s, eyes_closed_s, phone_ratio,
+        turn_signal at the moment it fired."""
         with self._lock:
             self._alerts.append(
-                {"event_id": event_id, "level": level, "reasons": list(reasons), "at": time.time(), "feedback": None}
+                {
+                    "event_id": event_id,
+                    "level": level,
+                    "reasons": list(reasons),
+                    "at": time.time(),
+                    "feedback": None,
+                    "metrics": dict(metrics or {}),
+                }
             )
 
     def mark_false_alarm(self, event_id: str, now: float | None = None) -> str:
@@ -206,6 +260,7 @@ class HudState:
                 "processing_error": self._processing_error,  # frames keep failing: not monitored (M28)
                 "low_fps": self._low_fps,  # too slow for a while: alerts may be late (M28)
                 "phone_unavailable": self._phone_unavailable,  # phones are not being detected (M50)
+                "incident": None if self._incident is None else dict(self._incident),  # M65
                 "trip_ended": self._summary is not None,
                 "vehicle": dict(self._vehicle),  # speed source, parked / driving by the speed
                 "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it

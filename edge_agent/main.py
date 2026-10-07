@@ -254,6 +254,11 @@ def main(argv: list[str] | None = None) -> int:
                     state = "LOST: driver not monitored, reconnecting" if camera_lost else "back"
                     print(f"[camera] {state} ({source.reconnects} reconnects)")
                     runtime.camera(camera_lost)
+                if camera_lost:  # 13: "Lần thử N" on the HUD (M65)
+                    runtime.hud.set_incident_attempts(source.reopen_attempts)
+                incident = runtime.hud.incident_event_id()
+                if incident is not None and publisher is not None:  # 13, 14: "Đã báo cho quản lý" once accepted
+                    runtime.hud.set_incident_reported(publisher.delivered(incident))
                 if frame is None:
                     if source.ended:
                         print("[main] end of stream")

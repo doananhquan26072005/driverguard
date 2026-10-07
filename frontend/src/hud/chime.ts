@@ -18,6 +18,7 @@
 // - driver enrollment: one short clear beep when a step ends ("open your eyes" after step 3)
 // The level sets the volume. alertSound() is pure (tested); play() does the WebAudio part.
 import type { Level, Reason } from "../lib/types";
+import VOICE_LINES from "./voice-lines.json";
 
 export type SoundKind =
   | "drowsy"
@@ -133,14 +134,62 @@ export function systemSound(kind: SystemSoundKind): Sound {
   return { kind, gain: loud ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
 }
 
-/** Spoken prompt (Vietnamese voice when the browser has one). Same user-gesture rule as sound. */
+/** The Vietnamese voice to speak with, or null. Setting only `lang` is not enough: a browser without a
+ *  Vietnamese voice reads the Vietnamese words with its default (English) voice, which nobody
+ *  understands. Prefers vi-VN, then any vi, a local voice before a network one (the car may be offline). */
+export function pickVietnameseVoice<V extends { lang: string; localService: boolean }>(voices: readonly V[]): V | null {
+  const vi = voices.filter((v) => v.lang.toLowerCase().replace("_", "-").startsWith("vi"));
+  const rank = (v: V) => (v.lang.toLowerCase().replace("_", "-") === "vi-vn" ? 0 : 2) + (v.localService ? 0 : 1);
+  return [...vi].sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
+
+let viVoice: SpeechSynthesisVoice | null = null;
+let voicesKnown = false; // the browser has listed its voices (Chrome lists them asynchronously)
+const voiceListeners = new Set<() => void>();
+
+function loadVoices(): void {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  const list = window.speechSynthesis.getVoices();
+  if (list.length) {
+    viVoice = pickVietnameseVoice(list);
+    voicesKnown = true;
+    voiceListeners.forEach((f) => f());
+  }
+}
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  loadVoices();
+  window.speechSynthesis.addEventListener?.("voiceschanged", loadVoices);
+}
+
+/** null while the browser has not listed its voices yet; then whether a Vietnamese one exists. */
+export function hasVietnameseVoice(): boolean | null {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+  if (!voicesKnown) loadVoices(); // Chrome may list them later without a voiceschanged event
+  return voicesKnown ? viVoice != null : null;
+}
+
+/** Called once the voices are known (the setup / enrollment screens show a hint when none is Vietnamese). */
+export function onVoices(listener: () => void): () => void {
+  voiceListeners.add(listener);
+  return () => voiceListeners.delete(listener);
+}
+
+/** Spoken prompt, only with a Vietnamese voice (never Vietnamese words in an English voice). Without one
+ *  the words stay on screen and the beeps play. Same user-gesture rule as sound. */
 export function say(text: string): void {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (!viVoice) loadVoices();
+  if (!viVoice) return;
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "vi-VN";
+  u.voice = viVoice;
+  u.lang = viVoice.lang;
   window.speechSynthesis.cancel(); // only the latest prompt matters
   window.speechSynthesis.speak(u);
 }
+
+/** What the driver can do when no Vietnamese voice is installed. */
+export const NO_VIETNAMESE_VOICE_TEXT =
+  "Máy này chưa có giọng đọc tiếng Việt: hướng dẫn chỉ hiện bằng chữ và tiếng bíp. Cài giọng: Cài đặt Windows › Thời gian và ngôn ngữ › Ngôn ngữ › thêm Tiếng Việt (chọn Giọng nói), hoặc mở trang bằng Microsoft Edge.";
 
 let ctx: AudioContext | null = null;
 
@@ -207,4 +256,43 @@ export function play(sound: Sound | null): void {
 
 export function playAlert(level: Level, reasons: readonly Reason[]): void {
   play(alertSound(level, reasons));
+}
+
+// ------------------------------------------------------------------ recorded Vietnamese voice
+// Every spoken line is a file made once by tools/make_voice.py (Piper, voice vi_VN-vais1000) from
+// hud/voice-lines.json, so the HUD speaks Vietnamese on any computer and offline. A missing file falls
+// back to the browser's Vietnamese voice (say), never to an English one.
+
+export type VoiceKey = keyof typeof VOICE_LINES;
+export const VOICE_TEXT: Record<string, string> = VOICE_LINES;
+
+let voiceQueue: VoiceKey[] = [];
+let voicePlaying: HTMLAudioElement | null = null;
+
+function playNextLine(): void {
+  const key = voiceQueue.shift();
+  if (!key) {
+    voicePlaying = null;
+    return;
+  }
+  const audio = new Audio(`${import.meta.env.BASE_URL}voice/${key}.wav`);
+  voicePlaying = audio;
+  audio.onended = playNextLine;
+  audio.onerror = () => {
+    say(VOICE_TEXT[key]); // no file: the browser's Vietnamese voice if it has one, else silent
+    playNextLine();
+  };
+  audio.play().catch(() => {
+    voicePlaying = null; // sound still blocked by the browser: the strip on screen asks for a touch
+    voiceQueue = [];
+  });
+}
+
+/** Speak recorded lines in order, cutting what was being said (only the latest message matters). */
+export function speak(...keys: (VoiceKey | null | undefined)[]): void {
+  if (typeof window === "undefined" || typeof Audio === "undefined") return;
+  voicePlaying?.pause();
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  voiceQueue = keys.filter((k): k is VoiceKey => !!k && k in VOICE_TEXT);
+  playNextLine();
 }

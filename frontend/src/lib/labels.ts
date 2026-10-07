@@ -56,6 +56,20 @@ export const REASONS: Record<Reason, string> = {
   phone_detection_restored: "Phát hiện điện thoại hoạt động lại",
 };
 
+/** One or two words per alert reason, for the HUD's "Cảnh báo gần nhất" tile (M58). */
+export const REASON_SHORT: Partial<Record<Reason, string>> = {
+  microsleep: "Nhắm mắt",
+  unresponsive: "Nhắm mắt",
+  repeated_l3: "Ngủ gật",
+  drowsy_score: "Buồn ngủ",
+  trend: "Mệt tăng dần",
+  blink_rate: "Chớp mắt",
+  repeated_l1: "Nhắc nhiều lần",
+  off_road: "Nhìn lệch",
+  phone: "Điện thoại",
+  no_face: "Không thấy mặt",
+};
+
 export const ROLES: Record<Role, string> = {
   admin: "Quản trị",
   engineer: "Kỹ sư",
@@ -346,7 +360,8 @@ export const RETENTION_DAYS = { events: 60, summaries: 365 };
 
 export const ENROLL_CONSENT = {
   title: "Đăng ký khuôn mặt",
-  lead: "Để nhận biết buồn ngủ và mất tập trung chính xác nhất, hệ thống cần làm quen với khuôn mặt của bạn. Mất khoảng 10 giây, khi xe đang dừng.",
+  headline: "Cho hệ thống làm quen với bạn",
+  lead: "Để nhận biết buồn ngủ và mất tập trung chính xác nhất, hệ thống cần làm quen với khuôn mặt của bạn.",
   privacy: [
     "Không chụp, không lưu ảnh khuôn mặt. Hình ảnh camera chỉ được xử lý ngay trên thiết bị này.",
     "Chỉ ghi nhớ vài con số như độ mở mắt, miệng, tư thế đầu, và xoá khi kết thúc chuyến.",

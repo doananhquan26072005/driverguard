@@ -4,6 +4,9 @@ import { changedValues, formatDateTime, formatPercent } from "../lib/format";
 import { REASONS, THRESHOLD_GROUPS, UNITS, reasonText } from "../lib/labels";
 import type { Reason, Session, Stats, ThresholdVersion, Thresholds } from "../lib/types";
 
+// A false-alarm share from here is drawn orange: a hint, not a rule (thresholds change only by hand).
+const FALSE_ALARM_HIGH = 0.2;
+
 /** "cam-001, cam-007 web-an" -> ["cam-001", "cam-007", "web-an"] */
 export function parseDeviceList(text: string): string[] {
   return [...new Set(text.split(/[\s,;]+/).filter(Boolean))];
@@ -98,6 +101,25 @@ export default function ThresholdsView({ session, stats, onSaved }: Props) {
           </span>
         </div>
         {!canEdit && <p className="muted">Chỉ kỹ sư được chỉnh ngưỡng. Bạn đang xem ở chế độ chỉ đọc.</p>}
+        {/* M63 (design "Kỹ sư · Ngưỡng và báo sai"): what is not saved yet, always in view. */}
+        {canEdit && dirty && (
+          <div className="unsaved" role="status">
+            <span>
+              <b>{Object.keys(changes).length} thay đổi chưa lưu</b>
+              {" · "}
+              {THRESHOLD_GROUPS.flatMap((g) => g.keys)
+                .filter((k) => k.key in changes)
+                .map((k) => k.label)
+                .join(", ")}
+            </span>
+            <button type="button" className="ghost" onClick={() => setEdited({})} disabled={busy}>
+              Hoàn tác
+            </button>
+            <button type="submit" className="primary" disabled={invalid.length > 0 || busy}>
+              {busy ? "Đang lưu…" : `Lưu thành phiên bản ${(versions[0]?.version ?? data?.version ?? 0) + 1}`}
+            </button>
+          </div>
+        )}
         {THRESHOLD_GROUPS.map((group) => (
           <fieldset key={group.title} disabled={!canEdit || busy}>
             <legend>{group.title}</legend>
@@ -105,12 +127,17 @@ export default function ThresholdsView({ session, stats, onSaved }: Props) {
               const spec = data?.specs[key];
               const stored = data?.values[key];
               const id = `th-${key}`;
+              const changed = key in changes;
               return (
-                <div className="field-row" key={key}>
+                <div className={`field-row${changed ? " edited" : ""}`} key={key}>
                   <label htmlFor={id}>
                     {label}
                     <span className="field-key">{key}</span>
-                    {hint && <span className="field-hint">{hint}</span>}
+                    {changed ? (
+                      <span className="field-hint changed">Đã sửa · trước đó {stored != null ? String(stored) : "mặc định"}</span>
+                    ) : (
+                      hint && <span className="field-hint">{hint}</span>
+                    )}
                   </label>
                   <div className="field-input">
                     <input
@@ -225,32 +252,25 @@ export default function ThresholdsView({ session, stats, onSaved }: Props) {
         {reasonRows.length === 0 ? (
           <p className="empty">Chưa có cảnh báo trong khoảng thời gian này.</p>
         ) : (
-          <table className="data">
-            <thead>
-              <tr>
-                <th scope="col">Lý do</th>
-                <th scope="col" className="num">
-                  Cảnh báo
-                </th>
-                <th scope="col" className="num">
-                  Báo sai
-                </th>
-                <th scope="col" className="num">
-                  Tỉ lệ
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {reasonRows.map(([reason, s]) => (
-                <tr key={reason}>
-                  <td>{reason in REASONS ? reasonText(reason as Reason) : reason}</td>
-                  <td className="num">{s.total}</td>
-                  <td className="num">{s.false_alarms}</td>
-                  <td className="num">{formatPercent(s.total ? s.false_alarms / s.total : null)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="fa-bars">
+            {reasonRows.map(([reason, s]) => {
+              const share = s.total ? s.false_alarms / s.total : 0;
+              const high = share >= FALSE_ALARM_HIGH;
+              return (
+                <li key={reason}>
+                  <span className="row-between">
+                    <b>{reason in REASONS ? reasonText(reason as Reason) : reason}</b>
+                    <span className="muted dg-num">
+                      {s.false_alarms} / {s.total} cảnh báo · <strong className={high ? "fa-high" : undefined}>{formatPercent(share)}</strong>
+                    </span>
+                  </span>
+                  <span className="fa-track">
+                    <span style={{ width: `${Math.max(2, Math.round(share * 100))}%` }} className={high ? "fa-high-bar" : undefined} />
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
     </div>
