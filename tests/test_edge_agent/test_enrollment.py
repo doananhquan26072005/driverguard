@@ -68,6 +68,17 @@ def enroll(seconds, stationary=lambda t: True, driver=obedient, config=None, agr
     return states
 
 
+def test_road_step_keeps_where_the_iris_sits():
+    def driver(i, t, status):
+        if status == "look_road":  # a blink in the middle of the step must not move the value
+            return obedient(i, t, status, iris_y=0.3, blink=0.9) if i % 7 == 0 else obedient(i, t, status, iris_y=-0.06)
+        return obedient(i, t, status, iris_y=0.02)
+
+    profile = enroll(20, driver=driver)[-1].profile
+    assert profile.road_iris_y == pytest.approx(-0.06)
+    assert enroll(20)[-1].profile.road_iris_y is None  # no iris landmarks: block 8 learns it at start-up
+
+
 def events(states):
     return [(round(i / FPS, 1), ev, s.status) for i, s in enumerate(states) for ev in s.events]
 
@@ -84,6 +95,7 @@ def test_obedient_driver_enrolls_in_about_ten_seconds():
     assert 8.0 <= s.duration_s <= 10.0
     p = s.profile
     assert p.ear_open == pytest.approx(OPEN_EAR) and p.ear_closed == pytest.approx(SHUT_EAR)
+    assert p.blink_closed == pytest.approx(0.9)  # eyeBlink of the close-eyes step
     assert p.mar_closed == pytest.approx(0.05)
     assert (p.road_yaw, p.road_pitch) == pytest.approx((ROAD_YAW, ROAD_PITCH))
     assert p.anchor == DriverAnchor(SHAPE, (0.4, 0.45), 0.1)
