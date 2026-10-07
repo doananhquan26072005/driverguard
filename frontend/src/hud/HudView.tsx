@@ -19,12 +19,12 @@ import {
   Activity,
   ArrowBigLeft,
   ArrowBigRight,
+  Cable,
   Camera,
   CameraOff,
-  Car,
+  Check,
   ChevronRight,
   CircleAlert,
-  CircleCheck,
   Clock,
   Coffee,
   Eye,
@@ -36,17 +36,18 @@ import {
   Hourglass,
   LayoutDashboard,
   LoaderCircle,
+  Navigation,
   Moon,
   OctagonAlert,
   PhoneOff,
   Play,
   ScanFace,
+  Send,
   ShieldCheck,
   Smartphone,
   Square,
   TrendingUp,
   TriangleAlert,
-  UserCheck,
   UserRoundCog,
   Volume2,
   VolumeX,
@@ -70,18 +71,18 @@ import {
   VEHICLE_SIGNAL_LOST_TEXT,
   reasonText,
 } from "../lib/labels";
-import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, UnavailableCause, VehicleAction } from "../lib/types";
+import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, VehicleAction } from "../lib/types";
 import FaceGuide from "./FaceGuide";
 import HudStage from "./HudStage";
 import {
   ENROLL_STEP_ORDER,
   alertDetail,
+  attentionWord,
+  drowsyWord,
+  eyesWord,
   enrollReminder,
   enrollStep,
-  fatigueBand,
-  fatigueSummary,
   footerNote,
-  isDistractionReason,
   orderedReasons,
   presenceUp,
   showConsentPanel,
@@ -89,7 +90,8 @@ import {
   splitAction,
   systemState,
   trendSlots,
-  type FatigueBand,
+  type Tone,
+  type TrendSlot,
   type HudLink,
   type SystemState,
 } from "./hudModel";
@@ -125,18 +127,7 @@ const REASON_ICONS: Partial<Record<Reason, LucideIcon>> = {
   no_face: ScanFace,
 };
 
-const SYSTEM_ICONS: Record<SystemState, LucideIcon> = {
-  down: WifiOff,
-  camera_lost: CameraOff,
-  error: CircleAlert,
-  unavailable: ScanFace,
-  stale: Hourglass,
-  connecting: LoaderCircle,
-};
 
-// Fatigue bands (fatigueBand): bars and meter fills. Full class strings: Tailwind only generates what it finds.
-const BAND_BG: Record<FatigueBand, string> = { 0: "bg-hud-safe", 1: "bg-hud-caution", 2: "bg-[#f87171]" };
-const BAND_DOT: Record<FatigueBand, string> = { 0: "var(--good)", 1: "var(--warning)", 2: "#f87171" };
 
 // Small glass square of the top bar (camera, sound, demo, dashboard): 40 px, icon only.
 // No display here: each use says inline-grid or hidden sm:inline-grid (two display classes would clash).
@@ -246,7 +237,16 @@ export default function HudView(props: HudViewProps) {
       {presence ? (
         <PresencePanel unanswered={presence === "unanswered"} onAnswer={props.onVehicle} />
       ) : system || !snap ? (
-        <SystemPanel state={system ?? "connecting"} edgeUrl={edgeUrl} cause={snap?.unavailable_reason ?? null} />
+        snap && (system === "unavailable" || system === "camera_lost" || system === "error") ? (
+          <main className="grid min-h-0 gap-3.5 px-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[minmax(0,1fr)]">
+            <IncidentPanel state={system} snap={snap} now={now} />
+            <SpeedCard snap={snap} tall={false} />
+          </main>
+        ) : (
+          <main className="grid min-h-0 px-4 sm:px-8">
+            <IncidentPanel state={system ?? "connecting"} snap={snap} now={now} edgeUrl={edgeUrl} />
+          </main>
+        )
       ) : danger ? (
         <DangerStage reasons={snap.reasons} />
       ) : enrolling && snap.enrollment ? (
@@ -255,8 +255,8 @@ export default function HudView(props: HudViewProps) {
         </main>
       ) : (
         <main
-          className={`grid min-h-0 gap-3.5 px-4 transition-opacity duration-700 sm:px-8 lg:grid-cols-[minmax(0,1fr)_400px] ${
-            dashboard ? "lg:grid-rows-[minmax(0,1fr)_210px]" : "lg:grid-rows-[minmax(0,1fr)]"
+          className={`grid min-h-0 gap-3.5 px-4 transition-opacity duration-700 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] ${
+            dashboard ? "lg:grid-rows-[minmax(0,1fr)_220px]" : "lg:grid-rows-[minmax(0,1fr)]"
           } ${dim}`}
         >
           {consent ? (
@@ -266,7 +266,7 @@ export default function HudView(props: HudViewProps) {
           ) : (
             <>
               <StatusCard snap={snap} level={level} rising={rising} />
-              <FatigueCard snap={snap} level={level} />
+              <MetricsCard snap={snap} level={level} />
             </>
           )}
           <SpeedCard snap={snap} tall={dashboard} />
@@ -382,179 +382,152 @@ function AlarmNote({ sound }: { sound: boolean }) {
 }
 
 // ------------------------------------------------------------------ L0 / L1: status card
+// Review 07/10: no card title, the green dot alone says "monitored"; a big filled level badge, big words,
+// two big tiles with few words (the driver glances, does not read).
+
+const TONE_TEXT: Record<Tone, string> = { ok: "text-hud-safe", caution: "text-hud-caution", danger: "text-[#f87171]" };
+const TONE_FILL: Record<Tone, string> = { ok: "var(--good)", caution: "var(--warning)", danger: "#f87171" };
 
 function StatusCard({ snap, level, rising }: { snap: HudSnapshot; level: Level; rising: boolean }) {
   const ordered = orderedReasons(snap.reasons);
   const primary = level > 0 ? (ordered[0] ?? null) : null;
-  const Icon = (primary && REASON_ICONS[primary]) || CircleCheck;
+  const ReasonIcon = (primary && REASON_ICONS[primary]) || CircleAlert;
   const headline = primary ? REASON_ACTIONS[primary] : level === 0 ? "Tỉnh táo" : LEVELS[level].title;
   const sub = level === 0 ? "Tiếp tục lái an toàn" : ordered.map(reasonText).join(" · ");
   const long = headline.split(" ").length > 3;
   const last = snap.alerts[0];
-  const enroll = snap.enrollment?.status;
 
   return (
     <section
       aria-live={level ? "assertive" : "polite"}
       aria-atomic="true"
-      className={`dg-alert ${level === 1 ? "l1" : "l0"} flex min-h-[46dvh] flex-col justify-between gap-6 px-6 pt-[22px] pb-5 lg:col-start-1 lg:row-start-1 lg:min-h-0`}
+      className={`dg-alert ${level === 1 ? "l1" : "l0"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 lg:col-start-1 lg:row-start-1 lg:min-h-0`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="dg-card-title">
-          <b>Trạng thái tài xế</b>
-          <span>Cập nhật liên tục trên thiết bị</span>
+      {level === 1 ? (
+        <span className="absolute top-6 right-6 inline-flex items-center gap-2 rounded-hud-xs bg-hud-caution px-3 py-1.5 text-base font-semibold text-hud-on-warning">
+          <CircleAlert aria-hidden className="size-5" strokeWidth={2.5} />
+          {LEVELS[1].title}
         </span>
-        {level === 1 ? (
-          <span className="dg-chip">
-            <CircleAlert aria-hidden className="size-4 text-hud-caution" strokeWidth={2.5} />
-            {LEVELS[1].title}
-          </span>
-        ) : (
-          <span className="dg-chip">
-            <i />
-            Đang giám sát
-          </span>
-        )}
-      </div>
+      ) : (
+        <span role="img" aria-label="Đang giám sát" className="absolute top-7 right-7 size-4 rounded-full bg-hud-safe shadow-[0_0_0_6px_rgba(74,222,128,0.18)]" />
+      )}
 
       {/* Re-mounted on every level / reason change, so the enter animation plays once per alert. */}
       <div
         key={`${level}:${primary ?? ""}`}
-        className={`flex items-center gap-7 motion-reduce:animate-none ${rising ? "animate-hud-in-fast" : "animate-hud-in-slow"}`}
+        className={`flex flex-1 items-center gap-8 motion-reduce:animate-none ${rising ? "animate-hud-in-fast" : "animate-hud-in-slow"}`}
       >
-        <div className={`dg-tile grid size-24 shrink-0 place-items-center !rounded-hud-xl ${level === 1 ? "text-hud-caution" : "text-hud-safe"}`}>
-          <Icon aria-hidden className="size-12" strokeWidth={1.75} />
+        {/* Level badge: a filled circle (L0 tick, L1 the reason), shape + colour + words. */}
+        <div
+          aria-hidden
+          className={`grid size-24 shrink-0 place-items-center rounded-full sm:size-[124px] ${
+            level === 1 ? "bg-hud-caution text-hud-on-warning" : "bg-hud-safe text-[#05210f]"
+          } shadow-[0_10px_40px_rgba(0,0,0,0.35)]`}
+        >
+          {level === 1 ? <ReasonIcon className="size-14 sm:size-16" strokeWidth={2.25} /> : <Check className="size-14 sm:size-[72px]" strokeWidth={3} />}
         </div>
         <div className="min-w-0">
           <h1
-            className={`m-0 leading-[1.05] font-semibold tracking-[-0.03em] text-balance ${
-              long ? "text-[clamp(36px,4.6vw,58px)]" : "text-[clamp(40px,5.4vw,68px)]"
+            className={`m-0 leading-[1.02] font-semibold tracking-[-0.035em] text-balance ${
+              long ? "text-[clamp(40px,5.6vw,72px)]" : "text-[clamp(52px,7.5vw,96px)]"
             }`}
           >
             {headline}
           </h1>
-          <p className={`m-0 mt-2.5 text-xl ${level === 1 ? "text-[#e5d3a6]" : "text-[#bbd9c4]"}`}>{sub}</p>
+          <p className={`m-0 mt-3 text-[clamp(20px,2.2vw,28px)] font-medium ${level === 1 ? "text-[#f3dfae]" : "text-[#c6e6cf]"}`}>{sub}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-        {snap.trip && <StatTile icon={Clock} value={durationText(snap.trip.drive_run_s)} label="Đã lái liên tục" />}
-        <StatTile
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {snap.trip && <BigTile icon={Clock} value={durationText(snap.trip.drive_run_s)} label="Lái liên tục" />}
+        <BigTile
           icon={History}
-          value={last ? `${hourMinute(last.at)} · ${REASON_SHORT[orderedReasons(last.reasons)[0]] ?? LEVELS[last.level].title}` : "Không có"}
+          value={last ? `${hourMinute(last.at)} · ${REASON_SHORT[orderedReasons(last.reasons)[0]] ?? LEVELS[last.level].title}` : "Chưa có"}
           label="Cảnh báo gần nhất"
         />
-        {enroll && enroll !== "off" && (
-          <StatTile
-            icon={UserCheck}
-            value={enroll === "done" ? "Đã đăng ký" : "Chưa đăng ký"}
-            label={enroll === "done" ? "Tài xế" : "Dừng xe để đăng ký"}
-          />
-        )}
       </div>
     </section>
   );
 }
 
-function StatTile({ icon: Icon, value, label }: { icon: LucideIcon; value: string; label: string }) {
+function BigTile({ icon: Icon, value, label }: { icon: LucideIcon; value: string; label: string }) {
   return (
-    <div className="dg-tile flex min-w-0 items-center gap-3 p-3">
-      <span className="dg-tile grid size-[38px] shrink-0 place-items-center !rounded-[10px] text-[#d4d4d4]">
-        <Icon aria-hidden className="size-[18px]" />
-      </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="dg-num truncate text-[17px] font-medium">{value}</span>
-        <span className="text-xs text-hud-ink-3">{label}</span>
+    <div className="dg-tile flex min-w-0 items-center gap-4 px-4 py-3.5">
+      <Icon aria-hidden className="size-8 shrink-0 text-[#d4d4d4]" strokeWidth={1.75} />
+      <span className="flex min-w-0 flex-col">
+        <span className="dg-num truncate text-[28px] leading-tight font-semibold">{value}</span>
+        <span className="text-base text-hud-ink-2">{label}</span>
       </span>
     </div>
   );
 }
 
-// ------------------------------------------------------------------ L0 / L1: fatigue and numbers
+// ------------------------------------------------------------------ L0 / L1: the driver now, in words + the last minutes
+// Review 07/10: "52/100" means nothing to a driver; each measure is a word in its colour (the number stays
+// small for the curious). The fatigue chart is a slim strip of the last minutes, with times under it.
 
-function FatigueCard({ snap, level }: { snap: HudSnapshot; level: Level }) {
+function MetricsCard({ snap, level }: { snap: HudSnapshot; level: Level }) {
   const trip = snap.trip;
+  const l1 = trip?.score_l1 ?? 40;
+  const l2 = trip?.score_l2 ?? 70;
+  const drowsy = drowsyWord(snap.drowsy_score, l1, l2);
+  const attention = attentionWord(level > 0 ? snap.reasons : [], level);
+  const eyes = eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1));
   const slots = trendSlots(trip);
-  const summary = fatigueSummary(trip, snap.reasons, isDriving(snap));
-  const minutes = trip?.window_min ?? slots.length;
-  const distracted = level > 0 && snap.reasons.some(isDistractionReason);
 
   return (
-    <section
-      aria-label={`Độ mệt ${minutes} phút qua`}
-      className={`dg-card grid gap-x-6 gap-y-3 px-6 py-5 lg:col-start-1 lg:row-start-2 ${slots.length ? "md:grid-cols-[minmax(0,1fr)_300px]" : ""}`}
-    >
-      <div className="flex items-start justify-between gap-3 md:col-span-2">
-        <span className="dg-card-title">
-          <b>Độ mệt và thông số</b>
-          <span>{slots.length ? `${minutes} phút qua · mỗi cột 1 phút` : "Cập nhật liên tục"}</span>
-        </span>
-        {slots.length > 0 && (
-          <span className="dg-chip" style={{ ["--dot" as string]: BAND_DOT[summary.band] }}>
-            <i />
-            {summary.text}
-          </span>
-        )}
+    <section aria-label="Chỉ số tài xế" className="dg-card flex flex-col justify-center gap-4 px-6 py-5 lg:col-start-1 lg:row-start-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <WordTile icon={Coffee} label="Buồn ngủ" {...drowsy} value={snap.drowsy_score} />
+        <WordTile icon={Navigation} label="Chú ý đường" {...attention} value={snap.distraction_score} />
+        <WordTile icon={eyes.tone === "ok" ? Eye : EyeOff} label="Mắt" {...eyes} />
       </div>
-
-      {slots.length > 0 && trip && (
-        <div
-          role="img"
-          aria-label={`Độ mệt từng phút: ${summary.text}`}
-          className="relative flex h-[110px] items-end gap-[5px]"
-        >
-          <span aria-hidden className="absolute inset-x-0 border-t border-dashed border-hud-caution/35" style={{ bottom: `${trip.score_l1}%` }} />
-          <span aria-hidden className="absolute left-0 text-[11px] text-hud-caution/70" style={{ bottom: `calc(${trip.score_l1}% + 4px)` }}>
-            Nhắc nghỉ
-          </span>
-          {slots.map((s, i) =>
-            s.kind === "score" ? (
-              <div
-                key={i}
-                className={`flex-1 rounded-[3px] ${BAND_BG[s.band]} ${s.current ? "" : "opacity-85"}`}
-                style={{ height: `${Math.max(4, Math.min(100, s.score))}%` }}
-              />
-            ) : (
-              <div key={i} className={`flex-1 rounded-[3px] ${s.kind === "gap" ? "h-1.5 bg-white/12" : ""}`} />
-            ),
-          )}
-        </div>
-      )}
-
-      <div
-        aria-label="Thông số"
-        className={`flex flex-col justify-center gap-2 ${slots.length ? "md:border-0 md:border-l md:border-solid md:border-white/7 md:pl-6" : ""}`}
-      >
-        <Meter label="Buồn ngủ" value={snap.drowsy_score} l1={trip?.score_l1} l2={trip?.score_l2} />
-        <Meter label="Mất tập trung" value={snap.distraction_score} fill={distracted ? "var(--warning)" : undefined} />
-        <span className="flex items-baseline justify-between">
-          <span className="text-[13px] text-hud-ink-2">Mắt nhắm</span>
-          <span className="dg-num text-base font-semibold">
-            {formatNumber(snap.eyes_closed_s, 1)} <span className="text-xs font-normal text-hud-ink-3">giây</span>
-          </span>
-        </span>
-      </div>
+      {slots.length > 0 && trip && <FatigueStrip slots={slots} window={trip.window_min ?? slots.length} />}
     </section>
   );
 }
 
-function Meter({ label, value, l1, l2, fill }: { label: string; value: number | undefined; l1?: number; l2?: number; fill?: string }) {
-  const v = Math.max(0, Math.min(100, value ?? 0));
-  const color = fill ?? (l1 != null && l2 != null ? BAND_DOT[fatigueBand(v, l1, l2)] : "var(--good)");
+function WordTile({ icon: Icon, label, word, tone, value }: { icon: LucideIcon; label: string; word: string; tone: Tone; value?: number }) {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="flex items-baseline justify-between">
-        <span className="text-[13px] text-hud-ink-2">{label}</span>
-        <span className="dg-num text-base font-semibold">
-          {formatNumber(value)}
-          <span className="text-xs font-normal text-hud-ink-3">/100</span>
-        </span>
+    <div className="dg-tile flex min-w-0 items-center gap-3.5 px-4 py-3">
+      <Icon aria-hidden className={`size-7 shrink-0 ${TONE_TEXT[tone]}`} strokeWidth={1.75} />
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="text-[15px] text-hud-ink-2">{label}</span>
+        <span className={`truncate text-[24px] leading-tight font-semibold ${TONE_TEXT[tone]}`}>{word}</span>
+        {value != null && (
+          <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value)} className="dg-meter !h-1">
+            <b style={{ width: `${Math.max(0, Math.min(100, value))}%`, ["--fill" as string]: TONE_FILL[tone] }} />
+          </span>
+        )}
       </span>
-      <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} className="dg-meter">
-        <b style={{ width: `${v}%`, ["--fill" as string]: color }} />
-        {l1 != null && <i aria-hidden style={{ left: `${l1}%`, background: "rgba(251,191,36,0.7)" }} />}
-        {l2 != null && <i aria-hidden style={{ left: `${l2}%`, background: "rgba(248,113,113,0.7)" }} />}
-      </span>
+    </div>
+  );
+}
+
+/** The last minutes' fatigue as a slim strip: one cell per minute, coloured by band, times underneath. */
+function FatigueStrip({ slots, window }: { slots: TrendSlot[]; window: number }) {
+  const marks = [window, Math.round((window * 2) / 3), Math.round(window / 3)];
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[15px] text-hud-ink-2">Độ mệt từng phút</span>
+      <div role="img" aria-label={`Độ mệt từng phút trong ${window} phút gần đây`} className="flex h-5 gap-1">
+        {slots.map((s, i) => (
+          <div
+            key={i}
+            className="flex-1 rounded-[3px]"
+            style={{
+              background: s.kind === "score" ? TONE_FILL[s.band === 2 ? "danger" : s.band === 1 ? "caution" : "ok"] : s.kind === "gap" ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+              opacity: s.kind === "score" && !s.current ? 0.8 : 1,
+            }}
+          />
+        ))}
+      </div>
+      <div className="dg-num flex justify-between text-[13px] text-hud-ink-3">
+        {marks.map((m) => (
+          <span key={m}>{m} phút trước</span>
+        ))}
+        <span>Bây giờ</span>
+      </div>
     </div>
   );
 }
@@ -576,16 +549,10 @@ function WarningStage({ snap, rising }: { snap: HudSnapshot; rising: boolean }) 
       aria-atomic="true"
       className="dg-alert l2 flex min-h-[52dvh] flex-col justify-between gap-6 px-6 py-6 sm:px-8 lg:col-start-1 lg:row-start-1 lg:min-h-0"
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="flex flex-col gap-[3px]">
-          <span className="text-base font-semibold">Trạng thái tài xế</span>
-          <span className="text-[13px] opacity-70">Cập nhật liên tục trên thiết bị</span>
-        </span>
-        <span className="inline-flex items-center gap-2 rounded-hud-xs border border-solid border-hud-on-warning/18 bg-hud-on-warning/14 px-3 py-1.5 text-[13px] font-semibold">
-          <TriangleAlert aria-hidden className="size-4" strokeWidth={2.5} />
-          {LEVELS[2].title}
-        </span>
-      </div>
+      <span className="inline-flex items-center gap-2 self-end rounded-hud-xs border border-solid border-hud-on-warning/18 bg-hud-on-warning/14 px-3 py-1.5 text-base font-semibold">
+        <TriangleAlert aria-hidden className="size-5" strokeWidth={2.5} />
+        {LEVELS[2].title}
+      </span>
 
       <div
         key={`2:${primary ?? ""}`}
@@ -602,33 +569,20 @@ function WarningStage({ snap, rising }: { snap: HudSnapshot; rising: boolean }) 
 
       <div className="flex flex-col gap-2.5">
         <div aria-label="Thông số" className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          <WarnMeter className={tile} label="Buồn ngủ" value={snap.drowsy_score} />
-          <WarnMeter className={tile} label="Mất tập trung" value={snap.distraction_score} />
-          <div className={tile}>
-            <span className="flex items-baseline justify-between gap-2">
-              <span className="text-[13px] opacity-75">Mắt nhắm</span>
-              <span className="dg-num text-[17px] font-bold">{formatNumber(snap.eyes_closed_s, 1)} giây</span>
-            </span>
-          </div>
+          {[
+            { label: "Buồn ngủ", ...drowsyWord(snap.drowsy_score, snap.trip?.score_l1 ?? 40, snap.trip?.score_l2 ?? 70) },
+            { label: "Chú ý đường", ...attentionWord(snap.reasons, 2) },
+            { label: "Mắt", ...eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1)) },
+          ].map((m) => (
+            <div key={m.label} className={tile}>
+              <span className="block text-[15px] opacity-75">{m.label}</span>
+              <span className="block text-[22px] leading-tight font-bold">{m.word}</span>
+            </div>
+          ))}
         </div>
-        {detail && <span className="text-sm opacity-70">{detail}</span>}
+        {detail && <span className="text-base font-medium opacity-75">{detail}</span>}
       </div>
     </section>
-  );
-}
-
-function WarnMeter({ className, label, value }: { className: string; label: string; value: number | undefined }) {
-  const v = Math.max(0, Math.min(100, value ?? 0));
-  return (
-    <div className={className}>
-      <span className="flex items-baseline justify-between gap-2">
-        <span className="text-[13px] opacity-75">{label}</span>
-        <span className="dg-num text-[17px] font-bold">{formatNumber(value)}/100</span>
-      </span>
-      <span role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} className="mt-1.5 block h-[5px] rounded-full bg-hud-on-warning/16">
-        <span className="block h-full rounded-full bg-hud-on-warning" style={{ width: `${v}%` }} />
-      </span>
-    </div>
   );
 }
 
@@ -656,7 +610,9 @@ function DangerStage({ reasons }: { reasons: Reason[] }) {
   );
 }
 
-// ------------------------------------------------------------------ vehicle: speed, gear, turn signals
+// ------------------------------------------------------------------ vehicle: turn signals, gear, speed
+// Review 07/10: no card title; turn signals on top; the gear is one big letter (D driving, P parked in
+// blue); a green tick alone says the vehicle signal is fine, a chip only when it is not.
 
 function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
   const v = snap.vehicle;
@@ -666,37 +622,41 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
   const lost = v?.signal_lost === true;
   const noSignal = v?.source === "sim" && !v.connected && !lost;
   const enrolling = ["look_camera", "look_road", "close_eyes"].includes(snap.enrollment?.status ?? "");
-  const [sub, chip, dot] = lost
-    ? [driving ? "Vẫn giám sát như đang chạy" : "Coi như đang đỗ", "Mất tín hiệu xe", "var(--warning)"]
-    : noSignal
-      ? ["Coi như đang đỗ", "Chưa có tín hiệu xe", "var(--series-1)"]
-      : [
-          !driving && enrolling ? "Xe đang đỗ · đang đăng ký khuôn mặt" : "Tín hiệu xe đã kết nối",
-          driving ? "Đang chạy" : "Xe dừng",
-          driving ? "var(--good)" : "var(--series-1)",
-        ];
 
   return (
     <section
       aria-label="Xe"
-      className={`dg-card flex min-h-0 flex-col gap-4 px-6 pt-[22px] pb-5 lg:col-start-2 lg:row-start-1 ${tall ? "lg:row-span-2" : ""}`}
+      className={`dg-card relative flex min-h-0 flex-col gap-4 px-5 pt-5 pb-5 lg:col-start-2 lg:row-start-1 ${tall ? "lg:row-span-2" : ""}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <span className="dg-card-title">
-          <b>Tốc độ</b>
-          <span>{sub}</span>
-        </span>
-        <span className="dg-chip" style={{ ["--dot" as string]: dot }}>
-          <i />
-          {chip}
-        </span>
+      <div className="grid grid-cols-3 gap-3">
+        <TurnTile side="left" on={turn === "left"} />
+        <div
+          className={`grid h-[84px] place-items-center rounded-hud-sm ${driving ? "dg-tile" : "bg-hud-system text-[#0b1b33]"}`}
+          title={driving ? "Đang lái" : "Đang đỗ"}
+        >
+          <span aria-hidden className="text-[44px] leading-none font-bold">{driving ? "D" : "P"}</span>
+          {/* The words for screen readers (and the e2e test); the letter says it on screen. */}
+          <span className="sr-only">{driving ? "Đang lái" : enrolling ? "Xe đang đỗ · đang đăng ký khuôn mặt" : "Đang đỗ"}</span>
+        </div>
+        <TurnTile side="right" on={turn === "right"} />
       </div>
+
+      {lost || noSignal ? (
+        <span className="dg-chip w-fit self-center !text-[15px]" style={{ ["--dot" as string]: lost ? "var(--warning)" : "var(--series-1)" }}>
+          <i />
+          {lost ? (driving ? "Mất tín hiệu xe · vẫn giám sát" : "Mất tín hiệu xe · coi như đỗ") : "Chưa có tín hiệu xe · coi như đỗ"}
+        </span>
+      ) : (
+        <span role="img" aria-label="Tín hiệu xe đã kết nối" className="absolute right-5 bottom-5 grid size-9 place-items-center rounded-full bg-hud-safe/15 text-hud-safe">
+          <Check aria-hidden className="size-5" strokeWidth={3} />
+        </span>
+      )}
 
       <div className="grid min-h-0 flex-1 place-items-center">
         <div
           role="img"
           aria-label={speed == null ? "Tốc độ không rõ" : `Tốc độ ${Math.round(speed)} km/h`}
-          className="relative aspect-[320/280] h-full max-h-[289px] max-w-full min-h-[180px] [container-type:size]"
+          className="relative aspect-[320/280] h-full max-h-[300px] max-w-full min-h-[180px] [container-type:size]"
         >
           <svg aria-hidden viewBox="0 0 320 280" className="block size-full overflow-visible">
             <defs>
@@ -714,29 +674,12 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
             <polyline points="97,24 43,102 43,176 102,239 218,239 277,176 277,102 223,24" fill="none" stroke="url(#hud-oct-glass)" strokeWidth="26" strokeLinejoin="miter" />
             <polyline points="86,20 30,100 30,180 96,252 224,252 290,180 290,100 234,20" fill="none" stroke="url(#hud-oct-rim)" strokeWidth="1.4" strokeLinejoin="round" />
             <polyline points="108,28 56,104 56,172 108,226 212,226 264,172 264,104 212,28" fill="none" stroke="url(#hud-oct-rim)" strokeWidth="1" strokeLinejoin="round" opacity="0.6" />
-            <rect x="104" y="227" width="112" height="24" fill="rgba(255,255,255,0.06)" />
           </svg>
-          <div className="absolute inset-x-0 top-[26%] flex flex-col items-center gap-1.5">
-            <span className="dg-num text-[33cqh] leading-[0.95] font-semibold tracking-[-0.03em]">
-              {speed == null ? "– –" : Math.round(speed)}
-            </span>
-            <span className="text-base text-hud-ink-3">km/h</span>
+          <div className="absolute inset-x-0 top-[24%] flex flex-col items-center gap-1.5">
+            <span className="dg-num text-[36cqh] leading-[0.95] font-semibold tracking-[-0.03em]">{speed == null ? "– –" : Math.round(speed)}</span>
+            <span className="text-lg text-hud-ink-2">km/h</span>
           </div>
-          <span className="absolute inset-x-0 top-[84%] grid place-items-center text-[15px] font-semibold text-[#d4d4d4]">
-            {driving ? "D" : "P"}
-          </span>
         </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2.5">
-        <TurnTile side="left" on={turn === "left"} />
-        <div className="dg-tile flex flex-col items-center gap-1.5 px-2 py-3">
-          <span className="dg-tile grid size-[38px] place-items-center !rounded-full text-[#d4d4d4]">
-            <Car aria-hidden className="size-[18px]" />
-          </span>
-          <span className="text-xs text-hud-ink-2">{driving ? "Đang lái" : "Đang đỗ"}</span>
-        </div>
-        <TurnTile side="right" on={turn === "right"} />
       </div>
     </section>
   );
@@ -745,20 +688,124 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
 // Turn signal: amber arrow blinking like the car's own indicator (static with reduced motion).
 function TurnTile({ side, on }: { side: "left" | "right"; on: boolean }) {
   const Icon = side === "left" ? ArrowBigLeft : ArrowBigRight;
-  const name = `Xi nhan ${side === "left" ? "trái" : "phải"}`;
   return (
-    <div role="img" aria-label={`${name}: ${on ? "đang bật" : "tắt"}`} className="dg-tile flex flex-col items-center gap-1.5 px-2 py-3">
-      <span
-        className={`grid size-[38px] place-items-center rounded-full border border-solid ${
-          on ? "border-hud-turn/35 bg-hud-turn/12" : "border-white/10 bg-white/4"
-        }`}
-      >
-        <Icon
-          aria-hidden
-          className={`size-5 ${on ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3"}`}
-        />
+    <div
+      role="img"
+      aria-label={`Xi nhan ${side === "left" ? "trái" : "phải"}: ${on ? "đang bật" : "tắt"}`}
+      className={`grid h-[84px] place-items-center rounded-hud-sm ${on ? "border border-solid border-hud-turn/50 bg-hud-turn/15" : "dg-tile"}`}
+    >
+      <Icon
+        aria-hidden
+        className={`size-12 ${on ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3 opacity-60"}`}
+      />
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ not monitored (design "Tạm ngưng", "Mất camera", "Lỗi xử lý",
+// "Mất kết nối"): an amber card that says the driver is NOT watched, why, and what happens next.
+// Review 07/10: "no face" and "camera broken" must never look alike: the first line says whether the
+// camera still works, the camera tile is green (works) or red (no picture), and the icons differ.
+
+function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap: HudSnapshot | null; now: number; edgeUrl?: string }) {
+  const cause = snap?.unavailable_reason ?? null;
+  const incident = snap?.incident ?? null;
+  const since = incident?.since != null ? `Từ ${hourMinute(incident.since)}` : null;
+  const reported =
+    incident?.reported === true ? { value: "Đã báo", label: "Cho quản lý đội xe" } : incident?.reported === false ? { value: "Đang báo…", label: "Cho quản lý đội xe" } : null;
+
+  let view: { Icon: LucideIcon; title: string; lead: string; tiles: { icon: LucideIcon; value: string; label: string; tone?: Tone }[]; note: string };
+  if (state === "unavailable") {
+    const text = cause ? UNAVAILABLE_CAUSES[cause] : UNAVAILABLE_CAUSES.no_face;
+    view = {
+      Icon: ScanFace,
+      title: SYSTEM_TEXT.unavailable.title,
+      lead: `Camera vẫn chạy, nhưng ${text.short}`,
+      tiles: [
+        { icon: Camera, value: "Vẫn hoạt động", label: "Camera", tone: "ok" as const },
+        { icon: History, value: "Tự động", label: "Giám sát lại khi thấy rõ mặt" },
+      ],
+      note: `${text.detail} Đây không tính là một cảnh báo.`,
+    };
+  } else if (state === "camera_lost") {
+    view = {
+      Icon: CameraOff,
+      title: SYSTEM_TEXT.camera_lost.title,
+      lead: "Không nhận được hình từ camera",
+      tiles: [
+        { icon: CameraOff, value: "Không có hình", label: "Camera", tone: "danger" as const },
+        incident?.attempts != null
+          ? { icon: LoaderCircle, value: `Lần thử ${incident.attempts}`, label: "Đang kết nối lại…" }
+          : { icon: LoaderCircle, value: "Đang kết nối lại…", label: "Tự động" },
+        ...(since ? [{ icon: Clock, value: since, label: "Thời điểm mất camera" }] : []),
+        ...(reported ? [{ icon: Send, ...reported }] : []),
+      ].slice(0, 3),
+      note: "Lỗi kéo dài: khi dừng xe, kiểm tra dây và ống kính camera.",
+    };
+  } else if (state === "error") {
+    view = {
+      Icon: CircleAlert,
+      title: SYSTEM_TEXT.error.title,
+      lead: "Camera có hình, nhưng máy không xử lý được",
+      tiles: [
+        { icon: LoaderCircle, value: "Đang thử lại…", label: "Tự động" },
+        ...(since ? [{ icon: Clock, value: since, label: "Thời điểm lỗi" }] : []),
+        ...(reported ? [{ icon: Send, ...reported }] : []),
+      ],
+      note: "Lỗi kéo dài: tìm chỗ dừng xe an toàn.",
+    };
+  } else {
+    // down / stale / connecting: the screen hears nothing from the device.
+    const last = snap?.updated_at;
+    view = {
+      Icon: state === "connecting" ? LoaderCircle : WifiOff,
+      title: SYSTEM_TEXT[state].title,
+      lead: state === "connecting" ? SYSTEM_TEXT.connecting.detail : "Màn hình không nhận được trạng thái giám sát",
+      tiles: [
+        { icon: LoaderCircle, value: "Đang thử lại", label: "Mỗi 0,3 giây" },
+        ...(last ? [{ icon: Clock, value: `${hourMinute(last)} · ${Math.max(0, Math.round(now - last))} giây trước`, label: "Lần cuối nhận dữ liệu" }] : []),
+        { icon: Cable, value: "Nguồn và cáp", label: "Kiểm tra khi dừng xe" },
+      ],
+      note: `Tốc độ và trạng thái tài xế sẽ hiện lại ngay khi có kết nối.${edgeUrl ? ` Màn hình đọc thiết bị tại ${edgeUrl}; chạy python -m edge_agent.main --source 0 hoặc bấm "Chạy mô phỏng".` : ""}`,
+    };
+  }
+  const deviceSide = state === "down" || state === "stale" || state === "connecting";
+
+  return (
+    <section aria-live="assertive" className={`dg-alert ${deviceSide ? "sys" : "l1"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 lg:min-h-0`}>
+      <span className="dg-chip solid-warn absolute top-6 right-6 !px-3 !py-1.5 !text-base">
+        <EyeOff aria-hidden className="size-5" strokeWidth={2.25} />
+        KHÔNG giám sát
       </span>
-      <span className={`text-xs ${on ? "text-hud-ink-2" : "text-hud-ink-3"}`}>{name}</span>
+      <div className="flex flex-1 items-center gap-8">
+        <div className={`grid size-24 shrink-0 place-items-center rounded-full sm:size-[124px] ${deviceSide ? "bg-hud-system/20 text-[#93c5fd]" : "bg-hud-caution/18 text-hud-caution"}`}>
+          <view.Icon aria-hidden className={`size-14 sm:size-16 ${state === "connecting" ? "animate-spin motion-reduce:animate-none" : ""}`} strokeWidth={1.75} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="m-0 text-[clamp(44px,6.2vw,80px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{view.title}</h1>
+          <p className={`m-0 mt-3 text-[clamp(20px,2.4vw,30px)] font-medium ${deviceSide ? "text-[#bfd8fb]" : "text-[#fcd34d]"}`}>{view.lead}</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-3">
+        <div className={`grid grid-cols-1 gap-3 ${view.tiles.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+          {view.tiles.map((t) => (
+            <IncidentTile key={t.label + t.value} {...t} />
+          ))}
+        </div>
+        <span className="text-[17px] text-hud-ink-2">{view.note}</span>
+      </div>
+    </section>
+  );
+}
+
+function IncidentTile({ icon: Icon, value, label, tone }: { icon: LucideIcon; value: string; label: string; tone?: Tone }) {
+  return (
+    <div className="dg-tile flex min-w-0 items-center gap-4 px-4 py-3.5">
+      <Icon aria-hidden className={`size-8 shrink-0 ${tone ? TONE_TEXT[tone] : "text-[#d4d4d4]"}`} strokeWidth={1.75} />
+      <span className="flex min-w-0 flex-col">
+        <span className={`truncate text-[24px] leading-tight font-semibold ${tone ? TONE_TEXT[tone] : ""}`}>{value}</span>
+        <span className="text-base text-hud-ink-2">{label}</span>
+      </span>
     </div>
   );
 }
@@ -807,32 +854,32 @@ function BottomBar({
   const left = target && snap ? (
     <FalseAlarmButton target={target} level={level} now={now} windowS={snap.feedback_window_s ?? 120} onPress={onFalseAlarm} />
   ) : (
-    <span className="flex min-w-0 items-center gap-2.5 text-[15px] text-hud-ink-3">
+    <span className="flex min-w-0 items-center gap-3 text-lg text-hud-ink-2">
       <Flag aria-hidden className="size-[18px] shrink-0" />
       <span className="min-w-0">{note ?? (snap ? noteFor(snap) : "Đang chờ dữ liệu từ thiết bị")}</span>
     </span>
   );
   return (
-    <footer className={`grid items-center gap-3.5 px-4 pt-3.5 pb-5 sm:grid-cols-[minmax(0,1fr)_230px_230px] sm:px-8 ${className}`}>
+    <footer className={`grid items-center gap-3.5 px-4 pt-3.5 pb-5 sm:grid-cols-[minmax(0,1fr)_250px_290px] sm:px-8 ${className}`}>
       {left}
       {onAskDriver ? (
-        <button type="button" onClick={onAskDriver} className="dg-btn">
+        <button type="button" onClick={onAskDriver} className="dg-btn dg-btn-lg whitespace-nowrap">
           <span className="flex items-center gap-3">
-            <UserRoundCog aria-hidden className="size-5" />
+            <UserRoundCog aria-hidden className="size-7" />
             Đổi tài xế
           </span>
-          <ChevronRight aria-hidden className="size-4 text-hud-ink-3" />
+          <ChevronRight aria-hidden className="size-6 text-hud-ink-3" />
         </button>
       ) : (
         <span className="hidden sm:block" />
       )}
       {onAskEnd ? (
-        <button type="button" onClick={onAskEnd} disabled={ending} className="dg-btn">
+        <button type="button" onClick={onAskEnd} disabled={ending} className="dg-btn dg-btn-lg whitespace-nowrap">
           <span className="flex items-center gap-3">
-            <FlagTriangleRight aria-hidden className="size-5" />
+            <FlagTriangleRight aria-hidden className="size-7" />
             {ending ? "Đang kết thúc…" : "Kết thúc chuyến"}
           </span>
-          <ChevronRight aria-hidden className="size-4 text-hud-ink-3" />
+          <ChevronRight aria-hidden className="size-6 text-hud-ink-3" />
         </button>
       ) : (
         <span className="hidden sm:block" />
@@ -862,11 +909,11 @@ function FalseAlarmButton({ target, level, now, windowS, onPress }: { target: Hu
   const left = Math.max(0, Math.round(target.at + windowS - now));
   const ring = target.level >= 2 || level === 2 ? "ring-hud-warning/80" : "ring-hud-caution/70";
   return (
-    <button type="button" onClick={onPress} className={`dg-btn justify-self-start !justify-start gap-3.5 ring-1 ${ring}`}>
-      <Flag aria-hidden className="size-5 shrink-0" />
-      <span className="flex flex-col gap-px">
-        <span className="text-base font-medium">Cảnh báo này sai?</span>
-        <span className="dg-num text-xs text-hud-ink-3">
+    <button type="button" onClick={onPress} className={`dg-btn dg-btn-lg justify-self-start !justify-start gap-4 ring-2 ${ring}`}>
+      <Flag aria-hidden className="size-7 shrink-0" />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-xl font-semibold">Cảnh báo này sai?</span>
+        <span className="dg-num text-[15px] text-hud-ink-2">
           Chạm để báo · còn {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
         </span>
       </span>
@@ -1089,37 +1136,6 @@ function PresencePanel({ unanswered, onAnswer }: { unanswered: boolean; onAnswer
           </span>
         </span>
       </button>
-    </main>
-  );
-}
-
-function SystemPanel({ state, edgeUrl, cause }: { state: SystemState; edgeUrl: string; cause: UnavailableCause | null }) {
-  const Icon = SYSTEM_ICONS[state];
-  // Unavailable: say what the driver can fix (camera covered, face too dark, ...), not only "no face".
-  const text = state === "unavailable" && cause ? { ...SYSTEM_TEXT[state], detail: UNAVAILABLE_CAUSES[cause].detail } : SYSTEM_TEXT[state];
-  const code = "rounded bg-hud-raised px-1.5 py-0.5 text-hud-ink";
-  return (
-    <main className="grid place-items-center p-4 sm:p-6">
-      <section
-        aria-live="polite"
-        className={`w-full max-w-2xl rounded-hud-lg bg-hud-surface p-8 text-center sm:p-12 ${
-          state === "camera_lost" || state === "unavailable" || state === "error" ? "ring-2 ring-hud-system" : "ring-1 ring-hud-line"
-        }`}
-      >
-        <Icon
-          aria-hidden
-          strokeWidth={1.75}
-          className={`mx-auto size-20 text-hud-system ${state === "connecting" ? "animate-spin motion-reduce:animate-none" : ""}`}
-        />
-        <h1 className="m-0 mt-6 text-[clamp(28px,4vw,48px)] leading-tight font-extrabold text-balance">{text.title}</h1>
-        <p className="m-0 mt-3 text-hud-body text-pretty text-hud-ink-2">{text.detail}</p>
-        {state !== "camera_lost" && state !== "unavailable" && state !== "error" && (
-          <p className="m-0 mt-6 text-hud-label text-hud-ink-3">
-            HUD đọc trạng thái từ edge agent tại <code className={code}>{edgeUrl}</code>. Chạy{" "}
-            <code className={code}>python -m edge_agent.main --source 0</code> hoặc bấm “Chạy mô phỏng”.
-          </p>
-        )}
-      </section>
     </main>
   );
 }

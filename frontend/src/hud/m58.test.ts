@@ -111,3 +111,19 @@ describe("M58 HUD stage", () => {
     expect(stageScale(1024, 1366)).toBeNull(); // portrait tablet
   });
 });
+
+describe("M58 review: numbers in plain words", () => {
+  it("says drowsiness, attention and the eyes in words", async () => {
+    const { drowsyWord, attentionWord, eyesWord } = await import("./hudModel");
+    const n = (v: number) => String(v).replace(".", ",");
+    expect(drowsyWord(12, 40, 70)).toEqual({ word: "Tỉnh táo", tone: "ok" });
+    expect(drowsyWord(52, 40, 70)).toEqual({ word: "Hơi mệt", tone: "caution" });
+    expect(drowsyWord(71, 40, 70).word).toBe("Rất mệt");
+    expect(attentionWord([], 0)).toEqual({ word: "Tập trung", tone: "ok" });
+    expect(attentionWord(["phone", "off_road"], 2)).toEqual({ word: "Cầm điện thoại", tone: "danger" });
+    expect(attentionWord(["off_road"], 2).word).toBe("Nhìn lệch");
+    expect(eyesWord(0.2, n)).toEqual({ word: "Đang mở", tone: "ok" }); // a blink
+    expect(eyesWord(0.8, n)).toEqual({ word: "Nhắm 0,8 giây", tone: "caution" });
+    expect(eyesWord(2.4, n).tone).toBe("danger");
+  });
+});

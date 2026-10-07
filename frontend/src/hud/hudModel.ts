@@ -215,3 +215,33 @@ export function footerNote(snap: HudSnapshot, labels: { signalLost: string | nul
   if (labels.enroll) return labels.enroll;
   return labels.lastAlert ?? "Chưa có cảnh báo nào trong chuyến này";
 }
+
+// ------------------------------------------------------------------ plain words for the numbers (M58, review 07/10)
+// Drivers do not read "52/100": each number is said in words, coloured by its band. The bands come
+// from the agent (trip.score_l1 / l2) or from the alert itself; nothing here decides an alert.
+
+export type Tone = "ok" | "caution" | "danger";
+
+/** Drowsiness in words, banded by this trip's thresholds. */
+export function drowsyWord(score: number | undefined, l1: number, l2: number): { word: string; tone: Tone } {
+  const band = fatigueBand(score ?? 0, l1, l2);
+  return band === 2 ? { word: "Rất mệt", tone: "danger" } : band === 1 ? { word: "Hơi mệt", tone: "caution" } : { word: "Tỉnh táo", tone: "ok" };
+}
+
+/** Attention in words: what the driver is doing now, from the active alert's reasons. */
+export function attentionWord(reasons: readonly Reason[], level: Level): { word: string; tone: Tone } {
+  const tone: Tone = level >= 2 ? "danger" : "caution";
+  if (reasons.includes("phone")) return { word: "Cầm điện thoại", tone };
+  if (reasons.includes("off_road")) return { word: "Nhìn lệch", tone };
+  return { word: "Tập trung", tone: "ok" };
+}
+
+/** Eyes shut shorter than this are blinks: the tile keeps saying "Đang mở" (display only, no alert). */
+export const EYES_SHOWN_CLOSED_S = 0.5;
+
+/** The eyes in words: open, or shut for how long. */
+export function eyesWord(closedS: number | undefined, num: (v: number) => string): { word: string; tone: Tone } {
+  const s = closedS ?? 0;
+  if (s < EYES_SHOWN_CLOSED_S) return { word: "Đang mở", tone: "ok" };
+  return { word: `Nhắm ${num(s)} giây`, tone: s >= 1.5 ? "danger" : "caution" };
+}
