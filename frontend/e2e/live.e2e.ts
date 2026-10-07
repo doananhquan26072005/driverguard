@@ -157,11 +157,14 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   // M49: the page timed its own loop and the heartbeat carried the numbers to the fleet overview.
   await expect(vehicle).toContainText(/p95 [\d,.]+ ms/);
 
+  // M62: the manager reviews the report (list + detail), and marks it read.
   await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
-  const row = manager.getByRole("row").filter({ hasText: "drv-001" });
-  await expect(row).toHaveCount(1);
-  await row.getByRole("button").click();
-  await expect(manager.getByRole("row", { name: /^Đổi tài xế/ })).toContainText("1 lần"); // report detail
+  const report = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
+  await expect(report).toHaveCount(1);
+  await report.click();
+  await expect(manager.getByText(/đổi tài 1 lần/)).toBeVisible(); // report detail: the story of the trip
+  await manager.getByRole("button", { name: "Đánh dấu đã xem" }).click();
+  await expect(manager.getByText(/quanly đã xem lúc/)).toBeVisible();
 });
 
 test("web driving controls: #/drive on another page drives #/live; closing it is a lost vehicle signal", async ({ page, context }) => {
@@ -169,7 +172,7 @@ test("web driving controls: #/drive on another page drives #/live; closing it is
   await obedientDriver(page);
   await startLive(page);
   const link = page.getByRole("link", { name: /Điều khiển xe · mã/ });
-  const code = /mã ([A-Z0-9]{6})/.exec((await link.textContent()) ?? "")?.[1];
+  const code = /mã ([A-Z0-9]{6})/.exec((await link.getAttribute("aria-label")) ?? "")?.[1];
   expect(code).toBeTruthy();
   expect(await link.getAttribute("href")).toBe(`#/drive?code=${code}`);
 
