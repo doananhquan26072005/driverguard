@@ -44,10 +44,23 @@ class Ring {
   }
 }
 
+/** Counted since the loop started, not over the window: what a long run is judged on
+ *  (bench/live.bench.mjs reads them every few seconds). Shown locally only, never sent. */
+export interface PerfTotals {
+  processed: number; // frames the loop finished
+  camera_delivered: number | null; // frames the camera delivered; null = the browser does not say
+  camera_dropped: number | null; // ... of them never processed
+  yolo_runs: number; // phone detector results that came back
+}
+
 export class PerfWindow {
   private rings = new Map<Stage, Ring>();
   private presented: Ring;
   private knowsPresented = false;
+  private processed = 0;
+  private delivered = 0;
+  private taken = 0; // of the delivered frames, those the loop took
+  private yoloRuns = 0;
 
   /** size: samples kept per stage (300 = 10 s of frames at 30 FPS, a minute of YOLO runs at 5 / s). */
   constructor(private size = 300) {
@@ -59,6 +72,8 @@ export class PerfWindow {
     let ring = this.rings.get(stage);
     if (!ring) this.rings.set(stage, (ring = new Ring(this.size)));
     ring.push(ms);
+    if (stage === "total") this.processed += 1;
+    else if (stage === "yolo") this.yoloRuns += 1;
   }
 
   /** Once per processed frame: how many frames the camera delivered since the previous one
@@ -67,6 +82,17 @@ export class PerfWindow {
     if (!Number.isFinite(sinceLast) || sinceLast < 1) return;
     this.knowsPresented = true;
     this.presented.push(sinceLast);
+    this.delivered += sinceLast;
+    this.taken += 1;
+  }
+
+  totals(): PerfTotals {
+    return {
+      processed: this.processed,
+      camera_delivered: this.knowsPresented ? this.delivered : null,
+      camera_dropped: this.knowsPresented ? this.delivered - this.taken : null,
+      yolo_runs: this.yoloRuns,
+    };
   }
 
   snapshot(landmarksDelegate: PerfSnapshot["landmarks_delegate"], yoloThreads: number | null): PerfSnapshot {

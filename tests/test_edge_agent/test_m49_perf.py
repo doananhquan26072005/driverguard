@@ -39,6 +39,14 @@ def test_perf_record_keeps_known_stages_rounded():
     assert (got["samples"], got["landmarks_delegate"], got["yolo_threads"]) == (300, "GPU", 1)
     assert (got["camera_delivered"], got["camera_dropped"]) == (303, 3)
     assert got["gpu"] == "hardware"
+    assert got["yolo_provider"] is None  # a page older than M67 does not say
+
+
+def test_perf_record_says_where_the_phone_detector_runs():
+    """M67: WebGPU or wasm; anything else is dropped so the backend never refuses the heartbeat."""
+    assert perf_record({**PERF, "yolo_provider": "webgpu"})["yolo_provider"] == "webgpu"
+    assert perf_record({**PERF, "yolo_provider": "wasm"})["yolo_provider"] == "wasm"
+    assert perf_record({**PERF, "yolo_provider": "cuda"})["yolo_provider"] is None
 
 
 def test_perf_record_drops_what_the_backend_would_refuse():

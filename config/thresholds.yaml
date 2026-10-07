@@ -145,6 +145,17 @@ phone:
   conf_threshold: 0.35
   iou_threshold: 0.45
   target_fps: 5            # YOLO runs ~5x/s, main loop reuses the latest result
+  # The page (#/live, APK) runs YOLO on WebGPU where the browser has a real GPU adapter, else on wasm
+  # with num_threads (M67). Same model file and input, FP32 on both. false = always wasm (a browser
+  # or driver whose WebGPU misbehaves). A session that fails on WebGPU falls back to wasm by itself.
+  web_gpu: true
+  # Runs per second of the page when YOLO is on WebGPU; on wasm the page keeps target_fps. A frame
+  # uses the newest result, so that result's age on a frame runs from one inference to one inference
+  # + one period + one frame: the period, not the model, is most of it. Chromium on a Mac, 60 s
+  # (eval/results/benchmark_live.md): WebGPU, 16 ms a run, at 10: age p50 67 / p95 101 ms and 32 % of
+  # one core for the page. wasm, 92-98 ms a run: at 5, p50 197 / p95 267 ms and 136 %; at 10 (8.7
+  # reached) p50 166 / p95 230 ms but 216 %, twice the CPU for 37 ms, so wasm stays at target_fps.
+  web_gpu_target_fps: 10
   num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe (#/live: only on a cross-origin isolated page, else 1)
   max_result_age_s: 0.6    # older results count as "unknown"
   # Phone detection not working (M50): at least unknown_ratio of the last unknown_window_s of frames

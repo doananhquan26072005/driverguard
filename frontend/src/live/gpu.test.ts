@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseDelegate, gpuKind, yoloThreads } from "./gpu";
+import { chooseDelegate, gpuKind, yoloProvider, yoloThreads } from "./gpu";
 
 describe("which delegate MediaPipe gets (M51)", () => {
   it("tells a software rasterizer from a real GPU by the renderer's name", () => {
@@ -36,5 +36,27 @@ describe("threads of the phone detector (M51)", () => {
     expect(yoloThreads(4, true, 2)).toBe(2);
     expect(yoloThreads(2, true, undefined)).toBe(1);
     expect(yoloThreads(0, true, 8)).toBe(1);
+  });
+});
+
+describe("where the phone detector runs (M67)", () => {
+  const real = { fallback: false, name: "apple metal-3" };
+
+  it("is WebGPU on a real GPU adapter when the settings allow it", () => {
+    expect(yoloProvider(true, real, null)).toBe("webgpu");
+    expect(yoloProvider(false, real, null)).toBe("wasm"); // phone.web_gpu: false
+  });
+
+  it("is wasm without an adapter or on a software one", () => {
+    expect(yoloProvider(true, null, null)).toBe("wasm");
+    expect(yoloProvider(true, { fallback: true, name: "" }, null)).toBe("wasm");
+    expect(yoloProvider(true, { fallback: false, name: "google swiftshader" }, null)).toBe("wasm");
+  });
+
+  it("lets a measurement force either one, but never WebGPU without an adapter", () => {
+    expect(yoloProvider(true, real, "wasm")).toBe("wasm");
+    expect(yoloProvider(false, { fallback: true, name: "" }, "webgpu")).toBe("webgpu");
+    expect(yoloProvider(true, null, "webgpu")).toBe("wasm");
+    expect(yoloProvider(true, real, "fast")).toBe("webgpu");
   });
 });

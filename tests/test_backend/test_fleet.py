@@ -162,10 +162,13 @@ PERF = {
 def test_loop_timings_of_the_last_heartbeat_show_in_the_fleet(client):
     """M49: a slow hub says which stage is slow; a later heartbeat without timings keeps the last ones."""
     assert fleet(client)["cam-001"]["perf"] is None
+    stored = {**PERF, "yolo_provider": None}  # M67: a page that does not say where its phone detector runs
     assert beat(client, perf=PERF).status_code == 200
-    assert fleet(client)["cam-001"]["perf"] == PERF
+    assert fleet(client)["cam-001"]["perf"] == stored
     assert beat(client, state="camera_lost").status_code == 200
-    assert fleet(client)["cam-001"]["perf"] == PERF
+    assert fleet(client)["cam-001"]["perf"] == stored
+    assert beat(client, perf={**PERF, "yolo_provider": "webgpu"}).status_code == 200
+    assert fleet(client)["cam-001"]["perf"]["yolo_provider"] == "webgpu"
 
 
 @pytest.mark.parametrize(
@@ -176,6 +179,7 @@ def test_loop_timings_of_the_last_heartbeat_show_in_the_fleet(client):
         {**PERF, "frame": "x"},  # image-like field name
         {**PERF, "landmarks_delegate": "NPU"},
         {**PERF, "gpu": "fast"},
+        {**PERF, "yolo_provider": "cuda"},
     ],
 )
 def test_loop_timings_are_strict(client, bad):

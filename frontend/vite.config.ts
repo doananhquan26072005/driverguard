@@ -14,4 +14,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: { port: 5173, strictPort: true, headers },
   preview: { headers },
+  // The phone detector's worker imports one of two ONNX Runtime builds once it knows which (M67):
+  // only an ES module worker can be split into chunks.
+  worker: { format: "es" },
 });

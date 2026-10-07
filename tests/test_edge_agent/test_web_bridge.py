@@ -173,7 +173,9 @@ def test_unknown_scenario_rejected():
 
 def test_settings_come_from_thresholds(agent):
     s = json.loads(agent.settings())
-    assert s["phone"] == {"input_size": 640, "target_fps": 5, "num_threads": 2} and s["target_width"] == 640
+    # M67: on WebGPU the page runs YOLO at its own rate; on wasm at the device's target_fps
+    assert s["phone"] == {"input_size": 640, "target_fps": 5, "num_threads": 2, "web_gpu": True, "gpu_target_fps": 10}
+    assert s["target_width"] == 640
     assert s["landmarks"]["num_faces"] == 2 and s["flush_interval_s"] == 5.0 and s["problems"] == []
 
 

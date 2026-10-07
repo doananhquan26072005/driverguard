@@ -6,7 +6,7 @@ import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, ShieldCheck, Square }
 import HudScreen from "../hud/HudScreen";
 import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "../hud/voice";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
-import { perfDetail, perfLines } from "../lib/labels";
+import { perfDetail, perfLines, startupText } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
 import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
 
@@ -373,7 +373,12 @@ function SelfView({
                 {stats?.phoneOn ? `${m?.phone ? "có" : "không"} (${fmt(stats.yoloMs, 0)} ms)` : "tắt"}
               </span>
               {stats?.perf?.stages_ms.total && (
-                <span className="whitespace-pre-line text-white/70" title={perfDetail(stats.perf)}>
+                <span
+                  className="whitespace-pre-line text-white/70"
+                  title={[perfDetail(stats.perf), startupText(stats.startup)].filter(Boolean).join("\n")}
+                  // The same numbers as JSON, for bench/live.bench.mjs (M67). Timings and counts only.
+                  data-perf={JSON.stringify({ perf: stats.perf, totals: stats.totals, startup: stats.startup, fps: stats.fps })}
+                >
                   {perfLines(stats.perf)}
                 </span>
               )}
