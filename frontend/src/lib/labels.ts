@@ -159,7 +159,8 @@ export function perfDetail(p: PerfSnapshot | null | undefined): string {
     });
   if (p.landmarks_delegate) lines.push(`Model khuôn mặt chạy trên ${p.landmarks_delegate}`);
   if (p.gpu) lines.push(`WebGL: ${{ hardware: "GPU thật", software: "vẽ bằng phần mềm (không có GPU dùng được)", none: "không có" }[p.gpu]}`);
-  if (p.yolo_threads) lines.push(`Model điện thoại: ${p.yolo_threads} luồng`);
+  if (p.yolo_provider === "webgpu") lines.push("Model điện thoại chạy trên GPU (WebGPU)");
+  else if (p.yolo_threads) lines.push(`Model điện thoại: ${p.yolo_threads} luồng`);
   if (p.camera_delivered != null && p.camera_dropped != null)
     lines.push(`Frame camera bị bỏ: ${p.camera_dropped} / ${p.camera_delivered}`);
   return lines.join("\n");
@@ -180,7 +181,7 @@ export function perfLines(p: PerfSnapshot): string {
     `Frame p50 ${s.total ? ms(s.total.p50) : "–"} · p95 ${p95("total")} ms`,
     `Camera ${p95("capture")} · mặt ${p95("landmarks")}${p.landmarks_delegate ? ` (${p.landmarks_delegate})` : ""} · xử lý ${p95("python")} ms`,
   ];
-  if (s.yolo) lines.push(`ĐT ${p95("yolo")} ms · tuổi ${p95("yolo_age")} ms · ${p.yolo_threads ?? "?"} luồng`);
+  if (s.yolo) lines.push(`ĐT ${p95("yolo")} ms · tuổi ${p95("yolo_age")} ms · ${p.yolo_provider === "webgpu" ? "WebGPU" : `${p.yolo_threads ?? "?"} luồng`}`);
   if (p.camera_delivered != null && p.camera_dropped != null) lines.push(`Bỏ ${p.camera_dropped} / ${p.camera_delivered} frame`);
   return lines.join("\n");
 }

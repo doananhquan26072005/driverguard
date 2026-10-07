@@ -339,6 +339,14 @@ describe("loop timings (M49)", () => {
     expect(perfLines(bare).split("\n")).toEqual(["Frame p50 10,5 · p95 14 ms", "Camera – · mặt – · xử lý – ms"]);
   });
 
+  it("says when the phone model runs on WebGPU instead of counting threads (M67)", () => {
+    const onGpu = { ...perf, yolo_provider: "webgpu" as const };
+    expect(perfDetail(onGpu)).toContain("Model điện thoại chạy trên GPU (WebGPU)");
+    expect(perfDetail(onGpu)).not.toContain("luồng");
+    expect(perfLines(onGpu).split("\n")[2]).toBe("ĐT 170 ms · tuổi 340 ms · WebGPU");
+    expect(perfDetail({ ...perf, yolo_provider: "wasm" as const })).toContain("Model điện thoại: 1 luồng");
+  });
+
   it("one line for the start-up, nothing before the first frame (M67)", () => {
     const startup = { camera: 120, python: 1180, face_model: 1310, phone_model: 2040, first_frame: 1340 };
     expect(startupText(startup)).toBe("Khởi động 1,3 s (camera 0,1 · Python 1,2 · model mặt 1,3 · model điện thoại 2,0)");

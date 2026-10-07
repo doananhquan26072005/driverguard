@@ -287,6 +287,7 @@ class PerfIn(StrictModel):
     landmarks_delegate: Literal["GPU", "CPU"] | None = None
     gpu: Literal["hardware", "software", "none"] | None = None  # M51: what draws WebGL on the page
     yolo_threads: int | None = Field(default=None, ge=1, le=64)
+    yolo_provider: Literal["webgpu", "wasm"] | None = None  # M67: where the page runs the phone detector
     camera_delivered: int | None = Field(default=None, ge=0, le=10_000_000)
     camera_dropped: int | None = Field(default=None, ge=0, le=10_000_000)
 

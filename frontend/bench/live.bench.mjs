@@ -5,6 +5,7 @@
 //   node bench/live.bench.mjs --url http://localhost:5191 --seconds 30 [--camera clip.mjpeg] [--headed]
 //   node bench/live.bench.mjs ... --duration 10m --json soak.json     # long run, judged like tools/benchmark.py --duration
 //   node bench/live.bench.mjs ... --seconds 5 --profile /tmp/dg-profile   # run twice: the second start-up has a warm cache
+//   node bench/live.bench.mjs ... --delegate CPU --yolo wasm            # force MediaPipe's delegate / the phone detector's provider
 //   node bench/live.bench.mjs ... --think-s 3                           # wait on the consent screen first, as a driver reading it does
 //
 // --camera: an .mjpeg / .y4m file Chrome plays as the camera (a public dataset clip, so a face is in
@@ -95,6 +96,8 @@ async function main() {
   });
   const delegate = arg("delegate", null); // GPU | CPU: force MediaPipe's delegate (the page's localStorage override)
   if (delegate) await page.addInitScript((d) => localStorage.setItem("dg.landmarks.delegate", d), delegate);
+  const yolo = arg("yolo", null); // webgpu | wasm: force where the phone detector runs (same kind of override)
+  if (yolo) await page.addInitScript((y) => localStorage.setItem("dg.phone.provider", y), yolo);
 
   await page.goto(`${url}/#/live`);
   await page.getByRole("button", { name: "Dùng thử không lưu" }).click();

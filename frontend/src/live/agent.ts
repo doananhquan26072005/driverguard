@@ -22,7 +22,7 @@ import {
   toPixels,
 } from "./measure";
 import { frameTimeMs, type FrameMetadata } from "./frameTime";
-import { chooseDelegate, gpuKind, webglRenderer, type GpuKind } from "./gpu";
+import { chooseDelegate, gpuKind, webglRenderer, type GpuKind, type YoloProvider } from "./gpu";
 import { YoloPacer } from "./pace";
 import { urgentKey } from "../hud/hudModel";
 import { PerfWindow, type PerfSnapshot, type PerfTotals } from "./perf";
@@ -115,7 +115,7 @@ interface Settings {
     min_tracking_confidence: number;
     blendshapes: boolean;
   };
-  phone: { input_size: number; target_fps: number; num_threads: number };
+  phone: { input_size: number; target_fps: number; num_threads: number; web_gpu: boolean; gpu_target_fps: number };
   flush_interval_s: number;
   config_poll_s: number; // ask the backend for tuned thresholds this often (M47); 0 = only at start
   problems: string[];
@@ -186,10 +186,11 @@ async function loadPython(session: Session | null): Promise<{ agent: PyAgent; se
 }
 
 const DELEGATE_KEY = "dg.landmarks.delegate"; // "GPU" | "CPU" in localStorage: force one (measurements)
+const PROVIDER_KEY = "dg.phone.provider"; // "webgpu" | "wasm" in localStorage: force one (measurements)
 
-function forcedDelegate(): string | null {
+function forced(key: string): string | null {
   try {
-    return localStorage.getItem(DELEGATE_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null; // storage blocked: no override
   }
@@ -213,6 +214,7 @@ async function loadFaceFiles(): Promise<{ fileset: Awaited<ReturnType<typeof Fil
 interface YoloSession {
   worker: Worker;
   threads: number;
+  provider: YoloProvider;
 }
 
 export class LiveAgent implements HudSource {
@@ -227,6 +229,7 @@ export class LiveAgent implements HudSource {
   private lastVideoTime = -1;
   private yolo: Worker | null = null; // set once the detector's session is ready (attachYolo)
   private yoloThreads: number | null = null;
+  private yoloProvider: YoloProvider | null = null;
   private yoloBusy = false;
   private yoloPacer: YoloPacer;
   private pendingBodies: string[] = [];
@@ -334,7 +337,7 @@ export class LiveAgent implements HudSource {
       // M51: the GPU delegate only where a real GPU draws WebGL; on a software rasterizer it is several
       // times slower than the CPU delegate. Both are recorded with the loop timings (M49).
       const gpu = gpuKind(webglRenderer());
-      let delegate = chooseDelegate(gpu, forcedDelegate());
+      let delegate = chooseDelegate(gpu, forced(DELEGATE_KEY));
       try {
         landmarker = await FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetBuffer: model, delegate }, ...options });
       } catch (err) {
@@ -345,11 +348,11 @@ export class LiveAgent implements HudSource {
       mark("face_model");
       const live = new LiveAgent(video, stream, agent, settings, landmarker, session, delegate, gpu, { t0, ms: startup });
       live.run();
-      // M67: the loop does not wait for the phone detector. Its session is built while the face is
-      // already monitored; frames until then have no phone answer, as the first frames always had,
-      // and Python reports a detector that never comes (M50).
+      // M67: the loop does not wait for the phone detector. Its session is built (and on WebGPU warmed
+      // up, most of a second) while the face is already monitored; frames until then have no phone
+      // answer, as the first frames always had, and Python reports a detector that never comes (M50).
       void yolo!
-        .then((worker) => LiveAgent.createYolo(worker, settings.phone.num_threads))
+        .then((worker) => LiveAgent.createYolo(worker, settings.phone))
         .then((y) => {
           if (!y) return;
           mark("phone_model");
@@ -375,13 +378,23 @@ export class LiveAgent implements HudSource {
     return null;
   }
 
-  /** The session, with phone.num_threads threads where the page may use threads. */
-  private static async createYolo(worker: Worker | null, threads: number): Promise<YoloSession | null> {
+  /** The session: on WebGPU where phone.web_gpu allows it and a real GPU adapter exists, else on wasm
+   *  with phone.num_threads threads where the page may use threads. */
+  private static async createYolo(worker: Worker | null, cfg: Settings["phone"]): Promise<YoloSession | null> {
     if (!worker) return null;
-    const answer = await LiveAgent.askYolo(worker, { type: "create", threads });
-    if (answer?.type === "ready") return { worker, threads: answer.threads };
+    const request: YoloRequest = { type: "create", threads: cfg.num_threads, webgpu: cfg.web_gpu, forced: forced(PROVIDER_KEY), size: cfg.input_size };
+    const answer = await LiveAgent.askYolo(worker, request);
+    if (answer?.type === "ready") return { worker, threads: answer.threads, provider: answer.provider };
     worker.terminate();
     return null;
+  }
+
+  /** Where the detector runs decides how often: phone.web_gpu_target_fps on WebGPU, phone.target_fps on
+   *  wasm, where a run costs several times the CPU (config/thresholds.yaml has the numbers). */
+  private setYoloProvider(provider: YoloProvider) {
+    const cfg = this.settings.phone;
+    this.yoloProvider = provider;
+    this.yoloPacer = new YoloPacer(provider === "webgpu" ? cfg.gpu_target_fps : cfg.target_fps);
   }
 
   /** The phone detector is ready: frames go to it from now on. */
@@ -391,6 +404,7 @@ export class LiveAgent implements HudSource {
       return;
     }
     [this.yolo, this.yoloThreads] = [y.worker, y.threads];
+    this.setYoloProvider(y.provider);
     this.stats.phoneOn = true;
     y.worker.onmessage = (e: MessageEvent<YoloResponse>) => this.onYolo(e.data);
     y.worker.onerror = () => void (this.yoloBusy = false);
@@ -451,7 +465,7 @@ export class LiveAgent implements HudSource {
   }
 
   private perfSnapshot(): PerfSnapshot {
-    return { ...this.perf.snapshot(this.delegate, this.yolo ? this.yoloThreads : null), gpu: this.gpu };
+    return { ...this.perf.snapshot(this.delegate, this.yolo ? this.yoloThreads : null), gpu: this.gpu, yolo_provider: this.yoloProvider };
   }
 
   // ------------------------------------------------------------------ loop
@@ -598,6 +612,12 @@ export class LiveAgent implements HudSource {
   private yoloGeometry = { scale: 1, padX: 0, padY: 0, w: 0, h: 0 };
 
   private onYolo(msg: YoloResponse) {
+    if (msg.type === "ready") {
+      // The worker replaced a failing WebGPU session by a wasm one.
+      this.yoloThreads = msg.threads;
+      this.setYoloProvider(msg.provider);
+      return;
+    }
     this.yoloBusy = false;
     if (msg.type !== "result") {
       if (msg.type === "error") console.warn("[live] YOLO run failed:", msg.message);

@@ -10,7 +10,7 @@ export class YoloPacer {
   private due = -Infinity; // frame time (s) the next run is due at
   private lastT: number | null = null;
 
-  /** targetFps: phone.target_fps; 0 or less = the detector never runs. */
+  /** targetFps: phone.target_fps on wasm, phone.web_gpu_target_fps on WebGPU; 0 or less = the detector never runs. */
   constructor(private targetFps: number) {}
 
   /** One camera frame taken at `t` seconds; busy: the detector has not answered its last frame yet.

@@ -62,6 +62,7 @@ export interface PerfSnapshot {
   landmarks_delegate: "GPU" | "CPU" | null; // what MediaPipe was created with
   gpu?: "hardware" | "software" | "none" | null; // M51: what draws WebGL there (software = no usable GPU)
   yolo_threads: number | null; // wasm threads of the phone detector, null = detector off
+  yolo_provider?: "webgpu" | "wasm" | null; // M67: where the phone detector runs
   camera_delivered: number | null; // frames the camera delivered over the window; null = browser does not say
   camera_dropped: number | null; // ... of them never processed (the loop was still busy)
 }
