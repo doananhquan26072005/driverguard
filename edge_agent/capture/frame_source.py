@@ -22,10 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
 from edge_agent.config import config_from_dict
+from edge_agent.cv import cv2
 
 
 @dataclass(frozen=True)
@@ -72,13 +72,13 @@ class FrameSource:
         source: str | int,
         config: CaptureConfig | None = None,
         loop: bool = False,
-        capture_factory: Callable[[str | int], Any] = cv2.VideoCapture,
+        capture_factory: Callable[[str | int], Any] | None = None,
     ) -> None:
         self.source = parse_source(source)
         self.config = config or CaptureConfig()
         self.loop = loop
         self.is_camera = isinstance(self.source, int)
-        self._capture_factory = capture_factory
+        self._capture_factory = capture_factory or cv2.VideoCapture  # OpenCV unless a test hands one in
 
         self._cap: Any = None
         self._thread: threading.Thread | None = None

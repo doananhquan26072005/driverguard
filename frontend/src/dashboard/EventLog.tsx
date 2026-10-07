@@ -1,5 +1,5 @@
 import { formatDateTime, formatNumber } from "../lib/format";
-import { LEVELS, reasonText } from "../lib/labels";
+import { EVENT_TAGS, LEVELS, eventReasonText } from "../lib/labels";
 import type { EventRecord } from "../lib/types";
 
 export function LevelBadge({ level }: { level: 0 | 1 | 2 | 3 }) {
@@ -52,7 +52,14 @@ export default function EventLog({
               <td>
                 <LevelBadge level={e.level} />
               </td>
-              <td>{e.reasons.map(reasonText).join(", ")}</td>
+              <td>
+                {e.reasons.map((r) => eventReasonText(r, e.metrics)).join(", ")}
+                {(e.tags ?? []).map((t) => (
+                  <span key={t} className="tag" title={EVENT_TAGS[t].hint} style={{ marginLeft: 6 }}>
+                    {EVENT_TAGS[t].title}
+                  </span>
+                ))}
+              </td>
               <td>{e.driver_id ?? "–"}</td>
               <td>{e.device_id}</td>
               <td>

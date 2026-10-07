@@ -5,9 +5,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { getTimeline, getTripReports, reviewTripReport } from "../lib/api";
 import { formatDateTime, formatNumber, formatPercent, type RangeKey } from "../lib/format";
-import { reasonText } from "../lib/labels";
+import { reasonText, unavailableCausesText } from "../lib/labels";
 import type { EventRecord, SampleRecord, Session, TripRating, TripReport } from "../lib/types";
-import { RATING_REASON_TEXT, RATING_TEXT, formatDuration, suggestionText } from "../hud/tripModel";
+import { RATING_REASON_TEXT, RATING_TEXT, formatDuration, glanceText, phoneKindText, suggestionText } from "../hud/tripModel";
 import FatigueChart from "./FatigueChart";
 
 const RATING_BADGE: Record<TripRating, string> = { good: "level-0", attention: "level-2", risk: "level-3" };
@@ -181,9 +181,12 @@ function ReportDetail({
     ["Microsleep / nhắm lâu nhất", `${s.microsleeps} / ${formatNumber(s.longest_closure_s, 1)} s`],
     ["Ngáp / gục đầu / nhướn mày", `${s.yawns} / ${s.nods} / ${s.brow_raises}`],
     ["Nhìn khỏi đường / cầm điện thoại", `${formatNumber(s.off_road_s, 0)} s / ${formatNumber(s.phone_s, 0)} s`],
+    ["Điện thoại: gọi / nhắn tin", phoneKindText(s)],
+    ["Liếc khỏi đường", glanceText(s)],
     [
       "Giám sát được",
-      `${formatPercent(s.monitored_frac, 0)} thời gian lái; tạm ngưng ${formatNumber(s.unavailable_s, 0)} s, mất camera ${formatNumber(s.camera_lost_s, 0)} s` +
+      `${formatPercent(s.monitored_frac, 0)} thời gian lái; tạm ngưng ${formatNumber(s.unavailable_s, 0)} s${unavailableCausesText(s.unavailable_by_cause) ? ` (${unavailableCausesText(s.unavailable_by_cause)})` : ""}, mất camera ${formatNumber(s.camera_lost_s, 0)} s` +
+        (s.turned_away_s ? `, quay hẳn đi rồi mất mặt ${formatNumber(s.turned_away_s, 0)} s` : "") +
         (s.vehicle_signal_lost_s ? `, mất tín hiệu xe ${formatNumber(s.vehicle_signal_lost_s, 0)} s` : ""),
     ],
     ["Đăng ký tài xế", s.enrolled ? "Có" : "Không (mốc tự học)"],

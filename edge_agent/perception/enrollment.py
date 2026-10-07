@@ -87,6 +87,8 @@ class DriverProfile:
     road_pitch: float
     anchor: DriverAnchor | None  # None when block 6 gave no face signature
     brow_neutral: float | None = None  # resting browOuterUp; None without blendshapes
+    blink_closed: float | None = None  # eyeBlink with the eyes shut (step 3); None without blendshapes
+    road_iris_y: float | None = None  # iris_y while looking at the road (step 2); None without iris landmarks
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,8 @@ class DriverEnrollment:
         self._values: dict[str, float] = {}  # results of the finished steps
         self._anchor: DriverAnchor | None = None
         self._brow: float | None = None
+        self._blink_closed: float | None = None
+        self._road_iris: float | None = None
         self._step_reset()
 
     def _step_reset(self) -> None:
@@ -286,8 +290,17 @@ class DriverEnrollment:
             if max(abs(yaw), abs(pitch)) > self.road_max_deg:
                 return "look_road"
             self._values.update(road_yaw=yaw, road_pitch=pitch)
+            # Where the iris sits when this driver looks at the road (block 8's gaze-down angle); blinks left out.
+            iris = [
+                f.iris_y
+                for f in s
+                if f.iris_y is not None and (f.eye_blink is None or f.eye_blink < cfg.eye_blink_shut)
+            ]
+            self._road_iris = float(np.median(iris)) if iris else None
             return None
         self._values["ear_closed"] = float(np.median([f.ear for f in s if f.ear is not None]))
+        blinks = [f.eye_blink for f in s if f.eye_blink is not None]
+        self._blink_closed = float(np.median(blinks)) if blinks else None
         return None
 
     @staticmethod
@@ -311,6 +324,8 @@ class DriverEnrollment:
             road_pitch=v["road_pitch"],
             anchor=self._anchor,
             brow_neutral=self._brow,
+            blink_closed=self._blink_closed,
+            road_iris_y=self._road_iris,
         )
         self._status = "done"
         self._duration = t - self._started_at if self._started_at is not None else None

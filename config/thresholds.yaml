@@ -60,7 +60,15 @@ eye_state:
   scale: 255.0
   closed_index: 0               # softmax index of "closed" (Intel demo: out[0] < out[1] = open)
   run_on_ir: true               # infrared / grayscale camera: call the CNN
-  low_light_brightness: 60      # mean luminance 0-255 of the FACE (before CLAHE) below this: EAR not trusted
+  # Mean luminance 0-255 of the FACE (before CLAHE) below this: EAR not trusted, the score decides.
+  # 0 = off (was 60 until 06/10): in low light the CNN was wrong both ways while EAR was not.
+  # Own recordings, face 32-35 (eval/results/own_recordings.md): eyes open and still for 5.5 min,
+  # the CNN said "closed" on 28 % of frames (EAR 0.71 x baseline, eyeBlink 0.19) -> 8 false L3;
+  # with 0: none, and 27 / 27 acted closures still reach L3. Same videos darkened in RAM
+  # (lighting_transforms.md, face 49): the CNN missed every closure. Dataset replays with 0: FL3D
+  # microsleeps with a new L3 72 -> 74 of 95, YawDD and SUST alerts unchanged. One person and one
+  # webcam for the real dim light: PROVISIONAL. Below quality.dark_face_brightness nothing is read.
+  low_light_brightness: 0
   ear_asymmetry_max: 0.35       # |EAR_L - EAR_R| / max(EAR_L, EAR_R) above this (glare, occlusion): EAR not trusted
   ear_asymmetry_min_open: 0.18  # ... only while one eye still looks open (EAR >= this); both closed = they agree
   hold_s: 2.0                   # keep the CNN this long after an ir / low_light trigger clears (no EAR <-> CNN flicker at dusk); not after ear_asymmetry (glasses: CNN weak)
@@ -74,6 +82,32 @@ features:
   # partly out of frame and its landmarks are extrapolated: blocks 7 and 8 treat the frame
   # as not measurable (no EAR / PERCLOS / eye baseline, no head pose, no MAR).
   min_face_conf: 0.9
+
+# Block 6 stage - Frame quality (edge_agent/perception/quality.py, PRD FR-6): what makes a frame
+# unusable, from numbers only. An issue that lasts becomes "monitoring unavailable" with that
+# reason in block 9 (risk.unavailable). A number that was not measured is never an issue.
+# PROVISIONAL limits. Outside what the datasets here show (12 videos each, face found: face
+# luminance 49-200, sharpness 4.4-670; night image NITYMED: mean 45-65, spread 15-29), and placed
+# where the same videos darkened / overexposed / blurred in RAM stop being read
+# (eval/results/lighting_transforms.md): FL3D microsleeps reaching L3 fall 18 -> 9 of 24 at a
+# median face luminance of 230, and 17 -> 2 between sharpness 5.1 and 2.3.
+# Own recordings in real dim light (one person, laptop webcam): face 32-35 is read by EAR (27 / 27
+# acted closures at L3, no false L3 in 5.5 min still); face 10-12 is not (5 false L3 in 2.9 min with
+# this limit off), so the limit stays between the two. A grey / infrared image is NOT covered:
+# block 5's eye CNN decides there and misses nearly every closure on greyed videos.
+quality:
+  enabled: true
+  dark_face_brightness: 25      # mean face luminance 0-255 (before CLAHE) below this: too dark; 0 = off
+  glare_face_brightness: 225    # ... above this: washed out (sun on the face); 0 = off
+  # Laplacian variance of the face's luminance below this: blurred (dirty lens, out of focus). 0 = off.
+  blur_sharpness: 3.0
+  # No face AND the whole image nearly black or nearly flat: the lens is covered (camera_blocked),
+  # not a driver out of view. 0 = off.
+  blocked_brightness: 12
+  blocked_contrast: 6           # spread (std) of the image luminance
+  clear_s: 1.0                  # usable frames for this long end an issue
+  window_s: 10                  # quality score = usable share of this window (HUD state, traces)
+  max_gap_s: 0.5                # a longer gap between frames adds no time
 
 # Block 6 stage - Driver enrollment (edge_agent/perception/enrollment.py)
 # Mandatory, at a stop, once per trip; nothing is stored after the trip. Three steps, each
@@ -111,8 +145,15 @@ phone:
   conf_threshold: 0.35
   iou_threshold: 0.45
   target_fps: 5            # YOLO runs ~5x/s, main loop reuses the latest result
-  num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe
+  num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe (#/live: only on a cross-origin isolated page, else 1)
   max_result_age_s: 0.6    # older results count as "unknown"
+  # Phone detection not working (M50): at least unknown_ratio of the last unknown_window_s of frames
+  # had no fresh result (YOLO slower than max_result_age_s, model not loaded, worker dead). The HUD
+  # shows it and the backend gets `phone_detection_lost`; back below unknown_clear_ratio:
+  # `phone_detection_restored`. The other branches go on. unknown_window_s 0 = off. PROVISIONAL.
+  unknown_window_s: 10.0
+  unknown_ratio: 0.8
+  unknown_clear_ratio: 0.5
   # Driver zone = face box grown by these factors (x face width, y face height).
   # Covers a phone at the ear (call) and in front of the chest (texting);
   # a passenger's phone outside this zone is ignored.
@@ -122,6 +163,14 @@ phone:
   # A phone in front of the face often hides the face: keep using the last face box
   # for this long, so the driver zone (and phone_near_face) is still known.
   face_memory_s: 3.0
+  # How the phone is held (M38, recorded only: the alert stays `phone`, L2). Phone centre against
+  # the face box: sideways from the face centre in face widths, down from the top of the face in
+  # face heights (0 = forehead, 1 = chin). call = beside the face at or above the chin;
+  # text = below the chin; anything else = unknown. PROVISIONAL: no data with a face camera yet.
+  kind:
+    call_side_min: 0.35
+    call_below_max: 1.0
+    text_below_min: 1.0
 
 
 # Block 7 - Drowsiness branch
@@ -145,6 +194,11 @@ drowsiness:
     # reopened when p_closed <= cnn_open (hysteresis).
     cnn_closed: 0.6
     cnn_open: 0.4
+    # Same when block 5's score is MediaPipe's eyeBlink (eye_state.source: blendshape, the web / APK
+    # build). eyeBlink reads lower than the CNN on shut eyes (0.55-0.7 against ~0.9): with the CNN's
+    # numbers a closure seen through eyeBlink never counted. Numbers: microsleep_deep.blendshape.
+    blendshape_closed: 0.4
+    blendshape_open: 0.3
     # After driver enrollment the baseline starts at the enrolled open-eye EAR and stays within
     # [1 - enrolled_max_drop, 1 + enrolled_max_rise] x it: eyes narrowing as the driver gets
     # drowsy no longer pull the baseline down and hide PERCLOS / deep closures.
@@ -167,11 +221,37 @@ drowsiness:
   microsleep_deep:
     ear_ratio: 0.5
     cnn: 0.8
+    # Block 5 score = eyeBlink (web / APK build, eye.blendshape_closed / blendshape_open). Replay
+    # 06/10 with eyeBlink deciding EVERY frame, which is what a grayscale / infrared camera gives
+    # that build (colour camera: only the frames with unequal eyes, alerts about as before):
+    #   closed/open/deep    own closures   false L3 while    FL3D micro-   YawDD    UTA-RLDD awake       UTA-RLDD drowsy,
+    #                       at L3          looking down      sleeps at L3  L3       drowsy alerts / h    subjects with L3
+    #   0.6/0.4/0.8 (CNN's) 0 / 48         0 / 30            0 / 95        0        0                    1 / 48
+    #   0.5/0.35/0.55       46 / 48        4 / 30            62 / 95       1        0.25                 19 / 48
+    #   0.4/0.3/0.5         46 / 48        7 / 30            72 / 95       5        0.63                 25 / 48
+    #   0.4/0.3/0.55        46 / 48        3 / 30            64 / 95       1        0.50                 19 / 48
+    #   0.4/0.3/0.6         46 / 48        1 / 30            57 / 95       0        0.50                 16 / 48
+    #   device path (EAR)   47 / 48        7 / 30            74 / 95       1        1.13                 24 / 48
+    # PROVISIONAL: colour video, no real infrared image yet (docs/improvements.md).
+    blendshape: 0.55
     min_frac: 0.5
     # EAR deep frames also need MediaPipe eyeBlink >= this (0 = off): EAR also collapses for glare on
     # glasses, a head tilted down, narrow eyes before the baseline is learnt. NITYMED false microsleeps
     # 16 -> 7 / h with the same L3 recall; YawDD false microsleeps 7 -> 4.
     blink: 0.5
+    # Enrolled driver (OFF, 0): the vote needs enrolled_blink_ratio x the eyeBlink of that driver's own
+    # shut eyes (close-eyes step of the enrollment) when that is above `blink`. Meant for lids lowered
+    # to look at a phone on the lap, which read as a deep closure (false L3 "Mở mắt!"). Measured 06/10
+    # (docs/improvements.md), own recordings of one person (shut eyeBlink 0.69) and FL3D with each
+    # video's first microsleep as a stand-in for the enrollment:
+    #   ratio   false L3 while looking down   own closures at L3   FL3D microsleeps at L3
+    #   0       7 / 30                        47 / 48              77 / 94
+    #   0.8     4 / 30                        47 / 48              75 / 94
+    #   0.85    2 / 30                        47 / 48              66 / 94
+    #   0.9     1 / 30                        43 / 48              61 / 94
+    # No ratio removes the false L3 without losing real microsleeps: a drowsy closure is shallower
+    # than the driver's own deliberate one. Left off; 0.8 is the mildest setting to try.
+    enrolled_blink_ratio: 0
     # Head bowed (phone, dashboard): the upper lids follow the gaze down, EAR ~0.5 x and eyeBlink ~0.6,
     # which read as a deep closure (L3 "Mở mắt!" while just looking down). Bowed >= bowed_pitch_deg
     # below the usual pose: a deep EAR frame needs EAR <= bowed_ear_ratio x baseline. FL3D real
@@ -197,6 +277,20 @@ drowsiness:
     # driver hid real microsleeps. With the vote: NITYMED microsleep >= 1.5 s at L3 68 -> 79 %, YawDD
     # false alerts unchanged (10); without the vote it adds false ones (YawDD 10 -> 14).
     talk_spares_deep: true
+  # WHAT perclos_60s IS (M40): not the P80 of the literature. P80 = share of time the lids are more
+  # than 80 % closed (opening below 20 %). Here a frame is closed when EAR < perclos_close_ratio x
+  # the open-eye baseline: with closed eyes at ~0.35 x baseline (blink_closed_ref_ratio) that is an
+  # opening below ~46 %, close to "P50", so it also counts narrowed eyes and reads higher than P80
+  # on the same stretch. Two definitions are also mixed in one window: frames block 5 decided
+  # count as closed on p_closed >= eye.cnn_closed, a probability and not an opening (FL3D 8.9 %,
+  # SUST 7.6 % of frames). Frames masked for yawning / talking are skipped (perclos_use_mask),
+  # which P80 does not do either.
+  # SOURCE of perclos_drowsy / perclos_rearm and risk.drowsy.perclos_low / perclos_high: none
+  # recorded. 0.15 dates from M2 (commit 4077bd5) with no reference; docs/research/2026-10-01-
+  # blink-nod-brow.md only notes that 12-20 % (P80) is common in the literature and that a
+  # commercial DMS video mentions ~16 %. They were then tuned by hand on YawDD / NITYMED with THIS
+  # definition, so they are not P80 thresholds. Abe 2023 (Sleep Advances 4(1):zpad006) gives no
+  # validated PERCLOS threshold either. Comparison of the definitions: eval/results/perclos_p80.md.
   perclos_window_s: 60
   perclos_min_coverage_s: 30    # eye data needed before PERCLOS can raise an event
   perclos_drowsy: 0.15          # PERCLOS at or above this = perclos_high event
@@ -206,6 +300,12 @@ drowsiness:
   # judged per frame (CNN frames: p_closed >= eye.cnn_closed). Not the eye close / reopen
   # hysteresis: after a blink it keeps narrowed eyes (sun, 0.65-0.75 x baseline) "closed".
   perclos_close_ratio: 0.65
+  # P80 measured next to it (perclos_p80_60s: traces and event metadata only, never in drowsy_score
+  # or an event): a frame is closed when the eye opening (0 = the driver's closed EAR .. 1 =
+  # open-eye baseline, as slow blinks use) is below this. Only frames where EAR decided; block 5
+  # frames are unknown and lower its coverage. No yawn / talking mask, blinks kept (the original
+  # definition). Without enrollment this is EAR < (0.35 + 0.2 x 0.65) = 0.48 x baseline.
+  perclos_p80_aperture: 0.2
   yawn:
     mar_open: 0.45              # yawn_eye_mouth + YawDD: recall 73% -> 84% of Yawning clips, no new FP
     mar_close: 0.34
@@ -294,6 +394,36 @@ distraction:
     # Adaptation then stays within +-max_deg of the calibrated pose. 0 = off.
     calibrate_s: 5.0
     calibrate_max_deg: 45
+  # Many short glances (M38, measured only, no alert): off_road_ratio = share of the last window_s
+  # spent off road, glance_count = times the driver looked away in it. 0 until min_coverage_s of
+  # driving is in the window. PROVISIONAL window: no source read yet for a cumulative glance limit
+  # (NHTSA in-vehicle device guidelines, AttenD), see docs/improvements.md.
+  glance:
+    window_s: 30
+    min_coverage_s: 10
+    max_gap_s: 0.5                  # a longer gap between frames adds no time
+  # Where the eyes point below the road (measured only, no alert): gaze-down angle = head pitch off
+  # the road pose + iris_gain x (iris_y off the driver's usual value; iris_y = iris centre against
+  # the line through the eye corners, in eye widths). gaze_down_duration = how long it has stayed at
+  # or above down_deg. For looks at a phone on the lap or a low mount, which move the eyes more than
+  # the head (pitch limit: pitch_down_off_road_deg). At 12 held 2 s (eval/results/gaze_3mdad.md, own
+  # recordings, FL3D): message sequences of 50 drivers 7 right hand, 13 left (off_road alert today:
+  # 4 and 1), safe driving and fatigue 0 / 50, own closed eyes 0 / 48, phone on the lap 4 / 7. Too
+  # weak and not clean enough for an alert: it also holds on 10 of 50 right-hand calls, and on FL3D
+  # 2 times outside and 6 times inside real microsleeps in 47 min. PROVISIONAL, measured to be
+  # judged on real drives. down_deg 0 = off.
+  gaze:
+    iris_gain: 100                  # degrees per eye width of iris_y
+    down_deg: 12
+    calibrate_s: 5.0                # driving time whose median iris_y is the first usual value
+  # Face lost right after a large head turn (M38): the last reliable pose (at most pose_age_s old)
+  # was off road and turned more than yaw_deg, so the driver is looking behind, not out of view.
+  # Off road goes on for at most max_s instead of "monitoring unavailable" (risk.unavailable); then
+  # unavailable as before. yaw_deg 0 = off. PROVISIONAL, no data with drivers reaching back.
+  turned_away:
+    yaw_deg: 45
+    max_s: 10
+    pose_age_s: 0.5
 
 # Block 10 - Vehicle context (from CAN, simulated by edge_agent/context/can_sim.py)
 context:
@@ -318,15 +448,25 @@ context:
 # Block 9 - Risk engine (rule table: docs/workflow/workflow_full_4.jpg)
 risk:
   microsleep_l3_s: 1.5          # closed_duration >= this -> L3 at once
+  # Eyes still closed this long (the L3 siren has been on for seconds): L3 reason `unresponsive`,
+  # a second event that goes to the backend at once (fleet view "needs attention now"). The system
+  # only reads the vehicle, it never slows it down. 0 = off. PROVISIONAL: FL3D acted microsleeps
+  # are 1.5-4 s, none this long.
+  unresponsive:
+    closed_s: 6.0
   drowsy:
     # drowsy_score = sum(weight x term), each term normalised to 0..1, total 0..100
     weight_perclos: 40
     weight_microsleep: 25
     weight_yawn: 15
     weight_nod: 20
-    # v2 (TEMPORARY, to be tuned on eval data): the total can exceed 100, the score is capped at 100.
-    weight_slow_blink: 10       # drowsiness.slow_blink: slow / long blinks
-    weight_brow: 10             # drowsiness.brow: brows raised to keep the eyes open
+    # Slow blinks and brow raises are measured and recorded, but add nothing to the score (weight 0,
+    # M53): on UTA-RLDD (48 people, real drowsiness, own alert video against own drowsy video) neither
+    # separates the two within a person (sign test p = 0.84 / 1.0 on the 24 dev subjects, 0.29 / 0.51
+    # on the 24 held-out ones). Without them the score separates better (AUC drowsy vs alert 0.793 ->
+    # 0.859 dev) and the four weights above add up to 100. eval/results/dataset_uta_rldd.md.
+    weight_slow_blink: 0        # drowsiness.slow_blink: slow / long blinks (was 10)
+    weight_brow: 0              # drowsiness.brow: brows raised to keep the eyes open (was 10)
     perclos_low: 0.05           # PERCLOS term ramps 0 -> 1 between low and high
     perclos_high: 0.20
     # No PERCLOS term before drowsiness.perclos_min_coverage_s of eye data.
@@ -350,10 +490,20 @@ risk:
   # PRD FR-6: no face this long while moving (camera covered, driver out of view, glare) ->
   # monitoring unavailable: no alert while it lasts, the HUD and the backend are told instead.
   # A closure carried through a head drop (block 7) stays monitored (microsleep L3 goes on).
+  # A face in view but unusable (quality: low_light, glare, blur) for low_quality_s: unavailable too,
+  # with that reason. Longer than no_face_s: a passing shadow or a tunnel entrance is not a reason
+  # to stop judging. The reason of a lost face is camera_blocked / bad_angle when the image says so,
+  # else no_face. PROVISIONAL.
   unavailable:
     no_face_s: 3.0              # 0 = never unavailable
+    low_quality_s: 5.0          # 0 = a poor face never makes monitoring unavailable
+  # Rising-score early warning: note only since M53 (was level 1). On UTA-RLDD it was in 5 of the 9
+  # drowsiness false alarms of 24 alert people (dev) and 3 of 8 on the held-out 24; with it off and
+  # the two weights above at 0, false alarms 9 -> 5 (dev) and 8 -> 4 (held out, 1.96 -> 0.98 / h),
+  # L3 detections unchanged. Those videos are 10 min long: whether it helps on drives of hours is
+  # not measured; set level back to 1 to try it there.
   trend:
-    level: 1                    # early warning: suggest a break
+    level: 0                    # 0 = note only; 1 = early warning "suggest a break"
     min_points: 5               # minutes of history needed
     slope_per_min: 2.0          # drowsy_score points per minute
     min_score: 20               # ignore a rising trend while the score is still low
@@ -397,6 +547,22 @@ alert:
   # or a driver change restarts the count. 0 = off. Provisional: no dataset has drives this long.
   l1_repeat_count: 3
   l1_repeat_window_s: 600
+  # Repeated L3 (M44): the l3_repeat_count-th L3 alert within l3_repeat_window_s carries the reason
+  # repeated_l3 (the driver keeps falling asleep); sent at once, shown on the fleet view while it
+  # happens. A rest or a driver change restarts the count. 0 = off. Provisional.
+  l3_repeat_count: 3
+  l3_repeat_window_s: 600
+
+# Block 12 stage - Presence check (edge_agent/decision/presence.py, docs/safety-fmea.md row 6).
+# Face lost while moving with a normal image (unavailable, reason no_face) for ask_after_s: the HUD
+# asks "Bạn còn ở đó không?" with a sound; one tap anywhere answers, and so does the face coming
+# back. No answer for answer_s: `no_answer` goes to the backend at once. ask_after_s counts from
+# the moment monitoring became unavailable (risk.unavailable.no_face_s after the face was lost).
+# PROVISIONAL: no data on how long drivers lean out of view on purpose (toll booth, mirror).
+presence:
+  enabled: true
+  ask_after_s: 5.0
+  answer_s: 10.0
 
 # Block 13 - In-car HUD server
 hud:
@@ -426,6 +592,10 @@ publisher:
   # The loop is alive but no frame came for this long while the camera is not reported lost
   # (page in the background, camera thread stuck): the heartbeat says "stalled", not "monitoring".
   heartbeat_stalled_s: 10.0
+  # Thresholds tuned on the dashboard (M47): ask the backend again this often during the trip. A
+  # changed version (newer, rolled back, or pinned to this device for a trial) is applied only
+  # while the vehicle is parked, then `config_applied` goes to the backend. 0 = only at start-up.
+  config_poll_s: 300.0
 
 # Evaluation tools only (tools/metrics.py, used by tools/eval.py and tools/seq_eval.py), never read
 # by the agent. FAR / MAR on fixed windows, next to false alarms per hour (docs/improvements.md §2).
@@ -434,3 +604,23 @@ eval:
   warmup_s: 30                  # left out at each clip start (baselines, PERCLOS window), reported apart
   positive_frac: 0.5            # drowsy window: ≥ this inside a labelled episode; awake: ≥ this known-awake
   min_level: 1                  # predicted drowsy: the branch reaches this level in the window (L2 also reported)
+  # Own recordings (tools/record_trace.py): an alert / event up to this long before the key press or
+  # after the label's end still belongs to it (the person presses the key about when they start).
+  label_tolerance_s: 1.0
+  # tools/trace_studies.py lighting: results are split by the median face brightness of a video
+  # (mean luminance 0-255 of the face before CLAHE, the number of eye_state.low_light_brightness).
+  # The first edge is that threshold, so the first bin is "block 5 does not trust EAR".
+  brightness_bins: [60, 100, 140]
+  # tools/trace_studies.py personal: the first seconds of a person's awake clip stand in for driver
+  # enrollment (medians of the good frames = open-eye EAR, closed-mouth MAR, road pose).
+  fake_enroll_s: 10
+  # tools/light_study.py: the same videos run again darkened (gamma: out = 255 x (in / 255) ^ g),
+  # overexposed (gain: in x k, clipped), blurred (Gaussian sigma in pixels at 640 px width), in RAM.
+  light_gammas: [1.5, 2.2, 3.5, 5.0]
+  light_gains: [1.5, 2.5, 4.0]
+  light_blur_sigmas: [1.5, 3.0, 6.0]
+  # tools/benchmark.py --duration (long run): every minute must keep at least soak_min_fps
+  # (CLAUDE.md: 15 FPS), and resident memory must grow by less than this after the first minute
+  # (a leak: frames live in RAM only, none may be kept). PROVISIONAL growth limit.
+  soak_min_fps: 15
+  soak_rss_growth_mb_per_h: 20

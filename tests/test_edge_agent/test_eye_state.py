@@ -280,3 +280,57 @@ def test_decide_holds_scene_triggers_only():
     assert est.decide(0.5 + CFG.hold_s + 0.1, None) is None
     assert est.decide(10.0, "ear_asymmetry") == "ear_asymmetry"
     assert est.decide(10.1, None) is None  # asymmetry is not held
+
+
+# ---------------------------------------------------------------- 06/10: eyeBlink has its own thresholds in block 7
+
+
+def run_blendshape(analyzer, seconds, score, t0=0.0, fps=30, source="blendshape"):
+    states = []
+    for i in range(round(seconds * fps)):
+        f = FrameFeatures(i, t0 + i / fps, True, 1.0, ear=0.30, ear_left=0.30, ear_right=0.30, mar=0.05, pitch=0.0,
+                          yaw=0.0, roll=0.0, p_closed=score, eye_cnn_reason="ir", p_closed_source=source)  # fmt: skip
+        states.append(analyzer.update(f))
+    return states
+
+
+def test_block_5_names_its_score():
+    est = make_estimator(EyeStateConfig(source="blendshape"))
+    assert est(frame(is_ir=True), face_landmarks(), feats()).p_closed_source == "blendshape"
+    cnn = EyeStateEstimator(classifier=lambda crops: np.full(len(crops), 0.8))
+    assert cnn(frame(is_ir=True), landmarks(), feats()).p_closed_source == "cnn"
+    assert cnn(frame(t=10.0), landmarks(), feats(t=10.0)).p_closed_source is None  # EAR decides: no score
+
+
+def test_eye_blink_closure_is_a_microsleep_below_the_cnn_thresholds():
+    # Shut eyes read ~0.65 on eyeBlink: under the CNN's 0.8 it was never a deep closure (web / APK, IR camera).
+    a = DrowsinessAnalyzer()
+    run_blendshape(a, 15, 0.05)
+    s = run_blendshape(a, 1.6, 0.65, t0=15)
+    assert s[-1].eye_closed is True and s[-1].eye_source == "blendshape"
+    assert any("microsleep" in x.events for x in s) and s[-1].closed_duration > 1.0
+
+
+def test_the_same_score_from_the_cnn_is_not_deep():
+    a = DrowsinessAnalyzer()
+    run_blendshape(a, 15, 0.05, source="cnn")
+    s = run_blendshape(a, 1.6, 0.65, t0=15, source="cnn")
+    assert s[-1].eye_closed is True and s[-1].closed_duration == 0.0
+    assert not any("microsleep" in x.events for x in s)
+
+
+def test_lowered_lids_on_eye_blink_are_closed_but_not_deep():
+    # Looking down: eyeBlink ~0.5, above blendshape_closed (0.4) and below microsleep_deep.blendshape (0.55).
+    a = DrowsinessAnalyzer()
+    run_blendshape(a, 15, 0.05)
+    s = run_blendshape(a, 3, 0.5, t0=15)
+    assert s[-1].eye_closed is True and s[-1].closed_duration == 0.0
+
+
+def test_eye_blink_hysteresis():
+    a = DrowsinessAnalyzer()
+    run_blendshape(a, 15, 0.05)
+    assert run_blendshape(a, 0.2, 0.35, t0=15)[-1].eye_closed is False  # between 0.3 and 0.4: stays open
+    assert run_blendshape(a, 0.2, 0.45, t0=15.2)[-1].eye_closed is True
+    assert run_blendshape(a, 0.2, 0.35, t0=15.4)[-1].eye_closed is True  # stays closed until <= 0.3
+    assert run_blendshape(a, 0.2, 0.25, t0=15.6)[-1].eye_closed is False

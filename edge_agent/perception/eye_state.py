@@ -5,7 +5,8 @@ Two sources, `source` in thresholds.yaml:
   extra model, no measurable time). On NITYMED night driving it separates closed eyes as
   well as EAR (AUC 0.986 vs 0.987), the CNN below only 0.881.
 - "cnn": the open-closed-eye-0001 CNN on eye crops, described below.
-The chosen score goes to FrameFeatures.p_closed; block 7 applies the same hysteresis to both.
+The chosen score goes to FrameFeatures.p_closed with its name in p_closed_source: the two are not on
+the same scale (shut eyes: CNN ~0.9+, eyeBlink ~0.55-0.7), so block 7 has thresholds for each.
 
 CNN model: Intel Open Model Zoo `open-closed-eye-0001` (Apache-2.0), trained on the MRL Eye
 dataset (mostly infrared eye crops), 46 KB ONNX. Input: BGR 32x32, (x - 127) / 255.
@@ -41,10 +42,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-import cv2
 import numpy as np
 
 from edge_agent.config import PROJECT_ROOT, ConfigError, config_from_dict
+from edge_agent.cv import cv2
 from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.landmarks import FaceLandmarks
 from edge_agent.perception.preprocess import PreprocessedFrame
@@ -92,6 +93,7 @@ class EyeState:
     p_closed_left: float
     p_closed_right: float
     reason: str  # why the score was used: ir, low_light, ear_asymmetry, always
+    source: str = "cnn"  # which score it is: cnn | blendshape
 
     @property
     def p_closed(self) -> float:
@@ -208,6 +210,7 @@ class EyeStateEstimator:
             if lm.eye_blink is None:  # blendshapes off in block 3: EAR decides
                 return None
             p_left, p_right = lm.eye_blink
+            source = "blendshape"
         else:
             crops = np.stack(
                 [
@@ -216,14 +219,17 @@ class EyeStateEstimator:
                 ]
             )
             p_left, p_right = (float(p) for p in self._classifier(crops))
+            source = "cnn"
         self.runs += 1
-        return EyeState(p_closed_left=p_left, p_closed_right=p_right, reason=reason)
+        return EyeState(p_closed_left=p_left, p_closed_right=p_right, reason=reason, source=source)
 
     def __call__(self, pre: PreprocessedFrame, lm: FaceLandmarks | None, f: FrameFeatures) -> FrameFeatures:
         state = self.estimate(pre, lm, f)
         if state is None:
             return f
-        return dataclasses.replace(f, p_closed=state.p_closed, eye_cnn_reason=state.reason)
+        return dataclasses.replace(
+            f, p_closed=state.p_closed, eye_cnn_reason=state.reason, p_closed_source=state.source
+        )
 
 
 def make_estimator(config: EyeStateConfig) -> EyeStateEstimator | None:

@@ -3,7 +3,8 @@
 From 478 MediaPipe landmarks compute:
 - ear (Eye Aspect Ratio), per eye and mean: small when the eye is closed.
 - mar (Mouth Aspect Ratio): large when the mouth is open (yawn).
-- pitch / yaw / roll in degrees via cv2.solvePnP against a generic 3D face model.
+- pitch / yaw / roll in degrees via cv2.solvePnP against a generic 3D face model (in the browser,
+  which ships no OpenCV, the same fit in numpy: edge_agent/perception/geometry.py).
 
 Angle conventions (camera looking at the driver):
 - pitch > 0: head tilted down (nodding), < 0: looking up
@@ -23,10 +24,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import cv2
 import numpy as np
 
 from edge_agent.config import config_from_dict
+from edge_agent.cv import cv2
+from edge_agent.perception.geometry import rodrigues, rq_euler_degrees, solve_pnp
 from edge_agent.perception.landmarks import FaceLandmarks, face_center_size, face_shape
 
 # MediaPipe Face Mesh indices. "Right"/"left" are the driver's own sides.
@@ -92,11 +94,48 @@ class FrameFeatures:
     # Block 5 (eye-state score), only set on frames where EAR is not reliable.
     p_closed: float | None = None
     eye_cnn_reason: str | None = None
+    p_closed_source: str | None = None  # "cnn" or "blendshape": the scales differ, block 7 has thresholds for each
     # Who this face is, as numbers (driver enrollment, block 3's DriverSelector): landmark-ratio
     # signature, face centre and inter-ocular distance (both / image width).
     face_shape: tuple[float, ...] | None = None
     face_center: tuple[float, float] | None = None
     face_size: float | None = None
+    # Frame quality numbers (edge_agent/perception/quality.py), None when not measured: mean luminance
+    # 0-255 of the face and of the whole image (before CLAHE), luminance spread (std) of the whole
+    # image, Laplacian variance of the face.
+    face_brightness: float | None = None
+    scene_brightness: float | None = None
+    scene_contrast: float | None = None
+    sharpness: float | None = None
+    # Iris centre against the line through the eye corners, mean of both eyes, in eye widths (> 0 =
+    # below the line: the eyes look down). None without the iris landmarks (478-point model).
+    iris_y: float | None = None
+
+
+# MediaPipe iris centres and the corners of the same eye (outer, inner); "left" = the driver's left.
+IRIS = {"l": (473, 263, 362), "r": (468, 33, 133)}
+
+
+def iris_offsets(points: np.ndarray) -> dict[str, float]:
+    """Iris centre against the eye corners, per eye: iris_x = position along the corner line, -0.5 at
+    the outer corner .. +0.5 at the inner one (0 = middle); iris_y = distance from that line in eye
+    widths, > 0 below it (image y grows downwards). Needs the 478-point model (iris landmarks)."""
+    out: dict[str, float] = {}
+    if len(points) < 478:
+        return out
+    for side, (iris, outer, inner) in IRIS.items():
+        a, b, c = points[outer, :2], points[inner, :2], points[iris, :2]
+        axis = b - a
+        width2 = float(axis @ axis)
+        if width2 < 1e-9:
+            continue
+        along = float((c - a) @ axis) / width2
+        normal = np.array([-axis[1], axis[0]]) / np.sqrt(width2)
+        if normal[1] < 0:  # keep "down in the image" positive whichever way the corner line runs
+            normal = -normal
+        out[f"iris_x_{side}"] = along - 0.5
+        out[f"iris_y_{side}"] = float((c - a) @ normal) / float(np.sqrt(width2))
+    return out
 
 
 def _dist(a: np.ndarray, b: np.ndarray) -> float:
@@ -126,9 +165,12 @@ def camera_matrix(width: int, height: int, focal_length_scale: float) -> np.ndar
 
 def rotation_to_euler(rvec: np.ndarray) -> tuple[float, float, float]:
     """Rotation vector -> (pitch, yaw, roll) in degrees using the module conventions."""
-    rmat, _ = cv2.Rodrigues(rvec)
-    angles, *_ = cv2.RQDecomp3x3(rmat)
-    ax, ay, az = angles
+    if cv2 is None:  # browser build: the same computation in numpy (geometry.py)
+        ax, ay, az = rq_euler_degrees(rodrigues(rvec))
+    else:
+        rmat, _ = cv2.Rodrigues(rvec)
+        angles, *_ = cv2.RQDecomp3x3(rmat)
+        ax, ay, az = angles
     return float(ax), float(-ay), float(az)
 
 
@@ -154,16 +196,19 @@ class FeatureExtractor:
         image_points = lm.points[list(POSE_LANDMARKS), :2].astype(np.float64)
         cam = camera_matrix(lm.image_width, lm.image_height, self.config.focal_length_scale)
         use_guess = self._rvec is not None
-        ok, rvec, tvec = cv2.solvePnP(
-            POSE_MODEL_POINTS,
-            image_points,
-            cam,
-            np.zeros(4),
-            rvec=self._rvec.copy() if use_guess else None,
-            tvec=self._tvec.copy() if use_guess else None,
-            useExtrinsicGuess=use_guess,
-            flags=cv2.SOLVEPNP_ITERATIVE,
-        )
+        if cv2 is None:  # browser build (geometry.py, held against OpenCV by test_geometry.py)
+            ok, rvec, tvec = solve_pnp(POSE_MODEL_POINTS, image_points, cam, self._rvec, self._tvec)
+        else:
+            ok, rvec, tvec = cv2.solvePnP(
+                POSE_MODEL_POINTS,
+                image_points,
+                cam,
+                np.zeros(4),
+                rvec=self._rvec.copy() if use_guess else None,
+                tvec=self._tvec.copy() if use_guess else None,
+                useExtrinsicGuess=use_guess,
+                flags=cv2.SOLVEPNP_ITERATIVE,
+            )
         if not ok or tvec[2, 0] <= 0:  # face must be in front of the camera
             self.reset()
             return None
@@ -182,6 +227,7 @@ class FeatureExtractor:
         pose = self.head_pose(lm)
         pitch, yaw, roll = pose if pose is not None else (None, None, None)
         center, size = face_center_size(lm.points, lm.image_width)
+        iris = iris_offsets(lm.points)
         return FrameFeatures(
             frame_id=frame_id,
             timestamp=timestamp,
@@ -200,4 +246,5 @@ class FeatureExtractor:
             face_shape=face_shape(lm.points),
             face_center=center,
             face_size=size,
+            iris_y=(iris["iris_y_l"] + iris["iris_y_r"]) / 2.0 if len(iris) == 4 else None,
         )

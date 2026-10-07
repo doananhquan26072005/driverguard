@@ -1,0 +1,14 @@
+# Resource profiles for simulated-device runs (tools/benchmark.py --profile, tools/edge_sim.py).
+# cpus / memory_mb: what the container is capped to; threads: threads per model (onnxruntime, OpenCV).
+# These reproduce the core count and memory of a board, NOT its per-core speed, GPU or heat: a run
+# under a profile is labelled `simulated` and is an upper bound for that board, not a measurement.
+jetson_nano:
+  cpus: 4
+  memory_mb: 4096
+  threads: 2
+  note: "Jetson Nano: 4 x Cortex-A57, 4 GB"
+jetson_orin_nano:
+  cpus: 6
+  memory_mb: 8192
+  threads: 2
+  note: "Jetson Orin Nano 8 GB: 6 x Cortex-A78AE, 8 GB"

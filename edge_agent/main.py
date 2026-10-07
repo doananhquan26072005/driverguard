@@ -16,7 +16,9 @@ blocks 6-12, keeps the HUD state and builds the block 14 records; this file is t
 13 HUD: preview window, plus a local server on 127.0.0.1:--hud-port for the in-car HUD screen
     (frontend #/hud) with the "false alarm" button.
 14: alerts, false-alarm feedback and one fatigue sample per minute go to the backend (batched,
-    offline queue), and the trip summary when the trip ends. Thresholds tuned by engineers are fetched from the backend at startup.
+    offline queue), and the trip summary when the trip ends. Thresholds tuned by engineers are fetched from the
+    backend at startup and again every publisher.config_poll_s; a changed version is applied only while the
+    vehicle is parked (M47).
 End of trip: the driver presses "Kết thúc chuyến" on the HUD (POST /end-trip), or the agent
 stops (q, end of video, Ctrl+C). Block 11 then builds the trip summary (alerts, fatigue per
 minute, coverage, assessment, suggestions): it goes to the backend for the driver and the
@@ -30,7 +32,8 @@ Driver enrollment (block 6 stage): at the first stop the HUD guides the driver t
 short steps; once done, block 3 picks the driver among several faces by the enrolled face
 signature, and blocks 7 / 8 use the driver's own baselines. Until then, everything runs on the
 self-learnt baselines. A driver_enrolled event (duration, steps redone) goes to the backend.
-Face lost while moving for risk.unavailable.no_face_s: monitoring unavailable (PRD FR-6), no
+Face lost while moving for risk.unavailable.no_face_s, or in view but unusable (too dark, washed
+out, blurred: block 6 quality stage) for low_quality_s: monitoring unavailable (PRD FR-6), no
 alert; the HUD shows it and monitoring_unavailable / monitoring_restored go to the backend.
 A frame that fails in blocks 2-14 is caught: the loop goes on, and failing frames for
 hud.processing_error_s show "processing error" on the HUD and send agent_error (M28).
@@ -44,8 +47,10 @@ Frames live in RAM only: nothing here writes images to disk.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import os
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -66,8 +71,8 @@ from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.hud.hud import alert_line, draw_hud, enrollment_line, status_line, trip_summary_line
 from edge_agent.hud.server import DEFAULT_ORIGINS, HudServer
 from edge_agent.io.publisher import MetadataPublisher, PublisherConfig, http_transport
-from edge_agent.io.remote_config import apply_overrides, fetch_thresholds
-from edge_agent.perception import PreprocessConfig, Preprocessor
+from edge_agent.io.remote_config import ThresholdReloader, apply_overrides, fetch_remote
+from edge_agent.perception import PreprocessConfig, Preprocessor, quality
 from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
 from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
@@ -76,9 +81,11 @@ from edge_agent.perception.phone_detector import (
     FaceBoxMemory,
     PhoneDetectorConfig,
     face_bbox,
+    phone_kind,
     phone_near_face,
 )
 from edge_agent.runtime import TripRuntime
+from edge_agent.version import model_fingerprints, version_info
 
 WINDOW = "DriverGuard"
 
@@ -113,14 +120,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     th = load_thresholds(args.config)
+    base_th = th  # the device's own YAML: reloaded overrides are applied on top of it (M47)
     device_key = args.device_key or os.environ.get("DG_DEVICE_KEY", "")
+    thresholds_version, thresholds_ignored = 0, False  # reported back to the backend (edge_agent/version.py)
     if args.backend and device_key:  # engineers' tuned thresholds override the local YAML
-        remote = fetch_thresholds(args.backend, device_key)
+        remote = fetch_remote(args.backend, device_key)
         if remote is None:
             print("[config] backend unreachable: using local thresholds.yaml")
-        elif remote:
-            th, problems = apply_overrides(th, remote)
-            print(f"[config] {len(remote)} tuned thresholds" + (f" IGNORED: {problems}" if problems else " applied"))
+        elif remote[1]:
+            version, values = remote
+            th, problems = apply_overrides(th, values)
+            thresholds_version, thresholds_ignored = (0, True) if problems else (version, False)
+            print(
+                f"[config] {len(values)} tuned thresholds (version {version})"
+                + (f" IGNORED: {problems}" if problems else " applied")
+            )
     if not args.hud_port and th.get("enrollment", {}).get("require_consent", True):
         # No HUD: nobody can read the consent screen or answer it, so the steps start as before.
         th["enrollment"] = {**th.get("enrollment", {}), "require_consent": False}
@@ -130,7 +144,8 @@ def main(argv: list[str] | None = None) -> int:
     preprocessor = Preprocessor(PreprocessConfig.from_dict(th.get("preprocess")))
     landmarks = FaceLandmarkDetector(LandmarkConfig.from_dict(th.get("landmarks")))
     extractor = FeatureExtractor(FeatureConfig.from_dict(th.get("features")))
-    eye_state = make_estimator(EyeStateConfig.from_dict(th.get("eye_state")))
+    eye_cfg = EyeStateConfig.from_dict(th.get("eye_state"))
+    eye_state = make_estimator(eye_cfg)
     phone_cfg = PhoneDetectorConfig.from_dict(th.get("phone"))
     phone = None
     if not args.no_phone:
@@ -166,10 +181,41 @@ def main(argv: list[str] | None = None) -> int:
             publisher.start()
             print(f"[publisher] {args.backend} as {args.device_id}, trip {trip_id}, {publisher.queued} queued")
 
+    models = model_fingerprints(
+        {
+            "landmarks": landmarks.config.resolved_model_path(),
+            "eye_state": eye_cfg.resolved_model_path() if eye_state is not None and eye_cfg.source == "cnn" else None,
+            "phone": phone_cfg.resolved_model_path() if phone is not None else None,
+        }
+    )
+    versions = version_info(thresholds_version, models, thresholds_ignored)
+    print(f"[main] app {versions['app']}, thresholds version {thresholds_version}, models {models}")
     runtime = TripRuntime(
-        th, trip_id, can, scenario_name, landmarks.selector, emit=publisher.publish_record if publisher else None
+        th,
+        trip_id,
+        can,
+        scenario_name,
+        landmarks.selector,
+        emit=publisher.publish_record if publisher else None,
+        versions=versions,
+        phone_expected=not args.no_phone,  # a model that failed to load is reported, --no-phone is a choice
     )
     hud_state = runtime.hud
+
+    # Tuned thresholds changed on the dashboard during the trip (M47): asked for on a timer, applied by
+    # the loop below only while the vehicle is parked.
+    reloader = ThresholdReloader(base_th, thresholds_version)
+    poll_stop = threading.Event()
+    poll_s = PublisherConfig.from_dict(th.get("publisher")).config_poll_s
+
+    def poll_thresholds() -> None:
+        while not poll_stop.wait(poll_s):
+            remote = fetch_remote(args.backend, device_key)
+            if remote is not None and reloader.offer(*remote):
+                print(f"[config] thresholds version {remote[0]} waiting: applied when the vehicle is parked")
+
+    if args.backend and device_key and poll_s > 0:
+        threading.Thread(target=poll_thresholds, name="thresholds-poll", daemon=True).start()
 
     def on_false_alarm(event_id: str) -> None:  # already marked on hud_state by the HUD server
         print(f"[hud] driver marked alert {event_id[:8]} as a false alarm")
@@ -218,26 +264,39 @@ def main(argv: list[str] | None = None) -> int:
                 try:
                     pre = preprocessor(frame)  # 2
                     lm = landmarks.detect(pre)  # 3
-                    phone_flag = None
+                    phone_flag = held = None
                     face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                     if phone is not None:  # 4, own thread; reuse the latest result
                         phone.submit(pre)
                         result = phone.latest()
                         if result is not None:
                             phone_flag = phone_near_face(result.detections, face, phone_cfg)
+                            held = phone_kind(result.detections, face, phone_cfg)
                     features = extractor(lm, pre.frame_id, pre.timestamp)  # 6
+                    features = dataclasses.replace(features, **quality.measure(pre, lm))  # 6: is it usable
                     if eye_state is not None:  # 5, only when EAR is not reliable
                         features = eye_state(pre, lm, features)
                     for action in hud_state.take_actions():  # 13: HUD buttons
                         if action == "change_driver":
                             print("[main] driver change: the new driver enrolls")
                             runtime.change_driver()
+                        elif action == "presence_ok":  # the tap on "Bạn còn ở đó không?"
+                            runtime.presence_answer()
                         elif action in ("enroll_start", "enroll_later"):  # enrollment consent screen
                             agree = action == "enroll_start"
                             if runtime.enrollment_answer(agree):
                                 print(f"[main] enrollment: driver {'agreed' if agree else 'said later'}")
+                    reload = reloader.take(runtime.parked)  # 14: tuned thresholds, only while parked
+                    if reload is not None:
+                        runtime.apply_thresholds(reload.thresholds, reload.version, refused=not reload.applied)
+                        print(
+                            f"[config] thresholds version {reload.version} "
+                            + ("applied" if reload.applied else f"REFUSED: {list(reload.problems)}")
+                        )
                     now = time.monotonic()
-                    step = runtime.step(features, phone_flag, frame.timestamp, clock=now)  # 10, 6-12, 13, 14
+                    step = runtime.step(
+                        features, phone_flag, frame.timestamp, clock=now, phone_kind=held
+                    )  # 10, 6-12, 13, 14
                 except Exception as e:  # noqa: BLE001 - one bad frame must not stop monitoring (M28)
                     if runtime.last_error != type(e).__name__:  # once per kind of error in a row
                         print(f"[main] frame failed: {type(e).__name__}: {e}")  # local log only, never sent
@@ -248,7 +307,8 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"t={signals.t:7.1f}s  {enrollment_line(r) or '[ENROLL] done'}")
                 if step.unavailable_changed:  # 9: face lost while moving / back (FR-6)
                     print(
-                        f"t={signals.t:7.1f}s  [MONITOR] {'unavailable: no face' if r.risk.unavailable else 'restored'}"
+                        f"t={signals.t:7.1f}s  [MONITOR] "
+                        + (f"unavailable: {r.risk.unavailable_reason}" if r.risk.unavailable else "restored")
                     )
                 if r.alert.new_alert is not None:
                     print(f"t={signals.t:7.1f}s  {alert_line(r.alert.new_alert)}")
@@ -270,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("[main] interrupted")
     finally:
+        poll_stop.set()
         if runtime.started:  # 11: the trip summary, for the backend and the HUD
             summary = runtime.end_trip()
             print(f"[trip] {trip_summary_line(summary)}")

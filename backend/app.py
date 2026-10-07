@@ -10,6 +10,11 @@ Roles:
 - driver:   read only their own events and timeline
 Edge devices are not users: they post events, false-alarm feedback and fatigue samples with
 their X-Device-Key, and fetch the tuned thresholds.
+
+Access log (M41): every read of drivers' data by a higher role, every thresholds change, account /
+device creation and data deletion is appended to `access_log` (who, role, what, whose data).
+Admins read all of it; a driver reads who looked at their own data. A driver reading their own
+data is not logged. The same read by the same account is logged once per DG_AUDIT_DEDUPE_S.
 """
 
 from __future__ import annotations
@@ -20,7 +25,7 @@ import secrets
 import sqlite3
 import time
 from collections.abc import Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 import jwt
@@ -36,7 +41,10 @@ from backend.drive_link import DriveLinks
 from backend.schemas import (
     DRIVE_CODE_PATTERN,
     THRESHOLD_SPECS,
+    AccessLogOut,
     BatchResult,
+    DeletionDecisionIn,
+    DeletionRequestOut,
     DeviceIn,
     DeviceOut,
     DriveSignalIn,
@@ -46,10 +54,12 @@ from backend.schemas import (
     FleetDeviceOut,
     LoginIn,
     PolicyOut,
+    RolloutIn,
     StatsOut,
     ThresholdsIn,
     ThresholdsOut,
     ThresholdSpec,
+    ThresholdVersionOut,
     TimelineOut,
     TokenOut,
     TripOut,
@@ -92,12 +102,19 @@ def scoped(user: dict[str, Any], driver_id: str | None, device_id: str | None) -
     return {"driver_id": driver_id, "device_id": device_id}
 
 
-def thresholds_out(conn: sqlite3.Connection) -> ThresholdsOut:
-    latest = db.latest_thresholds(conn)
+def thresholds_out(conn: sqlite3.Connection, device_id: str | None = None, for_device: bool = False) -> ThresholdsOut:
+    """The dashboard gets the newest version (what an edit builds on). A device (for_device) gets the
+    one it should run: its pin if it is in a trial group, else the fleet's (M47)."""
+    fleet = db.fleet_thresholds_version(conn)
+    if for_device:
+        target = db.thresholds_target(conn, device_id)
+        stored = db.get_thresholds_version(conn, target) if target else None
+    else:
+        stored = db.latest_thresholds(conn)
     specs = {k: ThresholdSpec(min=lo, max=hi, unit=unit) for k, (lo, hi, unit) in THRESHOLD_SPECS.items()}
-    if latest is None:
-        return ThresholdsOut(version=0, values={}, updated_by=None, updated_at=None, specs=specs)
-    return ThresholdsOut(**latest, specs=specs)
+    if stored is None:
+        return ThresholdsOut(version=0, values={}, updated_by=None, updated_at=None, specs=specs, fleet_version=fleet)
+    return ThresholdsOut(**stored, specs=specs, fleet_version=fleet)
 
 
 def web_device_id(username: str) -> str:
@@ -123,7 +140,7 @@ def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str 
         beat["ts"] = batch.heartbeat.ts.astimezone(UTC).isoformat()
         db.apply_heartbeat(conn, dev, beat)
     for e in batch.events:  # events first: feedback in the same batch may refer to them
-        row = e.model_dump(mode="json")
+        row = e.model_dump(mode="json")  # tags / versions (M41) are stored with the event
         row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
         accepted += db.insert_event(conn, dev, drv, row)
     for f in batch.feedback:
@@ -211,6 +228,27 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.jwt_secret = secret
     app.state.next_purge = 0.0  # monotonic time of the next retention purge
+    app.state.audit_seen = {}  # (username, action, driver_id, device_id) -> monotonic time last logged
+
+    def audit(
+        conn: sqlite3.Connection,
+        user: dict[str, Any],
+        action: str,
+        driver_id: str | None = None,
+        device_id: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        """Append to the access log (see module doc). Reads are de-duplicated, changes never are."""
+        is_read = action.startswith("read_")
+        if is_read and user["role"] == "driver":
+            return  # their own data (scoped() allows nothing else)
+        if is_read and settings.audit_dedupe_s > 0:
+            key = (user["sub"], action, driver_id, device_id)
+            last = app.state.audit_seen.get(key)
+            if last is not None and time.monotonic() - last < settings.audit_dedupe_s:
+                return
+            app.state.audit_seen[key] = time.monotonic()
+        db.log_access(conn, user["sub"], user["role"], action, driver_id, device_id, detail)
 
     def purge_if_due(conn: sqlite3.Connection) -> None:
         """Data policy (M37): delete metadata past its retention period. Counts only in the log."""
@@ -218,7 +256,11 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             return
         app.state.next_purge = time.monotonic() + PURGE_EVERY_S
         deleted = db.purge_expired(
-            conn, datetime.now(UTC), settings.retention_events_days, settings.retention_summaries_days
+            conn,
+            datetime.now(UTC),
+            settings.retention_events_days,
+            settings.retention_summaries_days,
+            settings.retention_access_log_days,
         )
         if any(deleted.values()):
             log.info("retention: deleted %s", deleted)
@@ -265,6 +307,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         return PolicyOut(
             retention_events_days=settings.retention_events_days,
             retention_summaries_days=settings.retention_summaries_days,
+            retention_access_log_days=settings.retention_access_log_days,
         )
 
     @app.post("/auth/login", response_model=TokenOut)
@@ -319,9 +362,9 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.get("/api/v1/web/thresholds", response_model=ThresholdsOut)
     def get_web_thresholds(
-        _: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))], conn: Conn
+        user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))], conn: Conn
     ) -> ThresholdsOut:
-        return thresholds_out(conn)
+        return thresholds_out(conn, web_device_id(user["sub"]), for_device=True)  # the browser is a device too
 
     @app.get("/api/v1/events", response_model=list[EventOut])
     def get_events(
@@ -336,6 +379,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         false_alarm_only: bool = False,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     ) -> list[dict[str, Any]]:
+        audit(conn, user, "read_events", driver_id, device_id)
         return db.query_events(
             conn,
             **scoped(user, driver_id, device_id),
@@ -355,6 +399,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         since: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
     ) -> list[dict[str, Any]]:
+        audit(conn, user, "read_trips", driver_id)
         return db.query_trips(conn, **scoped(user, driver_id, None), since=utc_iso(since), limit=limit)
 
     @app.get("/api/v1/timeline", response_model=TimelineOut)
@@ -367,6 +412,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         until: datetime | None = None,
     ) -> TimelineOut:
         """Per-minute drowsy_score samples plus the alerts of the same period, oldest first."""
+        audit(conn, user, "read_timeline", driver_id, detail=f"trip {trip_id}" if trip_id else None)
         filters = {
             **scoped(user, driver_id, None),
             "trip_id": trip_id,
@@ -383,6 +429,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
         since: datetime | None = None,
     ) -> dict[str, Any]:
+        audit(conn, user, "read_stats", driver_id)
         return db.event_stats(conn, **scoped(user, driver_id, None), since=utc_iso(since))
 
     @app.get("/api/v1/fleet", response_model=list[FleetDeviceOut])
@@ -396,14 +443,28 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         [since, until]. Drivers only get the devices bound to their own driver_id."""
         lo, hi = utc_iso(since), utc_iso(until)
         now = datetime.now(UTC)
+        audit(conn, user, "read_fleet")
         alerts = db.fleet_alerts(conn, lo, hi)
+        fleet_version = db.fleet_thresholds_version(conn)
+        pins = db.threshold_pins(conn)  # trial devices run another version on purpose (M47)
+        urgent_since = (now - timedelta(seconds=settings.fleet_urgent_window_s)).isoformat()
         out = []
         for row in db.fleet_devices(conn, scoped(user, None, None)["driver_id"]):
             by_level = alerts.get(row["device_id"], {})
+            status = fleet_status(row, now, settings.device_offline_after_s)
+            urgent = None
+            if status == "online":  # a vehicle that went quiet is already shown as lost
+                urgent = db.urgent_event(conn, row["device_id"], row["trip_id"], urgent_since)
+            v = row["versions"]
+            newest = pins.get(row["device_id"], fleet_version)  # what this device should run
+            current = None if v is None else v["thresholds_version"] == newest and not v.get("thresholds_ignored")
             out.append(
                 {
                     **row,
-                    "status": fleet_status(row, now, settings.device_offline_after_s),
+                    "thresholds_current": current,
+                    "thresholds_latest": newest,
+                    "status": status,
+                    "urgent": urgent,
                     "alerts_by_level": {level: by_level.get(level, 0) for level in (1, 2, 3)},
                     "last_event": db.last_event(conn, row["device_id"], lo, hi),
                 }
@@ -421,6 +482,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     ) -> list[dict[str, Any]]:
         """End-of-trip summaries, newest first. Drivers see their own; the higher roles see every
         driver's, and which ones nobody has reviewed yet."""
+        audit(conn, user, "read_trip_reports", driver_id)
         return db.query_summaries(
             conn, **scoped(user, driver_id, None), since=utc_iso(since), unreviewed_only=unreviewed_only, limit=limit
         )
@@ -436,6 +498,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         report = db.get_summary(conn, device_id, trip_id, own)
         if report is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such trip report")
+        audit(conn, user, "read_trip_report", report["driver_id"], device_id, f"trip {trip_id}")
         return report
 
     @app.post("/api/v1/trip-reports/{device_id}/{trip_id}/review", response_model=TripReportOut)
@@ -450,6 +513,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such trip report")
         report = db.get_summary(conn, device_id, trip_id)
         assert report is not None
+        audit(conn, user, "review_trip_report", report["driver_id"], device_id, f"trip {trip_id}")
         return report
 
     @app.get("/api/v1/thresholds", response_model=ThresholdsOut)
@@ -472,34 +536,162 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         _, problems = apply_overrides(load_thresholds(), merged)
         if problems:
             raise HTTPException(422, "; ".join(problems))
-        db.save_thresholds(conn, merged, user["sub"])
+        fleet_before = db.fleet_thresholds_version(conn)
+        version = db.save_thresholds(conn, merged, user["sub"])
+        detail = f"version {version}: {', '.join(sorted(body.values))}"
+        if body.trial_devices:  # a trial: only these devices, the fleet stays where it is (M47)
+            db.set_fleet_thresholds(conn, fleet_before, user["sub"])
+            db.pin_thresholds(conn, body.trial_devices, version, user["sub"])
+            detail += f"; trial on {', '.join(sorted(body.trial_devices))}"
+        else:  # the whole fleet at once: trials are over
+            db.set_fleet_thresholds(conn, version, user["sub"])
+            db.clear_threshold_pins(conn)
+        audit(conn, user, "update_thresholds", detail=detail[:240])
+        return thresholds_out(conn)
+
+    @app.get("/api/v1/thresholds/versions", response_model=list[ThresholdVersionOut])
+    def get_threshold_versions(
+        _: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))], conn: Conn
+    ) -> list[dict[str, Any]]:
+        """Recent versions: which is the fleet's, which devices are on a trial, what each one changed,
+        and its alerts / drivers' false-alarm marks so far (what to look at before a rollout)."""
+        return db.threshold_history(conn)
+
+    @app.post("/api/v1/thresholds/rollout", response_model=ThresholdsOut)
+    def rollout_thresholds(
+        body: RolloutIn,
+        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer"))],
+        conn: Conn,
+    ) -> ThresholdsOut:
+        """Give a stored version to the whole fleet: a trial that went well, or an older version (roll
+        back). Trial pins end. Devices take it at their next poll, while parked."""
+        stored = db.get_thresholds_version(conn, body.version)
+        if stored is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such thresholds version")
+        _, problems = apply_overrides(load_thresholds(), stored["values"])  # the YAML may have moved on
+        if problems:
+            raise HTTPException(422, "; ".join(problems))
+        before = db.fleet_thresholds_version(conn)
+        db.set_fleet_thresholds(conn, body.version, user["sub"])
+        db.clear_threshold_pins(conn)
+        audit(conn, user, "rollout_thresholds", detail=f"fleet version {before} -> {body.version}")
         return thresholds_out(conn)
 
     @app.get("/api/v1/device/thresholds", response_model=ThresholdsOut)
-    def get_device_thresholds(_: Annotated[dict[str, Any], Depends(current_device)], conn: Conn) -> ThresholdsOut:
-        return thresholds_out(conn)
+    def get_device_thresholds(device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn) -> ThresholdsOut:
+        return thresholds_out(conn, device["device_id"], for_device=True)
+
+    @app.get("/api/v1/access-log", response_model=list[AccessLogOut])
+    def get_access_log(
+        admin: Annotated[dict[str, Any], Depends(require_roles("admin"))],
+        conn: Conn,
+        driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        username: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
+        since: datetime | None = None,
+        limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    ) -> list[dict[str, Any]]:
+        """Who read whose data, who changed what (M41), newest first. Admins only; reading it is logged too."""
+        rows = db.query_access_log(conn, driver_id=driver_id, username=username, since=utc_iso(since), limit=limit)
+        audit(conn, admin, "read_access_log", driver_id)
+        return rows
+
+    @app.get("/api/v1/access-log/mine", response_model=list[AccessLogOut])
+    def get_my_access_log(
+        user: Annotated[dict[str, Any], Depends(require_roles("driver"))],
+        conn: Conn,
+        since: datetime | None = None,
+        limit: Annotated[int, Query(ge=1, le=1000)] = 200,
+    ) -> list[dict[str, Any]]:
+        """A driver sees who looked at their data: reads naming them and reads of the whole fleet."""
+        driver = user.get("driver_id") or "__none__"
+        return db.query_access_log(conn, since=utc_iso(since), about_driver=driver, limit=limit)
+
+    # ---- a driver's own data (M48): export, ask for deletion; an admin answers ----
+    @app.get("/api/v1/me/data")
+    def export_my_data(user: Annotated[dict[str, Any], Depends(require_roles("driver"))], conn: Conn) -> dict[str, Any]:
+        """Everything stored about the signed-in driver, as JSON (the page offers it as a file)."""
+        driver = user.get("driver_id")
+        if not driver:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "this account is not bound to a driver")
+        return {
+            "exported_at": datetime.now(UTC).isoformat(),
+            "account": user["sub"],
+            "retention_days": {
+                "events": settings.retention_events_days,
+                "trip_summaries": settings.retention_summaries_days,
+            },
+            **db.export_driver_data(conn, driver),
+        }
+
+    @app.get("/api/v1/me/deletion-request", response_model=DeletionRequestOut | None)
+    def get_my_deletion_request(
+        user: Annotated[dict[str, Any], Depends(require_roles("driver"))], conn: Conn
+    ) -> dict[str, Any] | None:
+        """The driver's newest deletion request, or null."""
+        rows = db.deletion_requests(conn, user.get("driver_id") or "__none__")
+        return rows[0] if rows else None
+
+    @app.post("/api/v1/me/deletion-request", response_model=DeletionRequestOut)
+    def post_my_deletion_request(
+        user: Annotated[dict[str, Any], Depends(require_roles("driver"))], conn: Conn
+    ) -> dict[str, Any]:
+        """Ask for everything stored about me to be deleted. An admin deletes it or refuses with a reason."""
+        driver = user.get("driver_id")
+        if not driver:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "this account is not bound to a driver")
+        return db.request_deletion(conn, driver, user["sub"])
+
+    @app.get("/api/v1/deletion-requests", response_model=list[DeletionRequestOut])
+    def get_deletion_requests(
+        _: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
+    ) -> list[dict[str, Any]]:
+        return db.deletion_requests(conn)
+
+    @app.post("/api/v1/deletion-requests/{request_id}", response_model=DeletionRequestOut)
+    def decide_deletion_request(
+        request_id: int,
+        body: DeletionDecisionIn,
+        admin: Annotated[dict[str, Any], Depends(require_roles("admin"))],
+        conn: Conn,
+    ) -> dict[str, Any]:
+        """Delete the driver's data (as `manage delete-driver-data` does) or refuse; both are logged."""
+        done = db.handle_deletion(
+            conn, request_id, "done" if body.action == "delete" else "refused", admin["sub"], body.reason
+        )
+        if done is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such pending request")
+        if body.action == "delete":
+            deleted = db.delete_driver_data(conn, done["driver_id"])
+            audit(conn, admin, "delete_driver_data", done["driver_id"], detail=f"request {request_id}: {deleted}")
+        else:
+            audit(conn, admin, "refuse_deletion", done["driver_id"], detail=f"request {request_id}: {body.reason}")
+        return done
 
     @app.get("/api/v1/users", response_model=list[UserOut])
     def get_users(_: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn) -> list[dict[str, Any]]:
         return [dict(r) for r in db.list_users(conn)]
 
     @app.post("/api/v1/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-    def post_user(body: UserIn, _: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn) -> UserOut:
+    def post_user(
+        body: UserIn, admin: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
+    ) -> UserOut:
         try:
             db.create_user(conn, body.username, hash_password(body.password), body.role, body.driver_id)
         except sqlite3.IntegrityError:
             raise HTTPException(status.HTTP_409_CONFLICT, "username already exists") from None
+        audit(conn, admin, "create_user", body.driver_id, detail=f"{body.role} {body.username}")
         return UserOut(username=body.username, role=body.role, driver_id=body.driver_id)
 
     @app.post("/api/v1/devices", response_model=DeviceOut, status_code=status.HTTP_201_CREATED)
     def post_device(
-        body: DeviceIn, _: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
+        body: DeviceIn, admin: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
     ) -> DeviceOut:
         key = new_device_key()
         try:
             db.create_device(conn, body.device_id, hash_device_key(key), body.driver_id)
         except sqlite3.IntegrityError:
             raise HTTPException(status.HTTP_409_CONFLICT, "device_id already exists") from None
+        audit(conn, admin, "create_device", body.driver_id, body.device_id)
         return DeviceOut(device_id=body.device_id, driver_id=body.driver_id, device_key=key)
 
     return app

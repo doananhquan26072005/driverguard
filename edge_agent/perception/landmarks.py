@@ -18,6 +18,8 @@ per-driver baseline and cost no measurable time (NITYMED: AUC 0.986 for closed e
 0.987, eye CNN 0.881), so block 5 uses them as its eye-state score. browOuterUpLeft / Right
 (frontalis, FACS AU2) are kept too: drowsy drivers raise the brows to keep the eyes open
 (Vural et al. 2007), a drowsiness sign of block 7.
+The gaze and mouth scores of TRACE_BLENDSHAPES (eyeLook*, jawOpen, mouthClose) are kept as numbers
+for the recording tools (tools/record_trace.py, tools/seq_eval.py); no block reads them yet.
 """
 
 from __future__ import annotations
@@ -26,10 +28,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
 from edge_agent.config import PROJECT_ROOT, config_from_dict
+from edge_agent.cv import cv2
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 
@@ -55,6 +57,21 @@ class LandmarkConfig:
         return p if p.is_absolute() else PROJECT_ROOT / p
 
 
+# Blendshapes kept for traces only (M39): where the eyes look, how open the mouth is.
+TRACE_BLENDSHAPES = (
+    "eyeLookDownLeft",
+    "eyeLookDownRight",
+    "eyeLookUpLeft",
+    "eyeLookUpRight",
+    "eyeLookInLeft",
+    "eyeLookInRight",
+    "eyeLookOutLeft",
+    "eyeLookOutRight",
+    "jawOpen",
+    "mouthClose",
+)
+
+
 @dataclass(frozen=True)
 class FaceLandmarks:
     points: np.ndarray  # (478, 3) float32: x, y in pixels; z in pixels (same scale as x), smaller = closer
@@ -71,6 +88,8 @@ class FaceLandmarks:
     eye_blink: tuple[float, float] | None = None
     # MediaPipe blendshape browOuterUp, mean of both sides (0 rest .. 1 raised), None when off.
     brow_up: float | None = None
+    # MediaPipe blendshapes of TRACE_BLENDSHAPES by name (0..1), None when off. Traces only.
+    blendshapes: dict[str, float] | None = None
 
 
 # Rigid points for the shape signature (no mouth / chin: they move when talking or yawning).
@@ -222,9 +241,10 @@ class FaceLandmarkDetector:
         ]
         k = self.selector.choose(faces, w)
         driver = faces[k]
-        eye_blink = brow_up = None
+        eye_blink = brow_up = traced = None
         if result.face_blendshapes and k < len(result.face_blendshapes):
             scores = {c.category_name: c.score for c in result.face_blendshapes[k]}
+            traced = {name: float(scores[name]) for name in TRACE_BLENDSHAPES if name in scores}
             if "eyeBlinkLeft" in scores and "eyeBlinkRight" in scores:
                 eye_blink = (float(scores["eyeBlinkLeft"]), float(scores["eyeBlinkRight"]))
             if "browOuterUpLeft" in scores and "browOuterUpRight" in scores:
@@ -239,4 +259,5 @@ class FaceLandmarkDetector:
             timestamp=frame.timestamp,
             eye_blink=eye_blink,
             brow_up=brow_up,
+            blendshapes=traced,
         )

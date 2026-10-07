@@ -10,6 +10,7 @@ from edge_agent.config import ConfigError, load_thresholds
 from edge_agent.context.vehicle_context import ContextConfig
 from edge_agent.decision.alert_manager import AlertConfig
 from edge_agent.decision.pipeline import DecisionPipeline
+from edge_agent.decision.presence import PresenceConfig
 from edge_agent.decision.risk_engine import RiskConfig
 from edge_agent.decision.trip_memory import TripMemoryConfig
 from edge_agent.decision.trip_summary import TripSummaryConfig
@@ -21,6 +22,7 @@ from edge_agent.perception.eye_state import EyeStateConfig
 from edge_agent.perception.features import FeatureConfig
 from edge_agent.perception.landmarks import LandmarkConfig
 from edge_agent.perception.phone_detector import PhoneDetectorConfig
+from edge_agent.perception.quality import QualityConfig
 from tools.metrics import EvalConfig
 
 CONFIGS = {
@@ -29,6 +31,7 @@ CONFIGS = {
     "landmarks": LandmarkConfig,
     "eye_state": EyeStateConfig,
     "features": FeatureConfig,
+    "quality": QualityConfig,
     "enrollment": EnrollmentConfig,
     "phone": PhoneDetectorConfig,
     "drowsiness": DrowsinessConfig,
@@ -39,6 +42,7 @@ CONFIGS = {
     "trip_summary": TripSummaryConfig,
     "eval": EvalConfig,
     "alert": AlertConfig,
+    "presence": PresenceConfig,
     "hud": HudConfig,
     "publisher": PublisherConfig,
 }

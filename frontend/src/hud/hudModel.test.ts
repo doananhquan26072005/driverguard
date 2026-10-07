@@ -5,11 +5,13 @@ import {
   enrollReminder,
   monitoringStopped,
   orderedReasons,
+  presenceUp,
   primaryReason,
   showConsentPanel,
   vehicleSignalLost,
   showEnrollPanel,
   systemState,
+  urgentKey,
 } from "./hudModel";
 
 const snap = (connected = true): HudSnapshot => ({ connected, level: 0, reasons: [], alerts: [] });
@@ -107,8 +109,49 @@ describe("hudModel", () => {
     expect(cue).toEqual({ beep: false, say: "Giữ đầu yên. Nhìn ra đường phía trước" });
     expect(enrollCue(enroll("look_road", "hold_still", 1), enroll("look_road", "hold_still", 1)).say).toBeNull();
   });
+
+  it("puts the unanswered alarm first and shows the presence question only while unavailable (M44)", () => {
+    expect(primaryReason(["microsleep", "unresponsive"])).toBe("unresponsive");
+    expect(primaryReason(["microsleep", "repeated_l3"])).toBe("repeated_l3");
+    const asking: HudSnapshot = { ...snap(), unavailable: true, presence: { asking: true, remaining_s: 8, unanswered: false } };
+    expect(presenceUp(systemState("ok", asking, false, false), asking)).toBe("asking");
+    const silent: HudSnapshot = { ...asking, presence: { asking: false, remaining_s: 0, unanswered: true } };
+    expect(presenceUp(systemState("ok", silent, false, false), silent)).toBe("unanswered");
+    expect(presenceUp(systemState("ok", asking, false, true), asking)).toBeNull(); // camera lost explains more
+    expect(presenceUp(systemState("ok", snap(), false, false), snap())).toBeNull();
+    const old: HudSnapshot = { ...snap(), unavailable: true }; // an agent older than M44
+    expect(presenceUp(systemState("ok", old, false, false), old)).toBeNull();
+  });
 });
 
 function enroll(status: EnrollStatus, hint: HudEnrollment["hint"] = null, attempts = 0): HudEnrollment {
   return { status, progress: 0.5, hint, attempts };
 }
+
+describe("what is pushed to the HUD at once (M50)", () => {
+  const alert = (event_id: string) => ({ event_id, level: 2 as const, reasons: ["off_road" as const], at: 1, feedback: null });
+
+  it("stays the same while only numbers move", () => {
+    const a = { ...snap(), drowsy_score: 10, fps: 30, eyes_closed_s: 0 };
+    const b = { ...snap(), drowsy_score: 35, fps: 24, eyes_closed_s: 0.4 };
+    expect(urgentKey(a)).toBe(urgentKey(b));
+  });
+
+  it("changes with a new alert, another level, monitoring stopping, the presence question, an enrollment prompt", () => {
+    const base = urgentKey(snap());
+    const changed: HudSnapshot[] = [
+      { ...snap(), alerts: [alert("e1")] },
+      { ...snap(), level: 3 },
+      { ...snap(), unavailable: true, unavailable_reason: "no_face" },
+      { ...snap(), camera_lost: true },
+      { ...snap(), processing_error: true },
+      { ...snap(), presence: { asking: true, remaining_s: 10, unanswered: false } },
+      { ...snap(), enrollment: { status: "look_road", progress: 0, hint: null, attempts: 0 } },
+    ];
+    const keys = changed.map(urgentKey);
+    keys.forEach((k) => expect(k).not.toBe(base));
+    expect(new Set(keys).size).toBe(keys.length);
+    // the same L2 with a second alert (off_road, then phone) is pushed again
+    expect(urgentKey({ ...snap(), level: 2, alerts: [alert("e2"), alert("e1")] })).not.toBe(urgentKey({ ...snap(), level: 2, alerts: [alert("e1")] }));
+  });
+});

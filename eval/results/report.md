@@ -100,9 +100,60 @@ báo sai). Nay chia cho 1,45 giờ clip không ngáp. 10 cảnh báo sai không 
 
 Clip SUST chỉ dài 10 s, ngắn hơn thời gian khởi động PERCLOS (30 s) và mốc EAR riêng (10 s), nên recall thấp là do dataset, không phải hệ thống bỏ sót khi lái lâu. Cảnh báo sai chủ yếu là `off_road` khi tài xế quay đầu thật (24/26). Từ 01/10 (v2) mất mặt ≥ 3 s khi xe chạy là `unavailable`, không cảnh báo (PRD FR-6): bớt 7 cảnh báo L2 `no_face` và 1 `off_road` được giữ trong lúc mất mặt (trước: FPR 2,9 %, 34 cảnh báo sai).
 
-### 2.4 Tỉ lệ báo sai từ thực tế (HITL)
+Theo từng người (YawDD, mã người từ tên file; `dataset_yawdd.md`, M40): 10 cảnh báo sai đến từ 10 / 106 người, mỗi người một lần; 9 / 10 rơi vào 30 s đầu clip, lúc mốc tư thế đầu còn đang học (clip chỉ dài khoảng 20 s).
 
-Dashboard (ô *Tài xế báo sai*, tab *Ngưỡng*) tính `false_alarms / tổng cảnh báo`, chia theo từng lý do, từ phản hồi tài xế bấm trên HUD. Đây là số theo dõi khi vận hành. Các số ở mục 2.1–2.3 đo offline trên dataset.
+### 2.4 Theo điều kiện: độ sáng vùng mặt và kính (M40)
+
+Chia lại kết quả sẵn có, không ghi thêm dữ liệu (`lighting.md`). Độ sáng = độ chói trung bình (0–255) của vùng mặt trước CLAHE; dưới 60 là ngưỡng mà khối 5 không còn tin EAR. **Không so chéo dataset**: mỗi bộ là người khác, camera khác. Trong cùng một bộ, các nhóm vẫn là những người khác nhau.
+
+| Bộ, điều kiện | Lượng dữ liệu | Frame do CNN quyết định | Chỉ số | Nhận định |
+|---|---|---:|---|---|
+| FL3D, frame có mặt tối < 60 | 466 frame có nhãn | 100 % | Mắt nhắm: recall 40,3 %, FPR 2,4 % | Ít frame, từ vài video; hướng: mặt rất tối thì bắt nhắm mắt kém hẳn |
+| FL3D, frame 60–100 | 46 448 frame | 8,8 % | Mắt nhắm: recall 92,6 %, FPR 7,8 % | Toàn bộ video đêm của bộ này nằm ở nhóm này |
+| YawDD, không kính | 181 video; 0,82 giờ clip không ngáp | 14,9 % | Báo sai 4,8 / giờ (CI 95 % 1,32–12,4); ngáp bắt được 52/65 | CI của ba nhóm kính chồng nhau: chưa kết luận được |
+| YawDD, kính | 102 video; 0,47 giờ | 26,1 % | Báo sai 10,5 / giờ (3,42–24,6); ngáp 31/36 | |
+| YawDD, kính râm | 36 video; 0,15 giờ | 66,7 % | Báo sai 6,7 / giờ (0,17–37,2); ngáp 11/13 | Nhãn chỉ có ngáp: không nói gì về mắt nhắm sau kính râm |
+| SUST, mặt 100–140 | 1 185 clip; 1,76 giờ clip không buồn ngủ | 5,4 % | Báo sai 9,7 / giờ (5,64–15,5) | |
+| SUST, mặt ≥ 140 | 728 clip; 0,99 giờ | 6,4 % | Báo sai 8,1 / giờ (3,48–15,9) | |
+
+Chưa có: IR, ngược sáng, chói; ngày / đêm theo từng clip không có nhãn ở bộ nào. Phép thử làm tối / làm chói cùng một video trong RAM (so được trên cùng người) chưa làm.
+
+### 2.5 PERCLOS: định nghĩa hiện tại so với P80 (M40)
+
+`perclos_60s` không phải P80 của tài liệu: frame tính là nhắm khi EAR < 0,65 × mốc mắt mở (độ mở dưới khoảng 46 %, gần "P50"), có trộn xác suất của CNN và bỏ frame đang ngáp / nói. Từ M40 khối 7 đo thêm `perclos_p80_60s` (độ mở < 20 %, chỉ frame EAR), không dùng để cảnh báo. So hai định nghĩa trên trace sẵn có (`perclos_p80.md`):
+
+| Phép so | Hiện tại | P80 | Nhận định |
+|---|---:|---:|---|
+| FL3D theo frame: frame microsleep được tính là nhắm | 70,5 % | 77,3 % | Định nghĩa hiện tại chỉ xét được 66,5 % số frame có nhãn (bỏ frame ngáp / nói), P80 xét 86,9 % |
+| FL3D theo frame: frame alert bị tính là nhắm | 2,6 % | 2,0 % | |
+| SUST theo clip: AUC tách buồn ngủ / không | 0,669 | 0,649 | Khác biệt nhỏ, clip 10 s |
+| YawDD clip Normal / Talking có tỉ lệ nhắm ≥ 0,15 | 28 / 205 | 12 / 201 | Định nghĩa hiện tại đọc cao hơn trên người tỉnh |
+
+Clip quá ngắn để cửa sổ 60 s đầy, nên chưa kết luận được định nghĩa nào phát hiện buồn ngủ tốt hơn; ngưỡng không đổi. Trên UTA-RLDD (M53, video 10 phút, cùng một người tỉnh và buồn ngủ) P80 không tách tốt hơn định nghĩa hiện tại: AUC 0,873 so với 0,892 trên 24 người giữ riêng, nên giữ định nghĩa hiện tại. Các ngưỡng PERCLOS hiện tại không có nguồn tài liệu nào được ghi lại.
+
+### 2.6 Cá nhân hoá theo tài xế có giảm báo sai không (M40)
+
+YawDD, mốc "đăng ký giả" lấy từ clip Normal của chính người đó (`personalization.md`): 212 clip của 105 người, cảnh báo sai 7 (mốc tự học) so với 9 (mốc đăng ký giả), toàn `off_road`; clip ngáp có sự kiện ngáp 93 → 97 / 113. **Chưa có số nào cho thấy cá nhân hoá giảm báo sai.** Bộ này là xe đỗ, clip ~20 s, mốc lấy từ một clip khác của cùng người; số chính phải đo trên UTA-RLDD.
+
+UTA-RLDD (M53, `personalization_uta_rldd.md`): 48 người, mốc đăng ký giả lấy từ đầu chính video hoặc từ video tỉnh táo của người đó. Cảnh báo sai nhánh buồn ngủ 9 (tự học), 9 và 9 (hai kiểu đăng ký giả) trên 7,94 giờ tỉnh táo. Vẫn chưa có số nào cho thấy cá nhân hoá giảm báo sai.
+
+### 2.7 Tỉ lệ báo sai từ thực tế (HITL)
+
+Dashboard (ô *Tài xế báo sai*, tab *Ngưỡng*) tính `false_alarms / tổng cảnh báo`, chia theo từng lý do, từ phản hồi tài xế bấm trên HUD. Đây là số theo dõi khi vận hành. Các số ở mục 2.1–2.6 đo offline trên dataset.
+
+### 2.8 Buồn ngủ thật, có tập kiểm tra giữ riêng: UTA-RLDD (M53)
+
+48 người ngồi trước laptop (không lái xe), 145 video ~10 phút, nhãn tự đánh giá cho cả video: `0` tỉnh, `5`, `10` buồn ngủ. Ngưỡng được dò trên 24 người, số dưới đây chấm một lần trên 24 người còn lại (`dataset_uta_rldd.md`).
+
+| 24 người giữ riêng, 4,08 giờ video tỉnh táo | Trước M53 | Sau M53 | Nhận định |
+|---|---:|---:|---|
+| Cảnh báo sai nhánh buồn ngủ mỗi giờ (CI 95 %) | 1,96 (0,85–3,87) | 0,98 (0,27–2,51) | Giảm một nửa; cận trên vẫn trên chỉ tiêu 1,0 |
+| FAR theo cửa sổ 10 s, mức L1 | 3,9 % | 1,5 % | |
+| AUC `drowsy_score`, video `10` so với `0` | 0,917 | 0,924 | Điểm tách được hai mức |
+| Cùng người: điểm ở `10` cao hơn ở `0` | 22 / 24 | 22 / 24 | |
+| Video `10` có cảnh báo buồn ngủ / đạt L3 | 17 / 12 trên 24 | 15 / 12 trên 24 | Mất 2 người chỉ có cảnh báo nhẹ |
+
+M53 đưa trọng số chớp chậm và nhướn mày về 0 và để luật `trend` chỉ ghi nhận: hai tín hiệu không phân biệt được tỉnh với buồn ngủ trên cùng một người. Đây không phải dữ liệu lái xe; kết luận về chỉ tiêu PRD vẫn cần giờ lái thật có nhãn.
 
 ## 3. Hiệu năng
 
@@ -115,13 +166,15 @@ Mac ARM, 10 nhân, video YawDD 640×480 có mặt thật (`benchmark.md`):
 | Tổng kích thước model | – | 16.7 MB (FP32) / 7.4 MB (INT8) | ✅ | Không phụ thuộc máy |
 | Ảnh khuôn mặt ra khỏi RAM | 0 | 0 (chỉ gửi metadata JSON; test `tests/test_backend/test_privacy.py`) | ✅ | Đạt, có test ở cả thiết bị và máy chủ |
 
+Chạy dài theo nhịp camera 30 FPS (M42, `benchmark_simulated.md`): máy dev 10 phút giữ 29,9 FPS, CPU 54 % của một nhân, RAM đỉnh 601 MB; container giới hạn 4 CPU / 4 GB (`simulated`) 10 phút giữ 29,9 FPS, p95 11,1 ms, CPU 93 %. Container dùng chính CPU của máy dev nên đây là cận trên cho bo mạch 4 nhân, không phải số đo thiết bị. Bảng FP32 / INT8: `quantization.md` (độ chính xác INT8 chưa đo).
+
 Bảng tiêu chí đầy đủ để chạy thử trên xe thật: [`docs/pilot-readiness.md`](../../docs/pilot-readiness.md).
 
 ## 4. Test
 
 ```
-pytest tests/test_edge_agent tests/test_backend -q     # 410 passed (28/09/2026)
-cd frontend && npm test                                # 18 passed
+pytest tests/test_edge_agent tests/test_backend -q     # 793 passed (06/10/2026)
+cd frontend && npm test                                # 67 passed
 ```
 
 Logic theo thời gian (khối 7–12) được test bằng chuỗi số giả, không cần video: kịch bản đỗ xe, lái đêm, microsleep liên tiếp, mất camera, v.v. (`tests/test_edge_agent/test_m4_scenarios.py`, `test_drowsiness.py`, `test_decision.py`).

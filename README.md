@@ -287,11 +287,14 @@ tốc độ:
 | Ngủ gật ≥ 1,5 s đạt L3 (FL3D, video lái đêm, diễn) | 75/95 (78,9%) | **Chưa đạt** mục tiêu ≥ 90% của PRD | [eval/results/report.md](eval/results/report.md) |
 | Cảnh báo sai mỗi giờ (FL3D / YawDD / SUST) | 2,3–8,5 / giờ tuỳ bộ và mức, CI 95% rộng | **Chưa đạt** mục tiêu ≤ 1,0 / giờ; chưa có giờ lái thật có nhãn | [eval/results/report.md](eval/results/report.md) |
 | Tốc độ vòng lặp chính (Mac ARM, CPU) | ~146 FPS, MediaPipe ~5,7 ms/frame | Đạt ≥ 15 FPS **trên máy dev**; chưa đo trên hub gắn trên xe | [eval/results/benchmark.md](eval/results/benchmark.md) |
+| Chạy 10 phút theo nhịp camera, container 4 CPU / 4 GB (`simulated`) | 29,9 FPS, p95 11,1 ms, CPU 93 % của một nhân, RAM 597 MB | Cận trên cho bo mạch 4 nhân: cùng CPU của máy dev, chỉ ít nhân hơn. Không phải số đo thiết bị | [eval/results/benchmark_simulated.md](eval/results/benchmark_simulated.md) |
 
 Toàn bộ tiêu chí để chạy thử trên xe thật và trạng thái từng tiêu chí: [docs/pilot-readiness.md](docs/pilot-readiness.md).
 
 Công cụ: `tools/eval.py` (video có nhãn theo thời gian), `tools/dataset.py` (dataset Kaggle),
-`tools/seq_eval.py` (nhãn theo frame / clip), `tools/benchmark.py` (FPS). Cách chạy ở
+`tools/seq_eval.py` (nhãn theo frame / clip), `tools/benchmark.py` (FPS; `--duration` chạy dài đo CPU / RAM),
+`tools/record_trace.py` (tự ghi số từ camera kèm nhãn bấm phím, không lưu ảnh), `tools/trace_studies.py`
+(đo offline trên trace sẵn có), `tools/edge_sim.py` (chạy trong container giới hạn kiểu Jetson, `simulated`). Cách chạy ở
 [HowToUse.md mục 9](HowToUse.md#9-đánh-giá-và-benchmark).
 
 ## Cấu trúc thư mục
@@ -380,7 +383,8 @@ yêu cầu khoá học, DriverGuard không dùng:
 - `src/` (LangGraph agent + FastAPI mẫu), `requirements-template.txt`; khi chưa cài, `tests/test_agents`
   và `tests/test_api` tự bỏ qua.
 - `Dockerfile` / `docker-compose.yml` chạy app mẫu `src.main:app`. Bản deploy DriverGuard dùng
-  `Dockerfile.railway`.
+  `Dockerfile.railway`; `Dockerfile.edge` (và dịch vụ `edge` trong compose, không bật mặc định) chạy edge
+  agent trong container có giới hạn tài nguyên để đo `simulated`.
 - Technical Guidebook 10 chương ở `docs/guide/` (bản online:
   <https://phoenix.note.transformerlabs.ai/technical-book>), khung `README_boilerplate.md`.
 

@@ -27,6 +27,9 @@ class DrowsinessConfig:
     eye_enrolled_max_rise: float = 0.25  # ... and this fraction up
     eye_cnn_closed: float = 0.6
     eye_cnn_open: float = 0.4
+    # Same, when block 5's score is MediaPipe's eyeBlink (web / APK): shut eyes read lower than the CNN's
+    eye_blendshape_closed: float = 0.4
+    eye_blendshape_open: float = 0.3
     # Keep counting a closure through a head drop (eyes closed at least this long before it)
     head_drop_carry_min_closed_s: float = 0.5
     # Closure episodes
@@ -37,8 +40,11 @@ class DrowsinessConfig:
     # Only a deep closure counts toward closed_duration (see eyes.py)
     microsleep_deep_ear_ratio: float = 0.5
     microsleep_deep_cnn: float = 0.8
+    microsleep_deep_blendshape: float = 0.55  # block 5 score = eyeBlink
     microsleep_deep_min_frac: float = 0.5
     microsleep_deep_blink: float = 0.5  # EAR deep frames also need eyeBlink >= this when known (0 = off)
+    # Enrolled driver: the vote needs this x the driver's own closed-eye eyeBlink, if that is higher (0 = off)
+    microsleep_deep_enrolled_blink_ratio: float = 0.0
     microsleep_deep_bowed_pitch_deg: float = 10.0  # head this far below the usual pose = bowed (0 = off)
     microsleep_deep_bowed_ear_ratio: float = 0.35  # bowed: a deep EAR frame needs EAR <= this x baseline
     # Closed-eye time does not count toward microsleep while yawning (see mouth.py)
@@ -55,6 +61,8 @@ class DrowsinessConfig:
     perclos_rearm: float = 0.12
     perclos_use_mask: bool = True  # skip yawn / talking-masked frames (see mouth.py)
     perclos_close_ratio: float = 0.65  # per-frame closed test for PERCLOS (see eyes.py)
+    # P80 measured next to it, never scored: closed = eye aperture below this (0 = the closed EAR)
+    perclos_p80_aperture: float = 0.2
     # Yawn
     yawn_mar_open: float = 0.45
     yawn_mar_close: float = 0.34
@@ -115,9 +123,10 @@ class DrowsinessState:
     ear_open_baseline: float
     ear_closed_threshold: float
     events: tuple[str, ...] = ()
-    eye_source: str | None = None  # "ear" or "cnn": what decided eye_closed on this frame
+    eye_source: str | None = None  # "ear", "cnn" or "blendshape": what decided eye_closed on this frame
     head_drop: bool = False  # closure carried through a head drop (eye state unknown)
     gaze_down: bool = False  # head bowed, lids lowered but not firmly shut: looking down, not asleep (block 8)
+    deep_closed: bool = False  # this frame counts as firmly shut (the deep-closure rule): the iris is not seen
     pitch_baseline: float | None = None  # the driver's usual pitch (eyes-open median)
     closure_masked: bool = False  # yawn mask: closed-eye time is not counted on this frame
     perclos_ready: bool = False  # perclos_coverage_s >= perclos_min_coverage_s: PERCLOS is meaningful
@@ -126,3 +135,6 @@ class DrowsinessState:
     reopen_ratio: float | None = None  # reopen_s / the driver's own early-trip median
     slow_blink_score: float = 0.0  # 0..1, a drowsy_score term (needs PERCLOS coverage)
     brow_raise_count_5min: int = 0
+    # PERCLOS by the P80 definition (lids more than 80 % closed), EAR frames only. Measured, not scored.
+    perclos_p80_60s: float = 0.0
+    perclos_p80_coverage_s: float = 0.0

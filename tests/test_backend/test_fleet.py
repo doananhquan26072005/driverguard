@@ -148,6 +148,40 @@ def test_heartbeat_is_strict(client, bad):
     assert fleet(client)["cam-001"]["status"] == "never"
 
 
+PERF = {
+    "samples": 300,
+    "stages_ms": {"total": {"p50": 10.5, "p95": 14.0, "max": 41.0}, "python": {"p50": 0.6, "p95": 0.9, "max": 4.0}},
+    "landmarks_delegate": "CPU",
+    "gpu": "software",
+    "yolo_threads": 1,
+    "camera_delivered": 303,
+    "camera_dropped": 3,
+}
+
+
+def test_loop_timings_of_the_last_heartbeat_show_in_the_fleet(client):
+    """M49: a slow hub says which stage is slow; a later heartbeat without timings keeps the last ones."""
+    assert fleet(client)["cam-001"]["perf"] is None
+    assert beat(client, perf=PERF).status_code == 200
+    assert fleet(client)["cam-001"]["perf"] == PERF
+    assert beat(client, state="camera_lost").status_code == 200
+    assert fleet(client)["cam-001"]["perf"] == PERF
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {**PERF, "stages_ms": {"gpu": {"p50": 1, "p95": 2, "max": 3}}},  # unknown stage
+        {**PERF, "stages_ms": {"total": {"p50": -1, "p95": 2, "max": 3}}},  # negative time
+        {**PERF, "frame": "x"},  # image-like field name
+        {**PERF, "landmarks_delegate": "NPU"},
+        {**PERF, "gpu": "fast"},
+    ],
+)
+def test_loop_timings_are_strict(client, bad):
+    assert beat(client, perf=bad).status_code == 422
+
+
 def test_repeated_l1_is_an_accepted_reason(client):
     """M32: an L1 alert raised as L2 because it kept coming back."""
     e = make_event(type="drowsiness", level=2, reasons=["drowsy_score", "repeated_l1"])

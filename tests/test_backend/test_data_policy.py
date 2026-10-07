@@ -81,7 +81,11 @@ def test_backend_purges_again_once_a_day_when_devices_post(client, settings):
 
 
 def test_policy_endpoint_gives_the_configured_periods(client, settings):
-    assert client.get("/api/v1/policy").json() == {"retention_events_days": 60, "retention_summaries_days": 365}
+    assert client.get("/api/v1/policy").json() == {
+        "retention_events_days": 60,
+        "retention_summaries_days": 365,
+        "retention_access_log_days": 365,  # M41: the access log has its own period
+    }
     settings.retention_events_days = 30
     assert client.get("/api/v1/policy").json()["retention_events_days"] == 30
 

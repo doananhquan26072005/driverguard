@@ -58,6 +58,9 @@ export async function sendVehicle(action: VehicleAction): Promise<boolean> {
 export interface HudSource {
   address: string; // shown when the link is down
   state(signal?: AbortSignal): Promise<HudSnapshot>;
+  /** A source in the same page (#/live) hands over the snapshot the moment something urgent changes
+   *  (M50): the alert sound does not wait for the next poll. Returns the unsubscribe. */
+  subscribe?(listener: (snap: HudSnapshot) => void): () => void;
   falseAlarm(eventId: string): Promise<FeedbackResult>;
   endTrip?(): Promise<TripEnd>;
   vehicle?(action: VehicleAction): Promise<boolean>;

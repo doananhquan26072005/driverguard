@@ -39,6 +39,30 @@ Anti false-positive rules:
 - Looking down with the head only partly bowed (block 7 `gaze_down`: head bowed, lids lowered,
   not firmly shut): the eyes are off the road even when the head is within the pitch limit, so the
   frame counts as off road. Such frames never teach the baseline.
+- Turned away, then the face is lost (M38): the face disappears while the head was already off road
+  and turned more than `turned_away_yaw_deg` (a reliable pose at most `turned_away_pose_age_s`
+  old). That is a driver looking behind, not a covered camera: `turned_away` is set for at most
+  `turned_away_max_s`, and the risk engine keeps the off-road rule instead of "monitoring
+  unavailable" meanwhile. A face lost while looking ahead is unchanged (unavailable, no alert).
+
+Measured only, never an alert (M38; to be proven on data first, docs/improvements.md):
+- off_road_ratio / glance_count: share of the last `glance_window_s` spent off road, and how many
+  times the driver looked away in it. Many short glances (1.5 s away, 0.5 s back, again) never reach
+  the continuous off-road rule. Same "off road" as above (turn signal, gaze_down included); 0 until
+  `glance_min_coverage_s` of driving is in the window. Cleared when the vehicle stops, on a driver
+  change, and when monitoring becomes unavailable (`clear_glances`).
+- gaze_down_deg / gaze_down_duration: where the eyes point below the road, as an angle = head pitch
+  off the road pose + `gaze_iris_gain` x (iris_y off its usual value), and for how long it has stayed
+  at or above `gaze_down_deg`. Looking at a phone on the lap or a low mount moves the eyes more than
+  the head, so the head-pitch limit alone misses it. The usual iris_y is the median of the first
+  `gaze_calibrate_s` of driving (after driver enrollment: the iris_y of its look-at-the-road step),
+  then follows on-road frames like the head baseline. Frames block 7
+  calls firmly shut are unknown (no iris to see): a gap up to `on_road_confirm_s` is bridged, a
+  longer one ends the look. On 3MDAD (50 drivers) and own recordings it never held for 2 s on
+  closed eyes or safe driving, and did on 14-26 % of the message sequences: too little for an
+  alert, and on FL3D it also held inside real microsleeps (eval/results/gaze_3mdad.md).
+- phone_kind: "call" / "text" / "unknown", the most frequent kind (block 4 `phone_kind`) among the
+  phone samples of the `phone_window_s` window; None without a phone.
 
 Pure logic on timestamps: no image, no clock, testable with fake sequences.
 """
@@ -72,6 +96,15 @@ class DistractionConfig:
     baseline_calibrate_max_deg: float = 45.0
     turn_signal_extra_yaw_deg: float = 30.0
     left_yaw_sign: float = 1.0  # sign of yaw when the driver turns to their own left
+    glance_window_s: float = 30.0  # off_road_ratio / glance_count window
+    glance_min_coverage_s: float = 10.0  # less driving than this in the window: ratio 0
+    glance_max_gap_s: float = 0.5  # a longer gap between frames adds no time to the window
+    turned_away_yaw_deg: float = 45.0  # 0 = off
+    turned_away_max_s: float = 10.0
+    turned_away_pose_age_s: float = 0.5
+    gaze_iris_gain: float = 100.0  # degrees of gaze per eye width of iris_y
+    gaze_down_deg: float = 12.0  # gaze this far below the road pose = looking down (measured only); 0 = off
+    gaze_calibrate_s: float = 5.0  # driving time whose median iris_y is the first "usual" value
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DistractionConfig:
@@ -91,6 +124,12 @@ class DistractionState:
     baseline_pitch: float
     no_face_duration: float = 0.0
     calibrating: bool = False  # start-up baseline calibration, off road not judged yet
+    off_road_ratio: float = 0.0  # share of the glance window off road (measured only, no alert)
+    glance_count: int = 0  # times the driver looked away in the glance window
+    phone_kind: str | None = None  # call | text | unknown while a phone is in the driver zone
+    turned_away: bool = False  # face lost right after a large head turn: still judged, not unavailable
+    gaze_down_deg: float | None = None  # head pitch + iris, below the road pose (measured only, no alert)
+    gaze_down_duration: float = 0.0  # seconds it has stayed at or above distraction.gaze.down_deg
 
 
 class DistractionAnalyzer:
@@ -102,6 +141,8 @@ class DistractionAnalyzer:
         self._center_yaw, self._center_pitch = self.baseline_yaw, self.baseline_pitch
         self.calibrated = self.config.baseline_calibrate_s <= 0
         self._calib: list[tuple[float, float, float]] = []  # (t, yaw, pitch)
+        self.baseline_iris: float | None = None  # the driver's usual iris_y (kept like the pose baseline)
+        self._iris_calib: list[tuple[float, float]] = []  # (t, iris_y)
         self.reset()
 
     def reset(self) -> None:
@@ -110,8 +151,61 @@ class DistractionAnalyzer:
         self._off_road_since: float | None = None
         self._on_road_since: float | None = None
         self._no_face_since: float | None = None
-        self._phone: deque[tuple[float, bool]] = deque()
+        self._phone: deque[tuple[float, bool, str | None]] = deque()
         self._last_t: float | None = None
+        self._turned_pose_t: float | None = None  # last reliable pose, when it was a large head turn
+        self._turned_since: float | None = None  # face lost right after such a pose
+        self._gaze_since: float | None = None  # start of the current look down
+        self._gaze_last: float | None = None  # last frame the gaze was seen down
+        self.clear_glances()
+
+    def clear_glances(self) -> None:
+        """Empty the glance window (also called by the pipeline when monitoring becomes unavailable)."""
+        self._glance: deque[tuple[float, float, bool]] = deque()  # (t, seconds, off road)
+        self._glance_starts: deque[float] = deque()
+        # Running sums of the window (as block 7's Perclos): no pass over 30 s of samples per frame.
+        self._glance_total = 0.0  # seconds in the window
+        self._glance_off = 0.0  # ... of them off road
+        self._glance_off_n = 0  # off-road samples in the window: none = exactly 0, whatever the rounding
+
+    def _glances(self, t: float, dt: float, was_off_road: bool, known: bool) -> tuple[float, int]:
+        cfg = self.config
+        if known:
+            d = min(dt, cfg.glance_max_gap_s)
+            self._glance.append((t, d, self._off_road))
+            self._glance_total += d
+            if self._off_road:
+                self._glance_off += d
+                self._glance_off_n += 1
+                if not was_off_road:
+                    self._glance_starts.append(t)
+        while self._glance and t - self._glance[0][0] > cfg.glance_window_s:
+            _, d, off = self._glance.popleft()
+            self._glance_total -= d
+            if off:
+                self._glance_off -= d
+                self._glance_off_n -= 1
+        while self._glance_starts and t - self._glance_starts[0] > cfg.glance_window_s:
+            self._glance_starts.popleft()
+        if not self._glance:
+            self._glance_total = 0.0
+        if self._glance_off_n == 0:
+            self._glance_off = 0.0
+        total = self._glance_total
+        if total <= 0 or total < cfg.glance_min_coverage_s:
+            return 0.0, len(self._glance_starts)
+        return min(max(self._glance_off, 0.0) / total, 1.0), len(self._glance_starts)
+
+    def _turned_away(self, t: float, face_found: bool) -> bool:
+        cfg = self.config
+        if face_found:
+            self._turned_since = None
+            return False
+        if self._turned_since is None and self._no_face_since == t:  # the frame the face is lost
+            recent = self._turned_pose_t is not None and t - self._turned_pose_t <= cfg.turned_away_pose_age_s
+            if recent and self._off_road:
+                self._turned_since = t
+        return self._turned_since is not None and t - self._turned_since <= cfg.turned_away_max_s
 
     def _head_off_road(self, yaw_off: float, pitch_off: float, turn_side: str | None = None) -> bool:
         cfg = self.config
@@ -151,22 +245,62 @@ class DistractionAnalyzer:
         self.calibrated = True
         self._calib = []
 
-    def set_road_pose(self, yaw: float, pitch: float) -> None:
-        """The enrolled "looking at the road" pose: the baseline and its centre from now on."""
+    def set_road_pose(self, yaw: float, pitch: float, iris_y: float | None = None) -> None:
+        """The enrolled "looking at the road" pose: the baseline and its centre from now on.
+        iris_y: where the iris sat in that step; replaces the usual value learnt at start-up."""
         lim = self.config.baseline_calibrate_max_deg
         self.baseline_yaw = self._center_yaw = min(max(yaw, -lim), lim)
         self.baseline_pitch = self._center_pitch = min(max(pitch, -lim), lim)
         self.calibrated = True
         self._calib = []
+        if iris_y is not None:
+            self.baseline_iris = iris_y
+            self._iris_calib = []
 
-    def _phone_ratio(self, t: float, phone_near_face: bool | None) -> float:
+    def _gaze(
+        self, t: float, dt: float, f: FrameFeatures, pitch_off: float | None, head_off: bool, shut: bool
+    ) -> tuple[float | None, float]:
+        """(gaze-down angle or None, seconds it has stayed down). Measured only."""
+        cfg = self.config
+        seen = cfg.gaze_down_deg > 0 and pitch_off is not None and f.iris_y is not None and not shut
+        angle = None
+        if seen and self.baseline_iris is None:
+            self._iris_calib.append((t, f.iris_y))
+            if t - self._iris_calib[0][0] >= cfg.gaze_calibrate_s:
+                self.baseline_iris = float(np.median([v for _, v in self._iris_calib]))
+                self._iris_calib = []
+        elif seen:
+            angle = pitch_off + cfg.gaze_iris_gain * (f.iris_y - self.baseline_iris)
+            learn = cfg.baseline_adapt and dt > 0 and cfg.baseline_tau_s > 0
+            if learn and not head_off and angle < cfg.gaze_down_deg:
+                alpha = 1.0 - math.exp(-dt / cfg.baseline_tau_s)  # learns from on-road frames only
+                self.baseline_iris += alpha * (f.iris_y - self.baseline_iris)
+        if angle is not None and angle >= cfg.gaze_down_deg:
+            if self._gaze_since is None:
+                self._gaze_since = t
+            self._gaze_last = t
+        elif self._gaze_since is not None and t - self._gaze_last > cfg.on_road_confirm_s:
+            self._gaze_since = self._gaze_last = None  # looked back, or not seen for too long
+        return angle, (self._gaze_last - self._gaze_since if self._gaze_since is not None else 0.0)
+
+    def _phone_ratio(self, t: float, phone_near_face: bool | None, kind: str | None = None) -> float:
         if phone_near_face is not None:  # None = no fresh detector result: not counted
-            self._phone.append((t, phone_near_face))
+            self._phone.append((t, phone_near_face, kind if phone_near_face else None))
         while self._phone and t - self._phone[0][0] > self.config.phone_window_s:
             self._phone.popleft()
         if not self._phone:
             return 0.0
-        return sum(1 for _, p in self._phone if p) / len(self._phone)
+        return sum(1 for _, p, _ in self._phone if p) / len(self._phone)
+
+    def _phone_kind(self) -> str | None:
+        """Most frequent kind among the window's phone samples; a tie, or no kind given, is "unknown"."""
+        kinds = [k or "unknown" for _, p, k in self._phone if p]
+        if not kinds:
+            return None
+        counts = {k: kinds.count(k) for k in set(kinds)}
+        best = max(counts.values())
+        winners = [k for k, n in counts.items() if n == best]
+        return winners[0] if len(winners) == 1 else "unknown"
 
     def update(
         self,
@@ -175,8 +309,13 @@ class DistractionAnalyzer:
         moving: bool,
         turn_side: str | None = None,
         gaze_down: bool = False,
+        phone_kind: str | None = None,
+        eyes_shut: bool = False,
     ) -> DistractionState:
-        """gaze_down: block 7 sees the driver looking down (head bowed, lids lowered): off road."""
+        """gaze_down: block 7 sees the driver looking down (head bowed, lids lowered): off road.
+        phone_kind: how the phone is held on this frame (block 4), None when unknown / no phone.
+        eyes_shut: block 7 counts this frame as firmly shut: the gaze angle is not measured on it."""
+        cfg = self.config
         t = features.timestamp
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         self._last_t = t
@@ -201,6 +340,8 @@ class DistractionAnalyzer:
             head_off = self._head_off_road(yaw_off, pitch_off, turn_side) or gaze_down
             if not (self._head_off_road(yaw_off, pitch_off) or gaze_down):  # not widened band, not looking down
                 self._adapt_baseline(features.yaw, features.pitch, dt)
+            turned = cfg.turned_away_yaw_deg > 0 and head_off and abs(yaw_off) > cfg.turned_away_yaw_deg
+            self._turned_pose_t = t if turned else None
         else:
             head_off = self._off_road  # face lost: hold previous state
         if features.face_found:
@@ -208,6 +349,7 @@ class DistractionAnalyzer:
         elif self._no_face_since is None:
             self._no_face_since = t
 
+        was_off_road = self._off_road
         if head_off:
             self._on_road_since = None
             if not self._off_road:
@@ -222,16 +364,25 @@ class DistractionAnalyzer:
                 self._on_road_since = None
 
         duration = t - self._off_road_since if self._off_road and self._off_road_since is not None else 0.0
+        gaze_deg, gaze_s = self._gaze(t, dt, features, None if calibrating else pitch_off, head_off, eyes_shut)
+        ratio, glances = self._glances(t, dt, was_off_road, known=not calibrating)
+        phone_ratio = self._phone_ratio(t, phone_near_face, phone_kind)
         return DistractionState(
             timestamp=t,
             active=True,
             off_road=self._off_road,
             off_road_duration=duration,
-            phone_ratio_2s=self._phone_ratio(t, phone_near_face),
+            phone_ratio_2s=phone_ratio,
             yaw_offset=yaw_off,
             pitch_offset=pitch_off,
             baseline_yaw=self.baseline_yaw,
             baseline_pitch=self.baseline_pitch,
             no_face_duration=t - self._no_face_since if self._no_face_since is not None else 0.0,
             calibrating=calibrating,
+            off_road_ratio=ratio,
+            glance_count=glances,
+            phone_kind=self._phone_kind(),
+            turned_away=self._turned_away(t, features.face_found),
+            gaze_down_deg=gaze_deg,
+            gaze_down_duration=gaze_s,
         )

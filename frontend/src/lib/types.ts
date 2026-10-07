@@ -12,6 +12,11 @@ export type Reason =
   | "trend"
   | "blink_rate"
   | "repeated_l1" // M32: added to an L1 alert raised as L2 because it kept coming back
+  | "unresponsive" // M44: eyes still closed seconds into the L3 alarm
+  | "repeated_l3" // M44: added to an L3 alert that keeps coming back
+  | "no_answer" // M44, system event: "Bạn còn ở đó không?" was not answered
+  | "config_applied" // M47, system events: reloaded thresholds applied while parked / refused
+  | "config_refused"
   | "camera_lost" // system events: the device stopped / resumed monitoring
   | "camera_restored"
   | "driver_enrolled" // system event: from now on judged with the driver's own baselines
@@ -23,7 +28,9 @@ export type Reason =
   | "agent_error" // system events (M28): frames keep failing, not monitored / processing again
   | "agent_recovered"
   | "low_fps" // system events (M28): too slow for a while, alerts may be late / back up
-  | "fps_restored";
+  | "fps_restored"
+  | "phone_detection_lost" // system events (M50): the phone detector gives no fresh results / again
+  | "phone_detection_restored";
 
 export interface Session {
   token: string;
@@ -32,6 +39,34 @@ export interface Session {
   driverId: string | null;
   expiresAt: number; // ms epoch
 }
+
+// What a device runs (edge_agent/version.py, M41): in every heartbeat and event.
+export interface VersionInfo {
+  app: string;
+  thresholds_version: number; // 0 = the device's own thresholds.yaml only
+  thresholds_ignored: boolean; // tuned thresholds were fetched but refused
+  models: Record<string, string>; // thresholds section -> short SHA-256
+}
+
+// Time per stage of a device's loop over its last seconds (M49; frontend/src/live/perf.ts measures it
+// in #/live, the heartbeat carries it, backend schemas.PerfIn stores the last one).
+export type PerfStage = "camera_lag" | "capture" | "landmarks" | "measure" | "yolo_prep" | "python" | "total" | "yolo" | "yolo_age";
+export interface StageMs {
+  p50: number;
+  p95: number;
+  max: number;
+}
+export interface PerfSnapshot {
+  samples: number; // processed frames the `total` numbers are taken over
+  stages_ms: Partial<Record<PerfStage, StageMs>>;
+  landmarks_delegate: "GPU" | "CPU" | null; // what MediaPipe was created with
+  gpu?: "hardware" | "software" | "none" | null; // M51: what draws WebGL there (software = no usable GPU)
+  yolo_threads: number | null; // wasm threads of the phone detector, null = detector off
+  camera_delivered: number | null; // frames the camera delivered over the window; null = browser does not say
+  camera_dropped: number | null; // ... of them never processed (the loop was still busy)
+}
+
+export type EventTag = "simulated" | "forced";
 
 export interface EventRecord {
   event_id: string;
@@ -45,10 +80,36 @@ export interface EventRecord {
   drowsy_score: number;
   distraction_score: number;
   speed_kmh: number | null;
-  metrics: Record<string, number | null>;
+  metrics: Record<string, number | string | null>;
   received_at: string;
   feedback: "false_alarm" | null;
   feedback_at: string | null;
+  tags?: EventTag[]; // M41; events stored before it have none
+  versions?: VersionInfo | null;
+}
+
+// Access log (backend /api/v1/access-log, M41): who read whose data, who changed what.
+/** A driver's request to have their data deleted (M48). */
+export type RefusalReason = "legal_hold" | "incident_open" | "duplicate" | "other";
+export interface DeletionRequest {
+  id: number;
+  driver_id: string;
+  requested_by: string;
+  requested_at: string;
+  status: "pending" | "done" | "refused";
+  handled_by: string | null;
+  handled_at: string | null;
+  reason: RefusalReason | null;
+}
+
+export interface AccessLogRow {
+  ts: string;
+  username: string;
+  role: string;
+  action: string;
+  driver_id: string | null; // null: not limited to one driver (the whole fleet)
+  device_id: string | null;
+  detail: string | null;
 }
 
 export interface SampleRecord {
@@ -78,6 +139,8 @@ export interface Trip {
 
 // Fleet overview (backend /api/v1/fleet, M33). state / moving / trip_id come from the last heartbeat.
 export type FleetStatus = "online" | "offline" | "ended" | "never";
+/** Why monitoring is unavailable (edge_agent/decision/risk_engine.py unavailable_reason). */
+export type UnavailableCause = "no_face" | "camera_blocked" | "bad_angle" | "low_light" | "glare" | "blur";
 export type MonitorState = "monitoring" | "unavailable" | "camera_lost" | "stalled" | "error" | "ended";
 
 export interface FleetDevice {
@@ -90,6 +153,13 @@ export interface FleetDevice {
   last_seen: string | null;
   alerts_by_level: Record<string, number>; // "1" | "2" | "3", in the asked day
   last_event: { ts: string; type: EventRecord["type"]; level: Level; reasons: Reason[] } | null;
+  // M44: newest L3 / unresponsive / repeated_l3 / no_answer of the running trip, a few minutes back.
+  urgent?: { ts: string; type: EventRecord["type"]; level: Level; reasons: Reason[]; event_id: string | null } | null;
+  // M41: what the device said it runs in its last heartbeat (null: an agent older than M41).
+  versions?: VersionInfo | null;
+  thresholds_current?: boolean | null; // false: behind the newest thresholds version, or it refused them
+  thresholds_latest?: number;
+  perf?: PerfSnapshot | null; // M49: loop timings of the last heartbeat that carried any
 }
 
 export interface Stats {
@@ -111,6 +181,21 @@ export interface Thresholds {
   updated_by: string | null;
   updated_at: string | null;
   specs: Record<string, ThresholdSpec>;
+  fleet_version?: number; // M47: what devices without a trial pin run (version = the newest stored)
+}
+
+/** One stored thresholds version and where it runs (M47). */
+export interface ThresholdVersion {
+  version: number;
+  values: Record<string, number>;
+  updated_by: string;
+  updated_at: string;
+  changed: string[];
+  fleet: boolean;
+  pinned_devices: string[];
+  running_devices: string[];
+  alerts: number;
+  false_alarms: number;
 }
 
 export interface HudAlert {
@@ -184,8 +269,15 @@ export interface TripSummary {
   brow_raises: number;
   off_road_s: number;
   phone_s: number;
+  // M38, measured only; summaries stored before it lack them.
+  phone_call_s?: number;
+  phone_text_s?: number;
+  glances?: number;
+  off_road_ratio_max?: number;
+  turned_away_s?: number;
   monitored_frac: number | null;
   unavailable_s: number;
+  unavailable_by_cause?: Partial<Record<UnavailableCause, number>>; // M43: seconds per reason
   camera_lost_s: number;
   vehicle_signal_lost_s?: number; // M26: vehicle link lost while driving (older agents omit it)
   enrolled: boolean;
@@ -234,7 +326,7 @@ export interface HudVehicle {
 }
 
 // "Đổi tài xế", and the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau").
-export type VehicleAction = "change_driver" | "enroll_start" | "enroll_later";
+export type VehicleAction = "change_driver" | "enroll_start" | "enroll_later" | "presence_ok";
 
 export interface HudSnapshot {
   connected: boolean;
@@ -252,7 +344,12 @@ export interface HudSnapshot {
   camera_lost?: boolean; // camera unplugged: driver not monitored, device reconnecting
   processing_error?: boolean; // M28: frames keep failing: driver not monitored, the loop retries
   low_fps?: boolean; // M28: too slow for a while: alerts may be late
-  unavailable?: boolean; // face lost while moving (PRD FR-6): not monitored, no alerts
+  phone_unavailable?: boolean; // M50: the phone detector gives no fresh results: phones are not detected
+  unavailable?: boolean; // face lost or unusable while moving (PRD FR-6): not monitored, no alerts
+  unavailable_reason?: UnavailableCause | null; // M43: why
+  quality?: { issue: UnavailableCause | null; score: number }; // M43: block 6 quality stage
+  // M44: "Bạn còn ở đó không?" while the driver is out of view; unanswered = asked, nobody tapped.
+  presence?: { asking: boolean; remaining_s: number; unanswered: boolean };
   trip_ended?: boolean; // the trip summary was built (device HUD server)
   vehicle?: HudVehicle;
   feedback_window_s?: number; // "false alarm" button hidden this long after an alert

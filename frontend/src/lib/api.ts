@@ -1,7 +1,21 @@
 // Backend client (FastAPI, backend/app.py). The JWT lives in sessionStorage only:
 // it is gone when the tab closes.
 import { dayRange, query, type RangeKey, rangeStart } from "./format";
-import type { EventRecord, FleetDevice, Role, Session, Stats, Thresholds, Timeline, Trip, TripReport } from "./types";
+import type {
+  AccessLogRow,
+  DeletionRequest,
+  EventRecord,
+  FleetDevice,
+  RefusalReason,
+  Role,
+  Session,
+  Stats,
+  ThresholdVersion,
+  Thresholds,
+  Timeline,
+  Trip,
+  TripReport,
+} from "./types";
 
 export const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8100";
 const SESSION_KEY = "driverguard.session";
@@ -124,16 +138,59 @@ export function getFleet(s: Session, day: string): Promise<FleetDevice[]> {
 }
 
 // Data policy numbers (public): how long the server keeps metadata.
-export function getPolicy(): Promise<{ retention_events_days: number; retention_summaries_days: number }> {
+export function getPolicy(): Promise<{
+  retention_events_days: number;
+  retention_summaries_days: number;
+  retention_access_log_days?: number;
+}> {
   return request("/api/v1/policy");
+}
+
+// Access log (M41): admins get all of it, a driver gets who looked at their own data.
+export function getAccessLog(s: Session, range: RangeKey): Promise<AccessLogRow[]> {
+  const path = s.role === "driver" ? "/api/v1/access-log/mine" : "/api/v1/access-log";
+  return request(`${path}${query({ since: rangeStart(range), limit: 500 })}`, {}, s);
+}
+
+// A driver's own data (M48): everything stored about them as JSON, and a request to delete it.
+export function getMyData(s: Session): Promise<Record<string, unknown>> {
+  return request("/api/v1/me/data", {}, s);
+}
+
+export function getMyDeletionRequest(s: Session): Promise<DeletionRequest | null> {
+  return request("/api/v1/me/deletion-request", {}, s);
+}
+
+export function requestMyDeletion(s: Session): Promise<DeletionRequest> {
+  return request("/api/v1/me/deletion-request", { method: "POST" }, s);
+}
+
+export function getDeletionRequests(s: Session): Promise<DeletionRequest[]> {
+  return request("/api/v1/deletion-requests", {}, s);
+}
+
+export function decideDeletion(s: Session, id: number, reason?: RefusalReason): Promise<DeletionRequest> {
+  const body = reason ? { action: "refuse", reason } : { action: "delete" };
+  return request(`/api/v1/deletion-requests/${id}`, { method: "POST", body: JSON.stringify(body) }, s);
 }
 
 export function getThresholds(s: Session): Promise<Thresholds> {
   return request("/api/v1/thresholds", {}, s);
 }
 
-export function putThresholds(s: Session, values: Record<string, number>): Promise<Thresholds> {
-  return request("/api/v1/thresholds", { method: "PUT", body: JSON.stringify({ values }) }, s);
+/** trialDevices: only these devices get the new version (M47); empty = the whole fleet at once. */
+export function putThresholds(s: Session, values: Record<string, number>, trialDevices: string[] = []): Promise<Thresholds> {
+  const body = trialDevices.length ? { values, trial_devices: trialDevices } : { values };
+  return request("/api/v1/thresholds", { method: "PUT", body: JSON.stringify(body) }, s);
+}
+
+export function getThresholdVersions(s: Session): Promise<ThresholdVersion[]> {
+  return request("/api/v1/thresholds/versions", {}, s);
+}
+
+/** Give a stored version to the whole fleet: a trial that went well, or an older one (roll back). */
+export function rolloutThresholds(s: Session, version: number): Promise<Thresholds> {
+  return request("/api/v1/thresholds/rollout", { method: "POST", body: JSON.stringify({ version }) }, s);
 }
 
 // In-browser agent (#/live): tuned thresholds and event batches with the user's token.

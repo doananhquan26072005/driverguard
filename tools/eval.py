@@ -11,6 +11,12 @@ Labels: CSV with a header `video,behavior,start_s,end_s` (one row per labelled e
   behaviour = microsleep | yawn | nod | drowsy | phone | off_road
   A row with behavior `none` just lists a video without any episode (a negative clip),
   so its driving time counts in false positives per hour.
+  Optional column `subject` (M40): who is in the video. With it the report adds a table per
+  person: an average over all videos can hide one group of people who get most of the false
+  alarms. A video without a subject is its own person.
+
+False positives of the start-up stretch (the first `eval.warmup_s` of every video, before the
+baselines and the PERCLOS window fill up) are also reported apart from the rest (M40).
 
     # 1. run the full pipeline (blocks 2-12) on every labelled video, then score
     python tools/eval.py run --labels labels.csv --videos data/videos --save predictions.json
@@ -98,6 +104,8 @@ class Score:
     exposure_h: float = 0.0  # hours where a false positive of this row can happen
     fp_ci_low: float | None = None  # exact Poisson 95 % CI of fp_per_hour
     fp_ci_high: float | None = None
+    fp_warmup: int = 0  # of fp: in the start-up stretch of a video (score(warmup_s=...))
+    warmup_h: float = 0.0  # of exposure_h: in the start-up stretches
 
 
 # --------------------------------------------------------------------------- label / prediction files
@@ -121,6 +129,17 @@ def read_labels(path: str | Path) -> tuple[list[Episode], list[str]]:
                 raise ValueError(f"end before start for {video} {behavior} {start}-{end}")
             episodes.append(Episode(video, behavior, start, end))
     return episodes, videos
+
+
+def read_subjects(path: str | Path) -> dict[str, str]:
+    """video -> subject, from the optional `subject` column ({} when the file has none)."""
+    out: dict[str, str] = {}
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            subject = (row.get("subject") or "").strip()
+            if subject:
+                out[row["video"].strip()] = subject
+    return out
 
 
 def frames_to_episodes(
@@ -188,19 +207,22 @@ def score(
     predictions: list[Prediction],
     durations_s: dict[str, float],
     tolerance_s: float = 1.0,
+    warmup_s: float = 0.0,
 ) -> list[Score]:
     """One Score per behaviour, plus ALERT (every alert vs every labelled episode) in total and per level.
 
     A row's false positives per hour are over the time where one can happen: each video's duration
-    minus the episodes that row is matched against, widened by the tolerance.
+    minus the episodes that row is matched against, widened by the tolerance. warmup_s > 0 also
+    counts the false positives and the exposure of the first warmup_s of every video (fp_warmup,
+    warmup_h), so the start-up stretch can be reported apart.
     """
     videos = list(durations_s)
     rows = []
     for name, behavior, level in (
         [(b, b, None) for b in BEHAVIORS] + [(ALERT, ALERT, None)] + [(f"{ALERT} L{lv}", ALERT, lv) for lv in (1, 2, 3)]
     ):
-        tp = fp = dup = n_eps = n_pred = 0
-        exposure_s = 0.0
+        tp = fp = dup = n_eps = n_pred = fp_warm = 0
+        exposure_s = warm_s = 0.0
         delays: list[float] = []
         for video in videos:
             if behavior == ALERT:  # an alert is right if it overlaps any labelled behaviour
@@ -214,7 +236,11 @@ def score(
             ]
             t, f, d, dl = match(eps, times, tolerance_s)
             tp, fp, dup, n_eps, n_pred = tp + t, fp + f, dup + d, n_eps + len(eps), n_pred + len(times)
-            exposure_s += exposure_seconds(durations_s[video], widen([(e.start_s, e.end_s) for e in eps], tolerance_s))
+            wide = widen([(e.start_s, e.end_s) for e in eps], tolerance_s)
+            exposure_s += exposure_seconds(durations_s[video], wide)
+            if warmup_s > 0:
+                warm_s += exposure_seconds(min(durations_s[video], warmup_s), wide)
+                fp_warm += sum(1 for x in times if x < warmup_s and not any(lo <= x <= hi for lo, hi in wide))
             delays += dl
         hours = exposure_s / 3600.0
         rate, lo, hi = rate_ci(fp, hours)
@@ -237,9 +263,121 @@ def score(
                 exposure_h=hours,
                 fp_ci_low=lo,
                 fp_ci_high=hi,
+                fp_warmup=fp_warm,
+                warmup_h=warm_s / 3600.0,
             )
         )
     return rows
+
+
+def warmup_table(scores: list[Score], warmup_s: float) -> list[str]:
+    """False positives of the start-up stretch apart from the rest (rows that have any exposure)."""
+    lines = [
+        f"| Row | FP in the first {warmup_s:g} s | Hours | FP / hour (95% CI) | FP after | Hours | FP / hour (95% CI) |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for s in scores:
+        after, after_h = s.fp - s.fp_warmup, s.exposure_h - s.warmup_h
+        lines.append(
+            f"| {s.behavior.replace(ALERT, 'all alerts')} | {s.fp_warmup} | {s.warmup_h:.2f} | "
+            f"{ci_text(rate_ci(s.fp_warmup, s.warmup_h))} | {after} | {after_h:.2f} | {ci_text(rate_ci(after, after_h))} |"
+        )
+    return lines
+
+
+@dataclass
+class SubjectRow:
+    subject: str
+    videos: int
+    hours: float  # where a false alert can happen
+    alerts: int
+    false_alerts: int
+    fp_per_hour: float | None
+    fp_ci_low: float | None
+    fp_ci_high: float | None
+    episodes: int  # labelled episodes of any behaviour
+    caught: int  # of them answered by an alert
+    false_by: dict[str, int]  # behaviour -> false positives (which rule disturbs this person)
+    windows: WindowCounts | None = None  # drowsiness FAR / MAR windows at eval.min_level
+
+
+def score_by_subject(
+    episodes: list[Episode],
+    predictions: list[Prediction],
+    durations_s: dict[str, float],
+    subjects: dict[str, str],
+    tolerance_s: float = 1.0,
+    levels: Levels | None = None,
+    cfg: EvalConfig | None = None,
+) -> list[SubjectRow]:
+    """One row per person (a video without a subject is its own person), worst false-alert rate first."""
+    groups: dict[str, list[str]] = {}
+    for video in durations_s:
+        groups.setdefault(subjects.get(video, video), []).append(video)
+    rows = []
+    for subject, videos in groups.items():
+        durs = {v: durations_s[v] for v in videos}
+        by_name = {s.behavior: s for s in score(episodes, predictions, durs, tolerance_s)}
+        alert = by_name[ALERT]
+        windows = None
+        if levels and cfg is not None:
+            lv = {v: levels[v] for v in videos if v in levels}
+            windows = dict(window_rows(episodes, durs, lv, cfg, tolerance_s))[f"Drowsiness, level ≥ L{cfg.min_level}"]
+        rows.append(
+            SubjectRow(
+                subject=subject,
+                videos=len(videos),
+                hours=alert.exposure_h,
+                alerts=alert.predictions,
+                false_alerts=alert.fp,
+                fp_per_hour=alert.fp_per_hour,
+                fp_ci_low=alert.fp_ci_low,
+                fp_ci_high=alert.fp_ci_high,
+                episodes=alert.episodes,
+                caught=alert.tp,
+                false_by={b: by_name[b].fp for b in BEHAVIORS if by_name[b].fp},
+                windows=windows,
+            )
+        )
+    return sorted(rows, key=lambda r: (-(r.fp_per_hour or 0.0), -r.false_alerts, r.subject))
+
+
+def subject_report(rows: list[SubjectRow], worst: int = 5) -> list[str]:
+    """Distribution over people, then the worst few. Per-person rates are on minutes of video: the
+    CI is the honest part, so nobody is called pass / fail here."""
+    if not rows:
+        return []
+    rates = sorted(r.fp_per_hour for r in rows if r.fp_per_hour is not None)
+    with_false = sum(1 for r in rows if r.false_alerts)
+    total_false = sum(r.false_alerts for r in rows)
+    top = sorted(rows, key=lambda r: -r.false_alerts)[: max(1, len(rows) // 10)]
+    lines = [
+        f"{len(rows)} people. False alerts: {total_false} in all, from {with_false} of them "
+        f"({_fmt(_ratio(with_false, len(rows)), True)}); the {len(top)} with the most have "
+        f"{sum(r.false_alerts for r in top)} ({_fmt(_ratio(sum(r.false_alerts for r in top), total_false), True)}).",
+    ]
+    if rates:
+        q = lambda f: rates[min(len(rates) - 1, int(f * (len(rates) - 1) + 0.5))]  # noqa: E731
+        lines.append(
+            f"False alerts per hour across people: median {q(0.5):.1f}, p90 {q(0.9):.1f}, highest {rates[-1]:.1f}. "
+            "One person has minutes of video, so a single person's rate has a very wide CI: compare groups, "
+            "not individuals."
+        )
+    lines += [
+        "",
+        f"The {min(worst, len(rows))} people with the highest false-alert rate:",
+        "",
+        "| Person | Videos | Hours | Alerts | False | False / hour (95% CI) | Episodes answered | False by behaviour | FAR windows |",
+        "|---|---:|---:|---:|---:|---:|---:|---|---:|",
+    ]
+    for r in rows[:worst]:
+        far = "–" if r.windows is None or not r.windows.awake else f"{r.windows.false_alarms}/{r.windows.awake}"
+        lines.append(
+            f"| {r.subject} | {r.videos} | {r.hours:.2f} | {r.alerts} | {r.false_alerts} | "
+            f"{ci_text((r.fp_per_hour, r.fp_ci_low, r.fp_ci_high))} | {r.caught}/{r.episodes} | "
+            f"{', '.join(f'{b} {n}' for b, n in sorted(r.false_by.items())) or '–'} | {far} |"
+        )
+    return lines
 
 
 def window_rows(
@@ -278,6 +416,7 @@ def report(
     tolerance_s: float,
     windows: list[tuple[str, WindowCounts]] | None = None,
     cfg: EvalConfig | None = None,
+    by_subject: list[SubjectRow] | None = None,
 ) -> str:
     hours = sum(durations_s.values()) / 3600.0
     lines = [
@@ -307,8 +446,19 @@ def report(
         "tolerance). FP / hour with an exact Poisson 95 % CI: a few false positives on little time say "
         "little, so no PRD verdict (≤ 1.0 / h) can be drawn from a CI that still spans it.",
     ]
+    if cfg is not None and any(s.warmup_h > 0 for s in scores):
+        lines += [
+            "",
+            "## False positives: start-up apart",
+            "",
+            f"The first {cfg.warmup_s:g} s of every video (`eval.warmup_s`: baselines and the PERCLOS window are "
+            "still filling) against the rest. Same false positives and hours as above, split in two.",
+            "",
+        ] + warmup_table(scores, cfg.warmup_s)
     if windows and cfg is not None:
         lines += ["", "## FAR / MAR on windows", ""] + window_table(windows, cfg)
+    if by_subject:
+        lines += ["", "## Per person", ""] + subject_report(by_subject)
     return "\n".join(lines) + "\n"
 
 
@@ -450,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     episodes, videos = read_labels(args.labels)
+    subjects = read_subjects(args.labels)
     levels: Levels = {}
     if args.cmd == "score":
         predictions, durations, levels = load_predictions(args.predictions)
@@ -480,9 +631,12 @@ def main(argv: list[str] | None = None) -> int:
     from edge_agent.config import load_thresholds
 
     cfg = EvalConfig.from_dict(load_thresholds(getattr(args, "config", None)).get("eval"))
-    scores = score(episodes, predictions, durations, args.tolerance)
+    scores = score(episodes, predictions, durations, args.tolerance, cfg.warmup_s)
     windows = window_rows(episodes, durations, levels, cfg, args.tolerance) if levels else None
-    text = report(scores, durations, args.tolerance, windows, cfg)
+    people = (
+        score_by_subject(episodes, predictions, durations, subjects, args.tolerance, levels, cfg) if subjects else None
+    )
+    text = report(scores, durations, args.tolerance, windows, cfg, people)
     print(text)
     if args.out:
         Path(args.out).write_text(text, encoding="utf-8")

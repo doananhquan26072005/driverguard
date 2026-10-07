@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HudAlert, HudSnapshot, VehicleAction } from "../lib/types";
-import { ALARM_REPEAT_S, armAudio, play, playAlert, say, systemSound, unlock } from "./chime";
+import { ALARM_REPEAT_S, PRESENCE_REPEAT_S, armAudio, play, playAlert, say, systemSound, unlock } from "./chime";
 import { demoSnapshot } from "./demo";
 import { edgeSource, type HudSource, type TripEnd } from "./edge";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
-import { enrollCue, type HudLink, monitoringStopped, systemState, vehicleSignalLost } from "./hudModel";
+import { enrollCue, type HudLink, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
 
 const POLL_MS = 300;
 const STALE_S = 3; // no update from the camera loop for this long = frozen
@@ -70,9 +70,22 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
     };
     void tick();
     const id = setInterval(tick, POLL_MS);
+    // M50: a source that can push (#/live) hands over a new alert in the frame it is raised; the poll
+    // goes on for the display and for noticing a loop that stopped.
+    const unsubscribe =
+      mode === "live"
+        ? source.subscribe?.((s) => {
+            if (cancelled) return;
+            failures.current = 0;
+            setNow(Date.now() / 1000);
+            setSnap(s);
+            setLink("ok");
+          })
+        : undefined;
     return () => {
       cancelled = true;
       clearInterval(id);
+      unsubscribe?.();
     };
   }, [mode, source]);
 
@@ -142,6 +155,17 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
     wasUnavailable.current = unavailable;
     if (sound) play(systemSound(unavailable ? "monitoring_unavailable" : "monitoring_restored"));
   }, [unavailable, sound]);
+
+  // "Bạn còn ở đó không?" (M44): the question is repeated until the driver taps or is seen again;
+  // unanswered, the L3 siren takes over (a passenger may hear it).
+  const presence = mode === "live" ? presenceUp(systemState(link, snap, stale, cameraLost), snap) : null;
+  useEffect(() => {
+    if (!presence || !sound) return;
+    const ring = () => (presence === "asking" ? play(systemSound("presence")) : playAlert(3, []));
+    ring();
+    const id = setInterval(ring, PRESENCE_REPEAT_S * 1000);
+    return () => clearInterval(id);
+  }, [presence, sound]);
 
   // The HUD lost the loop (M28): no data for STALE_S, no link to the device, or frames failing. Each
   // start is loud (the driver is not watched), its end the usual "restored" tone. Not after the trip ended.

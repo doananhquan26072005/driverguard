@@ -44,6 +44,20 @@ class EvalConfig:
     warmup_s: float = 30.0
     positive_frac: float = 0.5
     min_level: int = 1
+    # Own recordings (tools/record_trace.py): a key-press label is matched this far on both sides.
+    label_tolerance_s: float = 1.0
+    # tools/trace_studies.py: face-brightness bin edges (0-255), and how much of an awake clip stands
+    # in for driver enrollment.
+    brightness_bins: tuple[float, ...] = (60.0, 100.0, 140.0)
+    fake_enroll_s: float = 10.0
+    # tools/light_study.py: the same videos darkened (gamma), overexposed (gain), blurred (sigma in
+    # pixels at 640 px width) in RAM.
+    light_gammas: tuple[float, ...] = (1.5, 2.2, 3.5, 5.0)
+    light_gains: tuple[float, ...] = (1.5, 2.5, 4.0)
+    light_blur_sigmas: tuple[float, ...] = (1.5, 3.0, 6.0)
+    # tools/benchmark.py --duration: what a long run has to keep up.
+    soak_min_fps: float = 15.0
+    soak_rss_growth_mb_per_h: float = 20.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EvalConfig:

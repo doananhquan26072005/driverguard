@@ -24,6 +24,7 @@ Every entry point takes plain numbers, so it is tested without a browser.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import traceback
 from collections.abc import Sequence
@@ -35,8 +36,8 @@ import numpy as np
 from edge_agent.config import PROJECT_ROOT, load_thresholds
 from edge_agent.context.can_sim import SIM, CanSimulator, ExternalVehicle, load_scenario
 from edge_agent.context.vehicle_context import ContextConfig
-from edge_agent.io.publisher import PublisherConfig, batch_body
-from edge_agent.io.remote_config import apply_overrides
+from edge_agent.io.publisher import PublisherConfig, batch_body, is_urgent, perf_record
+from edge_agent.io.remote_config import ThresholdReloader, apply_overrides
 from edge_agent.perception.eye_state import EyeStateConfig, EyeStateEstimator
 from edge_agent.perception.features import FeatureConfig, FeatureExtractor
 from edge_agent.perception.landmarks import DriverSelector, FaceLandmarks, LandmarkConfig, in_frame_ratio
@@ -46,19 +47,24 @@ from edge_agent.perception.phone_detector import (
     PhoneDetectorConfig,
     decode_yolov8,
     face_bbox,
+    phone_kind,
     phone_near_face,
 )
 from edge_agent.perception.preprocess import PreprocessConfig, PreprocessedFrame
 from edge_agent.runtime import TripRuntime
+from edge_agent.version import bundled_models, version_info
 
 SCENARIOS = (SIM, "city_day", "highway_night", "parked")  # sim: speed from tools/drive_sim.py via the page
 NUM_LANDMARKS = 478
 MAX_RECORDS_PER_BATCH = 100  # backend: MAX_EVENTS_PER_BATCH per list
 
 
-def web_thresholds(overrides: dict[str, float] | None = None) -> tuple[dict[str, Any], list[str]]:
-    """thresholds.yaml + tuned overrides from the backend, with the browser's block 5 source."""
-    th = load_thresholds()
+def web_thresholds(
+    overrides: dict[str, float] | None = None, base: dict[str, Any] | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """thresholds.yaml + tuned overrides from the backend, with the browser's block 5 source.
+    base: thresholds.yaml already read (it is parsed once per trip: slow in Pyodide), left untouched."""
+    th = load_thresholds() if base is None else base
     problems: list[str] = []
     if overrides:
         th, problems = apply_overrides(th, overrides)
@@ -74,6 +80,12 @@ def _floats(values: Any) -> np.ndarray:
     if isinstance(values, memoryview):
         return np.frombuffer(values, dtype=np.float32).copy()
     return np.asarray(values, dtype=np.float32)
+
+
+def _none_if_js_null(value: Any) -> Any:
+    """A JS null handed over by the page -> None. Pyodide keeps null apart from undefined (JsNull, not
+    None), so `x is None` alone lets it through: a frame without a face then failed in `_floats`."""
+    return None if type(value).__name__ == "JsNull" else value
 
 
 def _error_site(e: BaseException) -> str:
@@ -100,10 +112,17 @@ class WebAgent:
         trip_id: str,
         scenario: str = SIM,
         overrides: dict[str, float] | None = None,
+        thresholds_version: int = 0,
     ) -> None:
+        """thresholds_version: the version the page fetched `overrides` with (0 = none)."""
         if scenario not in SCENARIOS:
             raise ValueError(f"scenario must be one of {SCENARIOS}")
-        th, self.problems = web_thresholds(overrides)
+        base = load_thresholds()  # parsed once: also the base of thresholds reloaded during the trip
+        th, self.problems = web_thresholds(overrides, base)
+        applied = bool(overrides) and not self.problems
+        self.versions = version_info(  # what this page runs, in every heartbeat and event (M41)
+            thresholds_version if applied else 0, bundled_models(), thresholds_ignored=bool(self.problems)
+        )
         self.device_id = device_id
         self.trip_id = trip_id
         self.extractor = FeatureExtractor(FeatureConfig.from_dict(th.get("features")))
@@ -130,7 +149,10 @@ class WebAgent:
         self._phone: _PhoneResult | None = None
         self._records: list[dict[str, Any]] = []
         self._heartbeat: dict[str, Any] | None = None  # newest one not taken yet (M33)
-        self.runtime = TripRuntime(th, trip_id, can, scenario, self.selector, emit=self._queue)
+        self._urgent = False  # an event that cannot wait for the page's send timer is queued
+        # Thresholds changed on the dashboard during the trip (M47): the page polls, Python decides when.
+        self._reloader = ThresholdReloader(web_thresholds(base=base)[0], self.versions["thresholds_version"])
+        self.runtime = TripRuntime(th, trip_id, can, scenario, self.selector, emit=self._queue, versions=self.versions)
         self.hud = self.runtime.hud
 
     def _queue(self, kind: str, data: dict[str, Any]) -> None:
@@ -138,6 +160,8 @@ class WebAgent:
             self._heartbeat = data
             return
         self._records.append({"kind": kind, "data": data})
+        if kind == "event" and is_urgent(data):
+            self._urgent = True  # the page sends it now instead of on its timer (M44)
 
     def settings(self) -> str:
         """What the browser side needs from thresholds.yaml (JSON): it keeps no thresholds of its own."""
@@ -152,8 +176,9 @@ class WebAgent:
                     "min_tracking_confidence": lm.min_tracking_confidence,
                     "blendshapes": lm.blendshapes,
                 },
-                "phone": {"input_size": ph.input_size, "target_fps": ph.target_fps},
+                "phone": {"input_size": ph.input_size, "target_fps": ph.target_fps, "num_threads": ph.num_threads},
                 "flush_interval_s": pub.flush_interval_s,
+                "config_poll_s": pub.config_poll_s,
                 "problems": self.problems,
             }
         )
@@ -179,17 +204,21 @@ class WebAgent:
         self._phone = _PhoneResult(dets, t)
         return len(dets)
 
-    def _phone_flag(self, face: tuple[float, float, float, float] | None, t: float) -> bool | None:
+    def _phone_flag(self, face: tuple[float, float, float, float] | None, t: float) -> tuple[bool | None, str | None]:
+        """(phone in the driver zone, how it is held); (None, None) when the YOLO result is too old."""
         result = self._phone
         if result is None or t - result.timestamp > self.phone_cfg.max_result_age_s:
-            return None  # unknown, as on the device when YOLO is late
-        return phone_near_face(result.detections, face, self.phone_cfg)
+            return None, None  # unknown, as on the device when YOLO is late
+        dets = result.detections
+        return phone_near_face(dets, face, self.phone_cfg), phone_kind(dets, face, self.phone_cfg)
 
     # ------------------------------------------------------------------ blocks 3 (numbers) -> 6, 5, 7-12, 13, 14
     def frame(self, t: float, *args: Any, **kwargs: Any) -> str:
         """One camera frame (see `_frame`). A frame that fails is caught: the loop goes on, and failing
         frames for hud.processing_error_s show "processing error" on the HUD (M28)."""
         try:
+            args = tuple(_none_if_js_null(a) for a in args)
+            kwargs = {k: _none_if_js_null(v) for k, v in kwargs.items()}
             return self._frame(t, *args, **kwargs)
         except Exception as e:  # noqa: BLE001 - one bad frame must not stop monitoring
             where = _error_site(e)
@@ -213,6 +242,9 @@ class WebAgent:
         channel_diff: float = 255.0,
         brightness: float = 128.0,
         brow_up: Sequence[float] | None = None,
+        scene_brightness: float | None = None,
+        scene_contrast: float | None = None,
+        sharpness: float | None = None,
     ) -> str:
         """One camera frame. points: num_faces x 478 x (x, y, z) in pixels (z scaled like x), or None
         without a face; eye_blink: (left, right) per face, in the same order; brow_up: MediaPipe
@@ -220,6 +252,8 @@ class WebAgent:
 
         channel_diff: mean |B - G|, |G - R| of the frame (block 2's IR test, 0 = grayscale / infrared).
         brightness: mean luminance 0-255 of the face (landmark box), of the frame without a face.
+        scene_brightness / scene_contrast: mean and spread (std) of the whole frame's luminance;
+        sharpness: Laplacian variance of the face (block 6 quality stage). None = not measured.
         Returns the HUD state (JSON), the same document the device's HUD server serves at /state.
         """
         lm = None
@@ -245,8 +279,15 @@ class WebAgent:
                 brow_up=brow,
             )
         face = self.face_memory.update(face_bbox(lm.points) if lm is not None else None, t)
-        phone_flag = self._phone_flag(face, t)
+        phone_flag, held = self._phone_flag(face, t)
         features = self.extractor(lm, frame_id, t)  # 6
+        features = dataclasses.replace(  # 6: quality numbers measured by the page
+            features,
+            face_brightness=float(brightness) if lm is not None else None,
+            scene_brightness=scene_brightness,
+            scene_contrast=scene_contrast,
+            sharpness=sharpness if lm is not None else None,
+        )
         pre = PreprocessedFrame(  # block 5 only reads the brightness / IR flag of block 2
             image=np.empty((0, 0, 3), np.uint8),
             gray=np.empty((0, 0), np.uint8),
@@ -257,7 +298,10 @@ class WebAgent:
             timestamp=t,
         )
         features = self.eye_state(pre, lm, features)  # 5
-        self.runtime.step(features, phone_flag, t)  # 10, 6 enrollment, 7-12, 13, 14
+        reload = self._reloader.take(self.runtime.parked)  # tuned thresholds, only while parked (M47)
+        if reload is not None:
+            self.runtime.apply_thresholds(reload.thresholds, reload.version, refused=not reload.applied)
+        self.runtime.step(features, phone_flag, t, phone_kind=held)  # 10, 6 enrollment, 7-12, 13, 14
         state = self.hud.to_json()
         state["measures"] = {  # for the camera overlay of #/live
             "face": features.face_found,
@@ -267,6 +311,7 @@ class WebAgent:
             "pitch": None if features.pitch is None else round(features.pitch, 1),
             "phone": phone_flag,
         }
+        state["flush"], self._urgent = self._urgent, False  # true: post the pending records now
         return json.dumps(state)
 
     # ------------------------------------------------------------------ HUD buttons, camera status
@@ -278,6 +323,11 @@ class WebAgent:
         """Camera track ended / came back: the dashboard learns this driver is (not) monitored."""
         self.runtime.camera(lost)
 
+    def expect_phone(self, expected: bool) -> None:
+        """The page means to run the phone detector (it says so even when YOLO failed to load): frames
+        without a fresh result are then watched and reported (M50). Off in builds that run without it."""
+        self.runtime.phone_expected = bool(expected)
+
     def vehicle_signal(self, speed_kmh: float, turn_signal: str | None) -> None:
         """A reading of the driving simulator (tools/drive_sim.py), polled by the page. Without
         readings for context.vehicle_signal_stale_s the vehicle stands still at 0 km/h."""
@@ -286,13 +336,25 @@ class WebAgent:
 
     def vehicle(self, action: str) -> str:
         """HUD buttons: "Đổi tài xế" ("change_driver"), the enrollment consent screen ("enroll_start" /
-        "enroll_later"): 'ok', 'ignored' (nothing was being asked), or 'unsupported'."""
+        "enroll_later"), the presence question ("presence_ok"): 'ok', 'ignored' (nothing was being asked), or 'unsupported'."""
+        if action == "presence_ok":  # the tap on "Bạn còn ở đó không?" (M44)
+            self.runtime.presence_answer()
+            return "ok"
         if action in ("enroll_start", "enroll_later"):
             return "ok" if self.runtime.enrollment_answer(action == "enroll_start") else "ignored"
         if action != "change_driver":
             return "unsupported"
         self.runtime.change_driver()
         return "ok"
+
+    def offer_thresholds(self, version: int, overrides: Any) -> bool:
+        """What the backend now says this browser should run (the page asks every `config_poll_s`).
+        Applied on a later frame, only while the vehicle is parked. True when it is a change."""
+        if isinstance(overrides, str):  # the page hands the backend's `values` over as JSON
+            overrides = json.loads(overrides)
+        elif hasattr(overrides, "to_py"):
+            overrides = overrides.to_py()
+        return self._reloader.offer(int(version), {str(k): float(v) for k, v in dict(overrides or {}).items()})
 
     def end_trip(self) -> str:
         """The driver pressed "Kết thúc chuyến": the trip summary (JSON), also queued for the backend."""
@@ -303,6 +365,16 @@ class WebAgent:
         """Called on the page's send timer: the heartbeat goes on while no frame arrives (camera
         lost, page in the background), and says "stalled" then."""
         self.runtime.idle(t)
+
+    def perf(self, doc: Any) -> bool:
+        """The page's loop timings of the last seconds (JSON: frontend/src/live/perf.ts), sent with the
+        next heartbeats (M49). False when nothing in it is usable; the heartbeat then goes without."""
+        try:
+            raw = json.loads(doc) if isinstance(doc, str) else doc
+        except ValueError:
+            raw = None
+        self.runtime.perf = perf_record(raw)
+        return self.runtime.perf is not None
 
     def take_heartbeat(self) -> str | None:
         """The newest heartbeat as a POST body of its own (JSON), or None. The page keeps only the

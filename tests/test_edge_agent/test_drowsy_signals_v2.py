@@ -172,3 +172,46 @@ def test_new_terms_enter_drowsy_score():
     assert terms[4:] == (1.0, 1.0)
     assert score == pytest.approx(20.0)  # weight_slow_blink 10 + weight_brow 10 (temporary)
     assert engine.assess(d, X0, C0).level == 0  # alone they stay under L1 (40)
+
+
+# ---------------------------------------------------------------- per-driver eyeBlink vote
+
+
+def lowered_lids(seconds, blink, ratio, blink_closed=0.70, fps=30):
+    """Lids at 0.3 x the open EAR with this eyeBlink for `seconds`, driver enrolled with blink_closed."""
+    a = DrowsinessAnalyzer(replace(DrowsinessAnalyzer().config, microsleep_deep_enrolled_blink_ratio=ratio))
+    a.set_profile(OPEN, 0.05, 0.0, 0.0, ear_closed=SHUT, blink_closed=blink_closed)
+    states = []
+    for i in range(round((5 + seconds) * fps)):
+        t = i / fps
+        shut = t >= 5.0
+        f = FrameFeatures(i, t, True, 1.0, ear=0.3 * OPEN if shut else OPEN, mar=0.05, pitch=0.0, yaw=0.0)
+        states.append(a.update(replace(f, eye_blink=blink if shut else 0.05)))
+    return states
+
+
+def test_deep_blink_vote_is_the_fixed_one_unless_the_enrolled_ratio_is_on():
+    from edge_agent.analysis.drowsiness.eyes import deep_blink_vote
+
+    cfg = DrowsinessAnalyzer().config
+    assert cfg.microsleep_deep_enrolled_blink_ratio == 0.0  # off by default: it lost real microsleeps on FL3D
+    assert deep_blink_vote(cfg, 0.70) == cfg.microsleep_deep_blink
+    on = replace(cfg, microsleep_deep_enrolled_blink_ratio=0.85)
+    assert deep_blink_vote(on, None) == cfg.microsleep_deep_blink  # not enrolled, or no blendshapes
+    assert deep_blink_vote(on, 0.70) == pytest.approx(0.595)
+    assert deep_blink_vote(on, 0.40) == cfg.microsleep_deep_blink  # never below the fixed vote
+    assert deep_blink_vote(replace(on, microsleep_deep_blink=0.0), 0.70) == 0.0  # vote off stays off
+
+
+def test_enrolled_ratio_keeps_lowered_lids_from_counting_as_a_deep_closure():
+    # eyeBlink 0.55 (looking down at a phone) against 0.70 with this driver's eyes shut
+    assert max(s.closed_duration for s in lowered_lids(3, blink=0.55, ratio=0.0)) > 2.5
+    assert max(s.closed_duration for s in lowered_lids(3, blink=0.55, ratio=0.85)) == 0.0
+    off = [ev for s in lowered_lids(3, blink=0.55, ratio=0.85) for ev in s.events]
+    assert "microsleep" not in off
+
+
+def test_enrolled_ratio_still_counts_the_drivers_shut_eyes():
+    states = lowered_lids(3, blink=0.68, ratio=0.85)
+    assert max(s.closed_duration for s in states) > 2.5
+    assert "microsleep" in [ev for s in states for ev in s.events]

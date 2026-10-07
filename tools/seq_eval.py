@@ -46,6 +46,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from edge_agent.config import PROJECT_ROOT  # noqa: E402
+from edge_agent.perception.features import IRIS, iris_offsets  # noqa: E402, F401 (tools import them from here)
 from tools.metrics import (  # noqa: E402
     DISTRACTION_REASONS,
     DROWSY_REASONS,
@@ -72,112 +73,210 @@ COLUMNS = (
     "perclos perclos_ready yawning masked off_road no_face_s level drowsy_score "
     "ear_l ear_r face_bright is_ir blink"  # raw inputs of block 5, so its trigger can be replayed
     " brow"  # browOuterUp blendshape (v2 brow-raise signal of block 7); traces made before v2 lack it
+    # M39 (own recordings; traces made before it lack these). Block 4: phone flag, kind, best box.
+    " roll phone_flag phone_kind phone_score phone_x1 phone_y1 phone_x2 phone_y2"
+    " face_x1 face_y1 face_x2 face_y2"  # face box the driver zone was built on (pixels of the 640-wide image)
+    " off_road_s phone_ratio off_road_ratio glance_count turned_away unavailable distraction_score"  # blocks 8, 9
+    # Where the eyes look and how open the mouth is (MediaPipe blendshapes, 0..1), per eye.
+    " look_down_l look_down_r look_up_l look_up_r look_in_l look_in_r look_out_l look_out_r jaw_open mouth_close"
+    " iris_x_l iris_y_l iris_x_r iris_y_r"  # iris centre against the eye corners (iris_offsets)
+    " perclos_p80 perclos_p80_s"  # M40: PERCLOS by the P80 definition and its eye-data coverage (measured only)
+    " scene_bright scene_contrast sharpness"  # M43: frame quality numbers (traces made before it lack them)
+    " gaze_down_deg gaze_down_s"  # block 8: gaze-down angle and how long it has stayed down (measured only)
 ).split()
-
-
+PHONE_KIND_CODES = {"unknown": 0.0, "call": 1.0, "text": 2.0}  # phone_kind column; NaN = no phone
+PHONE_KIND_NAMES = {v: k for k, v in PHONE_KIND_CODES.items()}
+BLENDSHAPE_COLUMNS = {
+    "look_down_l": "eyeLookDownLeft",
+    "look_down_r": "eyeLookDownRight",
+    "look_up_l": "eyeLookUpLeft",
+    "look_up_r": "eyeLookUpRight",
+    "look_in_l": "eyeLookInLeft",
+    "look_in_r": "eyeLookInRight",
+    "look_out_l": "eyeLookOutLeft",
+    "look_out_r": "eyeLookOutRight",
+    "jaw_open": "jawOpen",
+    "mouth_close": "mouthClose",
+}
 # --------------------------------------------------------------------------- tracing (models)
+
+
+class Tracer:
+    """Blocks 2-12 frame by frame (same wiring as tools/eval.py), keeping one row of numbers per frame.
+
+    Used on video files (`trace_video`: time = frame index / fps, YOLO every `yolo_every` frames)
+    and on a live camera (tools/record_trace.py: the caller's clock, YOLO at phone.target_fps).
+    Only numbers are kept: the image given to `step` is not stored.
+    """
+
+    def __init__(
+        self,
+        thresholds: dict[str, Any],
+        speed_kmh: float = 60.0,
+        use_phone: bool = True,
+        yolo_every: int | None = None,
+    ) -> None:
+        from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
+        from edge_agent.decision.pipeline import DecisionPipeline
+        from edge_agent.perception import PreprocessConfig, Preprocessor
+        from edge_agent.perception.eye_state import EyeStateConfig, EyeStateEstimator, make_estimator
+        from edge_agent.perception.features import FeatureConfig, FeatureExtractor
+        from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
+        from edge_agent.perception.phone_detector import FaceBoxMemory, PhoneDetectorConfig, YoloPhoneModel
+
+        self.preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
+        self.extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
+        eye_cfg = EyeStateConfig.from_dict(thresholds.get("eye_state"))
+        self.eye_state = make_estimator(eye_cfg)
+        self.eye_diag = EyeStateEstimator(replace(eye_cfg, enabled=True, always_run=True, source="cnn"))
+        self.phone_cfg = replace(PhoneDetectorConfig.from_dict(thresholds.get("phone")), num_threads=1)
+        self.yolo = YoloPhoneModel(self.phone_cfg) if use_phone else None
+        self.yolo_every = yolo_every
+        self.pipeline = DecisionPipeline(thresholds)
+        self.can = CanSimulator(
+            scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]})
+        )
+        self.landmarks = FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks")))
+        self.face_memory = FaceBoxMemory(self.phone_cfg.face_memory_s)
+        self.detections: tuple = ()
+        self.last_yolo_t = -1e9
+        self.rows: list[tuple] = []
+        self.events: list[tuple[int, str]] = []
+        self.alerts: list[tuple[int, int, tuple[str, ...]]] = []
+
+    def close(self) -> None:
+        self.landmarks.close()
+
+    def __enter__(self) -> Tracer:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _yolo_due(self, i: int, t: float) -> bool:
+        if self.yolo_every is not None:
+            return i % self.yolo_every == 0
+        return self.phone_cfg.target_fps > 0 and t - self.last_yolo_t >= 1.0 / self.phone_cfg.target_fps
+
+    def step(self, image: np.ndarray, i: int, t: float) -> Any:
+        """One frame at time t (seconds from the start). Returns the frame's DecisionResult."""
+        from edge_agent.capture import Frame
+        from edge_agent.perception import quality
+        from edge_agent.perception.eye_state import face_brightness
+        from edge_agent.perception.phone_detector import face_bbox, phone_kind, phone_near_face
+
+        pre = self.preprocessor(Frame(image=image, frame_id=i, timestamp=t))
+        lm = self.landmarks.detect(pre)
+        if self.yolo is not None and self._yolo_due(i, t):
+            self.detections, self.last_yolo_t = self.yolo(pre.image), t
+        phone_flag = held = None
+        face = self.face_memory.update(face_bbox(lm.points) if lm else None, t)
+        if self.yolo is not None and t - self.last_yolo_t <= self.phone_cfg.max_result_age_s:
+            phone_flag = phone_near_face(self.detections, face, self.phone_cfg)
+            held = phone_kind(self.detections, face, self.phone_cfg)
+        feats = self.extractor(lm, i, t)
+        feats = replace(feats, **quality.measure(pre, lm))
+        diag = self.eye_diag.estimate(pre, lm, feats)
+        if self.eye_state is not None:
+            feats = self.eye_state(pre, lm, feats)
+        r = self.pipeline.step(feats, phone_flag, self.can.sample(t), held)
+        d, x = r.drowsiness, r.distraction
+        best = self.detections[0] if self.detections and phone_flag is not None else None
+        phone_box = (None,) * 4 if best is None else best.bbox
+        face_box = (None,) * 4 if face is None else face
+        shapes = (lm.blendshapes or {}) if lm is not None else {}
+        iris = iris_offsets(lm.points) if lm is not None else {}
+        row = {
+            "t": t,
+            "face": feats.face_found,
+            "reliable": feats.face_reliable,
+            "ear": feats.ear,
+            "ear_base": d.ear_open_baseline,
+            "mar": feats.mar,
+            "pitch": feats.pitch,
+            "yaw": feats.yaw,
+            "p_closed": feats.p_closed,
+            "p_cnn": None if diag is None else diag.p_closed,
+            "eye_closed": None if d.eye_closed is None else int(d.eye_closed),
+            "closed_duration": d.closed_duration,
+            "perclos": d.perclos_60s,
+            "perclos_ready": d.perclos_ready,
+            "yawning": d.yawning,
+            "masked": d.closure_masked,
+            "off_road": x.off_road,
+            "no_face_s": x.no_face_duration,
+            "level": r.risk.level,
+            "drowsy_score": r.risk.drowsy_score,
+            "ear_l": feats.ear_left,
+            "ear_r": feats.ear_right,
+            "face_bright": face_brightness(pre, lm) if lm is not None else None,
+            "is_ir": pre.is_ir,
+            "blink": feats.eye_blink,
+            "brow": feats.brow_up,
+            "roll": feats.roll,
+            "phone_flag": phone_flag,
+            "phone_kind": None if x.phone_kind is None else PHONE_KIND_CODES[x.phone_kind],
+            "phone_score": None if best is None else best.score,
+            **dict(zip(("phone_x1", "phone_y1", "phone_x2", "phone_y2"), phone_box, strict=True)),
+            **dict(zip(("face_x1", "face_y1", "face_x2", "face_y2"), face_box, strict=True)),
+            "off_road_s": x.off_road_duration,
+            "phone_ratio": x.phone_ratio_2s,
+            "off_road_ratio": x.off_road_ratio,
+            "glance_count": x.glance_count,
+            "turned_away": x.turned_away,
+            "unavailable": r.risk.unavailable,
+            "distraction_score": r.risk.distraction_score,
+            **{col: shapes.get(name) for col, name in BLENDSHAPE_COLUMNS.items()},
+            **{col: iris.get(col) for col in ("iris_x_l", "iris_y_l", "iris_x_r", "iris_y_r")},
+            "perclos_p80": d.perclos_p80_60s,
+            "perclos_p80_s": d.perclos_p80_coverage_s,
+            "scene_bright": feats.scene_brightness,
+            "scene_contrast": feats.scene_contrast,
+            "sharpness": feats.sharpness,
+            "gaze_down_deg": x.gaze_down_deg,
+            "gaze_down_s": x.gaze_down_duration,
+        }
+        self.rows.append(tuple(row[c] for c in COLUMNS))
+        self.events += [(i, ev) for ev in d.events]
+        if r.alert.new_alert is not None:
+            self.alerts.append((i, r.alert.new_alert.level, tuple(r.alert.new_alert.reasons)))
+        return r
+
+    def result(self, fps: float) -> dict:
+        """The trace: per-frame columns (NaN = not measured), events and alerts by frame index."""
+        cols = {name: np.full(0, np.nan) for name in COLUMNS}
+        if self.rows:
+            cols = {
+                name: np.array([np.nan if v is None else float(v) for v in col])
+                for name, col in zip(COLUMNS, zip(*self.rows))
+            }
+        return {"fps": fps, "n": len(self.rows), "cols": cols, "events": self.events, "alerts": self.alerts}
 
 
 def trace_video(path: Path, thresholds: dict[str, Any], speed_kmh: float = 60.0, use_phone: bool = True) -> dict:
     """Blocks 2-12 on one video; per-frame numbers, events and alerts (same wiring as tools/eval.py)."""
     import cv2
 
-    from edge_agent.capture import Frame
-    from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
-    from edge_agent.decision.pipeline import DecisionPipeline
-    from edge_agent.perception import PreprocessConfig, Preprocessor
-    from edge_agent.perception.eye_state import EyeStateConfig, EyeStateEstimator, face_brightness, make_estimator
-    from edge_agent.perception.features import FeatureConfig, FeatureExtractor
-    from edge_agent.perception.landmarks import FaceLandmarkDetector, LandmarkConfig
-    from edge_agent.perception.phone_detector import (
-        FaceBoxMemory,
-        PhoneDetectorConfig,
-        YoloPhoneModel,
-        face_bbox,
-        phone_near_face,
-    )
+    from edge_agent.perception.phone_detector import PhoneDetectorConfig
 
     cap = cv2.VideoCapture(str(path))
-    rows: list[tuple] = []
-    events: list[tuple[int, str]] = []
-    alerts: list[tuple[int, int, tuple[str, ...]]] = []
     try:
         if not cap.isOpened():
             raise RuntimeError(f"cannot open {path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
         fps = fps if 0 < fps < 1000 else 30.0
-        preprocessor = Preprocessor(PreprocessConfig.from_dict(thresholds.get("preprocess")))
-        extractor = FeatureExtractor(FeatureConfig.from_dict(thresholds.get("features")))
-        eye_cfg = EyeStateConfig.from_dict(thresholds.get("eye_state"))
-        eye_state = make_estimator(eye_cfg)
-        eye_diag = EyeStateEstimator(replace(eye_cfg, enabled=True, always_run=True, source="cnn"))
-        phone_cfg = replace(PhoneDetectorConfig.from_dict(thresholds.get("phone")), num_threads=1)
-        yolo = YoloPhoneModel(phone_cfg) if use_phone else None
-        yolo_every = max(1, round(fps / phone_cfg.target_fps))
-        pipeline = DecisionPipeline(thresholds)
-        can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]}))
-        detections: tuple = ()
-        last_yolo_t = -1e9
-        face_memory = FaceBoxMemory(phone_cfg.face_memory_s)
-        i = 0
-        with FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks"))) as landmarks:
+        yolo_every = max(1, round(fps / PhoneDetectorConfig.from_dict(thresholds.get("phone")).target_fps))
+        with Tracer(thresholds, speed_kmh, use_phone, yolo_every) as tracer:
+            i = 0
             while True:
                 ok, image = cap.read()
                 if not ok:
                     break
-                t = i / fps
-                pre = preprocessor(Frame(image=image, frame_id=i, timestamp=t))
-                lm = landmarks.detect(pre)
-                if yolo is not None and i % yolo_every == 0:
-                    detections, last_yolo_t = yolo(pre.image), t
-                phone_flag = None
-                face = face_memory.update(face_bbox(lm.points) if lm else None, t)
-                if yolo is not None and t - last_yolo_t <= phone_cfg.max_result_age_s:
-                    phone_flag = phone_near_face(detections, face, phone_cfg)
-                feats = extractor(lm, i, t)
-                diag = eye_diag.estimate(pre, lm, feats)
-                if eye_state is not None:
-                    feats = eye_state(pre, lm, feats)
-                r = pipeline.step(feats, phone_flag, can.sample(t))
-                d = r.drowsiness
-                rows.append(
-                    (
-                        t,
-                        feats.face_found,
-                        feats.face_reliable,
-                        feats.ear,
-                        d.ear_open_baseline,
-                        feats.mar,
-                        feats.pitch,
-                        feats.yaw,
-                        feats.p_closed,
-                        None if diag is None else diag.p_closed,
-                        None if d.eye_closed is None else int(d.eye_closed),
-                        d.closed_duration,
-                        d.perclos_60s,
-                        d.perclos_ready,
-                        d.yawning,
-                        d.closure_masked,
-                        r.distraction.off_road,
-                        r.distraction.no_face_duration,
-                        r.risk.level,
-                        r.risk.drowsy_score,
-                        feats.ear_left,
-                        feats.ear_right,
-                        face_brightness(pre, lm) if lm is not None else None,
-                        pre.is_ir,
-                        feats.eye_blink,
-                        feats.brow_up,
-                    )
-                )
-                events += [(i, ev) for ev in d.events]
-                if r.alert.new_alert is not None:
-                    alerts.append((i, r.alert.new_alert.level, tuple(r.alert.new_alert.reasons)))
+                tracer.step(image, i, i / fps)
                 i += 1
+            return tracer.result(fps)
     finally:
         cap.release()
-    cols = {name: np.array([np.nan if v is None else float(v) for v in col]) for name, col in zip(COLUMNS, zip(*rows))}
-    return {"fps": fps, "n": len(rows), "cols": cols, "events": events, "alerts": alerts}
 
 
 def _trace_job(args: tuple[str, str, dict[str, Any], float, bool]) -> tuple[str, dict | str]:
@@ -241,28 +340,47 @@ def run_traces(
 # --------------------------------------------------------------------------- what-if replay (blocks 7-12 only)
 
 
-def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace", observe: Any = None) -> dict:
+def replay(
+    tr: dict,
+    thresholds: dict[str, Any],
+    eye: str = "trace",
+    observe: Any = None,
+    profile: dict[str, float] | None = None,
+) -> dict:
     """Blocks 7-12 again on a trace's features, e.g. with other thresholds, without re-running the models.
 
     eye: which p_closed block 7 gets. "trace" = what the pipeline used (reproduces the run),
     "ear" = never the CNN (EAR only), "cnn" = the CNN on every frame, "block5" = block 5 decided
     again with `thresholds` (trigger + hold, score from eye_state.source; needs the raw columns
-    of a trace made after the block 5 fix). No phone flag (none is traced).
+    of a trace made after the block 5 fix). The phone flag and kind come from the trace when it has
+    them (made from M39 on); older traces have none, so no phone alert is replayed.
     observe: called as observe(i, pipeline, result) after every frame, for tools that need more than
     the returned columns (tools/blink_duration.py reads block 7's blink timings).
+    profile: ear_open, mar_closed, road_yaw, road_pitch (and road_iris_y, block 8 only) handed to blocks
+    7 and 8 before the first frame, as a finished driver enrollment does (tools/trace_studies.py personal).
     """
     from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
     from edge_agent.decision.pipeline import DecisionPipeline
     from edge_agent.perception.features import FrameFeatures
 
     c = tr["cols"]
+    source = "cnn"  # the traces were made on the device path; "block5" follows eye_state.source
     if eye == "block5":
+        source = (thresholds.get("eye_state") or {}).get("source", "cnn")
         pcol = block5_scores(c, thresholds)
     else:
         pcol = {"trace": c["p_closed"], "cnn": c["p_cnn"], "ear": np.full(tr["n"], np.nan)}[eye]
     blink = c.get("blink", np.full(tr["n"], np.nan))
     brow = c.get("brow", np.full(tr["n"], np.nan))
+    phone = c.get("phone_flag", np.full(tr["n"], np.nan))
+    kind = c.get("phone_kind", np.full(tr["n"], np.nan))
+    # Frame quality numbers (M43): NaN = not measured, which is never an issue.
+    q = {k: c.get(k, np.full(tr["n"], np.nan)) for k in ("face_bright", "scene_bright", "scene_contrast", "sharpness")}
+    iris_y = (c["iris_y_l"] + c["iris_y_r"]) / 2.0 if "iris_y_l" in c else np.full(tr["n"], np.nan)
     pipeline = DecisionPipeline(thresholds)
+    if profile is not None:
+        pipeline.drowsiness.set_profile(**{k: v for k, v in profile.items() if k != "road_iris_y"})
+        pipeline.distraction.set_road_pose(profile["road_yaw"], profile["road_pitch"], profile.get("road_iris_y"))
     can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": 60.0}]}))
     out = {
         k: np.empty(tr["n"])
@@ -275,6 +393,20 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace", observe: An
             "drowsy_score",
             "drowsy_level",  # per branch, for FAR / MAR windows
             "distraction_level",
+            "off_road",
+            "off_road_s",
+            "off_road_ratio",
+            "glance_count",
+            "turned_away",
+            "unavailable",
+            "perclos",
+            "perclos_ready",
+            "perclos_s",  # eye-data seconds in the PERCLOS window
+            "perclos_p80",
+            "perclos_p80_s",
+            "ear_base",
+            "gaze_down_deg",
+            "gaze_down_s",
         )
     }
     events: list[tuple[int, str]] = []
@@ -298,9 +430,30 @@ def replay(tr: dict, thresholds: dict[str, Any], eye: str = "trace", observe: An
             eye_blink=val(blink[i]),
             brow_up=val(brow[i]),
             p_closed=val(pcol[i]) if face else None,
+            p_closed_source=source if face and not np.isnan(pcol[i]) else None,
+            face_brightness=val(q["face_bright"][i]) if face else None,
+            scene_brightness=val(q["scene_bright"][i]),
+            scene_contrast=val(q["scene_contrast"][i]),
+            sharpness=val(q["sharpness"][i]),
+            iris_y=val(iris_y[i]) if face else None,
         )
-        r = pipeline.step(f, None, can.sample(f.timestamp))
-        d = r.drowsiness
+        flag = None if np.isnan(phone[i]) else bool(phone[i])
+        r = pipeline.step(f, flag, can.sample(f.timestamp), None if np.isnan(kind[i]) else PHONE_KIND_NAMES[kind[i]])
+        d, x = r.drowsiness, r.distraction
+        out["off_road"][i] = x.off_road
+        out["off_road_s"][i] = x.off_road_duration
+        out["off_road_ratio"][i] = x.off_road_ratio
+        out["glance_count"][i] = x.glance_count
+        out["turned_away"][i] = x.turned_away
+        out["gaze_down_deg"][i] = np.nan if x.gaze_down_deg is None else x.gaze_down_deg
+        out["gaze_down_s"][i] = x.gaze_down_duration
+        out["unavailable"][i] = r.risk.unavailable
+        out["perclos"][i] = d.perclos_60s
+        out["perclos_ready"][i] = d.perclos_ready
+        out["perclos_s"][i] = d.perclos_coverage_s
+        out["perclos_p80"][i] = d.perclos_p80_60s
+        out["perclos_p80_s"][i] = d.perclos_p80_coverage_s
+        out["ear_base"][i] = d.ear_open_baseline
         out["eye_closed"][i] = np.nan if d.eye_closed is None else float(d.eye_closed)
         out["closed_duration"][i] = d.closed_duration
         out["masked"][i] = d.closure_masked
@@ -931,6 +1084,23 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def yawdd_meta(key: str) -> dict[str, str] | None:
+    """ "Mirror/Male_mirror Avi Videos/13-MaleGlasses-Yawning.avi" -> subject, eyewear, action.
+
+    subject = gender + number + eyewear: the same number with and without glasses may be one person
+    or two (not checked), so they are kept apart."""
+    m = re.fullmatch(r"(\d+)-(Female|Male)([A-Za-z]*)-([A-Za-z]+)", Path(key).stem)
+    if m is None:
+        return None
+    number, gender, extra, action = m.groups()
+    eyewear = "sunglasses" if "SunGlasses" in extra else ("no glasses" if "NoGlasses" in extra else "glasses")
+    return {
+        "subject": f"{gender[0]}{number}-{eyewear.replace(' ', '')}",
+        "eyewear": eyewear,
+        "action": "yawning" if "yawning" in action.lower() else action.lower(),  # normal | talking | yawning
+    }
+
+
 def yawdd_report(traces: dict, thresholds: dict[str, Any]) -> str:
     """YawDD from traces, scored like tools/dataset.py + tools/eval.py (clip labels: a Yawning clip
     is one yawn episode covering the clip), plus FAR / MAR windows from the per-frame branch levels."""
@@ -966,11 +1136,16 @@ def yawdd_report(traces: dict, thresholds: dict[str, Any]) -> str:
         }
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
     windows = ev.window_rows(episodes, durations, levels, cfg, tolerance_s=0.0)
-    text = ev.report(ev.score(episodes, predictions, durations, tolerance_s=0.0), durations, 0.0, windows, cfg)
+    subjects = {k: m["subject"] for k in durations if (m := yawdd_meta(k)) is not None}
+    people = ev.score_by_subject(episodes, predictions, durations, subjects, 0.0, levels, cfg)
+    scores = ev.score(episodes, predictions, durations, tolerance_s=0.0, warmup_s=cfg.warmup_s)
+    text = ev.report(scores, durations, 0.0, windows, cfg, people)
     return (
         f"Dataset: {preset.kaggle} ({preset.name}), clip-level labels, scored from traces "
         "(tools/seq_eval.py yawdd).\n\n" + text + "\nYawning clips count as drowsy windows (YawDD has no other "
         "drowsiness label); a car parked, no distraction label, so distraction windows are all awake.\n"
+        "A person = gender + number + eyewear in the file name (the same number with and without glasses is kept "
+        "apart: not checked whether it is one person).\n"
     )
 
 

@@ -4,13 +4,25 @@
   {
    "date": "2026-10-05",
    "reason": "M34: fixture built from fl3d_v2 / yawdd_v2 / sust_v2 traces with the thresholds of M33"
+  },
+  {
+   "date": "2026-10-06",
+   "reason": "M44: the third L3 alert within alert.l3_repeat_window_s carries the reason repeated_l3 (fl3d/P1042762); no level, time or score changed"
+  },
+  {
+   "date": "2026-10-06",
+   "reason": "eye_state.low_light_brightness 60 -> 0 (improvements task 7): in low light EAR decides instead of the eye CNN; own dim-light recordings had 8 false L3 from the CNN, FL3D gains one microsleep L3, no new alert on quiet videos"
+  },
+  {
+   "date": "2026-10-06",
+   "reason": "M53: weight_slow_blink and weight_brow 10 -> 0, risk.trend.level 1 -> 0 (UTA-RLDD, eval/results/dataset_uta_rldd.md); drowsy_score lower on 2 FL3D videos, events and alerts unchanged"
   }
  ],
  "videos": {
   "fl3d/P1042762": {
    "frames": 3095,
    "events": {
-    "blink": 42,
+    "blink": 47,
     "bow": 4,
     "microsleep": 9,
     "nod": 9,
@@ -33,10 +45,17 @@
      ]
     ],
     [
-     1643,
+     1646,
      2,
      [
       "drowsy_score"
+     ]
+    ],
+    [
+     1744,
+     3,
+     [
+      "microsleep"
      ]
     ],
     [
@@ -50,14 +69,16 @@
      2183,
      3,
      [
-      "microsleep"
+      "microsleep",
+      "repeated_l3"
      ]
     ],
     [
      2855,
      3,
      [
-      "microsleep"
+      "microsleep",
+      "repeated_l3"
      ]
     ]
    ],
@@ -65,8 +86,8 @@
    "drowsy_score": [
     50.0,
     50.0,
-    100.0,
-    96.033
+    90.0,
+    90.0
    ]
   },
   "fl3d/P1043115": {
@@ -104,7 +125,7 @@
    "max_level": 3,
    "drowsy_score": [
     35.0,
-    88.486,
+    85.0,
     77.325,
     80.216
    ]
@@ -526,6 +547,7 @@
   "yawdd/Mirror/Male_mirror Avi Videos/13-MaleGlasses-Yawning.avi": {
    "frames": 213,
    "events": {
+    "blink": 1,
     "yawn": 1
    },
    "alerts": [],
@@ -539,7 +561,9 @@
   },
   "yawdd/Mirror/Male_mirror Avi Videos/16-MaleNoGlasses-Talking.avi": {
    "frames": 263,
-   "events": {},
+   "events": {
+    "blink": 6
+   },
    "alerts": [],
    "max_level": 0,
    "drowsy_score": [

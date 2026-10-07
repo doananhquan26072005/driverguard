@@ -173,7 +173,7 @@ def test_unknown_scenario_rejected():
 
 def test_settings_come_from_thresholds(agent):
     s = json.loads(agent.settings())
-    assert s["phone"] == {"input_size": 640, "target_fps": 5} and s["target_width"] == 640
+    assert s["phone"] == {"input_size": 640, "target_fps": 5, "num_threads": 2} and s["target_width"] == 640
     assert s["landmarks"]["num_faces"] == 2 and s["flush_interval_s"] == 5.0 and s["problems"] == []
 
 
@@ -183,6 +183,19 @@ def test_grey_frame_counts_as_infrared(agent):
     assert agent.eye_state.runs == 1  # IR: block 5 uses the eye-state score
     agent.frame(0.1, 1, W, H, face, 1, (0.05, 0.05), 12.0, 140.0)
     assert agent.eye_state.runs == 2  # held for eye_state.hold_s after IR
+
+
+def test_grey_camera_eyes_shut_is_l3_with_an_eye_blink_of_shut_eyes(agent):
+    # Infrared / grayscale camera: eyeBlink decides every frame. Shut eyes read ~0.65, not the CNN's 0.8+.
+    def grey(seconds, t0, frame0, points, blink):
+        state = None
+        for i in range(int(seconds * FPS)):
+            state = agent.frame(t0 + i / FPS, frame0 + i, W, H, points.ravel(), 1, blink, 0.5, 140.0)
+        return json.loads(state)
+
+    grey(12, 0.0, 0, synthetic_face(), (0.05, 0.05))
+    state = grey(2.5, 12.0, int(12 * FPS), synthetic_face(ear=0.05), (0.65, 0.65))
+    assert state["level"] == 3 and "microsleep" in state["reasons"]
 
 
 def test_every_face_goes_in_and_the_largest_is_the_driver_before_enrollment(agent):
@@ -255,3 +268,15 @@ def test_end_trip_leaves_an_ended_heartbeat(agent):
     run(agent, 2, points=synthetic_face())
     agent.end_trip()
     assert json.loads(agent.take_heartbeat())["heartbeat"]["state"] == "ended"
+
+
+def test_page_quality_numbers_reach_block_6_and_name_the_reason(agent):
+    """M43: the page measures the face / image numbers, Python applies quality.* and risk.unavailable."""
+    face = synthetic_face().ravel()
+    state = {}
+    for i in range(int(8 * FPS)):  # a face in view, washed out by the sun (face luminance 250)
+        state = json.loads(agent.frame(i / FPS, i, W, H, face, 1, (0.05, 0.05), 12.0, 250.0, None, 120.0, 60.0, 90.0))
+    assert state["unavailable"] is True and state["unavailable_reason"] == "glare"
+    assert state["quality"]["issue"] == "glare" and state["quality"]["score"] < 0.2
+    causes = [e["metrics"].get("cause") for e in events_of(agent) if e["reasons"] == ["monitoring_unavailable"]]
+    assert causes == ["glare"]
