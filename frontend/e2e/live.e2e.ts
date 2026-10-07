@@ -141,7 +141,7 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await manager.getByLabel("Tên đăng nhập").fill("quanly");
   await manager.getByLabel("Mật khẩu").fill(PASSWORD);
   await manager.getByRole("button", { name: "Đăng nhập" }).click();
-  await manager.getByRole("tab", { name: "Đội xe" }).click();
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
   const vehicle = manager.getByRole("row").filter({ hasText: "web-an" });
   const fleetShows = (text: string) =>
     expect(async () => {
@@ -157,7 +157,7 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   // M49: the page timed its own loop and the heartbeat carried the numbers to the fleet overview.
   await expect(vehicle).toContainText(/p95 [\d,.]+ ms/);
 
-  await manager.getByRole("tab", { name: /Báo cáo chuyến đi/ }).click();
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
   const row = manager.getByRole("row").filter({ hasText: "drv-001" });
   await expect(row).toHaveCount(1);
   await row.getByRole("button").click();

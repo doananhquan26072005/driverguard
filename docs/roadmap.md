@@ -92,7 +92,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M57](#m57) | Nền giao diện chung: màu, font Inter tự đóng gói (không dùng Google Fonts vì HUD có thể không có mạng), cỡ chữ, nút, thẻ "kính"; sửa các lỗi tương phản của bản thiết kế (nền trắng trong giao diện tối, chữ đen trong ô nhập, màu cam tối trên nền tối) | Một bộ token dùng chung cho HUD và web; `#/hud-preview` và dashboard đổi sang nền tối mới; số FPS của `#/live` trước / sau không giảm dưới 15 | ✅ Xong · 07/10 (blur chưa dùng ở HUD / `#/live`: đo lại ở M58) |
 | [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ✅ Xong · 07/10 (kèm 2 đợt sửa theo góp ý; chưa chạy e2e) |
 | [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ✅ Xong · 07/10 (làm dần cùng các đợt sửa M58; chưa chạy e2e) |
-| [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ⬜ Chưa làm |
+| [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ✅ Xong · 07/10 (Tổng quan tài xế / quản lý, Tài khoản / Thiết bị tạm dùng trang cũ: M61–M63) |
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ⬜ Chưa làm |
 | [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ⬜ Chưa làm |
 | [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ⬜ Chưa làm |
@@ -1090,15 +1090,16 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M60: Đăng nhập chung và trang chủ theo vai trò (frontend)
 
-**Xong là thấy gì:** đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ và menu của mình
+**Xong là thấy gì:** một trang đăng nhập theo thiết kế; sau đăng nhập mỗi vai trò vào trang chủ của mình, menu trái chỉ có trang của vai trò đó; mỗi trang có địa chỉ riêng `#/dashboard/<trang>`
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; quyền đọc dữ liệu vẫn do backend quyết định (`require_roles`), menu chỉ ẩn những gì sẽ bị từ chối
 
-- Một form đăng nhập; menu bên trái theo vai trò thay thanh tab của `Dashboard.tsx`
-- Trang chủ: tài xế → Tổng quan của tôi; quản lý → Tổng quan đội xe; kỹ sư → Ngưỡng và báo sai; admin → Tài khoản
-- Thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng "60 / 365 ngày"
-- Link "Chạy thử bằng camera trên máy này" sang `#/live`
-- Test: đăng nhập từng vai trò, vai trò không có quyền không thấy mục menu
+- **Đăng nhập** (`Login.tsx`): cột trái giới thiệu + hai thẻ "Không lưu ảnh khuôn mặt", "Dữ liệu có hạn dùng" (số ngày lấy từ `/api/v1/policy`, không ghi cứng; backend không trả lời thì không nêu số); cột phải form, nút "Hiện / Ẩn" mật khẩu, lỗi "Sai tên đăng nhập hoặc mật khẩu", thẻ "Chạy thử bằng camera trên máy này" sang `#/live`, ghi chú HUD không cần đăng nhập
+- **Menu theo vai trò** (`nav.ts`, hàm thuần có test): tài xế: Tổng quan · Chuyến đi của tôi · Lịch sử cảnh báo · Dữ liệu của tôi; quản lý: Tổng quan · Đội xe · Báo cáo chuyến · Nhật ký sự kiện · Timeline mệt mỏi · Ngưỡng (chỉ xem); kỹ sư: Ngưỡng và báo sai · Nhật ký sự kiện · Timeline · Đội xe · Báo cáo chuyến; quản trị: Tài khoản · Thiết bị · Nhật ký truy cập + mọi mục của kỹ sư. Trang chủ: tài xế / quản lý → Tổng quan, kỹ sư → Ngưỡng, quản trị → Tài khoản. Địa chỉ của trang vai trò không có thì về trang chủ
+- **Khung** (`Dashboard.tsx`): menu trái 248 px (tên, vai trò, mã tài xế, Đăng xuất ở đáy; số báo cáo chưa xem trên mục "Báo cáo chuyến"), tiêu đề trang + một câu giải thích + bộ lọc ở đầu trang; màn hẹp thì menu nằm ngang trên cùng. Dòng chính sách dữ liệu dưới mọi trang giữ nguyên
+- **Tạm thời:** "Tổng quan" tài xế dùng danh sách chuyến, "Tổng quan" quản lý dùng trang Đội xe, "Tài khoản / Thiết bị" chỉ có hướng dẫn `backend.manage` + duyệt yêu cầu xoá, tới M61 / M62 / M63
+- e2e `live.e2e.ts`: mục menu là link ("Đội xe", "Báo cáo chuyến") thay vì tab
+- Test: 3 test mới (`dashboard/nav.test.ts`), tổng 109 test frontend pass, typecheck / build sạch; xem bằng backend tạm với database riêng và 2 chuyến giả lập (quản lý, kỹ sư, quản trị, tài xế đăng nhập được, không lỗi trang)
 
 <a id="m61"></a>
 
