@@ -1,6 +1,6 @@
 # Tiêu chí sẵn sàng pilot
 
-Cập nhật: 05/10/2026 (M36). Một trang để trả lời: **DriverGuard còn thiếu gì để chạy thử trên xe thật?**
+Cập nhật: 06/10/2026 (M53: dòng A1, A3, A4). Một trang để trả lời: **DriverGuard còn thiếu gì để chạy thử trên xe thật?**
 
 **Kết luận hiện tại: chưa sẵn sàng pilot.** Trong 24 tiêu chí dưới đây: 4 đạt, 6 đạt một phần, 5 chưa
 đạt, 9 chưa đo hoặc chưa có. Ba khoảng trống lớn nhất: chưa có thiết bị trên xe (hub, tốc độ thật), chưa
@@ -19,29 +19,29 @@ Cách đọc:
 
 | # | Tiêu chí | Mục tiêu | Hiện có | Trạng thái | Việc cần làm |
 |---|---|---|---|---|---|
-| A1 | Cảnh báo sai mỗi giờ lái | ≤ 1,0 / giờ, tính cả cận trên CI 95 % (PRD §6). Cần ≥ 3,7 giờ lái tỉnh táo không lần sai nào | Dataset: FL3D L1 4,6 (0,56–16,7), L2 6,9 (1,43–20,3), L3 2,3 (0,06–12,9) trên 0,43 giờ; YawDD 6,9 (3,31–12,7) trên 1,45 giờ; SUST 8,5 (5,56–12,5) trên 3,05 giờ. Giờ lái thật có nhãn: 0 | **Chưa đạt** | [ghi nhãn khi chạy thử](improvements.md#viec-nhan-demo), [dò ngưỡng trên UTA-RLDD](improvements.md#viec-toi-uu-nguong) |
-| A2 | Thời gian từ lúc bắt đầu nhắm mắt / nhìn lệch đến cảnh báo | p95 ≤ 3 s (PRD §6) | Chưa có công cụ đo. Theo cấu hình: L3 phát ngay khi mắt nhắm đủ 1,5 s | Chưa đo | [ghi số từ camera](improvements.md#viec-prd) |
-| A3 | Bắt được ngủ gật ngắn | ≥ 90 % số lần (PRD §7 bậc 2) | FL3D: nhắm ≥ 1,5 s đạt L3 75/95 (78,9 %); nhắm ≥ 3 s 11/11 | **Chưa đạt** (với 1,5 s) | [nhìn xuống / nhắm mắt](improvements.md#viec-nhin-xuong), [dò ngưỡng trên UTA-RLDD](improvements.md#viec-toi-uu-nguong) |
-| A4 | Độ nhạy khi tài xế buồn ngủ thật (KSS ≥ 8) | Trung bình > 40 %, cận dưới CI 90 % > 20 %, ≥ 10 người, ≥ 10 sự kiện [E1 Phần 2, điểm 3.1 và tiêu chí chấp nhận] | Mọi dữ liệu buồn ngủ đang có là diễn | Chưa đo | [dò ngưỡng trên UTA-RLDD](improvements.md#viec-toi-uu-nguong) (UTA-RLDD, xấp xỉ), [ghi nhãn khi chạy thử](improvements.md#viec-nhan-demo) |
+| A1 | Cảnh báo sai mỗi giờ lái | ≤ 1,0 / giờ, tính cả cận trên CI 95 % (PRD §6). Cần ≥ 3,7 giờ lái tỉnh táo không lần sai nào | Dataset: FL3D L1 4,6 (0,56–16,7), L2 6,9 (1,43–20,3), L3 2,3 (0,06–12,9) trên 0,43 giờ; YawDD 6,9 (3,31–12,7) trên 1,45 giờ; SUST 8,5 (5,56–12,5) trên 3,05 giờ. UTA-RLDD (M53, người ngồi trước laptop, 24 người giữ riêng, sau khi đổi ngưỡng): nhánh buồn ngủ 0,98 (0,27–2,51) trên 4,08 giờ, trước đó 1,96 (0,85–3,87) [`eval/results/dataset_uta_rldd.md`](../eval/results/dataset_uta_rldd.md). Giờ lái thật có nhãn: 0 | **Chưa đạt** (cận trên CI còn trên 1,0; chưa có giờ lái thật) | [ghi nhãn khi chạy thử](improvements.md#viec-nhan-demo), [phần còn lại sau UTA-RLDD](improvements.md#viec-toi-uu-nguong) |
+| A2 | Thời gian từ lúc bắt đầu nhắm mắt / nhìn lệch đến cảnh báo | p95 ≤ 3 s (PRD §6) | Bản ghi đầu tiên (M52, một người, ban ngày, tính từ lúc bấm phím): ngủ gật p95 1,67 s (11 lần); điện thoại 2,30–2,77 s (8 lần); quay đầu sang bên / ra sau 2,83–3,04 s (5 lần, hai lần vượt 3 s). Chưa gồm thời gian tới loa | Một phần | [ghi số từ camera](improvements.md#viec-prd) |
+| A3 | Bắt được ngủ gật ngắn | ≥ 90 % số lần (PRD §7 bậc 2) | FL3D: nhắm ≥ 1,5 s đạt L3 75/95 (78,9 %); nhắm ≥ 3 s 11/11 | **Chưa đạt** (với 1,5 s). UTA-RLDD không có nhãn theo đoạn nên không đo được chỉ tiêu này (M53) | [nhìn xuống / nhắm mắt](improvements.md#viec-nhin-xuong) |
+| A4 | Độ nhạy khi tài xế buồn ngủ thật (KSS ≥ 8) | Trung bình > 40 %, cận dưới CI 90 % > 20 %, ≥ 10 người, ≥ 10 sự kiện [E1 Phần 2, điểm 3.1 và tiêu chí chấp nhận] | Xấp xỉ trên UTA-RLDD (M53; video `10` ≈ KSS ≥ 8, mỗi người một sự kiện, không lái xe): 15 / 24 người giữ riêng có cảnh báo buồn ngủ = 62,5 % (CI 90 % 45,8–76,7); 24 người dùng để dò: 58,3 % (41,8–73,2) [`eval/results/dataset_uta_rldd.md`](../eval/results/dataset_uta_rldd.md) | **Có số xấp xỉ, trên mốc**; chưa phải phép thử DDAW (không có KSS theo thời gian, không lái xe) | [ghi nhãn khi chạy thử](improvements.md#viec-nhan-demo) |
 | A5 | Cảnh báo nhìn khỏi đường đủ sớm | Trong 3,5 s ở ≥ 50 km/h; trong 6 s ở 20–50 km/h [E2 điểm 3.3.2.1–3.3.2.2] | Cấu hình: 1,5 s khi chạy nhanh, 2,0 s còn lại, từ 5 km/h. Đo bằng góc đầu: đầu thẳng mà mắt liếc xuống thì không bắt được | Một phần | [hướng mắt](improvements.md#viec-huong-nhin) |
 | A6 | Chạy được ngày và đêm | Hoạt động hiệu quả cả ngày lẫn đêm [E1 điểm 3.2.1, E2 điểm 3.2.1] | Đã đo trên video lái đêm (FL3D / NITYMED, diễn) và ngày (YawDD, SUST). Chưa thử camera hồng ngoại, chưa xử lý chói đèn pha | Một phần | [model mắt mới](improvements.md#viec-model-mat), [tăng tương phản](improvements.md#viec-choi) |
-| A7 | Phát hiện dùng điện thoại | Chưa đặt mục tiêu số | Không có dataset đúng góc camera. State Farm (camera bên hông): recall 2,1 % | Chưa đo | [ghi số từ camera](improvements.md#viec-prd) |
+| A7 | Phát hiện dùng điện thoại | Chưa đặt mục tiêu số | Không có dataset đúng góc camera. State Farm (camera bên hông): recall 2,1 %. Bản ghi M52 (một người): gọi điện có cảnh báo 5 / 5, nhắn tin 3 / 5; không phát hiện giả nào ngoài nhãn | Một phần | [ghi số từ camera](improvements.md#viec-prd) |
 
 ### B. Không im lặng khi không giám sát được
 
 | # | Tiêu chí | Mục tiêu | Hiện có | Trạng thái | Việc cần làm |
 |---|---|---|---|---|---|
-| B1 | Các trạng thái im lặng mức Cao đã đóng | 0 dòng mức Cao trong [safety-fmea.md](safety-fmea.md) | Còn 3: app bị hệ điều hành dừng (dòng 4), kính râm (dòng 5), gục ra khỏi khung khi chưa thấy mắt nhắm (dòng 6) | **Chưa đạt** | [kính râm](improvements.md#viec-mat-bi-che), [cảnh báo cần xác nhận](improvements.md#viec-xac-nhan), [APK](improvements.md#viec-apk), [kênh cảnh báo vật lý](improvements.md#viec-coi-roi) |
-| B2 | Ảnh xấu thì báo "không giám sát được", không đoán | Mất mặt, ảnh mờ, góc xấu, lóa (PRD FR-6) | Mới có mất mặt ≥ 3 s khi xe chạy, mất camera, lỗi xử lý | Một phần | [chất lượng frame](improvements.md#viec-chat-luong) |
+| B1 | Các trạng thái im lặng mức Cao đã đóng | 0 dòng mức Cao trong [safety-fmea.md](safety-fmea.md) | Còn 3: app bị hệ điều hành dừng (dòng 4), kính râm (dòng 5), CNN mắt khi mặt tối / ảnh xám trên thiết bị (dòng 16, mới từ M46). Dòng 6 (gục ra khỏi khung) đã hạ xuống Vừa ở M44 | **Chưa đạt** | [kính râm](improvements.md#viec-mat-bi-che), [CNN mắt khi tối](improvements.md#viec-cnn-toi), [APK](improvements.md#viec-apk), [kênh cảnh báo vật lý](improvements.md#viec-coi-roi) |
+| B2 | Ảnh xấu thì báo "không giám sát được", không đoán | Mất mặt, ảnh mờ, góc xấu, lóa (PRD FR-6) | Mất mặt ≥ 3 s, che camera, mặt ngoài khung, mặt quá tối / quá chói / ảnh mờ ≥ 5 s khi xe chạy đều thành "tạm ngưng giám sát" có lý do (M43, ngưỡng tạm); mất camera, lỗi xử lý. Chưa che: mặt tối vừa và ảnh xám trên thiết bị (FMEA dòng 16) | Một phần | [CNN mắt khi tối](improvements.md#viec-cnn-toi), [ánh sáng thật](improvements.md#viec-anh-sang) |
 | B3 | Máy chủ biết xe mất liên lạc | Trong 90 s | Nhịp "còn sống" 30 s, tab "Đội xe" (M33; test backend và e2e trên web). Chưa chạy trên thiết bị thật | Đạt | – |
 
 ### C. Thiết bị trên xe
 
 | # | Tiêu chí | Mục tiêu | Hiện có | Trạng thái | Việc cần làm |
 |---|---|---|---|---|---|
-| C1 | Tốc độ xử lý trên hub | ≥ 15 FPS suốt chuyến (CLAUDE.md) | Chưa có hub. Máy dev (Mac ARM): 151,8 FPS, p95 7,2 ms ([benchmark.md](../eval/results/benchmark.md)); số này không nói gì về hub | Chưa đo | [đo phần cứng](improvements.md#viec-do-phan-cung) |
-| C2 | Chạy lâu không xuống cấp | RAM không tăng dần, không bị hạ xung vì nóng | Chưa chạy dài ở đâu cả | Chưa đo | [đo phần cứng](improvements.md#viec-do-phan-cung) |
-| C3 | Tốc độ và xi nhan thật | Đọc từ xe (CAN) hoặc GPS | Giả lập bằng tay (`tools/drive_sim.py`, `#/drive`) | **Chưa đạt** | [tốc độ GPS](improvements.md#viec-gps) |
+| C1 | Tốc độ xử lý trên hub | ≥ 15 FPS suốt chuyến (CLAUDE.md) | Chưa có hub. Container giới hạn 4 CPU / 4 GB trên máy dev (`simulated`, M42): giữ 30 FPS, p95 11,1 ms ([benchmark_simulated.md](../eval/results/benchmark_simulated.md)); không phải số đo thiết bị. Máy dev (Mac ARM): 151,8 FPS, p95 7,2 ms ([benchmark.md](../eval/results/benchmark.md)); số này không nói gì về hub | Chưa đo | [đo phần cứng](improvements.md#viec-do-phan-cung) |
+| C2 | Chạy lâu không xuống cấp | RAM không tăng dần, không bị hạ xung vì nóng | Mới chạy 10 phút trên máy dev và trong container giới hạn (M42): FPS giữ nguyên; RAM trong container tăng 21–66 MB / giờ trên 5–10 phút, chưa đủ dài để kết luận; không đọc được nhiệt độ | Chưa đo | [đo phần cứng](improvements.md#viec-do-phan-cung) |
+| C3 | Tốc độ và xi nhan thật | Đọc từ xe (CAN) | Giả lập bằng tay (`tools/drive_sim.py`, `#/drive`) | **Chưa đạt** | [sau khi chọn hub và nguồn tín hiệu xe](improvements.md#viec-phan-cung) |
 | C4 | App chạy trên hub không cần mạng | APK, mở là chạy | Chỉ có bản web xem thử | Chưa có | [APK](improvements.md#viec-apk) |
 | C5 | Tiếng cảnh báo nghe được trong cabin | Phần lớn âm trong 200–8 000 Hz, 50–90 dB [E1 điểm 3.4.3.2] | Âm báo trong code: 196–1 568 Hz. Chưa đo độ to trên loa của hub; chưa có còi rời | Một phần | [đo phần cứng](improvements.md#viec-do-phan-cung), [kênh cảnh báo vật lý](improvements.md#viec-coi-roi) |
 
@@ -51,9 +51,9 @@ Cách đọc:
 |---|---|---|---|---|---|
 | D1 | Không ảnh nào rời thiết bị | 0 (CLAUDE.md; PRD NFR-3; vòng kín theo [E1 điểm 2.3.2]) | Thiết bị chặn trước khi gửi, máy chủ từ chối nội dung giống ảnh (`tests/test_backend/test_privacy.py`, `test_publisher.py`) | Đạt | – |
 | D2 | Có chính sách dữ liệu và thời hạn lưu được thực thi | Văn bản + tự xoá | [data-policy.md](data-policy.md); tự xoá sau 60 / 365 ngày (M37, có test) | Đạt | – |
-| D3 | Tài xế biết rõ biện pháp giám sát trước khi áp dụng | Luật 91/2025/QH15 Điều 25 khoản 3 | Màn hình đồng ý trước khi đăng ký khuôn mặt. Thông báo chính thức của đơn vị vận tải: chưa có | Một phần | data-policy mục 9 |
+| D3 | Tài xế biết rõ biện pháp giám sát trước khi áp dụng | Luật 91/2025/QH15 Điều 25 khoản 3 | Màn hình đồng ý trước khi đăng ký khuôn mặt. Thông báo chính thức của đơn vị vận tải: có mẫu ([driver-notice-template.md](driver-notice-template.md), M48), chưa đơn vị nào điền và gửi | Một phần | data-policy mục 9 |
 | D4 | Mất mạng không mất sự kiện | 0 sự kiện mất | Thiết bị Python: hàng đợi SQLite, có test. App / web: chỉ giữ trong bộ nhớ | Một phần | [hàng đợi offline](improvements.md#viec-outbox-web) |
-| D5 | Hồ sơ đánh giá tác động xử lý dữ liệu | Có trước khi thu dữ liệu tài xế thật | Chưa làm | Chưa có | data-policy mục 9 |
+| D5 | Hồ sơ đánh giá tác động xử lý dữ liệu | Có trước khi thu dữ liệu tài xế thật | Có mẫu đã điền phần kỹ thuật ([dpia-template.md](dpia-template.md), M48); phần của đơn vị vận tải và rà soát pháp lý chưa làm | Một phần | data-policy mục 9 |
 
 ### E. Con người và vận hành
 
@@ -71,8 +71,8 @@ Mỗi giai đoạn có cổng: chưa qua cổng thì không sang giai đoạn sa
 | Giai đoạn | Làm gì | Cổng để qua |
 |---|---|---|
 | **0. Bản xem thử (hiện tại)** | Web `#/live`, dashboard, tốc độ giả lập, đo trên dataset công khai | Đã có: D1, D2, B3, E2 |
-| **1. Đo và dữ liệu** | Công cụ ghi số từ camera + nhãn bấm phím ([ghi số từ camera](improvements.md#viec-prd)); dò ngưỡng trên UTA-RLDD có tập kiểm tra giữ riêng ([dò ngưỡng trên UTA-RLDD](improvements.md#viec-toi-uu-nguong)); chứng minh hoặc tắt tín hiệu tạm ([tín hiệu tạm](improvements.md#viec-ablation)); hướng mắt ([hướng mắt](improvements.md#viec-huong-nhin)); chất lượng frame ([chất lượng frame](improvements.md#viec-chat-luong)); kính râm ([tải NTHU-DDD](improvements.md#viec-tai-dataset), [kính râm](improvements.md#viec-mat-bi-che)); buổi 10 người ([phần PRD còn lại](improvements.md#viec-prd-con-lai)) | A2 đo được và ≤ 3 s; A3 ≥ 90 % trên tập kiểm tra; A4 có số xấp xỉ; E1, E3 đạt; B2 đạt |
-| **2. Hub và app** | Chọn hub và camera; đo tài nguyên ([đo phần cứng](improvements.md#viec-do-phan-cung)); APK + hàng đợi offline ([APK](improvements.md#viec-apk), [hàng đợi offline](improvements.md#viec-outbox-web)); tốc độ thật ([tốc độ GPS](improvements.md#viec-gps)); xác nhận cảnh báo và báo quản lý ([cảnh báo cần xác nhận](improvements.md#viec-xac-nhan)); kênh cảnh báo vật lý ([kênh cảnh báo vật lý](improvements.md#viec-coi-roi)) | C1–C5 đạt trên hub; B1 không còn dòng Cao; D4 đạt |
+| **1. Đo và dữ liệu** | Công cụ ghi số từ camera + nhãn bấm phím ([ghi số từ camera](improvements.md#viec-prd)); ~~dò ngưỡng trên UTA-RLDD có tập kiểm tra giữ riêng; chứng minh hoặc tắt tín hiệu tạm~~ (xong ở M53, [`eval/results/dataset_uta_rldd.md`](../eval/results/dataset_uta_rldd.md)); hướng mắt ([hướng mắt](improvements.md#viec-huong-nhin)); chất lượng frame ([chất lượng frame](improvements.md#viec-chat-luong)); kính râm ([kính râm](improvements.md#viec-mat-bi-che), đang hoãn: phiên tự ghi đã bỏ 06/10, chưa có nguồn đo); buổi 10 người ([phần PRD còn lại](improvements.md#viec-prd-con-lai)) | A2 đo được và ≤ 3 s; A3 ≥ 90 % trên tập kiểm tra; A4 có số xấp xỉ; E1, E3 đạt; B2 đạt |
+| **2. Hub và app** | Chọn hub và camera; đo tài nguyên ([đo phần cứng](improvements.md#viec-do-phan-cung)); APK + hàng đợi offline ([APK](improvements.md#viec-apk), [hàng đợi offline](improvements.md#viec-outbox-web)); tốc độ thật (CAN, [sau khi chọn hub](improvements.md#viec-phan-cung)); xác nhận cảnh báo và báo quản lý ([cảnh báo cần xác nhận](improvements.md#viec-xac-nhan)); kênh cảnh báo vật lý ([kênh cảnh báo vật lý](improvements.md#viec-coi-roi)) | C1–C5 đạt trên hub; B1 không còn dòng Cao; D4 đạt |
 | **3. Pilot 1–3 xe** | Tài xế tình nguyện, có người ngồi cạnh ghi nhãn ([ghi nhãn khi chạy thử](improvements.md#viec-nhan-demo)), chỉ lái khi tỉnh táo, mỗi xe ≥ 4 giờ | D3, D5, E4 đạt **trước khi** bắt đầu. Kết quả cần: A1 cận trên CI ≤ 1,0 / giờ; không có lần "im lặng" nào ngoài bảng FMEA |
 | **4. Mở rộng** | Thêm xe, bỏ người ngồi cạnh, so nhiều chuyến ([so nhiều chuyến](improvements.md#viec-nhieu-chuyen)) | A1 giữ được theo từng tài xế; có quy trình xử lý yêu cầu dữ liệu của tài xế |
 
@@ -90,7 +90,7 @@ từ dataset có buồn ngủ thật hoặc từ mô phỏng lái có giám sát
 
 Tham khảo thêm, **nguồn thứ cấp, chưa đọc protocol gốc**: Euro NCAP 2026 được mô tả là phân biệt ngủ gật
 ngắn (nhắm mắt 1–2 s), ngủ (≥ 3 s) và không phản ứng (nhắm ≥ 6 s hoặc không nhìn lại đường trong 3 s
-sau cảnh báo) [N1]. DriverGuard có mốc 1,5 s (L3); mốc 6 s "không phản ứng" chưa làm ([cảnh báo cần xác nhận](improvements.md#viec-xac-nhan)).
+sau cảnh báo) [N1]. DriverGuard có mốc 1,5 s (L3) và từ M44 mốc 6 s "không phản ứng" (`risk.unresponsive.closed_s`, lý do `unresponsive`, báo quản lý ngay); phần "không nhìn lại đường trong 3 s sau cảnh báo" chưa làm.
 
 ## Nguồn
 

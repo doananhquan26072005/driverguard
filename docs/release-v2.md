@@ -18,6 +18,29 @@
 
 ---
 
+## Có gì mới (xem nhanh)
+
+Phần này dành cho người dùng muốn biết ngay v2 nâng cấp gì so với v1. Bảng đầy đủ theo từng mốc ở
+[mục 1](#1-tóm-tắt-thay-đổi-so-với-v1).
+
+- **Thêm đăng ký khuôn mặt**: lúc dừng xe, tài xế làm 3 bước trong khoảng 10 giây để hệ thống học
+  mắt, miệng, tư thế của riêng mình. Có màn hình hỏi đồng ý trước, và nút "Đổi tài xế" khi đổi người lái.
+- **Nhận đúng tài xế khi có hành khách**: không còn nhầm sang khuôn mặt người ngồi bên.
+- **Ít cảnh báo sai hơn**: cúi nhìn bảng đồng hồ không còn bị báo là ngủ gật, xe đứng yên thì không
+  cảnh báo, bật xi nhan thì được quay đầu rộng hơn về phía đó.
+- **Phát hiện buồn ngủ kỹ hơn**: thêm dấu hiệu chớp mắt chậm, nhướn mày giữ mắt mở, và tách gục đầu
+  với cúi đầu chủ động.
+- **Giao diện dễ hiểu hơn**: bỏ mã L0–L3 và thuật ngữ kỹ thuật trên màn hình tài xế, ba bước tải
+  gộp thành một.
+- **Tổng kết chuyến đi**: bấm "Kết thúc chuyến" là có bảng tổng kết và đánh giá; quản lý xem ở tab
+  "Báo cáo chuyến đi".
+- **Tự biết xe đang đỗ hay đang chạy**: theo tốc độ xe, không cần bấm "Tạm dừng" / "Tiếp tục lái".
+- **Không còn im lặng khi trục trặc**: mất mặt, mất tín hiệu xe, máy chậm hoặc đứng hình đều được
+  báo trên màn hình kèm âm thanh. Âm thanh cảnh báo luôn bật, không tắt được.
+- **Riêng tư hơn**: tắt việc thư viện onnxruntime tự gửi dữ liệu sử dụng về Microsoft.
+
+---
+
 ## 1. Tóm tắt thay đổi so với v1
 
 | Loại | Thay đổi | Mốc | Ngày |

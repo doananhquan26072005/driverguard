@@ -242,7 +242,8 @@ P-135/
 │   ├── download_models.py     Tải / tạo model
 │   ├── eval.py                Precision / recall / F1 / FP mỗi giờ so với nhãn
 │   ├── dataset.py             Tải dataset Kaggle và đo từng tín hiệu (EAR, CNN mắt, MAR, YOLO)
-│   └── benchmark.py           FPS, latency p50/p95, FP32 vs INT8
+│   ├── benchmark.py           FPS, latency p50/p95, FP32 vs INT8
+│   └── bench_web.py           Tốc độ khối 6–14 của bản web trong Pyodide, cạnh bản thiết bị
 ├── models/                    Model (KHÔNG có trong git, tải bằng tools/download_models.py)
 ├── data/                      DB backend, hàng đợi offline, video (KHÔNG có trong git)
 ├── eval/results/              Báo cáo benchmark / đánh giá
@@ -455,7 +456,7 @@ npm run dev
 3. Cầm điện thoại lên tai khoảng 3 s → **L2** `phone`.
 4. Trên HUD bấm **"Cảnh báo sai"** → dashboard tab *Nhật ký sự kiện* hiện thẻ "Tài xế báo sai".
 5. Chờ hơn 1 phút → tab *Timeline mệt mỏi* có điểm `drowsy_score` theo từng phút.
-6. Tab *Ngưỡng*: đổi `drowsy_score → L1` thành 45 → **Lưu** → khởi động lại edge agent. Terminal in `[config] 1 tuned thresholds applied`.
+6. Tab *Ngưỡng*: đổi `drowsy_score → L1` thành 45 → **Lưu**. Edge agent đang chạy hỏi lại backend mỗi 5 phút (`publisher.config_poll_s`) và áp phiên bản mới **khi xe đỗ**, terminal in `[config] thresholds version N applied`; khởi động lại thì áp ngay (`[config] 1 tuned thresholds applied`).
 
 ---
 
@@ -489,8 +490,14 @@ drowsy_score = 40·PERCLOS + 25·microsleep + 15·ngáp + 20·gục đầu   (m�
 ### 8.2 Chỉnh ngưỡng từ dashboard
 
 - Kỹ sư chỉnh được **15 ngưỡng** trong tab *Ngưỡng*, mỗi ngưỡng có giới hạn min/max. Mỗi lần lưu tạo một **phiên bản** mới.
-- Edge agent tải ngưỡng **khi khởi động** và ghi đè lên YAML. Nếu kết quả không hợp lệ (ví dụ L1 ≥ L2) thì bỏ qua và dùng YAML.
+- Edge agent tải ngưỡng **khi khởi động** và ghi đè lên YAML, rồi hỏi lại mỗi 5 phút; phiên bản đổi thì áp **khi xe đỗ** (M47). Nếu kết quả không hợp lệ (ví dụ L1 ≥ L2) thì bỏ qua và giữ bộ đang dùng.
 - Ô để trống nghĩa là thiết bị dùng giá trị trong `thresholds.yaml` của nó.
+
+**Áp thử và quay lui (M47).** Ô "Chỉ áp thử cho các xe" nhận mã thiết bị (vd. `cam-001, web-an`): chỉ các xe
+đó nhận phiên bản mới, cả đội giữ phiên bản đang dùng. Bảng "Phiên bản ngưỡng" cho biết mỗi phiên bản đổi khoá
+nào, xe nào đang chạy, bao nhiêu cảnh báo và bao nhiêu lần tài xế bấm "Cảnh báo sai". Nút "Áp cho cả đội" đưa
+một phiên bản bất kỳ (bản đang thử, hoặc một bản cũ để quay lui) thành của cả đội. Xe báo `config_applied` trong
+nhật ký sự kiện khi đã nhận; bộ ngưỡng không nhất quán bị xe từ chối (`config_refused`) và xe giữ bộ cũ.
 
 ### 8.3 Kịch bản CAN (`config/scenarios/*.yaml`)
 
@@ -599,12 +606,120 @@ python tools\benchmark.py --source data\videos\clip01.mp4 --out eval\results\ben
 - `eval/results/benchmark.md` hiện đo trên clip Dash của YawDD (`python tools/dataset.py` tải về `data/kaggle/`), ví dụ `--source "data/kaggle/datasets/enider/yawdd-dataset/versions/4/Dash/Dash/Female/1-FemaleNoGlasses.avi"`.
 - Lần chạy đầu tạo `yolov8n_int8.onnx`, hiệu chỉnh INT8 bằng chính các frame của `--source`. Đừng chạy lần đầu với frame tổng hợp; nếu lỡ chạy thì thêm `--requantize`.
 
+### 9.5 Tự ghi số từ camera: `tools/record_trace.py`
+
+Không quay video (CLAUDE.md cấm ghi frame). Công cụ chạy khối 2–12 trên camera, mỗi frame giữ một dòng số,
+người ngồi trước camera bấm phím để đánh dấu mình đang làm gì. Cửa sổ xem trước chỉ hiển thị.
+
+```powershell
+python tools\record_trace.py record --out data\own_traces\quan.pkl --name mask_day --tag person=quan --tag mask=medical --tag glasses=no --tag light=day
+python tools\record_trace.py report --traces data\own_traces\quan.pkl --out eval\results\own_recordings.md
+```
+
+- Phím (bấm lần một là bắt đầu, lần hai là kết thúc; có thể bật nhiều nhãn cùng lúc): `e` nhắm mắt, `d` cúi
+  nhìn điện thoại, `b` nhìn bảng đồng hồ, `s` nhìn sang bên, `r` quay ra sau, `y` ngáp, `t` nói chuyện, `n`
+  gục đầu, `c` cầm điện thoại nghe, `x` cầm điện thoại nhắn tin, `a` ngồi yên nhìn đường; `q` / Esc dừng và lưu.
+  Thêm: `m` nhìn điện thoại trên giá đỡ thấp, `g` nhìn cần số, `j` liếc xuống bằng mắt (đầu yên), `k` liếc sang
+  bên bằng mắt, `l` liếc ngắn lặp lại, `w` cúi kèm nhắm mắt thật, `v` nhìn gương bình thường (không mong cảnh
+  báo), `p` quay đầu một phần rồi giữ.
+- Mỗi buổi ghi một điều kiện, đặt bằng `--tag` (`mask`, `glasses`, `light`, `person`). Bảng so khẩu trang
+  gộp theo tag `mask`.
+- Kịch bản gợi ý, vài phút mỗi cảnh, mỗi điều kiện một buổi: ngồi yên nhìn đường 1 phút (`a`); nhắm mắt
+  2–3 s, 10 lần (`e`); cúi nhìn điện thoại trên đùi / giá đỡ thấp, nhìn bảng đồng hồ (`d`, `b`); nhìn gương
+  hai bên ngắn và dài (`s`); quay ra sau (`r`); ngáp (`y`); nói chuyện 1 phút (`t`); cầm điện thoại ở tai
+  rồi cầm trước ngực (`c`, `x`). Lặp lại với khẩu trang y tế, khẩu trang vải tối màu, kính, phòng tối.
+- `report` cho: độ trễ từ lúc bấm phím đến cảnh báo (p50 / p95, so với PRD ≤ 3 s), cảnh báo ngoài mọi nhãn,
+  số đo khi nhìn xuống so với khi nhắm mắt, bảng có / không khẩu trang, bảng gọi / nhắn tin. Thêm
+  `--set drowsiness.microsleep_deep.bowed_ear_ratio=0.3` để thử ngưỡng khác trên chính bản ghi đó.
+- Nhãn là phản xạ của người bấm, không phải sự thật tuyệt đối; bản ghi là tập dev của nhóm, không thay được
+  dataset có nhãn.
+
+### 9.6 Đo offline trên trace sẵn có: `tools/trace_studies.py`
+
+```powershell
+python tools\trace_studies.py perclos  --out eval\results\perclos_p80.md      # định nghĩa PERCLOS hiện tại so với P80
+python tools\trace_studies.py lighting --out eval\results\lighting.md         # theo độ sáng vùng mặt, theo kính (YawDD)
+python tools\trace_studies.py personal --out eval\results\personalization.md  # mốc riêng từng người có giảm báo sai không
+python tools\trace_studies.py glance   --out eval\results\glance_ratio.md     # off_road_ratio trên người không mất tập trung
+```
+
+- Chỉ replay khối 7–12 trên trace trong `data/eval_traces/` (tạo một lần bằng `seq_eval.py trace`), không
+  đọc lại video, không đổi ngưỡng nào. `--limit 40` để xem nhanh, `--set` để thử ngưỡng.
+- `tools/eval.py`: CSV nhãn nhận thêm cột `subject` (ai trong video); có cột này thì báo cáo thêm bảng theo
+  từng người. Báo cáo cũng tách cảnh báo sai trong `eval.warmup_s` đầu mỗi video ra riêng.
+
+### 9.7 Chạy dài và mô phỏng thiết bị yếu: `tools/benchmark.py --duration`, `tools/edge_sim.py`
+
+```powershell
+python tools\benchmark.py --source data\videos\clip01.mp4 --duration 60m --out eval\results\benchmark_soak.md
+python tools\edge_sim.py --profile jetson_nano --duration 10m --source data\videos\clip01.mp4
+```
+
+- `--duration` chạy vòng lặp chính theo nhịp camera (`--pace-fps 30`), mỗi giây ghi FPS, độ trễ p95, CPU,
+  RAM, nhiệt độ (chỉ khi hệ điều hành cho đọc; macOS thì không). Đạt khi mọi phút ≥ `eval.soak_min_fps` và
+  RAM tăng dưới `eval.soak_rss_growth_mb_per_h`. Cần `psutil`.
+- `tools/edge_sim.py` build image `Dockerfile.edge` rồi chạy đúng phép đo đó trong container bị giới hạn số
+  nhân và RAM theo `config/edge_profiles.yaml`. Báo cáo ghi `simulated`: giới hạn số nhân không tái hiện tốc
+  độ từng nhân, GPU hay nhiệt của thiết bị thật, nên đây là cận trên, không phải số đo của thiết bị.
+- macOS: Docker Desktop có thể không được đọc thư mục Documents. Cho quyền trong System Settings, hoặc chép
+  model và video ra chỗ khác rồi dùng `--models-dir`, `--source`, `--out-dir`.
+
+### 9.8 Cùng video, ánh sáng khác: `tools/light_study.py`
+
+```powershell
+python tools/light_study.py --out eval/results/lighting_transforms.md      # 8 video mỗi bộ, khoảng 8 phút
+python tools/light_study.py --datasets fl3d --limit 2 --workers 4          # xem nhanh
+```
+
+- Mỗi frame bị làm tối (gamma), làm chói (gain), chuyển xám (giả camera hồng ngoại) hoặc làm mờ **trong RAM**
+  trước khối 2, rồi khối 2–12 chạy như thường. Không ghi ảnh nào. Mức biến đổi ở `eval.light_*`.
+- Mỗi dòng của báo cáo chỉ khác bản gốc ở ánh sáng: tỉ lệ thấy mặt, độ sáng / độ nét của mặt, tỉ lệ "tạm ngưng
+  giám sát" và lý do, còn bắt được bao nhiêu microsleep / ngáp.
+- Biến đổi nhân tạo, không phải cabin tối hay camera IR thật: báo cáo cho biết pipeline gãy ở đâu, không cho
+  biết ánh sáng đó gặp thường xuyên tới đâu.
+
+### 9.9 Tốc độ bản web: `tools/bench_web.py` và số đo trên `#/live`
+
+```powershell
+cd frontend; npm ci; cd ..                                         # một lần: cần gói pyodide cho Node
+python tools/bench_web.py --label "sau khi sửa X"                   # mặt tổng hợp 60 s
+python tools/bench_web.py --label "clip thật" --clip data\videos\clip01.mp4
+```
+
+- Đo lời gọi mỗi frame của trang (`WebAgent.frame()` + JSON, khối 6–14) trên cùng chuỗi landmark: trong Python
+  thường có OpenCV (như thiết bị) và trong Pyodide chạy bằng Node (như `#/live` và APK). Không có ảnh nào: đầu
+  vào là số landmark; `--clip` chỉ giữ landmark của video trong RAM.
+- Mỗi `--label` là một dòng trong `eval/results/benchmark_web.md` (dữ liệu ở `benchmark_web.json`); chạy trước
+  và sau một thay đổi ở khối 6–12 để có số so sánh. Lần đầu cần mạng để tải numpy / pyyaml / sqlite3 của Pyodide.
+- Node không phải trình duyệt và máy dev không phải hub: bảng này chỉ so các phiên bản code. Thời gian camera,
+  MediaPipe, YOLO của một máy cụ thể đọc ngay trên máy đó: mở `#/live`, bấm "Chi tiết kỹ thuật" trên thẻ camera
+  (p95 từng chặng, GPU hay CPU, số luồng YOLO, số frame bị bỏ). Khi đã đăng nhập, cùng số đó lên tab "Đội xe",
+  cột "Tốc độ xử lý".
+- Đo cả vòng lặp trong trình duyệt thật (MediaPipe, YOLO, Pyodide của bản build), không cần ngồi trước camera:
+  `npx vite build && npx vite preview --port 5191`, rồi
+  `node bench/live.bench.mjs --url http://localhost:5191 --seconds 30 --camera clip.mjpeg` (trong `frontend/`).
+  Kết quả mẫu và các biến thể (ép GPU / CPU, GPU thật hay phần mềm): `eval/results/benchmark_live.md`.
+- Dòng "ĐT … ms · tuổi … ms": tuổi là kết quả YOLO đang dùng đã cũ bao lâu. Quá `phone.max_result_age_s` (0,6 s)
+  thì kết quả không được tính; phần lớn 10 giây như vậy thì HUD hiện "Không phát hiện được điện thoại" (M50).
+
 ---
+
+### 9.10 Nhìn xuống và hướng mắt trên 3MDAD: `tools/gaze_study.py`
+
+```powershell
+python tools\gaze_study.py trace  --out data\eval_traces\3mdad_day.pkl
+python tools\gaze_study.py report --traces data\eval_traces\3mdad_day.pkl --out eval\results\gaze_3mdad.md
+```
+
+- 3MDAD (Kaggle `anouarbenkhalifa/3mdad-multimodal-driver-action-distraction`, bản ngày `RGB2`): 50 tài xế trong xe thật,
+  16 hành động, camera hướng mặt. Mỗi tài xế chạy qua khối 2–12 như một chuyến; chỉ giữ số, không giữ ảnh.
+- Báo cáo: số đo theo hành động, cảnh báo hệ thống đưa ra, và góc nhìn xuống của khối 8 (chỉ đo) giữ 2 s ở vài ngưỡng.
+- Tốc độ khung hình không có trong dữ liệu: `--fps` (30) là giả định, ảnh hưởng mọi con số tính theo giây.
 
 ## 10. Kiểm thử
 
 ```powershell
-pytest tests\test_edge_agent tests\test_backend -q       # không cần camera hay video
+pytest tests\test_edge_agent tests\test_backend -q       # không cần camera, video hay Docker
 ruff check edge_agent backend tools tests
 cd frontend; npm test; npm run build                     # test frontend (vitest)
 cd frontend; npx playwright install chromium; npm run e2e   # test end to end #/live + dashboard (lần đầu)
@@ -614,7 +729,7 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 
 **Test end to end** (`frontend/e2e/`, Playwright, cũng chạy trong CI):
 - Tự dựng backend trên database tạm và bản build frontend có cổng test (`VITE_E2E=1`); không đụng vào
-  `data/driverguard.db`. Cần Python (requirements-dev) và mạng để tải Pyodide (~60 MB).
+  `data/driverguard.db`. Cần Python (requirements-dev) và mạng để tải Pyodide và numpy (khoảng 10 MB; từ M45 không còn OpenCV).
 - Camera là camera giả của Chrome; khối 3 nhận **landmark số tổng hợp** (`tools/e2e_setup.py`) thay cho
   MediaPipe, YOLO tắt. Không có ảnh khuôn mặt nào, không cần file model. Khối 6–14 chạy thật trong Pyodide.
 - Kịch bản: đăng ký khi đỗ → lái → nhắm mắt thành L3 → kết thúc chuyến (dùng thử); tài xế đăng nhập → đổi
@@ -641,7 +756,7 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 ### Vận hành
 
 - HUD server chỉ nghe trên `127.0.0.1`. HUD phải chạy trên **cùng máy** với edge agent.
-- Ngưỡng chỉnh trên dashboard chỉ có hiệu lực **khi edge agent khởi động lại**.
+- Ngưỡng chỉnh trên dashboard có hiệu lực ở lần **xe đỗ** kế tiếp sau khi thiết bị hỏi lại backend (mỗi 5 phút), hoặc khi edge agent khởi động lại. Không bao giờ đổi lúc xe đang chạy (M47).
 - Nút "Cảnh báo sai" chỉ dùng được trong **120 giây** sau khi có cảnh báo (`hud.feedback_window_s`; HUD đọc giá trị này từ thiết bị).
 - **Mất camera** (rút dây, lỗi driver): sau `capture.max_consecutive_failures` lần đọc lỗi, hoặc `capture.frame_timeout_s` (3 s) không có frame, edge agent coi là mất camera. HUD hiện "Mất camera", backend nhận sự kiện `camera_lost` (loại `system`, mức 0, không tính vào thống kê cảnh báo), và camera được mở lại mỗi `capture.reconnect_interval_s` (2 s). Có hình trở lại thì gửi `camera_restored`. Video file vẫn kết thúc bình thường.
 - Ngưỡng liên quan nhau được kiểm tra chéo (`edge_agent/config.py`, `CONSISTENCY_RULES`, ví dụ L1 < L2, sự kiện microsleep không muộn hơn luật L3): YAML sai thì agent không khởi động, ngưỡng từ dashboard sai thì backend trả 422 khi lưu và thiết bị bỏ qua.
@@ -655,7 +770,7 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 - Một số giá trị của nhánh buồn ngủ lệch nhẹ so với bảng luật: sự kiện microsleep 1,0 s (luật L3 vẫn dùng 1,5 s), ngáp 1,5 s (bảng: 2 s), gục đầu dưới 2 s (bảng: dưới 1 s). Có thể chỉnh trong YAML. Frame có `face_conf` < `features.min_face_conf` (0,9: mặt ra ngoài khung một phần) không được tính vào PERCLOS, mốc mắt mở, ngáp, gật đầu và góc nhìn lệch; pitch của frame đó chỉ dùng để nhận ra gục đầu.
 - Ngưỡng MAR của ngáp đã hạ từ 0,6 xuống 0,45 (đóng lại dưới 0,34), kiểm chứng trên `yawn_eye_mouth` và video YawDD.
 - Chặn microsleep lúc ngáp / nói (`drowsiness.microsleep_mask`): có thể che mất một microsleep thật nếu tài xế vừa ngáp xong (tối đa 1,5 s). Lúc **đang nói**, mắt nhắm sâu mà blendshape cũng xác nhận thì vẫn được tính (`talk_spares_deep`): môi cử động nhẹ của người đang buồn ngủ từng che mất microsleep thật trên NITYMED; tắt blendshapes thì mặt nạ nói chuyện hoạt động như cũ. Miệng mở liên tục quá 8 s (hàm trễ khi ngủ) thì không che nữa. PERCLOS cũng bỏ qua các frame này (`drowsiness.perclos_use_mask`), nên khi tài xế nói liên tục thì PERCLOS gần như không được tính (trên YawDD, 82% thời gian của clip Talking bị che).
-- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở **và** blendshape `eyeBlink` ≥ 0,5 (hoặc CNN p_closed ≥ 0,8). Phiếu blendshape loại các lần EAR sụp vì lóa kính, cúi đầu, mắt hẹp lúc chưa học xong mốc. Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
+- Microsleep chỉ tính đợt nhắm **sâu** (`drowsiness.microsleep_deep`): ít nhất một nửa số frame có EAR ≤ 0,5 × mốc mắt mở **và** blendshape `eyeBlink` ≥ 0,5 (hoặc, ở frame khối 5 quyết định, CNN p_closed ≥ 0,8 trên thiết bị và `eyeBlink` ≥ 0,55 trên bản web / APK). Phiếu blendshape loại các lần EAR sụp vì lóa kính, cúi đầu, mắt hẹp lúc chưa học xong mốc. Người có mắt chỉ khép hờ khi ngủ gật (không nhắm hẳn) sẽ được bắt qua PERCLOS thay vì luật L3 microsleep, miễn là EAR xuống dưới 0,65 × mốc.
 - PERCLOS xét **từng frame** (`drowsiness.perclos_close_ratio` = 0,65 × mốc mắt mở), không dùng trạng thái có hysteresis của mắt. Trước đây, sau mỗi lần chớp, hysteresis giữ trạng thái "nhắm" suốt lúc mắt nheo (0,65–0,75 × mốc, ví dụ nheo vì nắng) nên PERCLOS lên gần 100% và ra L1 sau khoảng 11 s. Đánh đổi: mắt hé ở khoảng 0,65–0,75 × mốc không còn được tính vào PERCLOS.
 - YOLO **INT8** nhanh hơn khoảng 2 lần và nhỏ hơn khoảng 3,6 lần, nhưng **chưa được đo độ chính xác**, nên hệ thống vẫn dùng FP32.
 - Đã có số trên video có nhãn theo frame (FL3D / NITYMED, mục 9.3, `eval/results/dataset_fl3d.md`), nhưng NITYMED là diễn lại và quay ban đêm; SUST-DDD (xe thật) chỉ có nhãn theo clip 10 s, ngắn hơn thời gian khởi động PERCLOS. Đã có số theo từng ảnh trên dataset Kaggle (mục 9.2, `eval/results/dataset_*.md`): ngưỡng MAR 0,45 bỏ sót khoảng 17 % ảnh ngáp của `yawn_eye_mouth` (0,6 bỏ sót 36 %).
@@ -701,6 +816,7 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | M7 | Script eval + benchmark FPS + dataset Kaggle | Công cụ xong, bảng FPS có số, số theo từng ảnh trên Kaggle; chờ video có nhãn thời gian |
 | M8 | Chạy toàn bộ trên trình duyệt (`#/live`) | Xong |
 | M9–M29 | **Version 2**: đăng ký tài xế, tạm ngưng giám sát, chớp chậm, gục / cúi, nhướn mày, giao diện cho tài xế, kết thúc chuyến + báo cáo, mô phỏng lái xe, xi nhan, lớp chung + e2e, FMEA, âm thanh luôn bật, đồng ý trước khi đăng ký, cúi nhìn xuống ≠ nhắm mắt, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu | Xong (v2.0.0 deploy 01/10 gồm M9–M18) |
+| M43–M48 | **Version 3 (06/10)**: tạm ngưng giám sát có lý do khi ảnh không đọc được, không phản ứng với còi / "Bạn còn ở đó không?" / báo quản lý ngay, bản web bỏ OpenCV và server nén + cache, phép thử ánh sáng trong RAM, ngưỡng tải lại khi đỗ + áp thử + quay lui, tài xế tự tải và yêu cầu xoá dữ liệu | Xong, chưa deploy (ngưỡng tạm; xem `docs/release-v3.md`) |
 
-Chi tiết từng mốc: `docs/roadmap.md`; thay đổi ở v2: `docs/release-v2.md`; việc chưa làm:
+Chi tiết từng mốc: `docs/roadmap.md`; thay đổi ở v2: `docs/release-v2.md`, v3: `docs/release-v3.md`; việc chưa làm:
 `docs/improvements.md`. Quy ước làm việc: `CLAUDE.md`.

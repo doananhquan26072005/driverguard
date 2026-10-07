@@ -25,8 +25,8 @@ thiết bị (`edge_agent.main`) dùng cùng logic khối 6–14 (`edge_agent/ru
 | 3 | [Vòng xử lý dừng hoặc treo](#3-vong-xu-ly-dung) | Vừa (M28, trước là Cao) | Có (HUD; backend khi lỗi frame) | Chữ + âm báo to | Lỗi frame: 1 s; tiến trình chết: backend không biết ngay | Có |
 | 4 | [App bị Android dừng (APK)](#4-app-bi-android-dung) | **Cao** | Chưa | Chưa | Không giới hạn | Không (chưa có app) |
 | 5 | [Mắt bị che mà vẫn đọc là mở (kính râm)](#5-mat-bi-che) | **Cao** *(chưa kiểm chứng)* | Không | Không | Không giới hạn | Không |
-| 6 | [Gục ra khỏi khung, trước đó không thấy mắt nhắm](#6-guc-ra-khoi-khung) | **Cao** | Có (thành tạm ngưng sau 3 s) | Như dòng 7 | Không giới hạn | Có |
-| 7 | [Tạm ngưng giám sát: mất mặt ≥ 3 s khi chạy](#7-tam-ngung-giam-sat) | Vừa | Có | Có (chữ + tiếng) | Đến khi thấy lại mặt | Có |
+| 6 | [Gục ra khỏi khung, trước đó không thấy mắt nhắm](#6-guc-ra-khoi-khung) | Vừa (M44, trước là Cao) | Có (tạm ngưng sau 3 s, hỏi tài xế sau 8 s) | Có: "Bạn còn ở đó không?" kèm tiếng lặp lại | 18 s đến khi quản lý được báo (`no_answer`) | Có |
+| 7 | [Tạm ngưng giám sát: mất mặt ≥ 3 s, hoặc mặt không đọc được ≥ 5 s khi chạy](#7-tam-ngung-giam-sat) | Vừa | Có, kèm lý do (M43) | Có (chữ nói rõ lý do + tiếng) | Đến khi thấy lại mặt / ảnh dùng được | Có |
 | 8 | [Mất camera](#8-mat-camera) | Vừa | Có | Có (chữ + tiếng) | Đến khi camera về | Có |
 | 9 | [FPS tụt kéo dài](#9-fps-tut) | Vừa | Có (M28) | Chip "Máy chậm" | Không im (vẫn giám sát, trễ hơn) | Có |
 | 10 | [Mắt không đánh giá được (đầu quay / cúi nhiều)](#10-mat-khong-danh-gia-duoc) | Vừa | Có | Nhánh mất tập trung thay | Đến khi đầu về | Có |
@@ -35,11 +35,12 @@ thiết bị (`edge_agent.main`) dùng cùng logic khối 6–14 (`edge_agent/ru
 | 13 | [Chưa đăng ký / đăng ký thất bại / đang đăng ký](#13-dang-ky) | Thấp | Có | Có (thẻ nhắc) | Bước nhắm mắt: ~2 s + 2 s | Có |
 | 14 | [Cooldown chặn cảnh báo lặp](#14-cooldown) | Thấp | Có | HUD vẫn hiện mức | L1 120 s, L2 30 s, L3 không | Có |
 | 15 | [Hub mất mạng giữa chuyến](#15-mat-mang) | Thấp | Có | Không cần | Không ảnh hưởng cảnh báo | Thiết bị có; app chưa |
+| 16 | [Thiết bị: mặt tối hoặc ảnh xám, CNN mắt đọc là mở](#16-cnn-mat-toi) | **Cao** *(đo trên video biến đổi, chưa có dữ liệu thật)* | Không | Không | Không giới hạn | Không (có phép đo: `tools/light_study.py`) |
+| 17 | [Model điện thoại không còn cho kết quả](#17-yolo-qua-han) | Vừa | Có (M50) | Có (chip trên HUD, không âm thanh) | 10 s rồi được báo; nhánh điện thoại tắt tới khi có lại kết quả | Có |
 
-Không xét: YOLO trả kết quả quá trễ trên máy yếu (hub được chọn đủ mạnh; kết quả cũ hơn
-`max_result_age_s` đã thành "không biết", có test `test_async_detector_result_goes_stale`,
-`test_stale_phone_result_is_unknown`), trạng thái riêng của trình duyệt (tab chạy nền) vì web chỉ để xem
-thử.
+Không xét: trạng thái riêng của trình duyệt (tab chạy nền) vì web chỉ để xem thử. YOLO trả kết quả quá trễ
+trước đây cũng không xét ("hub được chọn đủ mạnh"); từ M50 là dòng 17, vì bản web chạy YOLO chậm gấp 10 lần
+bản thiết bị và hub chưa chọn.
 
 ## Đường cảnh báo bình thường (để so)
 
@@ -154,7 +155,8 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Phát hiện:** không có.
 - **Hướng sửa (chưa thử):** không có lần chớp nào trong một khoảng dài khi vẫn thấy mặt → không tin trạng
   thái mắt, báo "không đọc được mắt"; hoặc model phân loại kính râm SGC (PINTO0309, MIT) đã ghi ở
-  improvements mục 8. Thử trên NTHU-DDD bối cảnh `Sunglasses`. → việc mới "Phát hiện mắt bị che".
+  improvements. Chưa có dữ liệu để thử: NTHU-DDD không tải được, phiên tự ghi có kính râm đã bỏ (06/10). →
+  việc "Phát hiện mắt bị che", đang hoãn; dòng này vẫn mở.
 
 <a id="6-guc-ra-khoi-khung"></a>
 
@@ -164,10 +166,15 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   `head_drop.carry_min_closed_s` (0,5 s) trước đó. Gục nhanh / gục khi mắt không đọc được → mất mặt,
   sau 3 s thành tạm ngưng giám sát (dòng 7), không có cảnh báo.
 - **Phát hiện:** có, như dòng 7.
-- **Đã chốt (02/10):** hỏi xác nhận "Bạn còn ở đó không?"; quá thời hạn không trả lời thì báo quản lý.
-  **Chưa làm.** Còn cần chọn: hỏi sau bao lâu mất mặt, chờ trả lời bao lâu (ngưỡng trong
-  `thresholds.yaml`). Thuộc việc
-  [Cảnh báo cần xác nhận, báo quản lý ngay](improvements.md#viec-xac-nhan).
+- **Đã làm (M44):** tạm ngưng giám sát với lý do `no_face` (ảnh bình thường mà không thấy mặt) kéo dài
+  `presence.ask_after_s` (5 s) thì HUD hỏi "Bạn còn ở đó không?" bằng cả màn hình và tiếng lặp lại mỗi 2 s.
+  Chạm một lần bất kỳ đâu, hoặc mặt hiện lại, là xong. Không trả lời trong `presence.answer_s` (10 s): sự kiện
+  `no_answer` gửi lên backend ngay, tab "Đội xe" đưa xe lên mục "Cần chú ý ngay" kèm tiếng; HUD chuyển sang
+  còi L3 (người ngồi cạnh nghe được). Không hỏi khi camera bị che / lệch / ảnh xấu (lỗi của camera, dòng 7).
+- **Còn lại:** hai ngưỡng là tạm (chưa có số liệu tài xế rời khung có chủ ý trong bao lâu); tài xế bất tỉnh mà
+  mặt vẫn trong khung, mắt mở thì ngoài khả năng của camera.
+- **Test thêm:** `tests/test_edge_agent/test_m44_unresponsive.py` (hỏi, chạm, không trả lời, che camera thì
+  không hỏi), `tests/test_backend/test_m44_urgent.py`; frontend `hudModel.test.ts`, `lib.test.ts`.
 - **Test:** `test_closure_carried_through_a_head_drop_stays_monitored`, `test_eyes_close_then_head_drops_is_l3`,
   `test_closure_carried_through_head_drop`, `test_blink_then_head_down_is_not_carried`,
   `test_head_drop_carry_goes_on_when_the_face_slides_out_of_frame`.
@@ -177,11 +184,18 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 ### 7. Tạm ngưng giám sát: mất mặt ≥ 3 s khi chạy — Vừa
 
 - **Nguyên nhân:** che camera, tài xế ra khỏi khung, chói (PRD FR-6, M10).
-  `risk.unavailable.no_face_s` = 3 s, chỉ khi xe chạy.
-- **Phát hiện:** có, `RiskAssessment.unavailable`; mọi luật bị tắt trong lúc đó (đoán sẽ là báo sai).
-- **Tài xế thấy:** "Tạm ngưng giám sát: không thấy mặt", tiếng báo to (nếu đã bật âm thanh, dòng 1).
-- **Quản lý thấy:** sự kiện `monitoring_unavailable` / `monitoring_restored`; bản tổng kết có độ phủ, dưới
-  `trip_summary.min_monitored_frac` (60 %) thì ghi "số liệu không đủ".
+  `risk.unavailable.no_face_s` = 3 s, chỉ khi xe chạy. Từ M43 còn có: thấy mặt nhưng mặt quá tối, quá chói
+  hoặc ảnh mờ suốt `risk.unavailable.low_quality_s` (5 s); giai đoạn chất lượng của khối 6
+  (`edge_agent/perception/quality.py`, ngưỡng `quality.*`, tạm).
+- **Phát hiện:** có, `RiskAssessment.unavailable` kèm `unavailable_reason`: `no_face`, `camera_blocked` (không
+  thấy mặt và cả khung tối / phẳng), `bad_angle` (mặt nằm một phần ngoài khung), `low_light`, `glare`, `blur`.
+  Mọi luật bị tắt trong lúc đó (đoán sẽ là báo sai).
+- **Tài xế thấy:** "Tạm ngưng giám sát" kèm việc cần làm theo lý do (ngồi đúng vị trí, kiểm tra ống kính, chỉnh
+  camera, bật đèn, hạ tấm che nắng, lau ống kính), tiếng báo to (nếu đã bật âm thanh, dòng 1).
+- **Quản lý thấy:** sự kiện `monitoring_unavailable` (có lý do) / `monitoring_restored`; bản tổng kết có độ
+  phủ và số giây tạm ngưng theo từng lý do, dưới `trip_summary.min_monitored_frac` (60 %) thì ghi "số liệu
+  không đủ".
+- **Lỗ hổng đã biết:** mặt tối trong khoảng 25–60 và ảnh xám không bị coi là không đọc được, xem dòng 16.
 - **Đã chốt (02/10):** không báo quản lý theo thời gian thực (tài xế có thể đang đi đâu đó).
 - **Im lặng tối đa:** đến khi thấy lại mặt.
 - **Test:** `test_no_face_3s_while_moving_is_unavailable_not_an_alert`, `test_unavailable_mutes_every_rule`,
@@ -189,6 +203,8 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   `test_face_lost_while_moving_is_unavailable_without_alert`, `test_no_face_while_driving_is_unavailable`,
   `test_face_lost_lowers_coverage_without_blaming_the_driver`; frontend `hudModel.test.ts`,
   `lib.test.ts` (demo mất mặt).
+
+- **Test thêm (M43):** `tests/test_edge_agent/test_quality.py`, `tests/test_backend/test_m43_unavailable_cause.py`.
 
 <a id="8-mat-camera"></a>
 
@@ -295,6 +311,48 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 
 ---
 
+<a id="16-cnn-mat-toi"></a>
+
+### 16. Thiết bị: mặt tối hoặc ảnh xám, CNN mắt đọc là mở — Cao (chưa có dữ liệu thật)
+
+- **Nguyên nhân:** khi mặt tối hơn `eye_state.low_light_brightness` (60) hoặc ảnh là xám / IR, khối 5 giao
+  trạng thái mắt cho CNN `open-closed-eye-0001`. Trên 8 video FL3D bị làm tối nhẹ (mặt 49 / 255) hoặc bỏ màu,
+  CNN gần như không bao giờ nói "nhắm": microsleep đạt L3 18 / 24 → 0 / 24, recall mắt nhắm theo frame 88 % →
+  0,2 % (tối) và 9 % (xám) ([lighting_transforms.md](../eval/results/lighting_transforms.md), M46).
+- **Phát hiện:** không. Hệ thống vẫn báo "đang giám sát"; chỉ khi mặt tối hơn 25 mới thành `low_light` (dòng 7).
+- **Tài xế / quản lý thấy:** không gì cả.
+- **Im lặng tối đa:** không giới hạn (cả đoạn đường tối).
+- **Phạm vi:** bản thiết bị (`eye_state.source = cnn`). `#/live` dùng blendshape nên không dính lỗi của CNN, nhưng tới
+  M56 nó dính một lỗi khác cùng hậu quả: `eyeBlink` bị so với ngưỡng của CNN nên camera xám / IR bỏ sót mọi lần nhắm
+  mắt (replay: 0 / 48, FL3D 0 / 95). M56 (07/10) cho `eyeBlink` ngưỡng riêng: 46 / 48 và 64 / 95. Ngưỡng tạm, chưa đo
+  trên `#/live`, chưa có ảnh IR thật.
+- **Mức chắc chắn:** thấp hơn các dòng khác: ánh sáng được biến đổi nhân tạo trên video ban đêm đã sáng sẵn,
+  không phải cabin tối thật hay camera IR thật. Frame tối thật duy nhất có trong tay (FL3D, 466 frame mặt
+  < 60) cho recall 40 %, cùng hướng.
+- **Cập nhật M54 (06/10):** phần mặt tối đã đổi: `eye_state.low_light_brightness` = 0, EAR quyết định. Bản ghi thật
+  ở mặt 32–35: nhắm mắt đạt L3 27 / 27, và 8 lần L3 sai do CNN mất đi; FL3D làm tối nhẹ 0 / 24 → 12 / 24. **Phần ảnh
+  xám / IR còn nguyên** (0 / 24), nên dòng này vẫn mở ở mức Cao. Replay còn cho thấy bản web không miễn nhiễm như
+  ghi ở trên: `eyeBlink` với ngưỡng của CNN không đạt "nhắm sâu" ở các frame khối 5 quyết định (chưa đo trên `#/live`).
+- **Việc tiếp:** [Khối 5: CNN mắt với ảnh xám / hồng ngoại](improvements.md#viec-cnn-toi).
+
+<a id="17-yolo-qua-han"></a>
+
+### 17. Model điện thoại không còn cho kết quả — Vừa
+
+- **Nguyên nhân:** kết quả YOLO cũ hơn `phone.max_result_age_s` (0,6 s) là "không rõ" và không được tính vào
+  `phone_ratio_2s`. YOLO luôn chậm hơn thế (bản web: một luồng wasm, 175 ms mỗi lần trên Mac, máy chậm hơn
+  khoảng 3,5 lần là chạm ngưỡng), model không tải được, hoặc worker chết: không bao giờ có cảnh báo `phone`.
+- **Phát hiện:** từ M50. ≥ `phone.unknown_ratio` (0,8) của `phone.unknown_window_s` (10 s) gần nhất không có
+  kết quả mới → `phone_detection_lost`; xuống `unknown_clear_ratio` (0,5) → `phone_detection_restored`.
+- **Tài xế / quản lý thấy:** chip "Không phát hiện được điện thoại" trên HUD (không âm thanh: các nhánh khác vẫn
+  chạy); sự kiện hệ thống trong nhật ký. Trạng thái giám sát vẫn là "đang giám sát".
+- **Im lặng tối đa:** khoảng 10 s trước khi được báo. Sau đó nhánh điện thoại vẫn tắt, nhưng có người biết.
+- **Phạm vi:** cả hai bản. Thiết bị chạy `--no-phone` là tắt có chủ ý, không báo.
+- **Còn hở:** nhìn xuống điện thoại vẫn được nhánh hướng đầu bắt (`off_road`); cầm điện thoại ngang tầm mắt thì
+  không. Ngưỡng tạm, chưa có dữ liệu. Thời gian mất nhánh chưa vào bảng tổng kết chuyến.
+- **Test:** `test_m50_phone_health.py` (14 test: cửa sổ, hồi lại, YOLO chậm, khoảng trống frame, runtime, bridge).
+- **Việc tiếp:** [YOLO trong bản web](improvements.md#viec-yolo-web).
+
 ## Khoảng trống thành việc riêng
 
 Dòng chưa có test hoặc chưa có cách phát hiện (ghi ở [improvements.md](improvements.md)):
@@ -306,7 +364,9 @@ Dòng chưa có test hoặc chưa có cách phát hiện (ghi ở [improvements.
 | 3, 9 | Báo khi vòng xử lý dừng hoặc chậm: xong ở M28 (hạ tải chờ hub) |
 | 5 | Phát hiện mắt bị che (mới) |
 | 4, 8 (nhắc kiểm tra camera) | Đóng gói app APK (đã có) |
-| 6 | Cảnh báo cần xác nhận, báo quản lý ngay (đã có) |
+| 6 | Cảnh báo cần xác nhận, báo quản lý ngay: xong ở M44 |
+| 7 | Điểm chất lượng frame: xong ở M43 (ngưỡng tạm) |
+| 16 | Khối 5 trên thiết bị: CNN mắt bỏ sót nhắm mắt khi mặt tối / ảnh xám (mới, từ M46) |
 | 15 | Hàng đợi offline cho app (đã có) |
 
 Khi sửa code liên quan tới một dòng, cập nhật dòng đó ở đây (mức, im lặng tối đa, test).
