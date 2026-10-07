@@ -100,3 +100,14 @@ describe("M58 trip summary screen", () => {
     expect(summaryBars({ ...s, minutes: s.minutes.slice(0, 10) }).perBar).toBe(1);
   });
 });
+
+describe("M58 HUD stage", () => {
+  it("scales the 1280 x 800 design on landscape screens and keeps phones fluid", async () => {
+    const { stageScale } = await import("./HudStage");
+    expect(stageScale(1280, 800)).toBe(1);
+    expect(stageScale(2000, 1350)).toBeCloseTo(1.5625); // width-bound: letterboxed top and bottom
+    expect(stageScale(1440, 720)).toBe(0.9); // short screen: height-bound, nothing overflows
+    expect(stageScale(390, 844)).toBeNull(); // phone
+    expect(stageScale(1024, 1366)).toBeNull(); // portrait tablet
+  });
+});
