@@ -81,7 +81,7 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 
 ### Version 4: thiết kế lại giao diện (M57–M65)
 
-Theo hai bản thiết kế: HUD (21 màn hình, "DriverGuard HUD redesign") và web (10 màn hình, "DriverGuard Web redesign").
+**Xong cả 9 mốc (07/10)**, chưa chạy e2e `live.e2e.ts` (cần backend). Theo hai bản thiết kế: HUD (21 màn hình, "DriverGuard HUD redesign") và web (10 màn hình, "DriverGuard Web redesign").
 Nguyên tắc chung: chỉ đổi giao diện (`frontend/`); backend, edge agent và API giữ nguyên; không đổi logic cảnh báo;
 tính năng đang có mà thiết kế chưa vẽ thì giữ lại và vẽ theo phong cách mới, không bỏ. Ô nào của bản thiết kế cần dữ liệu
 mà backend / edge agent chưa gửi thì ẩn hoặc điều chỉnh cho hợp. Ngoại lệ duy nhất là M65 (07/10): edge agent gửi thêm
@@ -96,7 +96,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ✅ Xong · 07/10 (Lịch sử cảnh báo / Dữ liệu của tôi giữ bảng cũ trong khung mới) |
 | [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ✅ Xong · 07/10 (Nhật ký sự kiện, Timeline, Đội xe chi tiết giữ bảng cũ trong khung mới) |
 | [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ✅ Xong · 07/10 (danh sách thiết bị lấy từ API đội xe, backend không đổi) |
-| [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ⬜ Chưa làm |
+| [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ✅ Xong · 07/10 (21 FPS, chưa chạy e2e) |
 | [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
 
 ---
@@ -1146,14 +1146,17 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M64: `#/live` và `#/drive` (frontend)
 
-**Xong là thấy gì:** `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15
+**Xong là thấy gì:** `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới: thiết lập, đang tải, HUD (M58 / M59), tổng kết; `#/drive` cùng phong cách
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`
 
-- Theo bản thiết kế: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải (camera, môi trường xử lý, model mặt, model điện thoại)
-- Vẽ mới: màn hình đang chạy (camera + HUD + chi tiết kỹ thuật), trang `#/drive`
-- Số dung lượng tải lần đầu lấy theo số đo thật (M45), không ghi theo bản thiết kế
-- Test: e2e `live.e2e.ts` pass, `frontend/bench/live.bench.mjs` trước / sau
+- **Thiết lập** (thiết kế "Chạy thử trên trình duyệt · Thiết lập"): cột trái giới thiệu + thẻ xanh "Hình ảnh không rời khỏi máy bạn"; cột phải 3 bước đánh số: "Ai đang lái?" (đăng nhập / "Dùng thử không lưu"), "Đăng ký khuôn mặt · khoảng 10 giây" (3 bước), "Bắt đầu" (nút xanh dương "Cho phép camera và bắt đầu")
+- **Đang tải** (thiết kế "… · Đang tải"): "Đang khởi động", các bước "Mở camera · Xong", "Đang chuẩn bị N%" có thanh tiến độ, "Sẵn sàng giám sát". Dung lượng tải ghi theo số đo thật (≈ 30 MB, M45), không ghi 60 MB như bản thiết kế. Bản thiết kế chia bước chuẩn bị thành 3 mục con (môi trường, model mặt, model điện thoại): agent chỉ báo tỉ lệ chung, nên không vẽ mục con
+- **Khung camera nhỏ** khi đang chạy: nhỏ lại (176 px), nền tối, "Chỉ xem, không lưu", ba nút icon có nhãn (trang điều khiển xe theo mã, "Chi tiết kỹ thuật", "Dừng camera"), để không che nút của HUD
+- **`#/drive`**: thẻ kính, nút ô kính, chip mã ghép, nút "Ghép" xanh dương; cùng nút, cùng phím tắt, cùng chữ
+- Chữ mà e2e và `frontend/bench/live.bench.mjs` tìm giữ nguyên ("Dùng thử không lưu", "Cho phép camera và bắt đầu", "Đăng nhập: …", "Chi tiết kỹ thuật", link "Điều khiển xe · mã …", khung `fixed bottom-4`)
+- **Đo FPS `#/live`** (Chromium không GPU, camera giả 30 s): 21 FPS; cả frame p50 16,5 ms, p95 29,7 ms
+- Test: 112 test frontend pass, typecheck / build sạch; chụp thiết lập, đang tải, đang chạy, `#/drive`, không lỗi trang
 
 <a id="m65"></a>
 

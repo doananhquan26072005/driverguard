@@ -2,7 +2,7 @@
 // Setup (who is driving, face enrollment, privacy) -> loading steps -> the in-car HUD fed by
 // LiveAgent, with a small self-view so the driver can place the camera.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Camera, Check, Gauge, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
+import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
 import HudScreen from "../hud/HudScreen";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
 import { perfDetail, perfLines } from "../lib/labels";
@@ -91,96 +91,118 @@ export default function LiveScreen() {
       {ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} />}
       <SelfView videoRef={videoRef} agent={ended ? null : agent} onStop={stop} />
       {!ready && (
-        <div className="min-h-dvh bg-hud-bg font-hud text-hud-ink antialiased [color-scheme:dark]">
-          <main className="mx-auto grid max-w-2xl gap-6 px-4 py-8 sm:py-12">
-            <header className="grid gap-2">
-              <p className="text-hud-label font-bold tracking-tight text-hud-system">DriverGuard</p>
-              <h1 className="m-0 text-hud-title font-bold">Giám sát tài xế ngay trên trình duyệt</h1>
-              <p className="m-0 text-hud-body text-hud-ink-2">
-                Dùng webcam của bạn để nhận biết khi bạn buồn ngủ hoặc mất tập trung, và nhắc bạn bằng màu, chữ và
-                âm thanh. Cuối chuyến có bản tổng kết.
+        <div className="live-setup font-hud text-hud-ink antialiased [color-scheme:dark]">
+          {/* M64 (designs "Chạy thử trên trình duyệt · Thiết lập / Đang tải"): the pitch and the privacy
+              promise on the left, the three steps (or the loading steps) on the right. */}
+          <section className="live-intro">
+            <div className="flex items-center gap-3">
+              <span className="grid size-10 place-items-center rounded-hud-sm bg-hud-safe text-[#05210f]">
+                <ShieldCheck aria-hidden className="size-6" strokeWidth={2.25} />
+              </span>
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
+                <span className="text-[13px] text-hud-ink-3">Chạy thử bằng camera trên máy này</span>
+              </span>
+            </div>
+            <div className="grid max-w-[540px] gap-4">
+              <h1 className="m-0 text-[clamp(34px,4vw,52px)] leading-[1.08] font-semibold tracking-[-0.03em]">Giám sát tài xế ngay trên trình duyệt</h1>
+              <p className="m-0 text-lg leading-relaxed text-hud-ink-2">
+                Dùng webcam của bạn để nhận biết khi bạn buồn ngủ hoặc mất tập trung, và nhắc bạn bằng màu, chữ và âm thanh. Cuối chuyến có bản tổng kết.
               </p>
-            </header>
+            </div>
+            <div className="grid max-w-[540px] gap-3">
+              <div className="dg-alert l0 flex gap-3.5 px-5 py-[18px]">
+                <ShieldCheck aria-hidden className="mt-0.5 size-6 shrink-0 text-hud-safe" />
+                <p className="m-0 text-[15px] leading-relaxed text-[#c9ddd0]">
+                  <strong className="text-hud-ink">Hình ảnh không rời khỏi máy bạn.</strong> Mọi xử lý chạy trong trình duyệt này, không ghi ảnh ra đĩa.
+                  Chỉ số liệu cảnh báo (mức, lý do, thời điểm) được gửi đi, và chỉ khi bạn đăng nhập.
+                </p>
+              </div>
+              <a href="#/dashboard" className="text-sm text-hud-ink-3">
+                Xem lại lịch sử cảnh báo trên Dashboard →
+              </a>
+            </div>
+          </section>
 
-            <section className="flex gap-3 rounded-hud-sm bg-hud-surface p-4 ring-1 ring-hud-line">
-              <ShieldCheck aria-hidden className="mt-0.5 size-6 shrink-0 text-hud-safe" />
-              <p className="m-0 text-hud-label text-hud-ink-2">
-                <strong className="text-hud-ink">Hình ảnh không rời khỏi máy bạn.</strong> Mọi xử lý chạy trong
-                trình duyệt này, không ghi ảnh ra đĩa. Chỉ số liệu cảnh báo (mức, lý do, thời điểm) được gửi đi, và chỉ
-                khi bạn đăng nhập.
-              </p>
-            </section>
-
-            {step ? (
-              <Progress step={step} />
-            ) : (
-              <>
-                <section className="grid gap-3">
-                  <h2 className="m-0 text-hud-body font-semibold">1. Ai đang lái?</h2>
-                  {session && !guest ? (
-                    <div className="flex flex-wrap items-center gap-3 rounded-hud-sm bg-hud-surface p-4 ring-1 ring-hud-line">
-                      <Check aria-hidden className="size-5 text-hud-safe" />
-                      <span className="text-hud-label">
-                        Đăng nhập: <strong>{session.username}</strong> · cảnh báo được lưu vào tài khoản
-                      </span>
-                      <button type="button" onClick={logout} className={`${BTN} ml-auto min-h-10 bg-hud-raised text-hud-ink-2 ring-1 ring-hud-line`}>
-                        <LogOut aria-hidden className="size-4" /> Đổi tài khoản
-                      </button>
-                    </div>
-                  ) : guest ? (
-                    <div className="flex flex-wrap items-center gap-3 rounded-hud-sm bg-hud-surface p-4 ring-1 ring-hud-line">
-                      <span className="text-hud-label">Dùng thử: không lưu cảnh báo, không gửi gì đi.</span>
-                      <button type="button" onClick={() => setGuest(false)} className={`${BTN} ml-auto min-h-10 bg-hud-raised text-hud-ink-2 ring-1 ring-hud-line`}>
-                        Đăng nhập để lưu
-                      </button>
-                    </div>
-                  ) : (
-                    <LoginBox onLogin={setSession} onGuest={() => setGuest(true)} />
-                  )}
-                </section>
-
-                <section className="grid gap-3">
-                  <h2 className="m-0 text-hud-body font-semibold">2. Đăng ký khuôn mặt (khoảng 10 giây)</h2>
-                  <ol className="m-0 grid gap-2 rounded-hud-sm bg-hud-surface p-4 pl-9 text-hud-label text-hud-ink-2 ring-1 ring-hud-line">
-                    <li>Nhìn thẳng vào camera.</li>
-                    <li>Nhìn ra đường phía trước như khi lái.</li>
-                    <li>Nhắm mắt đến khi nghe tiếng bíp.</li>
-                  </ol>
-                  <p className="m-0 text-hud-label text-hud-ink-3">
-                    Lúc bắt đầu xe đang đỗ (0 km/h): hệ thống hướng dẫn từng bước bằng chữ và giọng nói (nhớ bật âm
-                    thanh). Đỗ hay đang lái là theo tốc độ xe, lấy từ công cụ mô phỏng lái xe trên máy này; chưa chạy công
-                    cụ thì xe được coi là đang đỗ. Nút “Đổi tài xế” để người lái mới đăng ký lại.
+          <section className="live-side">
+            <div className="dg-card grid w-full max-w-[560px] gap-5 px-7 py-6">
+              {step ? (
+                <>
+                  <span className="dg-card-title">
+                    <b className="!text-xl !font-semibold">Đang khởi động</b>
+                    <span>{guest || !session ? "Dùng thử · không lưu, không gửi gì đi" : `Lưu vào tài khoản ${session.username}`}</span>
+                  </span>
+                  <Progress step={step} />
+                  <p className="m-0 text-[13px] leading-relaxed text-hud-ink-3">
+                    Mọi thứ được tải về và chạy ngay trong trình duyệt này. Không có hình ảnh nào được gửi lên máy chủ.
                   </p>
-                </section>
+                </>
+              ) : (
+                <>
+                  <SetupStep n={1} title="Ai đang lái?">
+                    {session && !guest ? (
+                      <div className="dg-tile flex flex-wrap items-center gap-3 p-4">
+                        <Check aria-hidden className="size-5 text-hud-safe" />
+                        <span className="text-[15px]">
+                          Đăng nhập: <strong>{session.username}</strong> · cảnh báo được lưu vào tài khoản
+                        </span>
+                        <button type="button" onClick={logout} className={`${BTN} dg-tile ml-auto min-h-10 text-hud-ink-2`}>
+                          <LogOut aria-hidden className="size-4" /> Đổi tài khoản
+                        </button>
+                      </div>
+                    ) : guest ? (
+                      <div className="dg-tile flex flex-wrap items-center gap-3 p-4">
+                        <span className="text-[15px]">Dùng thử: không lưu cảnh báo, không gửi gì đi.</span>
+                        <button type="button" onClick={() => setGuest(false)} className={`${BTN} dg-tile ml-auto min-h-10 text-hud-ink-2`}>
+                          Đăng nhập để lưu
+                        </button>
+                      </div>
+                    ) : (
+                      <LoginBox onLogin={setSession} onGuest={() => setGuest(true)} />
+                    )}
+                  </SetupStep>
 
-                <section className="grid gap-3">
-                  <h2 className="m-0 text-hud-body font-semibold">3. Bắt đầu</h2>
-                  <p className="m-0 text-hud-label text-hud-ink-2">
-                    Đặt camera ngang mặt. Bấm “Kết thúc chuyến” khi xong để xem bản tổng kết. Nên dùng Chrome hoặc Edge
-                    trên máy tính.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={start}
-                    disabled={!session && !guest}
-                    className={`${BTN} w-full bg-hud-system text-hud-on-warning sm:w-fit`}
-                  >
-                    <Camera aria-hidden className="size-5" /> Cho phép camera và bắt đầu
-                  </button>
-                  {!session && !guest && <p className="m-0 text-hud-label text-hud-ink-3">Đăng nhập hoặc chọn “Dùng thử” trước.</p>}
-                </section>
-              </>
-            )}
+                  <SetupStep n={2} title="Đăng ký khuôn mặt" note="khoảng 10 giây">
+                    <ol className="m-0 grid list-none gap-2 p-0">
+                      {["Nhìn thẳng vào camera", "Nhìn ra đường như khi lái", "Nhắm mắt đến khi nghe tiếng bíp"].map((t, i) => (
+                        <li key={t} className="flex items-center gap-3 text-[15px] text-hud-ink-2">
+                          <span className="dg-num grid size-7 shrink-0 place-items-center rounded-full bg-hud-system/15 text-[13px] font-semibold text-[#93c5fd]">
+                            {i + 1}
+                          </span>
+                          {t}
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="m-0 text-[13px] leading-relaxed text-hud-ink-3">
+                      Lúc bắt đầu xe đang đỗ (0 km/h): hệ thống hướng dẫn bằng chữ và giọng nói, nhớ bật âm thanh. Đỗ hay đang lái là theo tốc độ từ
+                      công cụ mô phỏng lái xe; chưa chạy công cụ thì xe được coi là đang đỗ. Nút “Đổi tài xế” để người lái mới đăng ký lại.
+                    </p>
+                  </SetupStep>
 
-            {error && (
-              <p role="alert" className="m-0 rounded-hud-sm bg-hud-danger/15 p-4 text-hud-label text-hud-ink ring-1 ring-hud-danger">
-                {error}
-              </p>
-            )}
-            <a href="#/dashboard" className="text-hud-label text-hud-ink-3">
-              Xem lại lịch sử cảnh báo trên Dashboard →
-            </a>
-          </main>
+                  <SetupStep n={3} title="Bắt đầu">
+                    <p className="m-0 text-[15px] text-hud-ink-2">
+                      Đặt camera ngang mặt. Bấm “Kết thúc chuyến” khi xong để xem bản tổng kết. Nên dùng Chrome hoặc Edge trên máy tính.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={start}
+                      disabled={!session && !guest}
+                      className="inline-flex min-h-14 w-full cursor-pointer items-center justify-center gap-2 rounded-hud-sm border-0 bg-[linear-gradient(180deg,#93c5fd_0%,#60a5fa_100%)] px-5 text-[17px] font-semibold text-[#0b1b33] disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      <Camera aria-hidden className="size-5" /> Cho phép camera và bắt đầu
+                    </button>
+                    {!session && !guest && <p className="m-0 text-[13px] text-hud-ink-3">Đăng nhập hoặc chọn “Dùng thử” trước.</p>}
+                  </SetupStep>
+                </>
+              )}
+
+              {error && (
+                <p role="alert" className="m-0 rounded-hud-sm bg-hud-danger/15 p-4 text-[15px] text-hud-ink ring-1 ring-hud-danger">
+                  {error}
+                </p>
+              )}
+            </div>
+          </section>
         </div>
       )}
     </>
@@ -209,7 +231,7 @@ function LoginBox({ onLogin, onGuest }: { onLogin: (s: Session) => void; onGuest
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-3 rounded-hud-sm bg-hud-surface p-4 ring-1 ring-hud-line">
+    <form onSubmit={submit} className="dg-tile grid gap-3 p-4">
       <div className="grid gap-3 sm:grid-cols-2">
         <input className={INPUT} placeholder="Tên đăng nhập" aria-label="Tên đăng nhập" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
         <input className={INPUT} placeholder="Mật khẩu" aria-label="Mật khẩu" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
@@ -220,10 +242,10 @@ function LoginBox({ onLogin, onGuest }: { onLogin: (s: Session) => void; onGuest
         </p>
       )}
       <div className="flex flex-wrap gap-3">
-        <button type="submit" disabled={busy} className={`${BTN} bg-hud-ink text-hud-bg`}>
+        <button type="submit" disabled={busy} className={`${BTN} bg-[linear-gradient(180deg,#fff_0%,#d9d9d9_100%)] text-hud-bg`}>
           {busy ? "Đang đăng nhập…" : "Đăng nhập"}
         </button>
-        <button type="button" onClick={onGuest} className={`${BTN} bg-hud-raised text-hud-ink ring-1 ring-hud-line`}>
+        <button type="button" onClick={onGuest} className={`${BTN} dg-tile text-hud-ink`}>
           Dùng thử không lưu
         </button>
       </div>
@@ -231,31 +253,58 @@ function LoginBox({ onLogin, onGuest }: { onLogin: (s: Session) => void; onGuest
   );
 }
 
+function SetupStep({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
+  return (
+    <section className="grid gap-3">
+      <h2 className="m-0 flex items-center gap-3 text-[17px] font-semibold">
+        <span className="dg-num grid size-8 place-items-center rounded-full bg-white/8 text-sm">{n}</span>
+        {title}
+        {note && <span className="text-[13px] font-normal text-hud-ink-3">{note}</span>}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
 function Progress({ step }: { step: Step }) {
   const order = Object.keys(STEPS) as (keyof typeof STEPS)[];
-  const shown = step;
-  const current = shown.step === "ready" ? order.length : order.indexOf(shown.step);
+  const current = step.step === "ready" ? order.length : order.indexOf(step.step);
+  const pct = Math.round(step.progress * 100);
   return (
-    <ol className="m-0 grid list-none gap-2 p-0" aria-live="polite">
+    <ol className="m-0 grid list-none gap-2.5 p-0" aria-live="polite">
       {order.map((s, i) => (
-        <li key={s} className="grid min-h-12 gap-2 rounded-hud-sm bg-hud-surface px-4 py-3 ring-1 ring-hud-line">
+        <li key={s} className={`grid gap-3 rounded-hud-sm px-4 py-3.5 ${i === current ? "border border-solid border-[#93c5fd]/45 bg-hud-system/8" : "dg-tile"}`}>
           <div className="flex items-center gap-3">
             {i < current ? (
-              <Check aria-hidden className="size-5 text-hud-safe" />
+              <Check aria-hidden className="size-5 text-hud-safe" strokeWidth={2.25} />
             ) : i === current ? (
-              <LoaderCircle aria-hidden className="size-5 animate-spin text-hud-system" />
+              <LoaderCircle aria-hidden className="size-5 animate-spin text-[#93c5fd]" />
             ) : (
-              <span aria-hidden className="size-5" />
+              <span aria-hidden className="grid size-5 place-items-center">
+                <span className="size-2 rounded-full bg-white/20" />
+              </span>
             )}
-            <span className={`text-hud-label ${i <= current ? "text-hud-ink" : "text-hud-ink-3"}`}>{STEPS[s]}</span>
+            <span className={`text-base font-medium ${i <= current ? "text-hud-ink" : "text-hud-ink-3"}`}>{STEPS[s]}</span>
+            <span className={`dg-num ml-auto text-[13px] ${i < current ? "text-hud-safe" : "text-[#b8c2d0]"}`}>
+              {i < current ? "Xong" : s === "prepare" && i === current ? `${pct}%` : ""}
+            </span>
           </div>
           {s === "prepare" && i === current && (
-            <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(shown.progress * 100)} className="h-2 overflow-hidden rounded-full bg-hud-raised">
-              <div className="h-full origin-left bg-hud-system transition-transform duration-300" style={{ transform: `scaleX(${Math.max(shown.progress, 0.05)})` }} />
+            <div role="progressbar" aria-label="Đang chuẩn bị" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} className="h-2 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="h-full origin-left rounded-full bg-[linear-gradient(90deg,#60a5fa,#93c5fd)] transition-transform duration-300"
+                style={{ transform: `scaleX(${Math.max(step.progress, 0.05)})` }}
+              />
             </div>
           )}
         </li>
       ))}
+      <li className="dg-tile flex items-center gap-3 px-4 py-3.5 opacity-70">
+        <span aria-hidden className="grid size-5 place-items-center">
+          <span className="size-2 rounded-full bg-white/20" />
+        </span>
+        <span className="text-base font-medium text-hud-ink-3">Sẵn sàng giám sát</span>
+      </li>
     </ol>
   );
 }
@@ -289,11 +338,11 @@ function SelfView({
 
   return (
     <div
-      className={`fixed bottom-4 left-4 z-40 overflow-hidden rounded-hud-sm bg-black font-hud text-white shadow-2xl ring-1 ring-white/20 ${
-        compact ? "w-auto bg-black/40" : "w-44 sm:w-56"
+      className={`fixed bottom-4 left-4 z-40 overflow-hidden rounded-hud-sm border border-solid border-white/15 bg-black/85 font-hud text-white shadow-[0_24px_48px_rgba(0,0,0,0.45)] backdrop-blur ${
+        compact ? "w-auto" : tech ? "w-60" : "w-44"
       } ${agent ? "" : "pointer-events-none opacity-0"}`}
     >
-      {/* Kept mounted (it holds the stream), only hidden at L3. */}
+      {/* Kept mounted (it holds the stream), only hidden at L3. Small (M64): it sits over the HUD. */}
       <video ref={videoRef} className={`aspect-[4/3] w-full -scale-x-100 object-cover ${compact ? "hidden" : "block"}`} muted playsInline />
       {agent && compact && (
         <button type="button" onClick={onStop} className="inline-flex min-h-10 items-center gap-1 rounded-full border-0 bg-transparent px-4 text-[13px] font-semibold text-white">
@@ -301,9 +350,10 @@ function SelfView({
         </button>
       )}
       {agent && !compact && (
-        <div className="grid gap-1 p-2 text-[13px] leading-tight tabular-nums">
-          <span className={m?.face ? "" : "text-hud-caution"}>
-            {m?.face ? "Đang theo dõi" : "Không thấy mặt, hãy chỉnh camera"}
+        <div className="grid gap-1.5 p-2 text-[12px] leading-tight tabular-nums">
+          <span className={`inline-flex items-center gap-1.5 ${m?.face ? "" : "text-hud-caution"}`}>
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[#f87171]" />
+            {m?.face ? "Chỉ xem, không lưu" : "Không thấy mặt"}
           </span>
           {tech && (
             <>
@@ -323,27 +373,41 @@ function SelfView({
                 <span className="text-white/70">{enrollText(stats.enrollment)}</span>
               )}
               {stats?.lastError && <span className="break-all text-hud-caution">Lỗi gần nhất: {stats.lastError}</span>}
+              {stats && stats.sent > 0 && <span className="text-white/70">Đã lưu {stats.sent} cảnh báo</span>}
             </>
           )}
-          <a
-            href={`#/drive?code=${agent.driveCode}`}
-            target="_blank"
-            rel="noopener"
-            className="mt-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-full bg-hud-system/20 px-2 text-[13px] font-semibold text-white no-underline"
-          >
-            <Gauge aria-hidden className="size-3.5" /> Điều khiển xe · mã {agent.driveCode}
-          </a>
-          {stats?.sendError ? (
-            <span className="text-hud-caution">{stats.sendError}</span>
-          ) : (
-            tech && stats && stats.sent > 0 && <span className="text-white/70">Đã lưu {stats.sent} cảnh báo</span>
-          )}
-          <button type="button" onClick={toggleTech} aria-pressed={tech} className="mt-1 min-h-8 rounded-full border-0 bg-transparent text-[12px] text-white/60 underline">
-            {tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
-          </button>
-          <button type="button" onClick={onStop} className="mt-1 inline-flex min-h-9 items-center justify-center gap-1 rounded-full border-0 bg-white/15 text-[13px] font-semibold text-white">
-            <Square aria-hidden className="size-3.5" /> Dừng camera
-          </button>
+          {stats?.sendError && <span className="text-hud-caution">{stats.sendError}</span>}
+          <div className="flex items-center gap-1">
+            <a
+              href={`#/drive?code=${agent.driveCode}`}
+              target="_blank"
+              rel="noopener"
+              aria-label={`Điều khiển xe · mã ${agent.driveCode}`}
+              title="Mở trang điều khiển xe (tốc độ, xi nhan) cho phiên này"
+              className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-full bg-hud-system/25 px-2 text-[12px] font-semibold text-white no-underline"
+            >
+              <Gauge aria-hidden className="size-3.5" /> {agent.driveCode}
+            </a>
+            <button
+              type="button"
+              onClick={toggleTech}
+              aria-pressed={tech}
+              aria-label={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
+              title={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
+              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white"
+            >
+              <Info aria-hidden className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onStop}
+              aria-label="Dừng camera"
+              title="Dừng camera"
+              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white"
+            >
+              <Square aria-hidden className="size-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </div>

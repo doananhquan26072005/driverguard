@@ -417,3 +417,8 @@ tr.row-urgent td {
 .unsaved .primary { margin-left: auto; }
 .web-card > * { min-width: 0; }
 .key-row code { flex: 1 1 0; width: 0; }
+
+/* #/live setup (M64): the pitch on the left, the steps on the right; stacked on narrow screens. */
+.live-setup { min-height: 100vh; display: flex; flex-wrap: wrap; background: var(--page-light), #0a0a0a; }
+.live-intro { flex: 1 1 480px; box-sizing: border-box; padding: 56px clamp(24px, 5vw, 72px); background: rgba(255, 255, 255, 0.02); display: flex; flex-direction: column; justify-content: space-between; gap: 40px; }
+.live-side { flex: 1 1 520px; box-sizing: border-box; padding: 56px clamp(16px, 5vw, 72px); display: grid; place-items: center; }
