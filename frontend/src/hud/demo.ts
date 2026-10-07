@@ -1,7 +1,7 @@
 // Scripted HUD states for demos without a running edge agent (a 90 s loop). Every kind of
 // alert appears once, so each alert sound (chime.ts) can be heard (sound is always on); from
 // UNAVAILABLE_FROM to UNAVAILABLE_TO the face is lost (monitoring unavailable, no alert).
-import type { HudAlert, HudSnapshot, Level, Reason, TripSummary } from "../lib/types";
+import type { HudAlert, HudSnapshot, HudTrip, Level, Reason, TripSummary } from "../lib/types";
 
 export const DEMO_CYCLE_S = 90;
 const [UNAVAILABLE_FROM, UNAVAILABLE_TO] = [46, 52];
@@ -36,6 +36,7 @@ export function demoSnapshot(elapsed: number, flagged: ReadonlySet<string>, nowE
         reasons: e.reasons,
         at: nowEpoch - (t - e.start),
         feedback: flagged.has(id) ? "false_alarm" : null,
+        metrics: demoAlertMetrics(e.reasons),
       };
     })
     .reverse(); // newest first, like the edge server
@@ -54,8 +55,31 @@ export function demoSnapshot(elapsed: number, flagged: ReadonlySet<string>, nowE
     perclos_60s: 0.08,
     fps: 30,
     unavailable: t >= UNAVAILABLE_FROM && t < UNAVAILABLE_TO,
+    trip: demoTrip(4320 + elapsed, active?.level === 1 ? 48 : null),
     alerts,
   };
+}
+
+/** The numbers an agent attaches to an alert (M65), for the detail line. */
+export function demoAlertMetrics(reasons: readonly Reason[]): NonNullable<HudAlert["metrics"]> {
+  return {
+    off_road_s: reasons.includes("off_road") ? 2.3 : reasons.includes("phone") ? 1.2 : 0,
+    eyes_closed_s: reasons.includes("microsleep") ? 2.4 : 0,
+    phone_ratio: reasons.includes("phone") ? 0.8 : 0,
+    turn_signal: null,
+  };
+}
+
+/** The agent's view of the running trip (M65): `driveS` of continuous driving, 15 minutes of fatigue
+ *  rising gently; `lastScore` replaces the running minute (an alert in the demo). */
+export function demoTrip(driveS: number, lastScore: number | null = null): HudTrip {
+  const recent = Array.from({ length: 15 }, (_, i) => ({
+    minute: 57 + i,
+    drowsy_score: Math.round(11 + i * 1.6 + (i % 3) * 2),
+    max_level: 0 as Level,
+  }));
+  if (lastScore != null) recent[14] = { ...recent[14], drowsy_score: lastScore, max_level: 1 };
+  return { drive_run_s: driveS, driving_s: driveS, score_l1: 40, score_l2: 70, window_min: 15, recent_minutes: recent };
 }
 
 /** A 2 h 10 min trip for the summary screen preview (#/hud-preview?s=trip): tired from minute 95. */

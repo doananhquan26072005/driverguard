@@ -4,7 +4,7 @@
 // (forcedLog.ts); the log stays in this page and in the file the operator downloads.
 import { useEffect, useState } from "react";
 import type { HudAlert, HudSnapshot, Level, Reason } from "../lib/types";
-import { demoTripSummary } from "./demo";
+import { demoAlertMetrics, demoTrip, demoTripSummary } from "./demo";
 import { appendForced, forcedEntry, forcedLogFile, type ForcedEntry } from "./forcedLog";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
@@ -99,7 +99,7 @@ const SCENARIOS: Scenario[] = [
 function snapshotFor(s: Scenario, night: boolean, now: number, since: number): HudSnapshot {
   const level = s.level ?? 0;
   const alerts: HudAlert[] = level
-    ? [{ event_id: `preview-${s.key}`, level, reasons: s.reasons ?? [], at: since, feedback: null }]
+    ? [{ event_id: `preview-${s.key}`, level, reasons: s.reasons ?? [], at: since, feedback: null, metrics: demoAlertMetrics(s.reasons ?? []) }]
     : [];
   return {
     connected: true,
@@ -122,6 +122,7 @@ function snapshotFor(s: Scenario, night: boolean, now: number, since: number): H
       turn_signal: null,
       driving: !s.patch || s.patch.speed_kmh !== 0,
     },
+    trip: demoTrip(level === 1 ? 7500 : 4320, level === 1 ? (s.patch?.drowsy_score ?? 52) : null),
     alerts,
     ...s.patch,
   };

@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HudAlert, HudSnapshot, VehicleAction } from "../lib/types";
-import { ALARM_REPEAT_S, PRESENCE_REPEAT_S, armAudio, play, playAlert, say, systemSound, unlock } from "./chime";
+import { ALARM_REPEAT_S, PRESENCE_REPEAT_S, armAudio, play, playAlert, speak, systemSound, unlock, type VoiceKey } from "./chime";
 import { demoSnapshot } from "./demo";
 import { edgeSource, type HudSource, type TripEnd } from "./edge";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
-import { enrollCue, type HudLink, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
+import { alertVoiceKey, enrollCue, enrollVoiceKeys, type HudLink, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
+
+// The spoken line follows the chime, not over it.
+const CHIME_TO_VOICE_MS = 700;
+const afterChime = (f: () => void) => void setTimeout(f, CHIME_TO_VOICE_MS);
 
 const POLL_MS = 300;
 const STALE_S = 3; // no update from the camera loop for this long = frozen
@@ -36,6 +40,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   const [now, setNow] = useState(Date.now() / 1000);
   const failures = useRef(0);
   const seenAlerts = useRef<Set<string>>(new Set());
+  const reasonsRef = useRef<HudSnapshot["reasons"]>([]); // the alert being repeated with the L3 siren
   const demoStart = useRef(Date.now());
   const demoFlags = useRef<Set<string>>(new Set());
 
@@ -95,7 +100,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
     if (!newest || seenAlerts.current.has(newest.event_id)) return;
     const firstLoad = seenAlerts.current.size === 0 && (snap?.alerts.length ?? 0) > 1;
     snap?.alerts.forEach((a) => seenAlerts.current.add(a.event_id));
-    if (sound && !firstLoad) playAlert(newest.level, newest.reasons);
+    if (sound && !firstLoad) {
+      playAlert(newest.level, newest.reasons);
+      afterChime(() => speak(alertVoiceKey(newest.reasons) as VoiceKey)); // what to do, in Vietnamese
+    }
   }, [snap, sound]);
 
   useEffect(() => {
@@ -127,6 +135,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
 
   const stale = mode === "live" && snap?.updated_at != null && now - snap.updated_at > STALE_S;
   const level = snap?.connected ? snap.level : 0;
+  reasonsRef.current = snap?.reasons ?? [];
   const cameraLost = mode === "live" && link === "ok" && snap?.camera_lost === true;
   const showPanel = link === "ok" && snap?.connected && !stale && !cameraLost;
 
@@ -135,7 +144,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   const alarmOn = sound && !!showPanel && level === 3 && (snap?.eyes_closed_s ?? 0) > 0;
   useEffect(() => {
     if (!alarmOn) return;
-    const id = setInterval(() => playAlert(3, []), ALARM_REPEAT_S * 1000);
+    const id = setInterval(() => {
+      playAlert(3, []);
+      afterChime(() => speak(alertVoiceKey(reasonsRef.current) as VoiceKey)); // the order again with the siren
+    }, ALARM_REPEAT_S * 1000);
     return () => clearInterval(id);
   }, [alarmOn]);
 
@@ -144,7 +156,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   useEffect(() => {
     if (cameraLost === wasCameraLost.current) return;
     wasCameraLost.current = cameraLost;
-    if (sound) play(systemSound(cameraLost ? "camera_lost" : "camera_restored"));
+    if (sound) {
+      play(systemSound(cameraLost ? "camera_lost" : "camera_restored"));
+      afterChime(() => speak(cameraLost ? "sys.camera_lost" : "sys.camera_restored"));
+    }
   }, [cameraLost, sound]);
 
   // Face lost while moving (FR-6): not an alert, but the driver must know monitoring stopped.
@@ -153,7 +168,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   useEffect(() => {
     if (unavailable === wasUnavailable.current) return;
     wasUnavailable.current = unavailable;
-    if (sound) play(systemSound(unavailable ? "monitoring_unavailable" : "monitoring_restored"));
+    if (sound) {
+      play(systemSound(unavailable ? "monitoring_unavailable" : "monitoring_restored"));
+      afterChime(() => speak(unavailable ? "sys.unavailable" : "sys.restored"));
+    }
   }, [unavailable, sound]);
 
   // "Bạn còn ở đó không?" (M44): the question is repeated until the driver taps or is seen again;
@@ -161,7 +179,12 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   const presence = mode === "live" ? presenceUp(systemState(link, snap, stale, cameraLost), snap) : null;
   useEffect(() => {
     if (!presence || !sound) return;
-    const ring = () => (presence === "asking" ? play(systemSound("presence")) : playAlert(3, []));
+    const ring = () => {
+      if (presence === "asking") {
+        play(systemSound("presence"));
+        afterChime(() => speak("sys.presence"));
+      } else playAlert(3, []);
+    };
     ring();
     const id = setInterval(ring, PRESENCE_REPEAT_S * 1000);
     return () => clearInterval(id);
@@ -174,7 +197,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   useEffect(() => {
     if (stopped === wasStopped.current) return;
     wasStopped.current = stopped;
-    if (sound) play(systemSound(stopped ? "monitoring_stopped" : "monitoring_restored"));
+    if (sound) {
+      play(systemSound(stopped ? "monitoring_stopped" : "monitoring_restored"));
+      afterChime(() => speak(stopped ? "sys.stopped" : "sys.restored"));
+    }
   }, [stopped, sound]);
 
   // Vehicle link lost / back (M26), driving or parked: the driver is told (while driving it is still
@@ -184,7 +210,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   useEffect(() => {
     if (signalLost === wasSignalLost.current) return;
     wasSignalLost.current = signalLost;
-    if (sound) play(systemSound(signalLost ? "vehicle_signal_lost" : "vehicle_signal_restored"));
+    if (sound) {
+      play(systemSound(signalLost ? "vehicle_signal_lost" : "vehicle_signal_restored"));
+      afterChime(() => speak(signalLost ? "sys.vehicle_lost" : "sys.vehicle_restored"));
+    }
   }, [signalLost, sound]);
 
   // Driver enrollment: steps 2 and 3 are done without looking at the screen, so each prompt
@@ -193,10 +222,11 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
   useEffect(() => {
     if (mode !== "live") return;
     const cue = enrollCue(lastEnroll.current, snap?.enrollment);
+    const lines = enrollVoiceKeys(lastEnroll.current, snap?.enrollment) as VoiceKey[];
     lastEnroll.current = snap?.enrollment;
     if (!sound) return;
     if (cue.beep) play(systemSound("enroll_beep"));
-    if (cue.say) say(cue.say);
+    if (lines.length) (cue.beep ? afterChime : (f: () => void) => f())(() => speak(...lines));
   }, [snap, sound, mode]);
 
   // "Kết thúc chuyến": the agent builds the trip summary, sends it to the higher roles, stops.
@@ -238,6 +268,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
 
   return (
     <HudView
+      camera={mode === "live" ? (source.cameraStream?.() ?? null) : null}
       snap={snap}
       link={link}
       stale={stale}

@@ -141,6 +141,7 @@ class TripCollector:
         self.unavailable_by_cause: dict[str, float] = {}  # risk.unavailable_reason -> seconds
         self.enrolled = False
         self.driver_changes = 0  # "Đổi tài xế" presses (edge_agent.decision.pipeline.change_driver)
+        self._driver_run = 0.0  # continuous driving of the current driver (HUD, M65): reset by a rest or a new driver
         self._minutes: dict[int, list[float]] = {}  # minute -> [score sum, frames, max level, moving frames]
 
     def update(self, r: Any) -> None:
@@ -156,6 +157,7 @@ class TripCollector:
         if ctx.moving:
             self.driving += dt
             self._drive_run += dt
+            self._driver_run += dt
             self.longest_drive = max(self.longest_drive, self._drive_run)
             if ctx.speed_kmh is not None:
                 self._speed_sum += ctx.speed_kmh * dt
@@ -166,7 +168,7 @@ class TripCollector:
             self.stopped += dt
         if ctx.resting and not self._was_resting:
             self.rests += 1
-            self._drive_run = 0.0
+            self._drive_run = self._driver_run = 0.0
         self._was_resting = ctx.resting
         if r.risk.unavailable:
             self.unavailable += dt
@@ -212,6 +214,37 @@ class TripCollector:
             for m, a in sorted(self._minutes.items())
             if a[1]
         ]
+
+    # ------------------------------------------------------------------ live view for the HUD (M65)
+    def driver_changed(self) -> None:
+        """ "Đổi tài xế": the new driver's continuous driving starts at 0. The trip's own numbers
+        (longest_drive_s, rests, minutes) go on: nothing of the summary is lost."""
+        self.driver_changes += 1
+        self._driver_run = 0.0
+
+    def hud_view(self, window_min: int) -> dict[str, Any]:
+        """What the HUD shows of the running trip, read-only: continuous driving of the current
+        driver, driving time, and the drowsy_score of each of the last `window_min` minutes (oldest
+        first, the running minute last and partial). A minute with no judged frame (a rest, the
+        eyes-closed step of enrollment, a stall) is None: the HUD draws it as a gap, not as 0."""
+        recent: list[dict[str, Any] | None] = []
+        if self._t0 is not None and self._last_t is not None and window_min > 0:
+            now = int((self._last_t - self._t0) // 60)
+            for m in range(max(0, now - window_min + 1), now + 1):
+                a = self._minutes.get(m)
+                recent.append(
+                    None
+                    if not a or not a[1]
+                    else {"minute": m, "drowsy_score": round(a[0] / a[1], 1), "max_level": int(a[2])}
+                )
+        return {
+            "drive_run_s": round(self._driver_run, 1),
+            "driving_s": round(self.driving, 1),
+            "score_l1": self.tired_score,  # colour bands of the chart: risk.drowsy.l1 / l2 of this trip
+            "score_l2": self.score_l2,
+            "window_min": window_min,  # the chart's width in minutes (hud.trend_minutes), recent may be shorter
+            "recent_minutes": recent,
+        }
 
     def summary(
         self,

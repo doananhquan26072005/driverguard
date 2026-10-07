@@ -81,23 +81,23 @@ export default function DriveScreen() {
   };
 
   const btn =
-    "inline-flex min-h-20 items-center justify-center gap-2 rounded-hud border-0 px-4 text-hud-title font-bold ring-1 transition active:scale-[0.98]";
+    "inline-flex min-h-20 items-center justify-center gap-2 rounded-hud-sm border-0 px-4 text-hud-title font-semibold ring-1 transition active:scale-[0.98]";
 
   return (
-    <div className="min-h-dvh bg-hud-bg font-hud text-hud-ink antialiased [color-scheme:dark]">
+    <div className="live-setup block font-hud text-hud-ink antialiased [color-scheme:dark]">
       <main className="mx-auto grid max-w-xl gap-5 px-4 py-6">
         <header className="flex items-center gap-2">
           <Gauge aria-hidden className="size-6 text-hud-system" />
           <h1 className="m-0 text-hud-title font-bold">Điều khiển xe</h1>
           {paired && (
-            <span className="ml-auto rounded-full bg-hud-raised px-3 py-1 text-hud-label tabular-nums ring-1 ring-hud-line">
+            <span className="ml-auto dg-chip !text-[15px] tabular-nums">
               Mã {code}
             </span>
           )}
         </header>
 
         {!paired ? (
-          <section className="grid gap-3 rounded-hud bg-hud-surface p-5 ring-1 ring-hud-line">
+          <section className="grid gap-3 dg-card p-5">
             <p className="m-0 text-hud-body text-hud-ink-2">
               Nhập mã 6 ký tự hiện ở góc camera của trang giám sát <code>#/live</code>.
             </p>
@@ -108,19 +108,19 @@ export default function DriveScreen() {
                 onChange={(e) => setDraft(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && pair()}
                 maxLength={6}
-                className="min-h-14 flex-1 rounded-hud-sm border-0 bg-hud-raised px-4 text-hud-title font-bold tracking-[0.3em] text-hud-ink uppercase ring-1 ring-hud-line"
+                className="min-h-14 flex-1 rounded-hud-sm border border-solid border-white/14 bg-white/4 px-4 text-hud-title font-semibold tracking-[0.3em] text-hud-ink uppercase"
               />
-              <button type="button" onClick={pair} disabled={!isDriveCode(draft.trim().toUpperCase())} className={`${btn} min-h-14 bg-hud-system text-hud-on-warning ring-transparent disabled:opacity-40`}>
+              <button type="button" onClick={pair} disabled={!isDriveCode(draft.trim().toUpperCase())} className={`${btn} min-h-14 bg-[linear-gradient(180deg,#93c5fd_0%,#60a5fa_100%)] text-[#0b1b33] ring-transparent disabled:opacity-40`}>
                 Ghép
               </button>
             </div>
           </section>
         ) : (
           <>
-            <section aria-label="Tốc độ" className="grid justify-items-center gap-1 rounded-hud bg-hud-surface p-5 ring-1 ring-hud-line">
+            <section aria-label="Tốc độ" className="grid justify-items-center gap-1 dg-card p-5">
               <div className="flex items-center gap-6">
                 <ArrowBigLeft aria-label={`Xi nhan trái: ${car.turn === "left" ? "bật" : "tắt"}`} role="img" className={`size-14 ${car.turn === "left" ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3 opacity-40"}`} />
-                <span className="text-[clamp(56px,14vw,96px)] leading-none font-extrabold tabular-nums">{Math.round(car.speedKmh)}</span>
+                <span className="text-[clamp(56px,14vw,96px)] leading-none font-semibold tracking-[-0.03em] tabular-nums">{Math.round(car.speedKmh)}</span>
                 <ArrowBigRight aria-label={`Xi nhan phải: ${car.turn === "right" ? "bật" : "tắt"}`} role="img" className={`size-14 ${car.turn === "right" ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3 opacity-40"}`} />
               </div>
               <span className="text-hud-body text-hud-ink-2">km/h · mục tiêu {car.targetKmh}</span>
@@ -138,13 +138,13 @@ export default function DriveScreen() {
             </section>
 
             <section aria-label="Tốc độ" className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => act("accelerate")} className={`${btn} bg-hud-raised text-hud-ink ring-hud-line`}>
+              <button type="button" onClick={() => act("accelerate")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
                 <ChevronUp aria-hidden className="size-7" /> Tăng tốc
               </button>
-              <button type="button" onClick={() => act("decelerate")} className={`${btn} bg-hud-raised text-hud-ink ring-hud-line`}>
+              <button type="button" onClick={() => act("decelerate")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
                 <ChevronDown aria-hidden className="size-7" /> Giảm tốc
               </button>
-              <button type="button" onClick={() => act("cruise")} className={`${btn} bg-hud-raised text-hud-ink ring-hud-line`}>
+              <button type="button" onClick={() => act("cruise")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
                 Chạy đều {DRIVE_SIM.cruiseKmh}
               </button>
               <button type="button" onClick={() => act("stop")} className={`${btn} bg-hud-danger text-white ring-transparent`}>
@@ -153,13 +153,13 @@ export default function DriveScreen() {
             </section>
 
             <section aria-label="Xi nhan" className="grid grid-cols-3 gap-3">
-              <button type="button" aria-pressed={car.turn === "left"} onClick={() => act("left")} className={`${btn} ${car.turn === "left" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "bg-hud-raised text-hud-ink ring-hud-line"}`}>
+              <button type="button" aria-pressed={car.turn === "left"} onClick={() => act("left")} className={`${btn} ${car.turn === "left" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "dg-tile text-hud-ink ring-transparent"}`}>
                 <ArrowBigLeft aria-hidden className="size-7" /> Trái
               </button>
-              <button type="button" onClick={() => act("signal_off")} className={`${btn} bg-hud-raised text-hud-ink-2 ring-hud-line`}>
+              <button type="button" onClick={() => act("signal_off")} className={`${btn} dg-tile text-hud-ink-2 ring-transparent`}>
                 Tắt
               </button>
-              <button type="button" aria-pressed={car.turn === "right"} onClick={() => act("right")} className={`${btn} ${car.turn === "right" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "bg-hud-raised text-hud-ink ring-hud-line"}`}>
+              <button type="button" aria-pressed={car.turn === "right"} onClick={() => act("right")} className={`${btn} ${car.turn === "right" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "dg-tile text-hud-ink ring-transparent"}`}>
                 Phải <ArrowBigRight aria-hidden className="size-7" />
               </button>
             </section>

@@ -78,6 +78,26 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 | [M54](#m54) | Nhóm việc 1 của improvements trên các phiên tự ghi: mặt tối thì EAR quyết định thay cho CNN mắt; kết luận INT8; đo nhìn xuống, hướng mắt, cách cầm điện thoại (khối 5, `config/thresholds.yaml`, `tools/record_trace.py`) | Phòng tối vừa (mặt 32–35): ngồi yên mắt mở không còn bị hú còi ngủ gật (8 lần L3 sai → 0), nhắm mắt vẫn L3 27 / 27; `eval/results/own_recordings.md` có 12 phiên | ✅ Xong · 06/10 (ngưỡng tạm, một người; nhìn xuống bị báo ngủ gật chưa sửa được: ngưỡng theo tài xế có sẵn nhưng tắt) |
 | [M55](#m55) | Hướng mắt nhìn xuống, chỉ đo: `iris_y` ở khối 6, góc nhìn xuống (góc cúi đầu + mống mắt) và thời gian giữ ở khối 8; đo trên 3MDAD (`tools/gaze_study.py`) | `eval/results/gaze_3mdad.md`: 50 tài xế trong xe thật, 16 hành động; trace có thêm `gaze_down_deg`, `gaze_down_s`; không cảnh báo nào đổi | ✅ Xong · 06/10 (chỉ đo; chưa đủ để thành cảnh báo) |
 | [M56](#m56) | Phần làm được ngay của nhóm việc 1: `eyeBlink` có ngưỡng riêng ở khối 7 cho bản web / APK; mốc mống mắt theo tài xế từ bước đăng ký; bốn phép đo không đổi code (khối 5, 6, 7, 8, `config/thresholds.yaml`) | Bản web với camera xám / hồng ngoại: nhắm mắt đạt L3 0 / 48 → 46 / 48 trên bản tự ghi, FL3D 0 / 95 → 64 / 95 (replay); bản thiết bị không đổi | ✅ Xong · 07/10 (ngưỡng tạm: replay trên video màu, chưa đo trên `#/live`, chưa có ảnh IR thật) |
+
+### Version 4: thiết kế lại giao diện (M57–M65)
+
+**Xong cả 9 mốc (07/10)**; e2e `live.e2e.ts` 4 / 4 pass (07/10). Theo hai bản thiết kế: HUD (21 màn hình, "DriverGuard HUD redesign") và web (10 màn hình, "DriverGuard Web redesign").
+Nguyên tắc chung: chỉ đổi giao diện (`frontend/`); backend, edge agent và API giữ nguyên; không đổi logic cảnh báo;
+tính năng đang có mà thiết kế chưa vẽ thì giữ lại và vẽ theo phong cách mới, không bỏ. Ô nào của bản thiết kế cần dữ liệu
+mà backend / edge agent chưa gửi thì ẩn hoặc điều chỉnh cho hợp. Ngoại lệ duy nhất là M65 (07/10): edge agent gửi thêm
+cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh báo, không đổi backend / API).
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [M57](#m57) | Nền giao diện chung: màu, font Inter tự đóng gói (không dùng Google Fonts vì HUD có thể không có mạng), cỡ chữ, nút, thẻ "kính"; sửa các lỗi tương phản của bản thiết kế (nền trắng trong giao diện tối, chữ đen trong ô nhập, màu cam tối trên nền tối) | Một bộ token dùng chung cho HUD và web; `#/hud-preview` và dashboard đổi sang nền tối mới; số FPS của `#/live` trước / sau không giảm dưới 15 | ✅ Xong · 07/10 (blur chưa dùng ở HUD / `#/live`: đo lại ở M58) |
+| [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ✅ Xong · 07/10 (kèm 2 đợt sửa theo góp ý) |
+| [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ✅ Xong · 07/10 (làm dần cùng các đợt sửa M58) |
+| [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ✅ Xong · 07/10 (Tổng quan tài xế / quản lý, Tài khoản / Thiết bị tạm dùng trang cũ: M61–M63) |
+| [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ✅ Xong · 07/10 (Lịch sử cảnh báo / Dữ liệu của tôi giữ bảng cũ trong khung mới) |
+| [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ✅ Xong · 07/10 (Nhật ký sự kiện, Timeline, Đội xe chi tiết giữ bảng cũ trong khung mới) |
+| [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ✅ Xong · 07/10 (danh sách thiết bị lấy từ API đội xe, backend không đổi) |
+| [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ✅ Xong · 07/10 (21 FPS; e2e 4 / 4 pass) |
+| [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
 | [M67](#m67) | Tốc độ vòng lặp `#/live` trên trình duyệt máy tính: YOLO chạy bằng WebGPU khi có GPU thật, chạy đúng nhịp cấu hình và nhận frame trước MediaPipe; vòng lặp không chờ YOLO lúc khởi động; công cụ đo cả lần chạy và chạy dài; đo nhánh điện thoại trên 3MDAD (khối 4, `frontend/src/live/`, `frontend/bench/live.bench.mjs`, `tools/phone_study.py`) | `eval/results/benchmark_live.md` mục 4–5: có GPU thật YOLO 94 → 17 ms mỗi lần, tuổi kết quả p95 333 → 131 ms, CPU của trang 109 → 32 % một nhân; không có GPU 329 → 274 ms; khởi động với cache trống 2,66 → 2,08 s. "Chi tiết kỹ thuật" ghi "WebGPU" hoặc số luồng | 🟡 Xong phần code · 08/10 (đo trong Chromium không giao diện trên một máy Mac, camera giả; **chạy dài 10 phút: bản mới FAIL 2 lần đầu, đạt 2 lần chạy lại, nguyên nhân chưa xác định**; mục tiêu tuổi p95 < 250 ms chưa đạt khi không có GPU; số frame bị bỏ không đổi) |
 
 ---
@@ -999,6 +1019,167 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - **Giới hạn:** ngưỡng `eyeBlink` dò trên chính các bộ dùng để báo cáo, không có tập giữ riêng; "mọi frame do `eyeBlink` quyết định" là video màu chạy như thể camera xám, không phải ảnh IR; bản web chưa build lại và chưa chạy `#/live`; các script đo là script tạm, không nằm trong repo (số FL3D lặp lại được bằng `tools/seq_eval.py fl3d --replay block5 --set eye_state.source=blendshape --set eye_state.always_run=true`)
 - Test: 953 Python pass (9 test mới bằng chuỗi số giả: 5 khối 5 / 7, 1 bridge web, 2 khối 8, 1 đăng ký); test hồi quy trace không đổi; `ruff` sạch ở `edge_agent/`, `tools/`, `tests/` (8 lỗi có sẵn ở `scripts/`)
 
+### Version 4: thiết kế lại giao diện (M57–M65)
+
+Theo hai bản thiết kế: HUD (21 màn hình, "DriverGuard HUD redesign") và web (10 màn hình, "DriverGuard Web redesign").
+Chỉ đổi giao diện (`frontend/`): backend, edge agent và API giữ nguyên, không đổi logic cảnh báo. Tính năng đang có mà
+bản thiết kế chưa vẽ thì vẽ theo phong cách mới, không bỏ. Quyết định ngày 07/10: font Inter, nút HUD 56 px như các màn
+hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
+
+<a id="m57"></a>
+
+#### M57: Nền giao diện chung (frontend)
+
+**Xong là thấy gì:** dashboard, trang đăng nhập và HUD dùng nền tối #0A0A0A, chữ Inter; thẻ của dashboard là thẻ "kính"; FPS của `#/live` không đổi (21 → 20, trong sai số đo)
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; backend, edge agent và API không đổi. Bố cục từng màn hình chưa đổi (M58–M64)
+
+- **Font:** Inter tự đóng gói (`@fontsource/inter` 400–800, có bộ chữ tiếng Việt), bỏ `@fontsource/be-vietnam-pro`; không tải Google Fonts vì HUD có thể không có mạng
+- **Token HUD** (`src/index.css`, `@theme`): nền #0A0A0A, mặt thẻ #141414 / #1F1F1F, chữ #F5F5F5 / #B8C2D0 / #8A8A8A (≥ 4,5 : 1 trên nền và mặt thẻ), bình thường #4ADE80; chú ý / cảnh báo / nguy hiểm / thiết bị / xi nhan giữ màu cũ, trùng bản thiết kế
+- **Token dashboard** (`src/styles.css`): chỉ còn giao diện tối (bản thiết kế không có giao diện sáng); nền trang có vệt sáng góc trên trái như bản thiết kế; thẻ, ô số liệu, thanh trên dùng nền kính; nút chính trắng chữ đen, bo 12 px
+- **Lớp dùng chung:** `.glass` (thẻ kính) và `.glass-tint` (thẻ ánh màu theo `--tint`, cho ghi chú thiết bị / chú ý / cảnh báo); blur đặt qua biến `--glass-backdrop`, đổi thành `none` là tắt ở nơi tốn frame
+- **Sửa lỗi của bản thiết kế:** ô nhập / select luôn có màu chữ sáng và `<option>` nền tối (bản thiết kế để chữ đen trên nền đen); không có nền trắng hay chữ cam tối trên nền tối trong token
+- **Đo FPS `#/live`** (`frontend/bench/live.bench.mjs`, Chromium không GPU, camera giả 30 s): trước 21 FPS, cả frame p50 12,9 / p95 23,8 ms; sau 20 FPS, p50 12,6 / p95 23,5 ms. M57 chưa đặt blur nào lên HUD hay `#/live`; M58 dùng thẻ kính trên HUD thì đo lại
+- **Giới hạn:** chưa xem dashboard sau đăng nhập có dữ liệu thật (chỉ chụp trang đăng nhập và `#/hud-preview`); biểu đồ, huy hiệu mức dùng token nên đổi màu theo, chưa soát từng tab
+- Test: 95 test frontend pass, typecheck sạch, build sạch
+
+<a id="m58"></a>
+
+#### M58: HUD khi đang lái (khối 13)
+
+**Xong là thấy gì:** `#/hud`, `#/hud-preview` và HUD trong `#/live` có các màn đang lái của bản thiết kế: L0 thẻ xanh, L1 thẻ vàng + viền màn hình, L2 thẻ cam đặc + viền, L3 màn đỏ toàn phần; thẻ "Độ mệt và thông số" có biểu đồ 15 phút; thẻ tốc độ hình bát giác có số P / D và xi nhan; dãy nút dưới
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/` (và thêm `window_min` vào `trip` của M65). Màn xin đồng ý / đăng ký / sự cố / "Bạn còn ở đó không?" nằm trong khung mới nhưng ruột vẫn như cũ, làm ở M59
+
+- **Theo Design System "DriverGuard"** (link thứ ba, tài liệu chuẩn khi canvas lệch): token `card-hi / mid / lo`, `tile`, `rim`, kính `blur(18px) saturate(120%)`; xi nhan màu vàng `level-1` (không còn xanh ngọc); đỏ L3 `#ef4444 → #dc2626 → #991b1b`; bo góc tối đa 16 px; chữ tối đa 600, 700 chỉ cho câu L2 / L3; component `.dg-card`, `.dg-tile`, `.dg-alert l0 / l1 / l2 / sys`, `.dg-chip`, `.dg-btn`, `.dg-meter`, `.dg-backdrop`, `.dg-ring-1 / 2` trong `src/styles.css`
+- **Bố cục 1280 × 800** như canvas: thanh trên 72 px (DRIVERGUARD, camera, âm thanh, mô phỏng, dashboard, giờ), nội dung `1fr | 400px`, dãy nút dưới (ghi chú hoặc "Cảnh báo này sai? · còn m:ss", "Đổi tài xế ›", "Kết thúc chuyến ›", nút 56 px). Màn hẹp xếp dọc; không tràn ngang ở 390 / 768 / 1280 px
+- **Số liệu của chuyến lấy từ edge agent (M65):** ô "Đã lái liên tục", ô "Cảnh báo gần nhất · HH:MM · lý do", biểu đồ `recent_minutes` (cột theo dải `score_l1` / `score_l2` của chuyến, phút nghỉ là khoảng trống, vạch "Nhắc nghỉ" ở `score_l1`), dòng chi tiết L2 "Phát hiện lúc … · nhìn lệch … giây · không bật xi nhan". HUD không giữ ngưỡng nào
+- **Giữ:** không hiện mã L0–L3, L3 không có nút, ban đêm L0–L1 dịu 80 %, hiện trong 150 ms / hạ mức mờ dần, L3 nhấp nháy 1 Hz, dải vàng "Âm thanh cảnh báo chưa bật"
+- **Khác bản thiết kế:** bỏ nhãn vùng tốc độ (quyết định 07/10), chip tốc độ ghi "Đang chạy" / "Xe dừng" / "Mất tín hiệu xe"; máy chậm ghi "cảnh báo có thể trễ" chứ không ghi "đang giảm tải" (chưa có giảm tải); nút "Chạy mô phỏng" và "Dashboard" giữ thành ô icon trên thanh trên
+- **Hàm thuần mới** (`hudModel.ts`, `format.ts`): `fatigueBand`, `trendSlots`, `fatigueSummary`, `splitAction`, `alertDetail`, `footerNote`, `durationText`, `hourMinute`; nhãn ngắn `REASON_SHORT`
+- **Đo FPS `#/live`** (Chromium không GPU, camera giả 30 s): 20 FPS như trước; cả frame p50 12,6 → 14,5 ms, p95 23,5 → 23,6 ms. Camera giả không có mặt nên HUD lúc đo ở màn "không thấy mặt", chưa đo màn đang lái có kính mờ trên máy yếu
+- **Sửa sau khi xem (07/10, theo ảnh chụp của người dùng):**
+  - Khung 1280 × 800 cố định của bản thiết kế, phóng to / thu nhỏ theo màn hình (`HudStage`: màn ngang rộng ≥ 1024 px; viền thừa cùng màu nền). Trước đó bố cục co giãn tự do: màn thấp thì ô tràn khỏi thẻ, màn lớn thì chữ nhỏ và chừa khoảng trống. Điện thoại và màn dọc vẫn xếp dọc
+  - Hàng "Độ mệt và thông số" cao 210 px như canvas
+  - Kéo sớm phần của M59 được yêu cầu trực tiếp: màn xin đồng ý (thẻ xanh dương, ô icon, "Cho hệ thống làm quen với bạn", danh sách quyền riêng tư trong ô kính, nút xanh dương), 3 bước đăng ký (thẻ xanh dương toàn khung, chữ 76 px, thanh tiến độ, khung căn khuôn mặt `FaceGuide`: oval vạch đứt + điểm mốc của canvas, mặt quay ra đường ở bước 2, mắt nhắm ở bước 3, xanh khi ổn / vàng khi có nhắc), tổng kết chuyến trong khung HUD (thẻ đánh giá theo màu chuyến, 4 ô số liệu, biểu đồ tối đa 65 cột có trục giờ, ô gợi ý, nút "Xong")
+  - Khung khuôn mặt là hình hướng dẫn, không phải ảnh camera: HUD không bao giờ nhận ảnh. Không có nút "Huỷ đăng ký" của canvas: edge agent chưa có lệnh huỷ giữa chừng (xe chạy thì tự tạm dừng), backend / edge không đổi
+  - e2e `live.e2e.ts` đổi theo chữ mới: "Xe đang đỗ · 0 km/h" lúc đăng ký, "Tổng kết chuyến đi · …" ở màn tổng kết
+- **Sửa theo danh sách góp ý "Việc cần làm" (07/10):**
+  - Nút tài xế bấm khi lái to hơn: "Đổi tài xế", "Kết thúc chuyến", "Cảnh báo này sai?" cao 72 px, chữ 20 px (`.dg-btn-lg`)
+  - Thẻ trạng thái: bỏ tiêu đề "Trạng thái tài xế · Cập nhật liên tục…" và chữ "Đang giám sát" (chỉ còn chấm xanh); huy hiệu mức là vòng tròn đặc (L0 dấu tích, L1 icon lý do); câu trạng thái 96 px (câu dài 72 px); 2 ô "Lái liên tục" và "Cảnh báo gần nhất" chữ 28 px, ít chữ. Thẻ L2 cũng bỏ tiêu đề
+  - Thẻ chỉ số: bỏ tiêu đề và chip "Thấp · chưa cần nghỉ"; buồn ngủ / chú ý đường / mắt nói bằng chữ có màu ("Tỉnh táo · Hơi mệt · Rất mệt", "Tập trung · Nhìn lệch · Cầm điện thoại", "Đang mở · Nhắm 1,2 giây"), số chỉ còn là thanh mảnh; biểu đồ 15 phút thu thành một dải mảnh "Độ mệt từng phút" có mốc thời gian bên dưới ("15 phút trước … Bây giờ"). Chữ theo dải `score_l1` / `score_l2` của chuyến; "mắt nhắm" dưới 0,5 s vẫn ghi "Đang mở" (chớp mắt, chỉ để hiển thị)
+  - Thẻ xe: bỏ tiêu đề "Tốc độ · Tín hiệu xe đã kết nối" và chip "Đang chạy" (chỉ còn dấu tích xanh, chip chỉ hiện khi mất / chưa có tín hiệu); xi nhan lên trên cùng; ô ô tô thành chữ to "D" (đang lái) / "P" nền xanh dương (đang đỗ); bỏ D / P trong khung bát giác
+  - Màn không giám sát (thiết kế "Tạm ngưng", "Mất camera", "Lỗi xử lý", "Mất kết nối"; phần còn lại của M59): thẻ vàng nâu + chip vàng đặc "KHÔNG giám sát", chữ 80 px. "Không thấy mặt" và "hư camera" không còn giống nhau: dòng đầu nói camera còn chạy hay không ("Camera vẫn chạy, nhưng không thấy mặt" / "Không nhận được hình từ camera"), ô "Camera" xanh "Vẫn hoạt động" / đỏ "Không có hình", icon khác nhau; mất camera và lỗi xử lý có "Từ HH:MM", "Lần thử N", "Đã báo" khi M65 gửi; mất kết nối là thẻ xanh dương (lỗi thiết bị, không phải tài xế)
+- **Đo FPS `#/live` sau đợt sửa:** vẫn 20 FPS; cả frame p50 17,3 ms, p95 25,8 ms (trước đổi giao diện 12,6 / 23,5 ms). Tăng dần nhưng xa ngân sách 66 ms; theo dõi tiếp trên máy yếu thật
+- **Giới hạn:** chưa chạy e2e `live.e2e.ts` (cần backend); chữ trên nút "Kết thúc chuyến", "Đổi tài xế", vùng "Xe" và câu L3 giữ đúng chữ e2e tìm
+- Test: 9 test mới (`src/hud/m58.test.ts`), tổng 104 test frontend pass, typecheck / build sạch; 17 test M65 pass
+
+<a id="m59"></a>
+
+#### M59: HUD sự cố, đăng ký và kết thúc chuyến (khối 13)
+
+**Xong là thấy gì:** mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ
+
+**Trạng thái:** Xong (07/10). Xin đồng ý, 3 bước đăng ký, tổng kết chuyến, tạm ngưng, mất camera, lỗi xử lý, mất kết nối làm cùng các đợt sửa M58 (chi tiết ở M58); màn "Bạn còn ở đó không?" làm sau cùng: cả thẻ là một nút, vàng khi đang hỏi (đếm ngược "Còn N giây" từ `presence.remaining_s`), đỏ khi không ai trả lời ("đã báo cho quản lý đội xe"), chữ 92 px
+
+- Theo bản thiết kế: mất camera, lỗi xử lý, mất kết nối thiết bị, tạm ngưng (không thấy mặt), mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến
+- Vẽ thêm theo phong cách mới (bản thiết kế chưa có): "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera / ảnh mờ (M43), không phát hiện được điện thoại (M50), đăng ký thất bại và "Để sau", xe đang đỗ, nút "Chạy mô phỏng"
+- "Từ HH:MM", "Lần thử N" và "Đã báo cho quản lý" lấy từ `incident` của M65; giá trị `null` (bản web, lỗi xử lý) thì ẩn ô đó
+- Test: `hudModel.test.ts`, `tripModel.test.ts`, e2e HUD pass
+
+<a id="m60"></a>
+
+#### M60: Đăng nhập chung và trang chủ theo vai trò (frontend)
+
+**Xong là thấy gì:** một trang đăng nhập theo thiết kế; sau đăng nhập mỗi vai trò vào trang chủ của mình, menu trái chỉ có trang của vai trò đó; mỗi trang có địa chỉ riêng `#/dashboard/<trang>`
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; quyền đọc dữ liệu vẫn do backend quyết định (`require_roles`), menu chỉ ẩn những gì sẽ bị từ chối
+
+- **Đăng nhập** (`Login.tsx`): cột trái giới thiệu + hai thẻ "Không lưu ảnh khuôn mặt", "Dữ liệu có hạn dùng" (số ngày lấy từ `/api/v1/policy`, không ghi cứng; backend không trả lời thì không nêu số); cột phải form, nút "Hiện / Ẩn" mật khẩu, lỗi "Sai tên đăng nhập hoặc mật khẩu", thẻ "Chạy thử bằng camera trên máy này" sang `#/live`, ghi chú HUD không cần đăng nhập
+- **Menu theo vai trò** (`nav.ts`, hàm thuần có test): tài xế: Tổng quan · Chuyến đi của tôi · Lịch sử cảnh báo · Dữ liệu của tôi; quản lý: Tổng quan · Đội xe · Báo cáo chuyến · Nhật ký sự kiện · Timeline mệt mỏi · Ngưỡng (chỉ xem); kỹ sư: Ngưỡng và báo sai · Nhật ký sự kiện · Timeline · Đội xe · Báo cáo chuyến; quản trị: Tài khoản · Thiết bị · Nhật ký truy cập + mọi mục của kỹ sư. Trang chủ: tài xế / quản lý → Tổng quan, kỹ sư → Ngưỡng, quản trị → Tài khoản. Địa chỉ của trang vai trò không có thì về trang chủ
+- **Khung** (`Dashboard.tsx`): menu trái 248 px (tên, vai trò, mã tài xế, Đăng xuất ở đáy; số báo cáo chưa xem trên mục "Báo cáo chuyến"), tiêu đề trang + một câu giải thích + bộ lọc ở đầu trang; màn hẹp thì menu nằm ngang trên cùng. Dòng chính sách dữ liệu dưới mọi trang giữ nguyên
+- **Tạm thời:** "Tổng quan" tài xế dùng danh sách chuyến, "Tổng quan" quản lý dùng trang Đội xe, "Tài khoản / Thiết bị" chỉ có hướng dẫn `backend.manage` + duyệt yêu cầu xoá, tới M61 / M62 / M63
+- e2e `live.e2e.ts`: mục menu là link ("Đội xe", "Báo cáo chuyến") thay vì tab
+- Test: 3 test mới (`dashboard/nav.test.ts`), tổng 109 test frontend pass, typecheck / build sạch; xem bằng backend tạm với database riêng và 2 chuyến giả lập (quản lý, kỹ sư, quản trị, tài xế đăng nhập được, không lỗi trang)
+
+<a id="m61"></a>
+
+#### M61: Trang tài xế (frontend)
+
+**Xong là thấy gì:** tài xế đăng nhập vào "Tổng quan" của mình: chuyến gần nhất, 30 ngày qua, gợi ý, các chuyến gần đây; "Chuyến đi của tôi" có danh sách và trang chi tiết từng chuyến (`#/dashboard/trips/<xe>/<chuyến>`)
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; backend vẫn chỉ trả cho tài xế dữ liệu của chính họ
+
+- **Tổng quan** (thiết kế "Tài xế · Tổng quan"): câu "Không ai thấy hình ảnh khuôn mặt của bạn"; thẻ chuyến gần nhất theo màu đánh giá (câu chuyện chuyến, biểu đồ độ mệt cả chuyến, "quản lý đã xem lúc …" hoặc "Quản lý chưa xem", nút "Xem chi tiết chuyến"); 30 ngày qua: số chuyến, giờ lái, lần được nhắc, lần báo sai; gợi ý của chuyến gần nhất; bảng các chuyến gần đây
+- **Chi tiết chuyến** (thiết kế "Tài xế · Chi tiết chuyến"): thẻ đánh giá; 6 ô số liệu (thời gian lái, lái liên tục dài nhất, lần nghỉ, tốc độ trung bình, lần ngáp, thời gian được giám sát); biểu đồ độ mệt có trục giờ và chú thích; "Các lần được nhắc" (giờ, lý do, mức, "bạn đã báo sai") từ `/api/v1/timeline`; gợi ý + lúc gửi cho quản lý và ai đã xem
+- **Dùng chung với M62** (`TripParts.tsx`): thẻ đánh giá, biểu đồ chuyến, ô số liệu, chip đánh giá; `driverModel.ts` (hàm thuần có test): tổng 30 ngày, sắp xếp mới nhất trước, link chuyến
+- "Lịch sử cảnh báo" và "Dữ liệu của tôi" giữ bảng / thẻ hiện có (M41, M48) trong khung mới
+- Test: 3 test mới (`dashboard/driverModel.test.ts`), tổng 112 test frontend pass, typecheck / build sạch; xem bằng tài khoản tài xế trên backend tạm, không lỗi trang
+
+<a id="m62"></a>
+
+#### M62: Trang quản lý (frontend)
+
+**Xong là thấy gì:** quản lý đăng nhập vào "Tổng quan đội xe" (số liệu hôm nay, "Cần xử lý", từng xe); "Báo cáo chuyến" là trang duyệt: danh sách bên trái, một báo cáo bên phải, nút "Đánh dấu đã xem"
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; cùng các API `/api/v1/fleet`, `/api/v1/trip-reports`, `…/review`
+
+- **Tổng quan** (thiết kế "Quản lý · Tổng quan đội xe"): xe đang hoạt động / tổng, mất liên lạc, cảnh báo hôm nay (L1 · L2 · L3), báo cáo chuyến chưa xem; "Cần xử lý": cần chú ý ngay (L3, không phản ứng, không trả lời: M44, đỏ, có tiếng chuông mỗi sự kiện mới như trang Đội xe), mất liên lạc chưa kết thúc chuyến (vàng), báo cáo mới và số chuyến "Có lúc rất nguy hiểm" (xanh dương), mỗi mục có nút dẫn tới trang xử lý; bảng từng xe có lọc trạng thái và ô tìm xe / tài xế. Làm mới mỗi 5 s như trang Đội xe
+- **Duyệt báo cáo** (thiết kế "Quản lý · Duyệt báo cáo chuyến"): lọc "Chưa xem (N)" / "Tất cả"; báo cáo: thẻ đánh giá, 8 ô (thời gian lái, lái liên tục dài nhất, L1 / L2 / L3, nhắm mắt lâu nhất, ngáp / gục đầu, nhìn lệch / điện thoại, được giám sát, tài xế báo sai), biểu đồ độ mệt + "Xem timeline từng phút", gợi ý đã đưa cho tài xế, "Đánh dấu đã xem" (sau đó ghi ai đã xem lúc nào), câu "Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế"
+- Kỹ sư và quản trị giữ bản báo cáo kỹ thuật đầy đủ số (`TripReports`); "Nhật ký sự kiện", "Timeline mệt mỏi", "Đội xe" (phiên bản, tốc độ xử lý: M41, M49) giữ bảng hiện có trong khung mới
+- Test: 112 test frontend pass, typecheck / build sạch; xem bằng tài khoản quản lý trên backend tạm (2 xe, 2 báo cáo), không lỗi trang
+
+<a id="m63"></a>
+
+#### M63: Trang kỹ sư và admin (frontend)
+
+**Xong là thấy gì:** kỹ sư sửa ngưỡng với thanh "N thay đổi chưa lưu · Hoàn tác · Lưu thành phiên bản N+1" và xem tỉ lệ báo sai theo lý do dạng thanh; quản trị tạo tài khoản / thiết bị ngay trên web, khoá thiết bị hiện đúng một lần có nút sao chép
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`: gọi các API admin đã có (`GET / POST /api/v1/users`, `POST /api/v1/devices`); danh sách thiết bị lấy từ `/api/v1/fleet` (trả mọi thiết bị, kể cả chưa từng kết nối), không cần API mới
+
+- **Ngưỡng và báo sai** (thiết kế "Kỹ sư · Ngưỡng và báo sai"): giữ nguyên logic M47 (áp thử cho vài xe, phiên bản, "Áp cho cả đội" / quay lui) và đủ 16 khoá; thêm thanh thay đổi chưa lưu luôn nằm trên (ghi tên các ngưỡng đã sửa), ô đã sửa viền xanh + "Đã sửa · trước đó …", nhóm ngưỡng thành thẻ bo tròn, khoá cấu hình bằng JetBrains Mono (tự đóng gói `@fontsource/jetbrains-mono`, như Design System); "Cảnh báo sai theo lý do" thành thanh ngang, từ 20 % trở lên tô cam sáng (bản thiết kế dùng cam tối `#C2410C` trên nền tối, không đọc được)
+- **Tài khoản** (thiết kế "Quản trị · Tài khoản và thiết bị"): danh sách có lọc vai trò, chip màu theo vai trò, mã tài xế; form thêm tài khoản (tên, mật khẩu ban đầu ≥ 8 ký tự, 4 ô chọn vai trò, mã tài xế bắt buộc với tài xế), báo lỗi trùng tên / không hợp lệ bằng câu dễ hiểu
+- **Thiết bị:** danh sách thiết bị + tài xế + liên lạc; form thêm thiết bị; thẻ vàng "Thiết bị … vừa được tạo" với khoá và nút "Sao chép" (khoá chỉ giữ trong bộ nhớ trang, không lưu); dòng "Khoá thiết bị không bao giờ hiện lại"
+- Nhật ký truy cập + duyệt yêu cầu xoá (M41, M48) ở mục "Nhật ký truy cập" của quản trị
+- Test: 112 test frontend pass, typecheck / build sạch; thao tác thật trên backend tạm (tạo tài khoản, tạo thiết bị, sửa ngưỡng), không lỗi trang, không tràn ngang ở 1440 / 390 px
+
+<a id="m64"></a>
+
+#### M64: `#/live` và `#/drive` (frontend)
+
+**Xong là thấy gì:** `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới: thiết lập, đang tải, HUD (M58 / M59), tổng kết; `#/drive` cùng phong cách
+
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`
+
+- **Thiết lập** (thiết kế "Chạy thử trên trình duyệt · Thiết lập"): cột trái giới thiệu + thẻ xanh "Hình ảnh không rời khỏi máy bạn"; cột phải 3 bước đánh số: "Ai đang lái?" (đăng nhập / "Dùng thử không lưu"), "Đăng ký khuôn mặt · khoảng 10 giây" (3 bước), "Bắt đầu" (nút xanh dương "Cho phép camera và bắt đầu")
+- **Đang tải** (thiết kế "… · Đang tải"): "Đang khởi động", các bước "Mở camera · Xong", "Đang chuẩn bị N%" có thanh tiến độ, "Sẵn sàng giám sát". Dung lượng tải ghi theo số đo thật (≈ 30 MB, M45), không ghi 60 MB như bản thiết kế. Bản thiết kế chia bước chuẩn bị thành 3 mục con (môi trường, model mặt, model điện thoại): agent chỉ báo tỉ lệ chung, nên không vẽ mục con
+- **Khung camera nhỏ** khi đang chạy: nhỏ lại (176 px), nền tối, "Chỉ xem, không lưu", ba nút icon có nhãn (trang điều khiển xe theo mã, "Chi tiết kỹ thuật", "Dừng camera"), để không che nút của HUD
+- **`#/drive`**: thẻ kính, nút ô kính, chip mã ghép, nút "Ghép" xanh dương; cùng nút, cùng phím tắt, cùng chữ
+- Chữ mà e2e và `frontend/bench/live.bench.mjs` tìm giữ nguyên ("Dùng thử không lưu", "Cho phép camera và bắt đầu", "Đăng nhập: …", "Chi tiết kỹ thuật", link "Điều khiển xe · mã …", khung `fixed bottom-4`)
+- **Đo FPS `#/live`** (Chromium không GPU, camera giả 30 s): 21 FPS; cả frame p50 16,5 ms, p95 29,7 ms
+- Test: 112 test frontend pass, typecheck / build sạch; chụp thiết lập, đang tải, đang chạy, `#/drive`, không lỗi trang
+- **Sửa sau khi dùng thử (07/10):** giọng đọc tiếng Việt bị đọc bằng giọng Anh: chỉ khai báo `lang = "vi-VN"` thì trình duyệt không có giọng Việt sẽ dùng giọng mặc định (máy thử chỉ có 3 giọng `en-US`). Nay `chime.ts` chọn đúng một giọng `vi` (ưu tiên `vi-VN`, giọng trên máy trước giọng qua mạng; hàm thuần `pickVietnameseVoice` có test); không có giọng Việt thì không đọc (chỉ chữ + tiếng bíp) và màn thiết lập `#/live` cùng màn đăng ký ghi cách cài giọng Tiếng Việt trong Windows hoặc dùng Microsoft Edge. Khung căn mặt khi đăng ký trong `#/live` hiện hình camera thật của trang (lật như gương, ngoài oval tối đi), chỉ hiển thị trong bộ nhớ, không lưu, không gửi; HUD trên thiết bị vẫn là hình minh hoạ (edge agent không đưa ảnh ra màn hình) và nay ghi rõ "Hình minh hoạ · màn hình không nhận ảnh camera"
+- **Giọng nói tiếng Việt cho mọi cảnh báo (07/10):** máy thử không có giọng đọc tiếng Việt nào (Chrome và Edge chỉ có 3 giọng `en-US`), và thiết bị trong xe có thể không có mạng. Nên mọi câu nói được thu sẵn thành file: `frontend/src/hud/voice-lines.json` (31 câu: 9 cảnh báo theo lý do chính, 8 thông báo hệ thống, hướng dẫn đăng ký) → `python tools/make_voice.py` (Piper, chạy offline, giọng pretrained `vi_VN-vais1000-medium`, không train gì) → `frontend/public/voice/<key>.wav` (≈ 2 MB) + `manifest.json` (hash của từng câu). HUD nói câu của cảnh báo 0,7 s sau tiếng chuông (L3 nói lại theo nhịp còi), và nói khi mất / có lại camera, tạm ngưng / giám sát lại, mất kết nối, mất / có lại tín hiệu xe, "Bạn còn ở đó không?", các bước đăng ký. Thiếu file thì dùng giọng tiếng Việt của máy nếu có, không bao giờ dùng giọng Anh. Test (`hud/voice.test.ts`): mỗi lý do cảnh báo có câu, câu đăng ký đọc đúng chữ trên màn hình, đổi chữ mà chưa thu lại thì đỏ. Kiểm trên Chrome thật: chế độ mô phỏng tải và phát `alert.drowsy_score.wav`, `alert.off_road.wav`. Nguồn giọng: Piper voices "vais1000", dữ liệu VAIS-1000 Vietnamese speech synthesis corpus (https://ieee-dataport.org/documents/vais-1000-vietnamese-speech-synthesis-corpus), giấy phép CC BY 4.0
+- **e2e** (`npx playwright test`, backend + database bỏ đi riêng): 4 / 4 pass sau khi đổi 2 chỗ theo giao diện mới: mã ghép đọc từ nhãn của link (link giờ chỉ hiện mã), quản lý duyệt báo cáo ở trang mới (chọn báo cáo trong danh sách, thấy "đổi tài 1 lần" trong câu chuyện chuyến, bấm "Đánh dấu đã xem")
+
+<a id="m65"></a>
+
+#### M65: Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14)
+
+**Xong là thấy gì:** `GET /state` của server HUD (và trạng thái của `#/live`) có thêm `trip`, `incident` và `alerts[].metrics`; tải lại trang HUD thì số vẫn đúng ngay, vì edge agent giữ chúng suốt chuyến
+
+**Trạng thái:** Xong (07/10). Chỉ đọc ra những gì edge agent đã giữ: không đổi logic cảnh báo, không đổi backend / API, bản tổng kết chuyến không đổi. Chưa có giao diện (M58 / M59)
+
+- **Vì sao ở edge agent, không ở backend:** HUD trong xe đọc server HUD của thiết bị mỗi 0,3 s và phải chạy khi mất mạng; nó không đọc backend. Edge agent giữ dữ liệu chuyến trong bộ nhớ suốt chuyến, nên HUD tải lại chỉ cần đọc lại
+- **`trip`** (khối 11, `TripCollector.hud_view`): `drive_run_s` lái liên tục của tài xế hiện tại (về 0 sau một lần nghỉ `context.rest_after_s` hoặc "Đổi tài xế"), `driving_s` cả chuyến, `score_l1` / `score_l2` (dải màu của biểu đồ, lấy từ ngưỡng), `recent_minutes` điểm buồn ngủ trung bình của `hud.trend_minutes` = 15 phút gần nhất (phút đang chạy ở cuối; phút không có frame được chấm như lúc nghỉ hay bước nhắm mắt khi đăng ký là `null`, vẽ thành khoảng trống, không phải 0)
+- **"Đổi tài xế"** chỉ đưa `drive_run_s` về 0; `longest_drive_s`, `rests`, các phút của bản tổng kết giữ nguyên (`TripCollector.driver_changed`)
+- **`alerts[].metrics`** (`runtime.alert_detail`): `off_road_s`, `eyes_closed_s`, `phone_ratio`, `turn_signal` (theo khối 10, có thời gian ân hạn) lúc cảnh báo bật
+- **`incident`**: `kind` (`camera_lost` / `processing_error`), `since`, `event_id` của sự kiện hệ thống đã gửi; `attempts` = số lần thử mở lại camera (`FrameSource.reopen_attempts`, khối 1, về 0 khi có frame lại); `reported` = backend đã nhận sự kiện (`MetadataPublisher.delivered`, khối 14, nhớ 64 `event_id` gần nhất). Bản web và thiết bị chạy không có `--backend`: `reported` là `null`, HUD ẩn dòng "Đã báo cho quản lý" thay vì đoán
+- Ngưỡng mới: `hud.trend_minutes: 15` trong `config/thresholds.yaml`
+- **Chi phí:** `hud_view(15)` 7,9 µs mỗi frame trên máy dev (một frame ở 15 FPS có 66 ms)
+- **Giới hạn:** edge agent khởi động lại giữa chuyến thì mất chuyến như trước đây (không ghi ra đĩa, đúng ràng buộc); "lỗi xử lý" không có số lần thử (mỗi frame là một lần thử), chỉ có `since`
+- Test: 17 test mới bằng chuỗi số giả (`tests/test_edge_agent/test_m65_hud_trip.py`); tổng 968 Python pass, 1 lỗi có sẵn trên Windows (`test_a_failing_frame_names_the_error_and_its_code_location` so đường dẫn kiểu `/`); test hồi quy trace không đổi; `ruff` sạch ở `edge_agent/`, `tools/`, `tests/`; frontend typecheck sạch, 95 test pass (kiểu `HudTrip`, `HudIncident` trong `lib/types.ts`)
+
 <a id="m67"></a>
 
 #### M67: Tốc độ vòng lặp `#/live` trên trình duyệt máy tính (khối 4, khởi động, công cụ đo)
@@ -1042,4 +1223,4 @@ Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm 
 - **Đo rồi thấy không phải chỗ để sửa:** frame camera bị bỏ (0–4 %, dao động giữa các lần chạy của cùng một bản; 20 / 21 lần luồng chính đang rảnh 35–40 ms, do `requestVideoFrameCallback` đi theo nhịp vẽ màn hình); hàm nhận kết quả YOLO trên luồng chính 0,2 ms; các timer dưới 0,5 ms; không có tác vụ dài nào sau frame đầu; đọc lại pixel 0,5–1,9 ms; chuẩn bị ảnh cho YOLO 1,5–2,1 ms mỗi lần. Chuyển vòng lặp sang Worker, bỏ bước đọc lại canvas, dùng lại buffer: không làm vì không có gì đo được để lấy lại
 - **Không thử:** FP16 (WebGPU FP32 đã 17 ms); INT8 (file hiện có không phát hiện được gì, M54); đổi `preprocess.target_width` (camera đã là 640, và đổi sẽ làm lệch các số đo chất lượng ảnh)
 - **Chưa làm / giới hạn:** một máy, Chromium không giao diện, camera giả; WebGPU mới thử trên Metal của Apple, chưa thử Windows / Linux hay GPU yếu (một GPU thật nhưng chậm vẫn được chọn); đường lùi về wasm mới được thử bằng một bản build cố ý làm lỗi, chưa gặp mất thiết bị thật; bản build nặng thêm một runtime (26,8 MB, nén 6,7 MB) chỉ máy có GPU mới tải; trên mạng rất chậm chip "Không phát hiện được điện thoại" có thể hiện vài giây đầu vì vòng lặp nay chạy trước khi model điện thoại tải xong; `perf.yolo_provider` cần backend mới (backend cũ từ chối trường lạ). Đề xuất mốc sau ở [improvements.md](improvements.md) việc 13, 14
-- Test: 965 Python (10 test mới của `tools/phone_study.py`, 1 bridge, 1 `perf_record`, 1 backend) + 115 frontend (20 test mới: nhịp YOLO, chọn nơi chạy, số đếm cả lần chạy, phép tính của chạy dài, nhãn) + 4 e2e pass; ruff, typecheck, build sạch; test hồi quy trace không đổi
+- Test: 965 Python (10 test mới của `tools/phone_study.py`, 1 bridge, 1 `perf_record`, 1 backend) + 115 frontend (20 test mới: nhịp YOLO, chọn nơi chạy, số đếm cả lần chạy, phép tính của chạy dài, nhãn) + 4 e2e pass; ruff, typecheck, build sạch; test hồi quy trace không đổi. Sau khi gộp `main` (M57–M65 của Version 4): 982 Python + 138 frontend + 4 e2e pass, và một lượt đo 60 giây mỗi cấu hình cho cùng kết quả (wasm: 5,0 lần / giây, tuổi p95 268 ms; WebGPU: 16,7 ms mỗi lần, tuổi p95 133 ms). Các bảng số ở trên đo trên nền code trước khi gộp

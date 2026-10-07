@@ -587,6 +587,9 @@ hud:
   # (docs/improvements.md, hardware task) comes with the hub.
   low_fps_below: 14.5
   low_fps_s: 5.0
+  # Fatigue chart of the HUD (M65): drowsy_score of each of the last trend_minutes minutes, kept by
+  # the agent for the whole trip (block 11), so a HUD that reloads shows it again at once.
+  trend_minutes: 15
 
 # Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
 publisher:

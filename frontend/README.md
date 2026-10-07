@@ -21,9 +21,9 @@ React + TypeScript + Vite. Two screens, hash-routed:
 
 ## Styling
 
-- **Dashboard**: plain CSS in `src/styles.css` (light / dark tokens).
+- **Dashboard**: plain CSS in `src/styles.css` (dark tokens of the Version 4 redesign; `.glass` / `.glass-tint` cards, M57).
 - **HUD**: Tailwind CSS v4 with the design tokens in `src/index.css` (`@theme`: `hud-*` colours,
-  type scale in px, 8 pt spacing, radii, motion), Lucide icons, Be Vietnam Pro self-hosted
+  type scale in px, 8 pt spacing, radii, motion), Lucide icons, Inter self-hosted (`@fontsource/inter`, Vietnamese subset; M57)
   (the car may be offline).
 - Tailwind runs **without preflight** and scans **only `src/hud/`**, and `styles.css` sits in a
   lower cascade layer (`legacy`), so the dashboard renders exactly as before. Do not name a
