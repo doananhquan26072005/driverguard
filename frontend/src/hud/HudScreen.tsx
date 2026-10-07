@@ -238,6 +238,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
 
   return (
     <HudView
+      camera={mode === "live" ? (source.cameraStream?.() ?? null) : null}
       snap={snap}
       link={link}
       stale={stale}

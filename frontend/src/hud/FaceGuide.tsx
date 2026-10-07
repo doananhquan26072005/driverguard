@@ -1,7 +1,11 @@
-// Face alignment frame of the enrollment steps (M58, design system "FaceFrame"): a dashed oval and face
-// landmarks drawn as dots, never a picture of a face. It is a guide, not the camera picture: the HUD
-// never receives an image (only numbers), and nothing is stored. Green while the step goes well,
-// amber while the agent asks for something (hint). Step 2 turns the face to the road, step 3 shuts the eyes.
+// Face alignment frame of the enrollment steps (M58, design system "FaceFrame"): a dashed oval, green while
+// the step goes well, amber while the agent asks for something (hint).
+// - #/live (`stream`): the page's own camera, mirrored, so the driver sees where the face is. Shown only:
+//   the frames stay in this page's memory, nothing is captured, stored or sent.
+// - device HUD (no stream): the edge agent never hands an image to the screen (only numbers), so the frame
+//   draws face landmarks as a guide and says it is an illustration. Step 2 turns the face to the road,
+//   step 3 shuts the eyes.
+import { useEffect, useRef } from "react";
 import type { EnrollStep } from "../lib/types";
 
 type P = [number, number];
@@ -37,7 +41,17 @@ const BADGE: Record<EnrollStep, string> = {
   close_eyes: "Mắt đang nhắm · giữ nguyên",
 };
 
-export default function FaceGuide({ step, hint }: { step: EnrollStep; hint: string | null }) {
+export default function FaceGuide({ step, hint, stream = null }: { step: EnrollStep; hint: string | null; stream?: MediaStream | null }) {
+  const video = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = video.current;
+    if (!v || !stream) return;
+    v.srcObject = stream;
+    void v.play().catch(() => undefined);
+    return () => {
+      v.srcObject = null; // the stream belongs to the page's agent: only detach it here
+    };
+  }, [stream]);
   const dx = step === "look_road" ? -12 : 0; // the head turns to the road
   const shut = step === "close_eyes";
   const at = (pts: P[]) => pts.map(([x, y]) => `${(x + dx).toFixed(1)},${y}`).join(" ");
@@ -50,14 +64,23 @@ export default function FaceGuide({ step, hint }: { step: EnrollStep; hint: stri
       aria-label={`Khung căn khuôn mặt: ${hint ?? BADGE[step]}`}
       className="relative min-h-[260px] flex-1 overflow-hidden rounded-[14px] border border-solid border-white/10 bg-[radial-gradient(70%_55%_at_50%_45%,#18202b_0%,#0b0e13_70%,#07090c_100%)]"
     >
-      <svg aria-hidden viewBox="0 0 300 380" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 size-full">
+      {stream && <video ref={video} muted playsInline className="absolute inset-0 size-full -scale-x-100 object-cover" />}
+      <svg aria-hidden viewBox="0 0 300 380" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 size-full">
         <defs>
+          <mask id="face-guide-hole">
+            <rect x="-200" y="-200" width="700" height="780" fill="white" />
+            <ellipse cx="150" cy="182" rx="112" ry="142" fill="black" />
+          </mask>
           <radialGradient id="face-guide-fill" cx="50%" cy="45%" r="55%">
             <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.1" />
             <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
           </radialGradient>
         </defs>
-        <ellipse cx="150" cy="182" rx="104" ry="134" fill="url(#face-guide-fill)" />
+        {stream ? (
+          <rect x="-200" y="-200" width="700" height="780" fill="rgba(0,0,0,0.5)" mask="url(#face-guide-hole)" />
+        ) : (
+          <ellipse cx="150" cy="182" rx="104" ry="134" fill="url(#face-guide-fill)" />
+        )}
         <ellipse
           cx="150"
           cy="182"
@@ -70,6 +93,8 @@ export default function FaceGuide({ step, hint }: { step: EnrollStep; hint: stri
           strokeDasharray="1.1 3.9"
         />
         <ellipse cx="150" cy="182" rx="102" ry="132" fill="none" stroke="rgba(147,197,253,0.18)" strokeWidth="1" />
+        {!stream && (
+          <>
         <g stroke="rgba(147,197,253,0.28)" strokeWidth="1" fill="none">
           <polyline points={at(JAW)} />
           <polyline points={at(BROW_L)} />
@@ -82,13 +107,15 @@ export default function FaceGuide({ step, hint }: { step: EnrollStep; hint: stri
             <circle key={i} cx={x + dx} cy={y} r="1.9" />
           ))}
         </g>
+          </>
+        )}
       </svg>
       {CORNERS.map((c) => (
         <span key={c.key} aria-hidden className="absolute size-[26px]" style={c.style} />
       ))}
       <span className="absolute top-3.5 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-solid border-white/8 bg-black/50 px-2.5 py-1 text-xs whitespace-nowrap text-[#d4d4d4]">
-        <span aria-hidden className="size-1.5 rounded-full bg-[#f87171]" />
-        Camera · chỉ xem, không lưu
+        <span aria-hidden className={`size-1.5 rounded-full ${stream ? "bg-[#f87171]" : "bg-white/40"}`} />
+        {stream ? "Camera · chỉ xem, không lưu" : "Hình minh hoạ · màn hình không nhận ảnh camera"}
       </span>
       <span
         className={`absolute bottom-4 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-solid px-3.5 py-2 text-sm font-semibold whitespace-nowrap ${

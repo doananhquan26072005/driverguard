@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
 import HudScreen from "../hud/HudScreen";
+import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "../hud/voice";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
 import { perfDetail, perfLines } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
@@ -59,6 +60,7 @@ export default function LiveScreen() {
   const [error, setError] = useState<string | null>(null);
   const [agent, setAgent] = useState<LiveAgent | null>(null);
   const [ended, setEnded] = useState(false); // trip ended: the summary is on screen, the camera is off
+  const voice = useVietnameseVoice();
 
   useEffect(() => () => void agent?.stop(), [agent]);
 
@@ -178,6 +180,12 @@ export default function LiveScreen() {
                       công cụ mô phỏng lái xe; chưa chạy công cụ thì xe được coi là đang đỗ. Nút “Đổi tài xế” để người lái mới đăng ký lại.
                     </p>
                   </SetupStep>
+
+                  {voice === false && (
+                    <p role="note" className="m-0 rounded-hud-sm border border-solid border-hud-caution/45 bg-hud-caution/10 p-3 text-[13px] leading-relaxed text-[#fde68a]">
+                      {NO_VIETNAMESE_VOICE_TEXT}
+                    </p>
+                  )}
 
                   <SetupStep n={3} title="Bắt đầu">
                     <p className="m-0 text-[15px] text-hud-ink-2">

@@ -127,3 +127,14 @@ describe("M58 review: numbers in plain words", () => {
     expect(eyesWord(2.4, n).tone).toBe("danger");
   });
 });
+
+describe("Vietnamese voice", () => {
+  it("never speaks Vietnamese with an English voice", async () => {
+    const { pickVietnameseVoice } = await import("./chime");
+    const v = (lang: string, localService = true, name = lang) => ({ lang, localService, name });
+    expect(pickVietnameseVoice([v("en-US"), v("en-GB")])).toBeNull();
+    expect(pickVietnameseVoice([v("en-US"), v("vi-VN")])?.lang).toBe("vi-VN");
+    expect(pickVietnameseVoice([v("vi-VN", false, "online"), v("vi-VN", true, "local")])?.name).toBe("local");
+    expect(pickVietnameseVoice([v("vi"), v("vi_VN")])?.lang).toBe("vi_VN");
+  });
+});

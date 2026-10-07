@@ -72,6 +72,7 @@ import {
   reasonText,
 } from "../lib/labels";
 import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, VehicleAction } from "../lib/types";
+import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "./voice";
 import FaceGuide from "./FaceGuide";
 import HudStage from "./HudStage";
 import {
@@ -113,6 +114,7 @@ export interface HudViewProps {
   onEndTrip?: () => void; // shown when the source can end the trip (live HUD, #/live)
   ending?: boolean;
   onVehicle?: (action: VehicleAction) => void; // "Đổi tài xế"
+  camera?: MediaStream | null; // #/live: the page's own camera, for the enrollment frame
 }
 
 const REASON_ICONS: Partial<Record<Reason, LucideIcon>> = {
@@ -251,7 +253,7 @@ export default function HudView(props: HudViewProps) {
         <DangerStage reasons={snap.reasons} />
       ) : enrolling && snap.enrollment ? (
         <main className="grid min-h-0 px-4 sm:px-8">
-          <EnrollPanel enrollment={snap.enrollment} />
+          <EnrollPanel enrollment={snap.enrollment} camera={props.camera ?? null} />
         </main>
       ) : (
         <main
@@ -981,7 +983,8 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
 // Guided enrollment (design "Đăng ký · Bước 1-3/3"): one instruction at a time, big, the step's progress,
 // and the face alignment frame. The same words are spoken (HudScreen): steps 2 and 3 are done without
 // looking here. No cancel button: driving off pauses the enrollment (edge agent), nothing to cancel.
-function EnrollPanel({ enrollment }: { enrollment: HudEnrollment }) {
+function EnrollPanel({ enrollment, camera }: { enrollment: HudEnrollment; camera: MediaStream | null }) {
+  const voice = useVietnameseVoice();
   const step = enrollStep(enrollment) as EnrollStep;
   const index = ENROLL_STEP_ORDER.indexOf(step);
   const text = ENROLL_STEPS[step];
@@ -1045,10 +1048,10 @@ function EnrollPanel({ enrollment }: { enrollment: HudEnrollment }) {
         </div>
       </div>
       <div className="flex min-h-0 flex-col gap-3">
-        <FaceGuide step={step} hint={hint} />
+        <FaceGuide step={step} hint={hint} stream={camera} />
         <span className="flex items-center gap-2.5 text-sm leading-[1.45] text-[#b8c2d0]">
           <Volume2 aria-hidden className="size-[18px] shrink-0 text-[#93c5fd]" />
-          Đặt mặt vào khung oval. Hướng dẫn được đọc to, hết bước có tiếng bíp.
+          {voice === false ? NO_VIETNAMESE_VOICE_TEXT : "Đặt mặt vào khung oval. Hướng dẫn được đọc to, hết bước có tiếng bíp."}
         </span>
       </div>
     </section>
