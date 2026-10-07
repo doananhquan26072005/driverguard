@@ -235,7 +235,7 @@ export default function HudView(props: HudViewProps) {
       )}
 
       {presence ? (
-        <PresencePanel unanswered={presence === "unanswered"} onAnswer={props.onVehicle} />
+        <PresencePanel unanswered={presence === "unanswered"} remainingS={snap?.presence?.remaining_s ?? null} onAnswer={props.onVehicle} />
       ) : system || !snap ? (
         snap && (system === "unavailable" || system === "camera_lost" || system === "error") ? (
           <main className="grid min-h-0 gap-3.5 px-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[minmax(0,1fr)]">
@@ -1114,26 +1114,44 @@ function ConfirmDialog({
 
 /** "Bạn còn ở đó không?" (M44): the whole panel is one button, hit without aiming. Asked only while the
  *  camera cannot see the driver, so it never takes the eyes off the road of a driver who is watched. */
-function PresencePanel({ unanswered, onAnswer }: { unanswered: boolean; onAnswer?: (action: VehicleAction) => void }) {
+function PresencePanel({
+  unanswered,
+  remainingS,
+  onAnswer,
+}: {
+  unanswered: boolean;
+  remainingS: number | null;
+  onAnswer?: (action: VehicleAction) => void;
+}) {
+  // M59: the whole card is one 72 px+ target; amber while asking (the driver must act), red once nobody
+  // answered (the manager was told). Big words, a countdown, no other button on the screen.
   return (
-    <main className="grid p-4 sm:p-6">
+    <main className="grid min-h-0 px-4 sm:px-8">
       <button
         type="button"
         role="alert"
         onClick={() => onAnswer?.("presence_ok")}
-        className={`grid w-full place-items-center rounded-hud-lg border-0 p-8 text-center font-hud ring-4 ${
-          unanswered ? "bg-hud-danger text-white ring-white" : "bg-hud-surface text-hud-ink ring-hud-system"
-        }`}
+        className={`dg-alert ${unanswered ? "l3t" : "l1"} grid w-full cursor-pointer place-items-center px-8 py-8 text-center font-hud text-hud-ink`}
       >
-        <span>
-          <Hand aria-hidden strokeWidth={1.75} className="mx-auto size-24" />
-          <span className="mt-6 block text-[clamp(32px,6vw,72px)] leading-tight font-extrabold text-balance">
+        <span className="flex flex-col items-center gap-6">
+          <span
+            aria-hidden
+            className={`grid size-28 place-items-center rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.35)] sm:size-[140px] ${
+              unanswered ? "bg-[#f87171] text-[#2a0606]" : "bg-hud-caution text-hud-on-warning"
+            }`}
+          >
+            <Hand className="size-16 sm:size-20" strokeWidth={2} />
+          </span>
+          <span className="block text-[clamp(44px,7vw,92px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">
             {PRESENCE_TEXT.title}
           </span>
-          <span className="mt-4 block text-[clamp(22px,3vw,36px)] font-bold">{PRESENCE_TEXT.tap}</span>
-          <span className="mt-3 block text-hud-body text-pretty opacity-80">
+          <span className="block text-[clamp(26px,3.4vw,40px)] font-semibold">{PRESENCE_TEXT.tap}</span>
+          <span className={`block text-[clamp(18px,2vw,24px)] ${unanswered ? "text-[#f3c4c4]" : "text-[#f3dfae]"}`}>
             {unanswered ? PRESENCE_TEXT.unanswered : PRESENCE_TEXT.detail}
           </span>
+          {!unanswered && remainingS != null && remainingS > 0 && (
+            <span className="dg-num rounded-hud-xs bg-black/25 px-4 py-2 text-xl font-semibold">Còn {Math.ceil(remainingS)} giây</span>
+          )}
         </span>
       </button>
     </main>
