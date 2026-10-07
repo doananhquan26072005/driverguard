@@ -8,6 +8,7 @@ import { RANGES, type RangeKey } from "../lib/format";
 import { LEVELS, policyNote, ROLES } from "../lib/labels";
 import type { EventRecord, Session, Stats, Thresholds } from "../lib/types";
 import AuditView from "./AuditView";
+import { DriverOverview, DriverTrips } from "./DriverPages";
 import { DeletionRequestsCard, MyDataCard } from "./MyDataCard";
 import EventLog from "./EventLog";
 import FleetView from "./FleetView";
@@ -129,9 +130,9 @@ export default function Dashboard() {
 
   const page = pageFromHash(hash, session.role);
   const drivers = [...new Set(events.map((e) => e.driver_id).filter(Boolean))] as string[];
-  const showRange = page !== "fleet" && page !== "accounts" && page !== "devices";
+  const showRange = !["fleet", "accounts", "devices", "overview", "trips"].includes(page);
   const showEventFilters = page === "events" || page === "alerts";
-  const showStats = ["events", "alerts", "timeline", "reports", "trips", "thresholds"].includes(page);
+  const showStats = ["events", "alerts", "timeline", "reports", "thresholds"].includes(page);
   const goTimeline = (id: string) => {
     setTripId(id);
     window.location.hash = pageHref("timeline");
@@ -255,6 +256,7 @@ export default function Dashboard() {
           l2={thresholds?.values["risk.drowsy.l2"] ?? DEFAULT_L2}
           onUnreviewed={setUnreviewed}
           onThresholdsSaved={setThresholds}
+          hash={hash}
         />
         {policy && <p className="muted small policy">{policy}</p>}
       </main>
@@ -277,6 +279,7 @@ interface PageProps {
   l2: number;
   onUnreviewed: (n: number) => void;
   onThresholdsSaved: (t: Thresholds) => void;
+  hash: string;
 }
 
 function PageBody(p: PageProps) {
@@ -285,13 +288,14 @@ function PageBody(p: PageProps) {
     case "overview":
       // M61 (driver) / M62 (manager) give these their own page; until then the closest one.
       return session.role === "driver" ? (
-        <TripReports session={session} range={p.filtersRange} refreshKey={p.refreshKey} onUnreviewed={p.onUnreviewed} />
+        <DriverOverview session={session} refreshKey={p.refreshKey} />
       ) : (
         <FleetView session={session} refreshKey={p.refreshKey} />
       );
     case "fleet":
       return <FleetView session={session} refreshKey={p.refreshKey} />;
     case "trips":
+      return <DriverTrips session={session} refreshKey={p.refreshKey} hash={p.hash} />;
     case "reports":
       return <TripReports session={session} range={p.filtersRange} refreshKey={p.refreshKey} onUnreviewed={p.onUnreviewed} />;
     case "events":

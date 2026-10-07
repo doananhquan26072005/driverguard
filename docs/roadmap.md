@@ -93,7 +93,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ✅ Xong · 07/10 (kèm 2 đợt sửa theo góp ý; chưa chạy e2e) |
 | [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ✅ Xong · 07/10 (làm dần cùng các đợt sửa M58; chưa chạy e2e) |
 | [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ✅ Xong · 07/10 (Tổng quan tài xế / quản lý, Tài khoản / Thiết bị tạm dùng trang cũ: M61–M63) |
-| [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ⬜ Chưa làm |
+| [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ✅ Xong · 07/10 (Lịch sử cảnh báo / Dữ liệu của tôi giữ bảng cũ trong khung mới) |
 | [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ⬜ Chưa làm |
 | [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ⬜ Chưa làm |
 | [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ⬜ Chưa làm |
@@ -1105,13 +1105,15 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M61: Trang tài xế (frontend)
 
-**Xong là thấy gì:** tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48
+**Xong là thấy gì:** tài xế đăng nhập vào "Tổng quan" của mình: chuyến gần nhất, 30 ngày qua, gợi ý, các chuyến gần đây; "Chuyến đi của tôi" có danh sách và trang chi tiết từng chuyến (`#/dashboard/trips/<xe>/<chuyến>`)
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; backend vẫn chỉ trả cho tài xế dữ liệu của chính họ
 
-- Tổng quan: chuyến gần nhất, 30 ngày qua, gợi ý, các chuyến gần đây; Chi tiết chuyến; Lịch sử cảnh báo
-- Giữ "Dữ liệu của tôi": tải file JSON, yêu cầu xoá, ai đã xem dữ liệu của tôi (M41, M48)
-- Test: tài xế không đọc được dữ liệu tài xế khác (test backend đã có), test frontend cho trang mới
+- **Tổng quan** (thiết kế "Tài xế · Tổng quan"): câu "Không ai thấy hình ảnh khuôn mặt của bạn"; thẻ chuyến gần nhất theo màu đánh giá (câu chuyện chuyến, biểu đồ độ mệt cả chuyến, "quản lý đã xem lúc …" hoặc "Quản lý chưa xem", nút "Xem chi tiết chuyến"); 30 ngày qua: số chuyến, giờ lái, lần được nhắc, lần báo sai; gợi ý của chuyến gần nhất; bảng các chuyến gần đây
+- **Chi tiết chuyến** (thiết kế "Tài xế · Chi tiết chuyến"): thẻ đánh giá; 6 ô số liệu (thời gian lái, lái liên tục dài nhất, lần nghỉ, tốc độ trung bình, lần ngáp, thời gian được giám sát); biểu đồ độ mệt có trục giờ và chú thích; "Các lần được nhắc" (giờ, lý do, mức, "bạn đã báo sai") từ `/api/v1/timeline`; gợi ý + lúc gửi cho quản lý và ai đã xem
+- **Dùng chung với M62** (`TripParts.tsx`): thẻ đánh giá, biểu đồ chuyến, ô số liệu, chip đánh giá; `driverModel.ts` (hàm thuần có test): tổng 30 ngày, sắp xếp mới nhất trước, link chuyến
+- "Lịch sử cảnh báo" và "Dữ liệu của tôi" giữ bảng / thẻ hiện có (M41, M48) trong khung mới
+- Test: 3 test mới (`dashboard/driverModel.test.ts`), tổng 112 test frontend pass, typecheck / build sạch; xem bằng tài khoản tài xế trên backend tạm, không lỗi trang
 
 <a id="m62"></a>
 
