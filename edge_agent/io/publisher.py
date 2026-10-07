@@ -52,7 +52,9 @@ from edge_agent.decision.pipeline import DecisionResult
 
 log = logging.getLogger("driverguard.publisher")
 
-DROWSINESS_REASONS = {"microsleep", "drowsy_score", "trend", "blink_rate"}
+DROWSINESS_REASONS = {"microsleep", "unresponsive", "drowsy_score", "trend", "blink_rate"}
+# Sent at once instead of with the next batch (M44): the fleet view shows these while they happen.
+URGENT_REASONS = {"unresponsive", "repeated_l3", "no_answer"}
 DROP_STATUSES = {400, 413, 422}  # the backend will never accept this content
 FORBIDDEN_KEY_PARTS = ("image", "img", "frame", "photo", "picture", "snapshot", "thumbnail", "jpeg", "png", "crop")
 BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
@@ -73,6 +75,7 @@ class PublisherConfig:
     backoff_max_s: float = 60.0
     heartbeat_interval_s: float = 30.0  # 0 = no heartbeat
     heartbeat_stalled_s: float = 10.0  # no frame for this long (camera not reported lost): "stalled"
+    config_poll_s: float = 300.0  # ask the backend for tuned thresholds this often (M47); 0 = start-up only
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PublisherConfig:
@@ -108,6 +111,11 @@ def _round(x: float | None, nd: int = 3) -> float | None:
     return None if x is None else round(float(x), nd)
 
 
+def is_urgent(event: dict[str, Any]) -> bool:
+    """An L3 alert, or one of URGENT_REASONS: do not wait for the flush interval."""
+    return event.get("level") == 3 or bool(URGENT_REASONS & set(event.get("reasons") or ()))
+
+
 def build_event(alert: Alert, r: DecisionResult, trip_id: str, now: datetime | None = None) -> dict[str, Any]:
     """Alert + decision state of that frame -> event metadata (schema of POST /api/v1/events)."""
     reasons = list(alert.reasons)
@@ -125,12 +133,16 @@ def build_event(alert: Alert, r: DecisionResult, trip_id: str, now: datetime | N
         "speed_kmh": _round(r.context.speed_kmh, 1),
         "metrics": {
             "perclos_60s": _round(d.perclos_60s),
+            "perclos_p80": _round(d.perclos_p80_60s),  # M40: P80 definition, measured next to it, not scored
             "closed_duration": _round(d.closed_duration, 2),
             "blink_rate": _round(d.blink_rate, 1),
             "yawn_count_10min": d.yawn_count_10min,
             "nod_count_5min": d.nod_count_5min,
             "off_road_duration": _round(x.off_road_duration, 2),
             "phone_ratio_2s": _round(x.phone_ratio_2s),
+            "phone_kind": x.phone_kind,  # M38: call | text | unknown while a phone is in the driver zone
+            "off_road_ratio": _round(x.off_road_ratio),  # M38: share of the glance window off road
+            "glance_count": x.glance_count,
             "blink_time_frac": _round(d.blink_time_frac),  # v2: time in blinks (slow blinks)
             "reopen_ratio": _round(d.reopen_ratio, 2),  # v2: eyelid reopening vs the driver's own start
             "brow_raise_count_5min": d.brow_raise_count_5min,  # v2: brows raised to keep the eyes open
@@ -140,10 +152,18 @@ def build_event(alert: Alert, r: DecisionResult, trip_id: str, now: datetime | N
 
 
 def build_sample(
-    minute_score: float, perclos: float | None, max_level: int, trip_id: str, now: datetime | None = None
+    minute_score: float,
+    perclos: float | None,
+    max_level: int,
+    trip_id: str,
+    now: datetime | None = None,
+    off_road_ratio: float | None = None,
 ) -> dict[str, Any]:
-    """One fatigue-timeline point: drowsy_score averaged over the minute that just ended."""
+    """One fatigue-timeline point: drowsy_score averaged over the minute that just ended.
+    off_road_ratio: the highest glance-window ratio of that minute (block 8, measured only)."""
+    extra = {} if off_road_ratio is None else {"off_road_ratio": _round(off_road_ratio)}
     return {
+        **extra,
         "sample_id": str(uuid.uuid4()),
         "ts": (now or datetime.now(UTC)).isoformat(),
         "trip_id": trip_id,
@@ -184,10 +204,70 @@ def build_enrolled_event(r: DecisionResult, trip_id: str, now: datetime | None =
     return build_system_event("driver_enrolled", trip_id, r.context.speed_kmh, now, metrics)
 
 
-def build_heartbeat(state: str, trip_id: str, moving: bool | None, now: datetime | None = None) -> dict[str, Any]:
+# Loop timings a caller may attach to the heartbeat (M49; the page's frontend/src/live/perf.ts, the
+# backend's schemas.PerfIn): stage -> p50 / p95 / max in milliseconds over the last seconds. No name
+# here may contain a FORBIDDEN_KEY_PARTS word ("total", not "frame"): the image guard reads key names.
+PERF_STAGES = ("camera_lag", "capture", "landmarks", "measure", "yolo_prep", "python", "total", "yolo", "yolo_age")
+PERF_MAX_MS = 600_000.0
+PERF_DELEGATES = ("GPU", "CPU")
+PERF_GPU_KINDS = ("hardware", "software", "none")  # what draws WebGL on the page (M51)
+
+
+def perf_record(raw: Any) -> dict[str, Any] | None:
+    """What the loop measured about itself, cleaned for the heartbeat: known stages, finite numbers in
+    range, nothing else. None when there is nothing usable: a heartbeat must never be refused by the
+    backend because of its timings."""
+    if not isinstance(raw, dict):
+        return None
+
+    def count(key: str, top: int) -> int | None:
+        v = raw.get(key)
+        return int(v) if isinstance(v, int | float) and not isinstance(v, bool) and 0 <= v <= top else None
+
+    stages: dict[str, dict[str, float]] = {}
+    given = raw.get("stages_ms")
+    for name in PERF_STAGES:
+        s = given.get(name) if isinstance(given, dict) else None
+        if not isinstance(s, dict):
+            continue
+        values = [s.get(k) for k in ("p50", "p95", "max")]
+        if all(isinstance(v, int | float) and not isinstance(v, bool) and 0 <= v <= PERF_MAX_MS for v in values):
+            stages[name] = {k: round(float(v), 1) for k, v in zip(("p50", "p95", "max"), values, strict=True)}
+    samples = count("samples", 100_000)
+    if not stages or not samples:
+        return None
+    delegate = raw.get("landmarks_delegate")
+    gpu = raw.get("gpu")
+    yolo_threads = count("yolo_threads", 64)
+    return {
+        "samples": samples,
+        "stages_ms": stages,
+        "landmarks_delegate": delegate if delegate in PERF_DELEGATES else None,
+        "gpu": gpu if gpu in PERF_GPU_KINDS else None,
+        "yolo_threads": yolo_threads or None,
+        "camera_delivered": count("camera_delivered", 10_000_000),
+        "camera_dropped": count("camera_dropped", 10_000_000),
+    }
+
+
+def build_heartbeat(
+    state: str,
+    trip_id: str,
+    moving: bool | None,
+    now: datetime | None = None,
+    versions: dict[str, Any] | None = None,
+    perf: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Still alive: the trip, the monitoring state (edge_agent.runtime.MONITOR_STATES) and whether the
-    vehicle moves (None: speed unknown). No position, no measurement of the driver."""
-    return {"ts": (now or datetime.now(UTC)).isoformat(), "trip_id": trip_id, "state": state, "moving": moving}
+    vehicle moves (None: speed unknown). No position, no measurement of the driver.
+    versions: what this device runs (edge_agent/version.py), left out when not given.
+    perf: the loop's own timings (`perf_record`), left out when not given."""
+    beat = {"ts": (now or datetime.now(UTC)).isoformat(), "trip_id": trip_id, "state": state, "moving": moving}
+    if versions is not None:
+        beat["versions"] = versions
+    if perf is not None:
+        beat["perf"] = perf
+    return beat
 
 
 def build_feedback(event_id: str, now: datetime | None = None) -> dict[str, Any]:
@@ -344,8 +424,8 @@ class MetadataPublisher:
         if overflow:
             self.dropped += overflow
             log.warning("outbox full: dropped %d oldest events", overflow)
-        if self._outbox.count() >= self.config.batch_size:
-            self._wake.set()
+        if self._outbox.count() >= self.config.batch_size or (kind == "event" and is_urgent(data)):
+            self._wake.set()  # a full batch, or an alert that cannot wait for the flush interval (M44)
 
     @property
     def queued(self) -> int:

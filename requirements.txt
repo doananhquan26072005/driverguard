@@ -13,6 +13,7 @@ mediapipe>=0.10.20; sys_platform != "darwin"
 onnxruntime>=1.18.0
 onnx>=1.16.0             # INT8 quantisation in tools/benchmark.py
 kagglehub>=0.3.0         # public datasets for tools/dataset.py
+psutil>=5.9              # CPU / memory sampling in tools/benchmark.py --duration
 
 # Backend (FastAPI)
 fastapi>=0.115.0

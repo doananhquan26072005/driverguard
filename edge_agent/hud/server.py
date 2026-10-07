@@ -5,7 +5,8 @@ the in-car HUD screen talks to:
 - GET  /state     current level, reasons, scores, speed and the latest alerts
 - POST /feedback  {"event_id": ...}: the driver pressed "false alarm" on an alert
 - POST /vehicle   {"action": "change_driver"}: "Đổi tài xế"; {"action": "enroll_start" | "enroll_later"}:
-                  the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau"). The main
+                  the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau");
+                  {"action": "presence_ok"}: the tap on "Bạn còn ở đó không?" (M44). The main
                   loop applies them (parked / driving is not a button: it follows the speed)
 - POST /end-trip  the driver pressed "end trip": the main loop builds the trip summary
                   (block 11), sends it to the backend, and the reply carries it for the HUD
@@ -33,7 +34,7 @@ from edge_agent.decision.pipeline import DecisionResult
 log = logging.getLogger("driverguard.hud")
 
 MAX_BODY = 1024
-VEHICLE_ACTIONS = ("change_driver", "enroll_start", "enroll_later")
+VEHICLE_ACTIONS = ("change_driver", "enroll_start", "enroll_later", "presence_ok")
 END_TRIP_WAIT_S = 10.0  # the main loop answers on its next frame
 
 
@@ -60,6 +61,7 @@ class HudState:
         self._camera_lost = False
         self._processing_error = False  # frames keep failing: not monitored (M28)
         self._low_fps = False  # FPS too low for a while: alerts may be late (M28)
+        self._phone_unavailable = False  # the phone detector gives no fresh results (M50)
         self.false_alarms = 0  # flagged by the driver this trip (for the trip summary)
         self._end_requested = threading.Event()
         self._summary_ready = threading.Event()
@@ -110,6 +112,13 @@ class HudState:
             "perclos_60s": round(r.drowsiness.perclos_60s, 3),
             "fps": round(fps, 1),
             "unavailable": r.risk.unavailable,  # face lost while moving: not monitored, no alerts (FR-6)
+            "unavailable_reason": r.risk.unavailable_reason,  # no_face, camera_blocked, low_light, ...
+            "quality": {"issue": r.quality.issue, "score": round(r.quality.score, 2)},  # block 6 stage
+            "presence": {  # M44: "Bạn còn ở đó không?" while the driver is out of view
+                "asking": r.presence.asking,
+                "remaining_s": round(r.presence.remaining_s, 1),
+                "unanswered": r.presence.unanswered,
+            },
             "enrollment": {  # driver enrollment: the HUD guides the steps (words, voice, beep)
                 "status": r.enrollment.status,
                 "progress": round(r.enrollment.progress, 2),
@@ -135,6 +144,10 @@ class HudState:
     def set_low_fps(self, low: bool) -> None:
         with self._lock:
             self._low_fps = low
+
+    def set_phone_unavailable(self, unavailable: bool) -> None:
+        with self._lock:
+            self._phone_unavailable = unavailable
 
     def add_alert(self, event_id: str, level: int, reasons: tuple[str, ...]) -> None:
         with self._lock:
@@ -192,6 +205,7 @@ class HudState:
                 "camera_lost": self._camera_lost,  # driver not monitored, reconnecting
                 "processing_error": self._processing_error,  # frames keep failing: not monitored (M28)
                 "low_fps": self._low_fps,  # too slow for a while: alerts may be late (M28)
+                "phone_unavailable": self._phone_unavailable,  # phones are not being detected (M50)
                 "trip_ended": self._summary is not None,
                 "vehicle": dict(self._vehicle),  # speed source, parked / driving by the speed
                 "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it

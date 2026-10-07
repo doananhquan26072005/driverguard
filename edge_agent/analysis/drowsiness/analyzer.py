@@ -1,7 +1,8 @@
 """Block 7: DrowsinessAnalyzer puts the drowsiness sub-modules together, one frame at a time.
 
 Order on each frame: open-eye baseline -> head pose -> eye state (hysteresis) -> closure
-episode -> blink timing -> yawn / talking mask -> deep closure (closed_duration) -> PERCLOS ->
+episode -> blink timing -> yawn / talking mask -> deep closure (closed_duration) -> PERCLOS (and
+the P80 variant, measured only) ->
 blink rate, slow blinks -> yawn -> nod -> brow raise. The rules live in the sub-modules:
 eyes.py, mouth.py, head.py, slow_blink.py, brow.py.
 
@@ -21,7 +22,7 @@ from __future__ import annotations
 
 from edge_agent.analysis.drowsiness.brow import BrowRaise
 from edge_agent.analysis.drowsiness.config import DrowsinessConfig, DrowsinessState
-from edge_agent.analysis.drowsiness.eyes import EyeBaseline, EyeClosure, Perclos, ear_deep
+from edge_agent.analysis.drowsiness.eyes import EyeBaseline, EyeClosure, Perclos, deep_blink_vote, ear_deep
 from edge_agent.analysis.drowsiness.head import HeadPose, NodDetector
 from edge_agent.analysis.drowsiness.mouth import MouthMask, YawnCounter
 from edge_agent.analysis.drowsiness.slow_blink import SlowBlinks
@@ -36,9 +37,11 @@ class DrowsinessAnalyzer:
         self._start_t: float | None = None
         self._last_t: float | None = None
         self._baseline = EyeBaseline(cfg)
+        self._blink_vote = deep_blink_vote(cfg, None)  # enrolled: from the driver's own shut eyes
         self._pose = HeadPose(cfg)
         self._closure = EyeClosure(cfg)
         self._perclos = Perclos(cfg)
+        self._perclos_p80 = Perclos(cfg, emit=False)  # measured next to it, never scored
         self._mask = MouthMask(cfg)
         self._yawn = YawnCounter(cfg)
         self._nod = NodDetector(cfg)
@@ -54,10 +57,12 @@ class DrowsinessAnalyzer:
         road_pitch: float,
         ear_closed: float | None = None,
         brow_neutral: float | None = None,
+        blink_closed: float | None = None,
     ) -> None:
         """Use the driver's enrolled reference values from now on (see module doc)."""
         cfg = self.config
         self._baseline.set_enrolled(ear_open, ear_closed)
+        self._blink_vote = deep_blink_vote(cfg, blink_closed)
         self._brow.set_enrolled(brow_neutral)
         self._slow.reset()  # blink timing changes scale (aperture between the enrolled EARs)
         self._pose.set_enrolled(road_yaw, road_pitch)
@@ -72,6 +77,7 @@ class DrowsinessAnalyzer:
         closure episode, PERCLOS samples, blinks, yawns, nods and baseline samples."""
         self._closure.forget_since(t0)
         self._perclos.forget_since(t0)
+        self._perclos_p80.forget_since(t0)
         self._yawn.forget_since(t0)
         self._nod.forget_since(t0)
         self._slow.forget_since(t0)
@@ -97,8 +103,13 @@ class DrowsinessAnalyzer:
         baseline = self._baseline.value(t)
         close_thr = baseline * cfg.eye_close_ratio
         open_thr = baseline * cfg.eye_open_ratio
+        if use_cnn and f.p_closed_source == "blendshape":  # eyeBlink reads lower than the CNN (see eyes.py)
+            p_closed_thr, p_open_thr = cfg.eye_blendshape_closed, cfg.eye_blendshape_open
+            p_deep_thr = cfg.microsleep_deep_blendshape
+        else:
+            p_closed_thr, p_open_thr, p_deep_thr = cfg.eye_cnn_closed, cfg.eye_cnn_open, cfg.microsleep_deep_cnn
         if use_cnn:
-            ear_low = f.p_closed >= cfg.eye_cnn_closed  # raw, ignores pose (used by nod)
+            ear_low = f.p_closed >= p_closed_thr  # raw, ignores pose (used by nod)
         else:
             ear_low = None if f.ear is None or not face_ok else f.ear < close_thr
 
@@ -110,13 +121,13 @@ class DrowsinessAnalyzer:
             yaw_off is not None and abs(yaw_off) <= cfg.eye_max_yaw_deg and pitch_off <= cfg.eye_max_pitch_down_deg
         )
         eye_known = face_ok and pose_ok and (use_cnn or f.ear is not None)
-        if eye_known and f.ear is not None and (not use_cnn or f.p_closed <= cfg.eye_cnn_open):
+        if eye_known and f.ear is not None and (not use_cnn or f.p_closed <= p_open_thr):
             self._baseline.add(t, f.ear)  # an unreliable EAR must not become the driver's "open eye" value
 
         eye_closed: bool | None = None
         if eye_known:
             if use_cnn:
-                closing, opening = f.p_closed >= cfg.eye_cnn_closed, f.p_closed <= cfg.eye_cnn_open
+                closing, opening = f.p_closed >= p_closed_thr, f.p_closed <= p_open_thr
             else:
                 closing, opening = f.ear < close_thr, f.ear > open_thr
             eye_closed = self._closure.judge(closing, opening)
@@ -139,7 +150,7 @@ class DrowsinessAnalyzer:
             and pitch_off >= cfg.microsleep_deep_bowed_pitch_deg
         )
         deep_frame = bool(eye_closed) and (
-            f.p_closed >= cfg.microsleep_deep_cnn if use_cnn else ear_deep(cfg, f, baseline, bowed)
+            f.p_closed >= p_deep_thr if use_cnn else ear_deep(cfg, f, baseline, bowed, self._blink_vote)
         )
         gaze_down = bool(eye_closed) and bowed and not deep_frame  # looking down, not asleep (block 8)
         spared = (  # only with the blendshape's word for it: EAR alone let talking fake microsleeps (YawDD)
@@ -147,7 +158,7 @@ class DrowsinessAnalyzer:
             and cfg.microsleep_mask_talk_spares_deep
             and deep_frame
             and f.eye_blink is not None
-            and f.eye_blink >= cfg.microsleep_deep_blink
+            and f.eye_blink >= self._blink_vote
         )
         if masked and not spared:
             self._closure.mask(t)
@@ -157,10 +168,14 @@ class DrowsinessAnalyzer:
         perclos_eye: bool | None = None
         if eye_known and not (masked and cfg.perclos_use_mask):
             if use_cnn:
-                perclos_eye = f.p_closed >= cfg.eye_cnn_closed
+                perclos_eye = f.p_closed >= p_closed_thr
             else:
                 perclos_eye = f.ear < baseline * cfg.perclos_close_ratio
         perclos, coverage = self._perclos.update(t, dt, perclos_eye, events)
+        # P80, the definition the literature means by PERCLOS: lids more than 80 % closed. Only frames
+        # where EAR decided (a CNN probability is not an aperture), no yawn / talking mask, blinks kept.
+        p80_eye = None if aperture is None else aperture < cfg.perclos_p80_aperture
+        perclos_p80, coverage_p80 = self._perclos_p80.update(t, dt, p80_eye, events)
         blink_rate = self._closure.blink_rate(t, self._start_t)
         blink_frac, reopen_s, reopen_ratio = self._slow.stats(t, coverage)
         slow_blink = self._slow.score(coverage, blink_frac, reopen_ratio)
@@ -171,9 +186,10 @@ class DrowsinessAnalyzer:
         return DrowsinessState(
             timestamp=t,
             eye_closed=eye_closed,
-            eye_source=None if eye_closed is None else ("cnn" if use_cnn else "ear"),
+            eye_source=None if eye_closed is None else ((f.p_closed_source or "cnn") if use_cnn else "ear"),
             head_drop=self._closure.head_drop,
             gaze_down=gaze_down,
+            deep_closed=deep_frame,
             pitch_baseline=pitch_ref,
             closure_masked=masked,
             closed_duration=closed_duration,
@@ -193,6 +209,8 @@ class DrowsinessAnalyzer:
             reopen_ratio=reopen_ratio,
             slow_blink_score=slow_blink,
             brow_raise_count_5min=self._brow.count(t),
+            perclos_p80_60s=perclos_p80,
+            perclos_p80_coverage_s=coverage_p80,
         )
 
 

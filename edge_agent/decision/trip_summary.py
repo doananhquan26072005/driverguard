@@ -2,7 +2,8 @@
 
 `TripCollector` adds up every frame's decision result (no image, a few numbers per frame), and
 `summary()` turns them into a `TripSummary`: duration, driving / stopped time, rests, alerts by
-level and reason, drowsiness signs (microsleeps, yawns, nods, brow raises), distraction time,
+level and reason, drowsiness signs (microsleeps, yawns, nods, brow raises), distraction time
+(off road, phone by call / text, glances away, looking behind),
 monitoring coverage (face seen, unavailable, camera lost), the drowsy_score of every minute,
 the minute fatigue first showed, a trip assessment and suggestions.
 
@@ -80,8 +81,14 @@ class TripSummary:
     brow_raises: int
     off_road_s: float
     phone_s: float
+    phone_call_s: float  # phone_s by how the phone was held (block 4 phone_kind); the rest is unknown
+    phone_text_s: float
+    glances: int  # times the driver looked away from the road while driving
+    off_road_ratio_max: float  # highest share of the glance window (distraction.glance) spent off road
+    turned_away_s: float  # face lost right after a large head turn (looking behind), not "unavailable"
     monitored_frac: float | None  # driving time with a face seen / driving time
     unavailable_s: float
+    unavailable_by_cause: dict[str, float]  # seconds per reason (no_face, camera_blocked, low_light, ...)
     camera_lost_s: float
     vehicle_signal_lost_s: float  # vehicle link lost while driving (speed unknown, monitored as moving)
     enrolled: bool
@@ -125,7 +132,13 @@ class TripCollector:
         self.counts = dict.fromkeys(DROWSY_EVENTS, 0)
         self.longest_closure = 0.0
         self.off_road = self.phone = 0.0
+        self.phone_kind = {"call": 0.0, "text": 0.0}
+        self.glances = 0
+        self._was_off_road = False
+        self.off_road_ratio_max = 0.0
+        self.turned_away = 0.0
         self.monitored = self.unavailable = 0.0
+        self.unavailable_by_cause: dict[str, float] = {}  # risk.unavailable_reason -> seconds
         self.enrolled = False
         self.driver_changes = 0  # "Đổi tài xế" presses (edge_agent.decision.pipeline.change_driver)
         self._minutes: dict[int, list[float]] = {}  # minute -> [score sum, frames, max level, moving frames]
@@ -157,11 +170,21 @@ class TripCollector:
         self._was_resting = ctx.resting
         if r.risk.unavailable:
             self.unavailable += dt
+            cause = r.risk.unavailable_reason or "no_face"
+            self.unavailable_by_cause[cause] = self.unavailable_by_cause.get(cause, 0.0) + dt
         hit_reasons = {h.reason for h in r.risk.hits}
         if "off_road" in hit_reasons:
             self.off_road += dt
         if "phone" in hit_reasons:
             self.phone += dt
+            if r.distraction.phone_kind in self.phone_kind:
+                self.phone_kind[r.distraction.phone_kind] += dt
+        x = r.distraction
+        self.glances += x.off_road and not self._was_off_road
+        self._was_off_road = x.off_road
+        self.off_road_ratio_max = max(self.off_road_ratio_max, x.off_road_ratio)
+        if x.turned_away:
+            self.turned_away += dt
         observed = getattr(r, "observed", True)  # drowsiness not judged: a rest, enrollment's eyes-closed step
         if observed:
             for ev in r.drowsiness.events:
@@ -232,8 +255,14 @@ class TripCollector:
             brow_raises=self.counts["brow_raise"],
             off_road_s=round(self.off_road, 1),
             phone_s=round(self.phone, 1),
+            phone_call_s=round(self.phone_kind["call"], 1),
+            phone_text_s=round(self.phone_kind["text"], 1),
+            glances=self.glances,
+            off_road_ratio_max=round(self.off_road_ratio_max, 3),
+            turned_away_s=round(self.turned_away, 1),
             monitored_frac=None if monitored is None else round(monitored, 3),
             unavailable_s=round(self.unavailable, 1),
+            unavailable_by_cause={k: round(v, 1) for k, v in sorted(self.unavailable_by_cause.items())},
             camera_lost_s=round(camera_lost_s, 1),
             vehicle_signal_lost_s=round(vehicle_signal_lost_s, 1),
             enrolled=self.enrolled,

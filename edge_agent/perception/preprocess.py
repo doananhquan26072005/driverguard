@@ -12,11 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import cv2
 import numpy as np
 
 from edge_agent.capture.frame_source import Frame
 from edge_agent.config import config_from_dict
+from edge_agent.cv import cv2
 
 
 @dataclass(frozen=True)

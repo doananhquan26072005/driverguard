@@ -13,6 +13,11 @@ Anti false-positive rules:
   when MediaPipe's eyeBlink blendshape (block 3, pretrained, no per-driver baseline) agrees
   it is at least that shut: EAR alone also collapses for glare on glasses, a head tilted
   down and eyes that are narrow before the driver's own baseline is learnt.
+- Block 5's score is the eye CNN on the device and MediaPipe's eyeBlink in the web / APK build
+  (FrameFeatures.p_closed_source). They are not on one scale: shut eyes give the CNN ~0.9 and
+  eyeBlink 0.55-0.7, so with the CNN's 0.6 / 0.8 an eyeBlink closure never became "deep" (own
+  recordings 0 / 48 closures at L3, FL3D 0 / 95). eyeBlink frames use `eye_blendshape_closed` /
+  `eye_blendshape_open` / `microsleep_deep_blendshape` instead (thresholds.yaml for the numbers).
 - PERCLOS judges every frame on its own (EAR < `perclos_close_ratio` x the open-eye
   baseline, or CNN p_closed >= `eye_cnn_closed`), not with the close / reopen hysteresis:
   after a blink, the hysteresis keeps narrowed eyes (squinting in sunlight, 0.65-0.75 x
@@ -35,6 +40,12 @@ Anti false-positive rules:
   `microsleep_deep_bowed_ear_ratio` x baseline (FL3D microsleeps with the head bowed: EAR p90
   0.33-0.41 x, all 83 L3 alerts kept at 0.35). Lowered lids that are not that shut are
   "gaze_down": block 8 counts them as looking off the road (L2), not as sleep.
+- Looking down, enrolled driver (off by default): how far eyeBlink goes with the eyes shut differs
+  per person, and lids lowered to look at a phone on the lap stay below it (own recordings, one
+  person: 0.46-0.57 against 0.67-0.71 shut). With `microsleep_deep_enrolled_blink_ratio` > 0 the
+  vote needs that x the eyeBlink measured in the close-eyes step of the enrollment instead of the
+  fixed `microsleep_deep_blink`. Off because a drowsy closure is shallower than a deliberate one:
+  every ratio that removed the false L3 also lost real FL3D microsleeps (thresholds.yaml).
 - Driver enrollment: the open-eye baseline starts at the driver's enrolled EAR and only
   drifts within `eye_enrolled_max_drop` below / `eye_enrolled_max_rise` above it: eyes
   narrowing over tens of minutes of drowsiness no longer drag the baseline down and hide
@@ -83,13 +94,27 @@ class EyeBaseline:
         self._window.drop_since(t0)
 
 
-def ear_deep(config: DrowsinessConfig, f: FrameFeatures, baseline: float, bowed: bool = False) -> bool:
+def deep_blink_vote(config: DrowsinessConfig, blink_closed: float | None) -> float:
+    """eyeBlink an EAR deep frame needs: `microsleep_deep_blink`, or for an enrolled driver
+    `microsleep_deep_enrolled_blink_ratio` x the eyeBlink of that driver's own shut eyes when that is
+    higher. 0 = no vote."""
+    vote = config.microsleep_deep_blink
+    if vote <= 0 or blink_closed is None or config.microsleep_deep_enrolled_blink_ratio <= 0:
+        return vote
+    return max(vote, blink_closed * config.microsleep_deep_enrolled_blink_ratio)
+
+
+def ear_deep(
+    config: DrowsinessConfig, f: FrameFeatures, baseline: float, bowed: bool = False, blink_vote: float | None = None
+) -> bool:
     """EAR firmly shut, confirmed by the eyeBlink blendshape when that vote is on and known. Bowed
-    head: the stricter `microsleep_deep_bowed_ear_ratio` (lids lowered to look down are not shut)."""
+    head: the stricter `microsleep_deep_bowed_ear_ratio` (lids lowered to look down are not shut).
+    blink_vote: the driver's own vote (`deep_blink_vote`); None = `microsleep_deep_blink`."""
     ratio = config.microsleep_deep_bowed_ear_ratio if bowed else config.microsleep_deep_ear_ratio
     if f.ear is None or f.ear > baseline * ratio:
         return False
-    return config.microsleep_deep_blink <= 0 or f.eye_blink is None or f.eye_blink >= config.microsleep_deep_blink
+    vote = config.microsleep_deep_blink if blink_vote is None else blink_vote
+    return vote <= 0 or f.eye_blink is None or f.eye_blink >= vote
 
 
 class EyeClosure:
@@ -203,8 +228,10 @@ class EyeClosure:
 class Perclos:
     """Fraction of eye-known time with the eyes closed over `perclos_window_s`, and "perclos_high"."""
 
-    def __init__(self, config: DrowsinessConfig) -> None:
+    def __init__(self, config: DrowsinessConfig, emit: bool = True) -> None:
+        """emit False: only measured (the P80 variant), never a "perclos_high" event."""
         self.config = config
+        self._emit = emit
         self._samples: deque[tuple[float, float, bool]] = deque()  # (t, dt, closed)
         self._closed = 0.0
         self._known = 0.0
@@ -223,7 +250,7 @@ class Perclos:
             self._closed -= old_dt if old_closed else 0.0
         known = max(self._known, 0.0)
         perclos = self._closed / known if known > 1e-9 else 0.0
-        if known >= cfg.perclos_min_coverage_s:
+        if self._emit and known >= cfg.perclos_min_coverage_s:
             if self._armed and perclos >= cfg.perclos_drowsy:
                 self._armed = False
                 events.append("perclos_high")

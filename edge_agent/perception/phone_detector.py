@@ -13,21 +13,30 @@ silently off: such results are counted (`stale_results`) and a warning is printe
 (around the face and down to the chest), so a passenger's phone does not count.
 A phone held in front of the face often hides it from MediaPipe, so `FaceBoxMemory`
 keeps the last face box for `face_memory_s` and the zone is still known.
+
+`PhoneHealth` watches the share of frames left without a fresh result: when most of the last seconds
+were "unknown", the driver and the backend are told that phone detection is not working (M50).
+
+`phone_kind()` says how the phone in the driver zone is held, from where its box sits against the
+face box: beside the face ("call"), below the chin ("text"), or neither ("unknown"). Recorded only
+(metadata, trip summary): the alert reason and level stay `phone`, L2.
 """
 
 from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 
 from edge_agent.config import PROJECT_ROOT, config_from_dict
+from edge_agent.cv import cv2
+from edge_agent.perception.geometry import nms
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 BBox = tuple[float, float, float, float]  # x1, y1, x2, y2 in pixels of the preprocessed image
@@ -47,6 +56,15 @@ class PhoneDetectorConfig:
     zone_expand_up: float = 0.5
     zone_expand_down: float = 1.5
     face_memory_s: float = 3.0
+    # phone_kind(): phone centre against the face box, in face widths sideways from the face
+    # centre and in face heights below the top of the face (0 = forehead, 1 = chin).
+    kind_call_side_min: float = 0.35
+    kind_call_below_max: float = 1.0
+    kind_text_below_min: float = 1.0
+    # PhoneHealth (M50): share of the last unknown_window_s without a fresh result.
+    unknown_window_s: float = 10.0
+    unknown_ratio: float = 0.8
+    unknown_clear_ratio: float = 0.5
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PhoneDetectorConfig:
@@ -106,6 +124,34 @@ def phone_near_face(detections: tuple[PhoneDetection, ...], face: BBox | None, c
     return False
 
 
+PHONE_KINDS = ("call", "text", "unknown")
+
+
+def phone_kind(detections: tuple[PhoneDetection, ...], face: BBox | None, cfg: PhoneDetectorConfig) -> str | None:
+    """How the best-scored phone inside the driver zone is held: "call" (beside the face, at or above
+    the chin), "text" (below the chin), "unknown" (e.g. in front of the face). None: no phone there."""
+    if face is None:
+        return None
+    zx1, zy1, zx2, zy2 = driver_zone(face, cfg)
+    x1, y1, x2, y2 = face
+    w, h = x2 - x1, y2 - y1
+    if w <= 0 or h <= 0:
+        return None
+    for det in detections:  # sorted by score, best first
+        cx = (det.bbox[0] + det.bbox[2]) / 2.0
+        cy = (det.bbox[1] + det.bbox[3]) / 2.0
+        if not (zx1 <= cx <= zx2 and zy1 <= cy <= zy2):
+            continue
+        side = abs(cx - (x1 + x2) / 2.0) / w
+        below = (cy - y1) / h
+        if side >= cfg.kind_call_side_min and below <= cfg.kind_call_below_max:
+            return "call"
+        if below >= cfg.kind_text_below_min:
+            return "text"
+        return "unknown"
+    return None
+
+
 class FaceBoxMemory:
     """Last seen face box, reused for up to `max_age_s` after the face is lost.
 
@@ -124,6 +170,60 @@ class FaceBoxMemory:
         if self._seen_at is not None and t - self._seen_at <= self.max_age_s:
             return self._face
         return None
+
+
+class PhoneHealth:
+    """Is the phone detector still telling the loop anything? (M50)
+
+    Every frame without a fresh result (YOLO slower than `max_result_age_s`, not loaded, crashed) is
+    "unknown" to block 8, which then simply never sees a phone: silent. Once at least
+    `unknown_ratio` of the last `unknown_window_s` was unknown, phone detection is unavailable; it is
+    back when the share falls to `unknown_clear_ratio`. Nothing is judged before one full window of
+    frames (the first result needs a moment). Pure logic on the frame times it is given.
+    """
+
+    def __init__(self, config: PhoneDetectorConfig) -> None:
+        self.config = config
+        self.unavailable = False
+        self._window: deque[tuple[float, float, bool]] = deque()  # (t, dt, unknown)
+        self._total = 0.0
+        self._unknown = 0.0
+        self._unknown_n = 0
+        self._last_t: float | None = None
+
+    @property
+    def unknown_share(self) -> float:
+        return min(max(self._unknown / self._total, 0.0), 1.0) if self._total > 1e-9 else 0.0
+
+    def update(self, t: float, known: bool) -> bool:
+        """One frame at time t; known: block 4 gave a fresh answer for it. Returns `unavailable`."""
+        cfg = self.config
+        if cfg.unknown_window_s <= 0:
+            return False
+        dt = 0.0 if self._last_t is None else min(max(t - self._last_t, 0.0), cfg.max_result_age_s)
+        self._last_t = t
+        self._window.append((t, dt, not known))
+        self._total += dt
+        if not known:
+            self._unknown += dt
+            self._unknown_n += 1
+        while self._window and t - self._window[0][0] > cfg.unknown_window_s:
+            _, old_dt, unknown = self._window.popleft()
+            self._total -= old_dt
+            if unknown:
+                self._unknown -= old_dt
+                self._unknown_n -= 1
+        if self._unknown_n == 0:
+            self._unknown = 0.0
+        full = t - self._window[0][0] >= cfg.unknown_window_s - cfg.max_result_age_s
+        if not full:
+            return self.unavailable
+        share = self.unknown_share
+        if not self.unavailable and share >= cfg.unknown_ratio:
+            self.unavailable = True
+        elif self.unavailable and share <= cfg.unknown_clear_ratio:
+            self.unavailable = False
+        return self.unavailable
 
 
 # --------------------------------------------------------------------------- YOLO model
@@ -160,7 +260,11 @@ def decode_yolov8(
     x1 = (boxes[:, 0] - boxes[:, 2] / 2 - pad[0]) / scale
     y1 = (boxes[:, 1] - boxes[:, 3] / 2 - pad[1]) / scale
     bw, bh = boxes[:, 2] / scale, boxes[:, 3] / scale
-    idx = cv2.dnn.NMSBoxes(np.stack([x1, y1, bw, bh], axis=1).tolist(), scores.tolist(), conf_threshold, iou_threshold)
+    xywh = np.stack([x1, y1, bw, bh], axis=1)
+    if cv2 is None:  # browser build (geometry.py)
+        idx = nms(xywh, scores, conf_threshold, iou_threshold)
+    else:
+        idx = cv2.dnn.NMSBoxes(xywh.tolist(), scores.tolist(), conf_threshold, iou_threshold)
     w, h = image_size
     dets = []
     for i in np.array(idx).reshape(-1):

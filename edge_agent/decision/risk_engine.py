@@ -2,6 +2,8 @@
 
 Rule table (docs/workflow/workflow_full_4.jpg):
 - closed_duration >= microsleep_l3_s                    -> L3 (microsleep)
+- closed_duration >= unresponsive_closed_s              -> L3 (unresponsive): the siren has been on
+  for seconds and the eyes are still closed; a new reason, so block 12 sends a second event (M44)
 - drowsy_score = 40*perclos + 25*microsleep + 15*yawn + 20*nod + 10*slow_blink + 10*brow
   (terms 0..1, capped at 100; slow_blink / brow are v2 and temporary)
   >= l1 -> L1, >= l2 -> L2; multiplied by night / long-drive factors from context
@@ -16,7 +18,12 @@ covered, driver out of view, glare) -> `unavailable`, and no alert at all while 
 can be judged without a face, and guessing would be a false alarm. The HUD and the backend are
 told the driver is not monitored instead. Exception: a closure that block 7 keeps counting through
 a head drop (eyes seen closed, then the head fell out of view) is evidence, not a lost face, so
-it stays monitored and the microsleep L3 alarm goes on.
+it stays monitored and the microsleep L3 alarm goes on. A face in view that cannot be read (block 6
+quality stage: low_light, glare, blur) for `unavailable_low_quality_s` is unavailable as well, and
+`unavailable_reason` says which of them it is (a lost face: camera_blocked, bad_angle or no_face).
+Likewise a face lost right after a large
+head turn (block 8 `turned_away`, at most distraction.turned_away.max_s): the driver is looking
+behind, the off-road rule goes on instead of "unavailable".
 
 Context: distraction rules only while moving; standing still (0 km/h) raises no alert at all (M30). The turn signal does not switch off-road off:
 block 8 only widens the yaw limit towards the signalled side (looking the other way, or
@@ -37,11 +44,15 @@ from edge_agent.analysis.drowsiness import DrowsinessState
 from edge_agent.config import config_from_dict
 from edge_agent.context.vehicle_context import VehicleContext
 from edge_agent.decision.trip_memory import TripState
+from edge_agent.perception.quality import FACE_ISSUES, NO_FACE_ISSUES, QualityState
+
+UNRESPONSIVE = "unresponsive"  # L3 reason: eyes closed through the alarm (M44)
 
 
 @dataclass(frozen=True)
 class RiskConfig:
     microsleep_l3_s: float = 1.5
+    unresponsive_closed_s: float = 6.0  # eyes still closed this long: L3 reason unresponsive; 0 = off
     drowsy_weight_perclos: float = 40.0
     drowsy_weight_microsleep: float = 25.0
     drowsy_weight_yawn: float = 15.0
@@ -63,6 +74,7 @@ class RiskConfig:
     distraction_off_road_high_speed_s: float = 1.5
     distraction_phone_ratio: float = 0.6
     unavailable_no_face_s: float = 3.0  # 0 = never unavailable
+    unavailable_low_quality_s: float = 5.0  # face in view but unusable this long; 0 = off
     trend_level: int = 1
     trend_min_points: int = 5
     trend_slope_per_min: float = 2.0
@@ -80,7 +92,7 @@ class RiskConfig:
 @dataclass(frozen=True)
 class RuleHit:
     level: int
-    reason: str  # microsleep, drowsy_score, off_road, phone, trend, blink_rate
+    reason: str  # microsleep, unresponsive, drowsy_score, off_road, phone, trend, blink_rate
     value: float  # the measurement that fired the rule
 
 
@@ -93,6 +105,8 @@ class RiskAssessment:
     distraction_score: float  # 0..100
     drowsy_terms: tuple[float, ...]  # perclos, microsleep, yawn, nod, slow_blink, brow (0..1)
     unavailable: bool = False  # face lost too long while moving: not monitored, no alerts (FR-6)
+    # Why: no_face, camera_blocked, bad_angle, low_light, glare or blur. None while monitored.
+    unavailable_reason: str | None = None
 
     @property
     def reasons(self) -> tuple[str, ...]:
@@ -158,6 +172,7 @@ class RiskEngine:
         ctx: VehicleContext,
         trip: TripState | None = None,
         drowsy_muted: bool = False,
+        quality: QualityState | None = None,
     ) -> RiskAssessment:
         cfg = self.config
         hits: list[RuleHit] = []
@@ -168,6 +183,8 @@ class RiskEngine:
         if cap > 0:
             if d.closed_duration >= cfg.microsleep_l3_s:
                 hits.append(RuleHit(3, "microsleep", d.closed_duration))
+            if cfg.unresponsive_closed_s > 0 and d.closed_duration >= cfg.unresponsive_closed_s:
+                hits.append(RuleHit(3, UNRESPONSIVE, d.closed_duration))  # the alarm did not wake the driver
             if drowsy >= cfg.drowsy_l2:
                 hits.append(RuleHit(2, "drowsy_score", drowsy))
             elif drowsy >= cfg.drowsy_l1:
@@ -198,14 +215,29 @@ class RiskEngine:
             if x.phone_ratio_2s >= cfg.distraction_phone_ratio:
                 hits.append(RuleHit(2, "phone", x.phone_ratio_2s))
 
-        unavailable = (
-            ctx.moving
-            and cfg.unavailable_no_face_s > 0
+        issue = quality.issue if quality is not None else None
+        no_face = (
+            cfg.unavailable_no_face_s > 0
             and x.no_face_duration >= cfg.unavailable_no_face_s
             and not d.head_drop  # a closure carried through a head drop is still watched
+            and not x.turned_away  # face lost right after a large head turn: looking behind (block 8)
         )
+        # A face in view that cannot be read (too dark, washed out, blurred): what blocks 7 / 8 say
+        # about it is a guess, so nothing is carried through, not even a closure being counted.
+        poor = (
+            quality is not None
+            and cfg.unavailable_low_quality_s > 0
+            and issue in FACE_ISSUES
+            and quality.duration >= cfg.unavailable_low_quality_s
+        )
+        unavailable = ctx.moving and (no_face or poor)
+        unavailable_reason = None
         if unavailable:
             hits, distraction = [], 0.0
+            if no_face:
+                unavailable_reason = issue if issue in NO_FACE_ISSUES else "no_face"
+            else:
+                unavailable_reason = issue
 
         hits.sort(key=lambda h: -h.level)
         level = max((h.level for h in hits), default=0)
@@ -217,4 +249,5 @@ class RiskEngine:
             distraction_score=distraction,
             drowsy_terms=terms,
             unavailable=unavailable,
+            unavailable_reason=unavailable_reason,
         )
