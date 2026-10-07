@@ -79,3 +79,5 @@ push ai log phoenix.txt
 # Downloaded pretrained models (python tools/download_models.py)
 models/*.task
 models/*.onnx
+# Piper voice for tools/make_voice.py (downloaded; the .wav files it makes are committed)
+models/tts/

@@ -245,3 +245,23 @@ export function eyesWord(closedS: number | undefined, num: (v: number) => string
   if (s < EYES_SHOWN_CLOSED_S) return { word: "Đang mở", tone: "ok" };
   return { word: `Nhắm ${num(s)} giây`, tone: s >= 1.5 ? "danger" : "caution" };
 }
+
+// ------------------------------------------------------------------ spoken lines (hud/voice-lines.json)
+
+/** What an alert says aloud: its most urgent reason; null when there is no line for it. */
+export function alertVoiceKey(reasons: readonly Reason[]): string | null {
+  const primary = primaryReason(reasons);
+  return primary ? `alert.${primary}` : null;
+}
+
+/** The lines of an enrollment cue: the hint first (what to fix), then the step. */
+export function enrollVoiceKeys(prev: HudEnrollment | undefined, next: HudEnrollment | undefined): string[] {
+  if (!next) return [];
+  const step = enrollStep(next);
+  const before = enrollStep(prev);
+  if (next.status === "done" && prev?.status !== "done" && prev) return ["enroll.done"];
+  if (step && step !== before) return [`enroll.${step}`];
+  if (step && prev && next.attempts > prev.attempts && next.hint) return [`hint.${next.hint}`, `enroll.${step}`];
+  if (next.status === "failed" && prev?.status !== "failed") return ["enroll.failed"];
+  return [];
+}

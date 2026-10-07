@@ -18,6 +18,7 @@
 // - driver enrollment: one short clear beep when a step ends ("open your eyes" after step 3)
 // The level sets the volume. alertSound() is pure (tested); play() does the WebAudio part.
 import type { Level, Reason } from "../lib/types";
+import VOICE_LINES from "./voice-lines.json";
 
 export type SoundKind =
   | "drowsy"
@@ -255,4 +256,43 @@ export function play(sound: Sound | null): void {
 
 export function playAlert(level: Level, reasons: readonly Reason[]): void {
   play(alertSound(level, reasons));
+}
+
+// ------------------------------------------------------------------ recorded Vietnamese voice
+// Every spoken line is a file made once by tools/make_voice.py (Piper, voice vi_VN-vais1000) from
+// hud/voice-lines.json, so the HUD speaks Vietnamese on any computer and offline. A missing file falls
+// back to the browser's Vietnamese voice (say), never to an English one.
+
+export type VoiceKey = keyof typeof VOICE_LINES;
+export const VOICE_TEXT: Record<string, string> = VOICE_LINES;
+
+let voiceQueue: VoiceKey[] = [];
+let voicePlaying: HTMLAudioElement | null = null;
+
+function playNextLine(): void {
+  const key = voiceQueue.shift();
+  if (!key) {
+    voicePlaying = null;
+    return;
+  }
+  const audio = new Audio(`${import.meta.env.BASE_URL}voice/${key}.wav`);
+  voicePlaying = audio;
+  audio.onended = playNextLine;
+  audio.onerror = () => {
+    say(VOICE_TEXT[key]); // no file: the browser's Vietnamese voice if it has one, else silent
+    playNextLine();
+  };
+  audio.play().catch(() => {
+    voicePlaying = null; // sound still blocked by the browser: the strip on screen asks for a touch
+    voiceQueue = [];
+  });
+}
+
+/** Speak recorded lines in order, cutting what was being said (only the latest message matters). */
+export function speak(...keys: (VoiceKey | null | undefined)[]): void {
+  if (typeof window === "undefined" || typeof Audio === "undefined") return;
+  voicePlaying?.pause();
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  voiceQueue = keys.filter((k): k is VoiceKey => !!k && k in VOICE_TEXT);
+  playNextLine();
 }
