@@ -95,7 +95,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ✅ Xong · 07/10 (Tổng quan tài xế / quản lý, Tài khoản / Thiết bị tạm dùng trang cũ: M61–M63) |
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ✅ Xong · 07/10 (Lịch sử cảnh báo / Dữ liệu của tôi giữ bảng cũ trong khung mới) |
 | [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ✅ Xong · 07/10 (Nhật ký sự kiện, Timeline, Đội xe chi tiết giữ bảng cũ trong khung mới) |
-| [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ⬜ Chưa làm |
+| [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ✅ Xong · 07/10 (danh sách thiết bị lấy từ API đội xe, backend không đổi) |
 | [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ⬜ Chưa làm |
 | [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
 
@@ -1132,15 +1132,15 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M63: Trang kỹ sư và admin (frontend)
 
-**Xong là thấy gì:** kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần
+**Xong là thấy gì:** kỹ sư sửa ngưỡng với thanh "N thay đổi chưa lưu · Hoàn tác · Lưu thành phiên bản N+1" và xem tỉ lệ báo sai theo lý do dạng thanh; quản trị tạo tài khoản / thiết bị ngay trên web, khoá thiết bị hiện đúng một lần có nút sao chép
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`: gọi các API admin đã có (`GET / POST /api/v1/users`, `POST /api/v1/devices`); danh sách thiết bị lấy từ `/api/v1/fleet` (trả mọi thiết bị, kể cả chưa từng kết nối), không cần API mới
 
-- Kỹ sư: ngưỡng theo nhóm, thanh "N thay đổi chưa lưu · Hoàn tác · Lưu thành phiên bản N+1", tỉ lệ báo sai theo lý do 7 / 30 ngày; giữ áp thử cho vài xe, lịch sử phiên bản, quay lui (M47)
-- Hiện đủ 16 khoá của `THRESHOLD_SPECS`: bản thiết kế chỉ vẽ 12, thiếu `drowsiness.microsleep_min_s`, `drowsiness.nod.max_s`, `distraction.turn_signal_extra_yaw_deg`, `alert.cooldown_s.3`
-- Admin: Tài khoản, Thiết bị, Nhật ký truy cập (M41), duyệt yêu cầu xoá dữ liệu (M48)
-- Backend không đổi: chưa có API danh sách thiết bị, nên trang Thiết bị chỉ có form tạo + khoá hiện một lần; danh sách thiết bị xem ở trang Đội xe
-- Test: test frontend cho các trang
+- **Ngưỡng và báo sai** (thiết kế "Kỹ sư · Ngưỡng và báo sai"): giữ nguyên logic M47 (áp thử cho vài xe, phiên bản, "Áp cho cả đội" / quay lui) và đủ 16 khoá; thêm thanh thay đổi chưa lưu luôn nằm trên (ghi tên các ngưỡng đã sửa), ô đã sửa viền xanh + "Đã sửa · trước đó …", nhóm ngưỡng thành thẻ bo tròn, khoá cấu hình bằng JetBrains Mono (tự đóng gói `@fontsource/jetbrains-mono`, như Design System); "Cảnh báo sai theo lý do" thành thanh ngang, từ 20 % trở lên tô cam sáng (bản thiết kế dùng cam tối `#C2410C` trên nền tối, không đọc được)
+- **Tài khoản** (thiết kế "Quản trị · Tài khoản và thiết bị"): danh sách có lọc vai trò, chip màu theo vai trò, mã tài xế; form thêm tài khoản (tên, mật khẩu ban đầu ≥ 8 ký tự, 4 ô chọn vai trò, mã tài xế bắt buộc với tài xế), báo lỗi trùng tên / không hợp lệ bằng câu dễ hiểu
+- **Thiết bị:** danh sách thiết bị + tài xế + liên lạc; form thêm thiết bị; thẻ vàng "Thiết bị … vừa được tạo" với khoá và nút "Sao chép" (khoá chỉ giữ trong bộ nhớ trang, không lưu); dòng "Khoá thiết bị không bao giờ hiện lại"
+- Nhật ký truy cập + duyệt yêu cầu xoá (M41, M48) ở mục "Nhật ký truy cập" của quản trị
+- Test: 112 test frontend pass, typecheck / build sạch; thao tác thật trên backend tạm (tạo tài khoản, tạo thiết bị, sửa ngưỡng), không lỗi trang, không tràn ngang ở 1440 / 390 px
 
 <a id="m64"></a>
 

@@ -7,6 +7,7 @@ import { type EventFilters, getEvents, getPolicy, getStats, getThresholds, getTr
 import { RANGES, type RangeKey } from "../lib/format";
 import { LEVELS, policyNote, ROLES } from "../lib/labels";
 import type { EventRecord, Session, Stats, Thresholds } from "../lib/types";
+import { AccountsPage, DevicesPage } from "./AdminPages";
 import AuditView from "./AuditView";
 import { DriverOverview, DriverTrips } from "./DriverPages";
 import { ManagerOverview, ReportReview } from "./ManagerPages";
@@ -340,13 +341,8 @@ function PageBody(p: PageProps) {
         </>
       );
     case "accounts":
+      return <AccountsPage session={session} refreshKey={p.refreshKey} />;
     case "devices":
-      // M63 gives these their own page; until then the access log (the admin's tools today).
-      return (
-        <>
-          <p className="card muted">Trang này có ở M63. Tạm thời tạo tài khoản / thiết bị bằng `python -m backend.manage`.</p>
-          <DeletionRequestsCard session={session} refreshKey={p.refreshKey} />
-        </>
-      );
+      return <DevicesPage session={session} refreshKey={p.refreshKey} />;
   }
 }

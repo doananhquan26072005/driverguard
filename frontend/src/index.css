@@ -16,6 +16,7 @@
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
 @import "@fontsource/inter/800.css";
+@import "@fontsource/jetbrains-mono/500.css"; /* config keys and JSON only (design system) */
 
 /* HUD design tokens (Version 4 redesign: M57, aligned with the DriverGuard design system in M58). px on
    purpose: styles.css sets the root font-size to 15px. Glass cards, alert cards, chips, buttons and meters

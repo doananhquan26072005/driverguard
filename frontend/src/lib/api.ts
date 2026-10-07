@@ -206,3 +206,19 @@ export function postWebBatch(s: Session, body: string): Promise<{ accepted: numb
 export function webDeviceId(username: string): string {
   return `web-${username}`.slice(0, 48);
 }
+
+// Accounts and devices (admin, M63). The device key comes back once, at creation, and is never stored here.
+export interface UserRow {
+  username: string;
+  role: Role;
+  driver_id: string | null;
+}
+export function getUsers(s: Session): Promise<UserRow[]> {
+  return request("/api/v1/users", {}, s);
+}
+export function createUser(s: Session, u: UserRow & { password: string }): Promise<UserRow> {
+  return request("/api/v1/users", { method: "POST", body: JSON.stringify(u) }, s);
+}
+export function createDevice(s: Session, d: { device_id: string; driver_id: string | null }): Promise<{ device_id: string; driver_id: string | null; device_key: string | null }> {
+  return request("/api/v1/devices", { method: "POST", body: JSON.stringify(d) }, s);
+}
