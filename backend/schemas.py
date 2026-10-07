@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -29,6 +29,11 @@ Reason = Literal[
     "trend",
     "blink_rate",
     "repeated_l1",  # M32: added to an L1 alert raised as L2 because it kept coming back
+    "unresponsive",  # M44: eyes still closed seconds into the L3 alarm
+    "repeated_l3",  # M44: added to an L3 alert that keeps coming back
+    "no_answer",  # M44, system event: "Bạn còn ở đó không?" was not answered
+    "config_applied",  # M47, system events: reloaded thresholds applied while parked / refused
+    "config_refused",
     "camera_lost",
     "camera_restored",  # system events: the device stopped / resumed monitoring
     "driver_enrolled",  # system event: from now on judged with the driver's own baselines
@@ -41,6 +46,8 @@ Reason = Literal[
     "agent_recovered",
     "low_fps",  # system events (M28): too slow for a while, alerts may be late / back up
     "fps_restored",
+    "phone_detection_lost",  # system events (M50): the phone detector gives no fresh results / again
+    "phone_detection_restored",
 ]
 EventType = Literal["drowsiness", "distraction", "system"]
 # Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
@@ -105,14 +112,22 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_max_length=64)
 
 
+# Why monitoring is unavailable (edge_agent/decision/risk_engine.py unavailable_reason).
+UnavailableCause = Literal["no_face", "camera_blocked", "bad_angle", "low_light", "glare", "blur"]
+
+
 class EventMetrics(StrictModel):
     perclos_60s: float | None = Field(default=None, ge=0, le=1)
+    perclos_p80: float | None = Field(default=None, ge=0, le=1)  # M40: P80 definition, measured only
     closed_duration: float | None = Field(default=None, ge=0, le=3600)
     blink_rate: float | None = Field(default=None, ge=0, le=300)
     yawn_count_10min: int | None = Field(default=None, ge=0, le=1000)
     nod_count_5min: int | None = Field(default=None, ge=0, le=1000)
     off_road_duration: float | None = Field(default=None, ge=0, le=3600)
     phone_ratio_2s: float | None = Field(default=None, ge=0, le=1)
+    phone_kind: Literal["call", "text", "unknown"] | None = None  # M38: how the phone is held
+    off_road_ratio: float | None = Field(default=None, ge=0, le=1)  # M38: share of the glance window off road
+    glance_count: int | None = Field(default=None, ge=0, le=10_000)
     blink_time_frac: float | None = Field(default=None, ge=0, le=1)  # v2 slow blinks
     reopen_ratio: float | None = Field(default=None, ge=0, le=100)  # v2 slow blinks
     brow_raise_count_5min: int | None = Field(default=None, ge=0, le=1000)  # v2 brow raise
@@ -120,6 +135,27 @@ class EventMetrics(StrictModel):
     enroll_s: float | None = Field(default=None, ge=0, le=3600)  # driver_enrolled: time it took
     enroll_redo: int | None = Field(default=None, ge=0, le=1000)  # driver_enrolled: steps redone
     fps: float | None = Field(default=None, ge=0, le=1000)  # low_fps / fps_restored: smoothed FPS
+    phone_unknown_ratio: float | None = Field(default=None, ge=0, le=1)  # M50, phone_detection_lost / restored
+    cause: UnavailableCause | None = None  # M43, monitoring_unavailable: why (older agents: face lost)
+
+
+EventTag = Literal["simulated", "forced"]
+
+
+class VersionInfo(StrictModel):
+    """What the device runs (edge_agent/version.py): app version, thresholds version, model fingerprints."""
+
+    app: str = Field(pattern=r"^[A-Za-z0-9_.+-]{1,32}$")
+    thresholds_version: int = Field(ge=0, le=10_000_000)  # 0 = the device's own thresholds.yaml only
+    thresholds_ignored: bool = False  # tuned thresholds were fetched but refused as inconsistent
+    models: dict[str, str] = Field(default_factory=dict, max_length=8)  # section -> short SHA-256
+
+    @model_validator(mode="after")
+    def models_are_short_hex(self) -> VersionInfo:
+        for name, digest in self.models.items():
+            if not re.fullmatch(r"[a-z0-9_]{1,32}", name) or not re.fullmatch(r"[0-9a-f]{8,16}", digest):
+                raise ValueError("models must map a section name to 8-16 hex characters")
+        return self
 
 
 class EventIn(StrictModel):
@@ -133,6 +169,10 @@ class EventIn(StrictModel):
     distraction_score: float = Field(ge=0, le=100)
     speed_kmh: float | None = Field(default=None, ge=0, le=400)
     metrics: EventMetrics = Field(default_factory=EventMetrics)
+    # M41 (agents older than it send neither). simulated: the vehicle signals were simulated;
+    # forced: a state set by hand (PRD FR-17), stored but never counted in any statistic.
+    tags: list[EventTag] = Field(default_factory=list, max_length=2)
+    versions: VersionInfo | None = None
 
 
 class FeedbackIn(StrictModel):
@@ -152,6 +192,7 @@ class SampleIn(StrictModel):
     drowsy_score: float = Field(ge=0, le=100)
     perclos_60s: float | None = Field(default=None, ge=0, le=1)
     max_level: int = Field(ge=0, le=3)
+    off_road_ratio: float | None = Field(default=None, ge=0, le=1)  # M38; older agents omit it
 
 
 Rating = Literal["good", "attention", "risk"]
@@ -197,8 +238,16 @@ class TripSummaryIn(StrictModel):
     brow_raises: int = Field(ge=0, le=100_000)
     off_road_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
     phone_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    # M38 (measured only); agents older than it omit them.
+    phone_call_s: float = Field(default=0.0, ge=0, le=MAX_TRIP_MINUTES * 60)
+    phone_text_s: float = Field(default=0.0, ge=0, le=MAX_TRIP_MINUTES * 60)
+    glances: int = Field(default=0, ge=0, le=1_000_000)
+    off_road_ratio_max: float = Field(default=0.0, ge=0, le=1)
+    turned_away_s: float = Field(default=0.0, ge=0, le=MAX_TRIP_MINUTES * 60)
     monitored_frac: float | None = Field(default=None, ge=0, le=1)
     unavailable_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
+    # M43: seconds per reason; agents older than it omit it.
+    unavailable_by_cause: dict[UnavailableCause, float] = Field(default_factory=dict, max_length=8)
     camera_lost_s: float = Field(ge=0, le=MAX_TRIP_MINUTES * 60)
     vehicle_signal_lost_s: float = Field(default=0.0, ge=0, le=MAX_TRIP_MINUTES * 60)  # M26; older agents omit it
     enrolled: bool
@@ -219,6 +268,29 @@ class TripSummaryIn(StrictModel):
 MonitorState = Literal["monitoring", "unavailable", "camera_lost", "stalled", "error", "ended"]
 
 
+# Stages of the loop a device may time (edge_agent/io/publisher.py PERF_STAGES).
+PerfStage = Literal["camera_lag", "capture", "landmarks", "measure", "yolo_prep", "python", "total", "yolo", "yolo_age"]
+PerfMs = Field(ge=0, le=600_000)
+
+
+class StageMsIn(StrictModel):
+    p50: float = PerfMs
+    p95: float = PerfMs
+    max: float = PerfMs
+
+
+class PerfIn(StrictModel):
+    """The loop's own timings over its last seconds (M49): milliseconds per stage, no measurement of the driver."""
+
+    samples: int = Field(ge=1, le=100_000)  # processed frames behind the numbers
+    stages_ms: dict[PerfStage, StageMsIn] = Field(min_length=1, max_length=9)
+    landmarks_delegate: Literal["GPU", "CPU"] | None = None
+    gpu: Literal["hardware", "software", "none"] | None = None  # M51: what draws WebGL on the page
+    yolo_threads: int | None = Field(default=None, ge=1, le=64)
+    camera_delivered: int | None = Field(default=None, ge=0, le=10_000_000)
+    camera_dropped: int | None = Field(default=None, ge=0, le=10_000_000)
+
+
 class HeartbeatIn(StrictModel):
     """Still alive (M33): the trip, the monitoring state, whether the vehicle moves. No position."""
 
@@ -226,6 +298,8 @@ class HeartbeatIn(StrictModel):
     trip_id: str = Identifier
     state: MonitorState
     moving: bool | None = None  # None: speed unknown
+    versions: VersionInfo | None = None  # M41; older agents send none
+    perf: PerfIn | None = None  # M49; only agents that time their loop send it
 
 
 class EventBatch(StrictModel):
@@ -275,6 +349,8 @@ class EventOut(BaseModel):
     received_at: datetime
     feedback: str | None = None
     feedback_at: datetime | None = None
+    tags: list[str] = []
+    versions: dict[str, Any] | None = None
 
 
 class SampleOut(BaseModel):
@@ -285,6 +361,7 @@ class SampleOut(BaseModel):
     drowsy_score: float
     perclos_60s: float | None
     max_level: int
+    off_road_ratio: float | None = None
 
 
 class TimelineOut(BaseModel):
@@ -323,6 +400,7 @@ class FleetEventOut(BaseModel):
     type: EventType
     level: int
     reasons: list[str]
+    event_id: str | None = None  # set on `urgent`: the page beeps once per event
 
 
 class FleetDeviceOut(BaseModel):
@@ -339,6 +417,16 @@ class FleetDeviceOut(BaseModel):
     last_seen: datetime | None
     alerts_by_level: dict[int, int]  # alerts (not system events) in the asked period
     last_event: FleetEventOut | None  # newest event in the asked period, system events included
+    # M44: newest L3 / unresponsive / repeated_l3 / no_answer of the running trip within
+    # DG_FLEET_URGENT_WINDOW_S, while the device is online. None = nothing needs attention now.
+    urgent: FleetEventOut | None = None
+    # M41: what the device said it runs in its last heartbeat (None: an agent older than M41), and
+    # whether that is the newest thresholds version (None when it reported none).
+    versions: dict[str, Any] | None = None
+    thresholds_current: bool | None = None
+    thresholds_latest: int = 0
+    # M49: the loop timings of its last heartbeat that carried any (PerfIn); None: never sent.
+    perf: dict[str, Any] | None = None
 
 
 class PolicyOut(BaseModel):
@@ -346,6 +434,69 @@ class PolicyOut(BaseModel):
 
     retention_events_days: int
     retention_summaries_days: int
+    retention_access_log_days: int = 0
+
+
+# A driver's own data (M48, docs/data-policy.md section 5).
+DeletionStatus = Literal["pending", "done", "refused"]
+# Why an admin refuses a deletion request. Codes, not free text: no place for anything else to be typed.
+RefusalReason = Literal["legal_hold", "incident_open", "duplicate", "other"]
+
+
+class DeletionRequestOut(BaseModel):
+    id: int
+    driver_id: str
+    requested_by: str
+    requested_at: datetime
+    status: DeletionStatus
+    handled_by: str | None = None
+    handled_at: datetime | None = None
+    reason: RefusalReason | None = None
+
+
+class DeletionDecisionIn(StrictModel):
+    action: Literal["delete", "refuse"]
+    reason: RefusalReason | None = None
+
+    @model_validator(mode="after")
+    def refusal_names_a_reason(self) -> DeletionDecisionIn:
+        if (self.action == "refuse") != (self.reason is not None):
+            raise ValueError("a refusal needs a reason, a deletion takes none")
+        return self
+
+
+# Access log (M41): who looked at whose data, who changed what. Append-only.
+AuditAction = Literal[
+    "read_events",
+    "read_timeline",
+    "read_trips",
+    "read_stats",
+    "read_fleet",
+    "read_trip_reports",
+    "read_trip_report",
+    "review_trip_report",
+    "read_access_log",
+    "update_thresholds",
+    "rollout_thresholds",  # M47: a version given to the whole fleet (a trial promoted, or a roll back)
+    "create_user",
+    "create_device",
+    "purge_expired",
+    "delete_driver_data",
+    "refuse_deletion",  # M48: a driver's deletion request was refused (the reason is in the detail)
+    "delete_user",
+]
+
+
+class AccessLogOut(BaseModel):
+    """One access-log row. driver_id / device_id None = not limited to one (the whole fleet)."""
+
+    ts: datetime
+    username: str
+    role: str
+    action: str
+    driver_id: str | None
+    device_id: str | None
+    detail: str | None
 
 
 class ReasonStats(BaseModel):
@@ -427,6 +578,9 @@ ThresholdKey = Literal[tuple(THRESHOLD_SPECS)]  # type: ignore[valid-type]
 
 class ThresholdsIn(StrictModel):
     values: dict[ThresholdKey, float] = Field(min_length=1)
+    # M47: only these devices get the new version (a trial group); the fleet keeps its version until
+    # the new one is rolled out. Empty = the whole fleet at once, as before.
+    trial_devices: list[Annotated[str, Identifier]] = Field(default_factory=list, max_length=200)
 
     @model_validator(mode="after")
     def within_bounds(self) -> ThresholdsIn:
@@ -449,6 +603,28 @@ class ThresholdsOut(BaseModel):
     updated_by: str | None
     updated_at: datetime | None
     specs: dict[str, ThresholdSpec]
+    # M47: the version every device without a pin runs. On the dashboard `version` is the newest one
+    # (what an edit builds on), which may be a trial not yet given to the fleet.
+    fleet_version: int = 0
+
+
+class RolloutIn(StrictModel):
+    """Give an existing version to the whole fleet: a trial that went well, or an older one (roll back)."""
+
+    version: int = Field(ge=1, le=10_000_000)
+
+
+class ThresholdVersionOut(BaseModel):
+    version: int
+    values: dict[str, float]
+    updated_by: str
+    updated_at: datetime
+    changed: list[str]  # keys whose value differs from the version before
+    fleet: bool  # the fleet's version now
+    pinned_devices: list[str]  # devices given this version for a trial
+    running_devices: list[str]  # devices whose last heartbeat reported it
+    alerts: int  # alerts raised under it (not system events, not forced)
+    false_alarms: int  # ... of which the driver marked "false alarm"
 
 
 # Web driving controls (M31, backend/drive_link.py): numbers only, no user data.

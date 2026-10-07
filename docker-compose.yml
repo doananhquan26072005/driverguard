@@ -17,3 +17,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # DriverGuard edge agent on a sample video, capped like a small board (M42, Dockerfile.edge).
+  # Not started by default:
+  #   EDGE_VIDEO=./data/clip.mp4 docker compose --profile edge up edge
+  # Metadata goes to a DriverGuard backend only when DG_BACKEND_URL and DG_DEVICE_KEY are set (a
+  # device registered with `python -m backend.manage create-device`). The `backend` service above
+  # is the course template app (src.main), not the DriverGuard backend, so it is not used here.
+  # Limits: EDGE_CPUS / EDGE_MEMORY (defaults = jetson_nano of config/edge_profiles.yaml). For a
+  # benchmark report under a profile use tools/edge_sim.py instead.
+  edge:
+    profiles: ["edge"]
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        python -m edge_agent.main --source /video/sample.mp4 --no-window --hud-port 0
+        --scenario config/scenarios/city_day.yaml --device-id "$${DG_DEVICE_ID:-cam-001}"
+        $${DG_BACKEND_URL:+--backend "$$DG_BACKEND_URL"}
+    environment:
+      - DG_BACKEND_URL
+      - DG_DEVICE_KEY
+      - DG_DEVICE_ID
+    volumes:
+      - ./models:/app/models:ro
+      - ${EDGE_VIDEO:-./data/sample.mp4}:/video/sample.mp4:ro
+    cpus: ${EDGE_CPUS:-4}
+    mem_limit: ${EDGE_MEMORY:-4g}

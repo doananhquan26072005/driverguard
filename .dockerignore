@@ -19,3 +19,10 @@ data/
 frontend/dist
 frontend/public/py
 frontend/public/models
+# Never in an image (M48): secrets and anything a database or an outbox holds, wherever it sits.
+**/.env
+**/.env.*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.sqlite
