@@ -1,63 +1,66 @@
-/* Tokens: chart surfaces / ink / status colours from the validated reference palette. */
+/* Tokens (Version 4 redesign, M57): one dark look for the dashboard, #/live and the HUD (src/index.css
+   @theme holds the HUD's Tailwind copy of the same colours). Dark only: the redesign has no light theme. */
 :root {
-  color-scheme: light;
-  --page: #f9f9f7;
-  --surface: #fcfcfb;
-  --surface-2: #f0efec;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
-  --border: rgba(11, 11, 11, 0.1);
-  --accent: #2a78d6;
-  --series-1: #2a78d6;
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-  --success-text: #006300;
-  --error-text: #b42323;
-  --radius: 10px;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+  --page: #0a0a0a;
+  --surface: #141414; /* opaque: tooltips, menus, <option> */
+  --surface-2: #1f1f1f;
+  --ink: #f5f5f5;
+  --ink-2: #a3a3a3;
+  --muted: #8a8a8a; /* >= 4.5:1 on --page and --surface */
+  --grid: #1f1f1f;
+  --axis: #3a3a3a;
+  --border: rgba(255, 255, 255, 0.1);
+  --field: rgba(255, 255, 255, 0.04);
+  --field-border: rgba(255, 255, 255, 0.14);
+  --accent: #93c5fd; /* links, focus ring */
+  --series-1: #60a5fa;
+  --good: #4ade80;
+  --warning: #fbbf24;
+  --serious: #f97316;
+  --critical: #dc2626;
+  --success-text: #4ade80;
+  --error-text: #fca5a5;
+  --radius: 16px;
+
+  /* Glass surfaces of the redesign: a dark radial fill, a 1 px edge lit from the top left, a blur of
+     what is behind. --glass-backdrop: none turns the blur off where it costs frames (#/live). */
+  --glass-fill: radial-gradient(120% 100% at 0% 0%, rgba(44, 44, 44, 0.77) 0%, rgba(26, 26, 26, 0.63) 38%, rgba(14, 14, 14, 0.7) 80%);
+  --glass-edge: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.06) 100%);
+  --glass-backdrop: blur(16px);
+  /* Page backdrop: a soft light from the top left and one faint diagonal streak. */
+  --page-light: radial-gradient(70% 45% at 25% 0%, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 70%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0) 52%, rgba(255, 255, 255, 0.035) 58%, rgba(255, 255, 255, 0) 64%);
+
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.45;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --surface-2: #242423;
-    --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --grid: #2c2c2a;
-    --axis: #383835;
-    --border: rgba(255, 255, 255, 0.1);
-    --accent: #3987e5;
-    --series-1: #3987e5;
-    --success-text: #0ca30c;
-    --error-text: #ff8a80;
-  }
+
+/* A glass card. .glass-tint with --tint (any colour) is a tinted panel: device / caution / warning notes. */
+.glass {
+  border: 1px solid transparent;
+  background: var(--glass-fill) padding-box, var(--glass-edge) border-box;
+  backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop);
 }
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d;
-  --surface: #1a1a19;
-  --surface-2: #242423;
-  --ink: #ffffff;
-  --ink-2: #c3c2b7;
-  --grid: #2c2c2a;
-  --axis: #383835;
-  --border: rgba(255, 255, 255, 0.1);
-  --accent: #3987e5;
-  --series-1: #3987e5;
-  --success-text: #0ca30c;
-  --error-text: #ff8a80;
+.glass-tint {
+  --tint: var(--series-1);
+  border: 1px solid transparent;
+  background:
+    radial-gradient(140% 130% at 0% 0%,
+      color-mix(in srgb, var(--tint) 22%, rgb(14 14 14 / 0.92)) 0%,
+      color-mix(in srgb, var(--tint) 12%, rgb(14 14 14 / 0.9)) 40%,
+      color-mix(in srgb, var(--tint) 5%, rgb(14 14 14 / 0.9)) 75%,
+      rgb(14 14 14 / 0.9) 100%) padding-box,
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--tint) 85%, transparent) 0%,
+      color-mix(in srgb, var(--tint) 12%, transparent) 45%,
+      color-mix(in srgb, var(--tint) 35%, transparent) 100%) border-box;
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink); }
+body { margin: 0; background: var(--page-light), var(--page); background-attachment: fixed; color: var(--ink); }
 h1, h2 { margin: 0 0 8px; line-height: 1.2; }
 h1 { font-size: 24px; }
 h2 { font-size: 17px; font-weight: 600; }
@@ -72,18 +75,24 @@ code { font-size: 0.9em; background: var(--surface-2); padding: 1px 5px; border-
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.5; }
+/* The redesign left the text colour of its fields unset (black on black): always the page ink here. */
 input, select {
-  background: var(--surface); border: 1px solid var(--axis); border-radius: 8px; padding: 6px 10px; min-height: 36px;
+  background: var(--field); border: 1px solid var(--field-border); border-radius: 10px; padding: 6px 12px; min-height: 40px; color: var(--ink);
 }
+option { background: var(--surface); color: var(--ink); }
 input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 input[aria-invalid="true"] { border-color: var(--critical); }
-.primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; min-height: 36px; font-weight: 600; }
-.ghost { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; min-height: 36px; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
+.primary { background: linear-gradient(180deg, #ffffff 0%, #d9d9d9 100%); color: #0a0a0a; border: 0; border-radius: 12px; padding: 8px 18px; min-height: 44px; font-weight: 700; }
+.ghost { background: transparent; border: 1px solid var(--field-border); border-radius: 10px; padding: 6px 14px; min-height: 40px; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
 .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; min-width: 0; }
+.card {
+  border: 1px solid transparent; border-radius: var(--radius); padding: 18px 20px; margin-bottom: 16px; min-width: 0;
+  background: var(--glass-fill) padding-box, var(--glass-edge) border-box;
+  backdrop-filter: var(--glass-backdrop); -webkit-backdrop-filter: var(--glass-backdrop);
+}
 .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 8px; }
 .card-head h2 { margin: 0; margin-right: auto; }
 .field-inline { display: inline-flex; align-items: center; gap: 8px; }
@@ -91,13 +100,13 @@ input[aria-invalid="true"] { border-color: var(--critical); }
 .check input { min-height: 0; }
 
 /* ---------------------------------------------------------------- level colours (status palette) */
-.level-0 { --lv: var(--good); --lv-ink: #ffffff; }
+.level-0 { --lv: var(--good); --lv-ink: #0a0a0a; }
 .level-1 { --lv: var(--warning); --lv-ink: #0b0b0b; }
-.level-2 { --lv: var(--serious); --lv-ink: #0b0b0b; }
+.level-2 { --lv: var(--serious); --lv-ink: #1c0d02; }
 .level-3 { --lv: var(--critical); --lv-ink: #ffffff; }
 .badge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: var(--lv); color: var(--lv-ink); font-weight: 600; font-size: 13px; white-space: nowrap; }
 .badge-dot { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--lv); color: var(--lv-ink); font-size: 11px; margin-right: 6px; }
-.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); font-size: 12px; color: var(--ink); white-space: nowrap; }
+.tag { display: inline-block; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255, 255, 255, 0.06); font-size: 12px; color: var(--ink); white-space: nowrap; }
 
 /* ---------------------------------------------------------------- login */
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
@@ -105,27 +114,30 @@ input[aria-invalid="true"] { border-color: var(--critical); }
 .login label { display: grid; gap: 4px; font-weight: 500; }
 
 /* ---------------------------------------------------------------- dashboard */
-.dash-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
-.dash-brand { font-weight: 700; }
+.dash-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; background: rgba(10, 10, 10, 0.8); border-bottom: 1px solid rgba(255, 255, 255, 0.07); position: sticky; top: 0; z-index: 5; backdrop-filter: var(--glass-backdrop); -webkit-backdrop-filter: var(--glass-backdrop); }
+.dash-brand { font-weight: 800; letter-spacing: -0.01em; }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
-.tab { background: transparent; border: 0; border-radius: 8px; padding: 6px 12px; color: var(--ink-2); }
-.tab.active { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.tab { background: transparent; border: 0; border-radius: 10px; padding: 8px 12px; min-height: 40px; color: var(--ink-2); font-weight: 600; }
+.tab.active { background: rgba(255, 255, 255, 0.08); color: var(--ink); font-weight: 700; }
 .dash-user { color: var(--ink-2); font-size: 13px; }
 .dash-main { max-width: 1280px; margin: 0 auto; padding: 16px 20px 40px; }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.tile {
+  border: 1px solid transparent; border-radius: var(--radius); padding: 14px 16px;
+  background: var(--glass-fill) padding-box, var(--glass-edge) border-box;
+}
 .tile-label { color: var(--ink-2); font-size: 13px; display: flex; align-items: center; }
-.tile-value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+.tile-value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .tile-note { color: var(--muted); font-size: 12px; }
 
 .table-wrap { overflow-x: auto; }
 table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
-table.data th { text-align: left; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--axis); padding: 8px 10px; white-space: nowrap; }
-table.data td { border-bottom: 1px solid var(--grid); padding: 8px 10px; vertical-align: middle; }
+table.data th { text-align: left; font-weight: 600; font-size: 13px; color: var(--muted); border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 10px 12px; white-space: nowrap; }
+table.data td { border-bottom: 1px solid rgba(255, 255, 255, 0.06); padding: 10px 12px; vertical-align: middle; }
 table.data .num { text-align: right; font-variant-numeric: tabular-nums; }
-table.data tbody tr:hover { background: var(--surface-2); }
+table.data tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 
 .split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
@@ -155,7 +167,7 @@ legend { font-weight: 600; padding: 0 6px 0 0; }
 .crosshair { stroke: var(--ink-2); stroke-width: 1; opacity: 0.5; }
 .alert-mark { fill: var(--lv); stroke: var(--surface); stroke-width: 2; }
 .alert-mark.false-alarm { fill: var(--surface); stroke: var(--lv); stroke-width: 2.5; }
-.tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); width: 208px; display: grid; gap: 2px; }
+.tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--field-border); border-radius: 10px; padding: 8px 10px; font-size: 13px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); width: 208px; display: grid; gap: 2px; }
 .tooltip-title { font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; list-style: none; margin: 10px 0 0; padding: 0; font-size: 13px; color: var(--ink-2); }
 .legend li { display: inline-flex; align-items: center; gap: 6px; }

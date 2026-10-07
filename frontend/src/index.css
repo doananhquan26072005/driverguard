@@ -11,27 +11,29 @@
 @source "./drive"; /* M31 web driving controls: without it its classes are not generated */
 
 /* Self-hosted: the in-car screen must work offline. Vietnamese subset is picked by unicode-range. */
-@import "@fontsource/be-vietnam-pro/500.css";
-@import "@fontsource/be-vietnam-pro/600.css";
-@import "@fontsource/be-vietnam-pro/700.css";
-@import "@fontsource/be-vietnam-pro/800.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/inter/800.css";
 
-/* HUD design tokens. px on purpose: styles.css sets the root font-size to 15px. */
+/* HUD design tokens (Version 4 redesign, M57). px on purpose: styles.css sets the root font-size to 15px.
+   Colours follow the redesign's screens; glass surfaces are the .glass / .glass-tint classes in styles.css. */
 @theme {
-  --font-hud: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-hud: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --spacing: 4px; /* 8pt grid = spacing-2, 4, 6, 8, 12, 16 */
 
   /* Surfaces: near-black, not pure black (less halation at night) */
-  --color-hud-bg: #0a0c10;
-  --color-hud-surface: #12151b;
-  --color-hud-raised: #1a1f27;
+  --color-hud-bg: #0a0a0a;
+  --color-hud-surface: #141414;
+  --color-hud-raised: #1f1f1f;
   --color-hud-line: rgb(255 255 255 / 0.08);
-  --color-hud-ink: #e8eaed; /* off-white: less glare than #fff */
-  --color-hud-ink-2: #a1a9b4;
-  --color-hud-ink-3: #7d8590; /* >= 4.5:1 on bg and surface */
+  --color-hud-ink: #f5f5f5; /* off-white: less glare than #fff */
+  --color-hud-ink-2: #b8c2d0;
+  --color-hud-ink-3: #8a8a8a; /* >= 4.5:1 on bg and surface */
 
   /* Status: one hue per level, never reused for anything else */
-  --color-hud-safe: #22c55e; /* L0 */
+  --color-hud-safe: #4ade80; /* L0 */
   --color-hud-caution: #fbbf24; /* L1 */
   --color-hud-warning: #f97316; /* L2, filled: dark text only */
   --color-hud-on-warning: #1c0d02;
