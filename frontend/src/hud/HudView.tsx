@@ -58,7 +58,6 @@ import {
   ENROLL_CONSENT,
   ENROLL_HINTS,
   ENROLL_STEPS,
-  ENROLL_TEXT,
   LEVELS,
   LOW_FPS_TEXT,
   PHONE_UNAVAILABLE_TEXT,
@@ -72,6 +71,8 @@ import {
   reasonText,
 } from "../lib/labels";
 import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, UnavailableCause, VehicleAction } from "../lib/types";
+import FaceGuide from "./FaceGuide";
+import HudStage from "./HudStage";
 import {
   ENROLL_STEP_ORDER,
   alertDetail,
@@ -172,26 +173,60 @@ export default function HudView(props: HudViewProps) {
   const rows = ["72px", ...(soundBlocked ? ["auto"] : []), "minmax(0,1fr)", "auto"];
   const ring = !system && level === 1 ? "dg-ring-1" : !system && level === 2 ? "dg-ring-2" : "";
 
-  return (
-    <div
-      style={{
-        gridTemplateRows: rows.join(" "),
-        ...(danger ? { background: "radial-gradient(120% 100% at 50% 40%, #ef4444 0%, #dc2626 45%, #991b1b 100%)" } : {}),
-      }}
-      className={`relative isolate grid min-h-dvh grid-cols-[minmax(0,1fr)] font-hud lg:h-dvh lg:min-h-[640px] antialiased [color-scheme:dark] transition-shadow ${
-        rising ? "duration-150" : "duration-700"
-      } ${danger ? "text-white" : "bg-hud-bg text-hud-ink"} ${ring}`}
-    >
-      {danger ? (
-        <div
-          aria-hidden
-          style={{ background: "radial-gradient(120% 100% at 50% 40%, #991b1b 0%, #7f1d1d 55%, #450a0a 100%)" }}
-          className="pointer-events-none absolute inset-0 -z-10 animate-hud-pulse motion-reduce:hidden"
-        />
-      ) : (
-        <div aria-hidden className="dg-backdrop" />
-      )}
+  const consent = !system && !!snap && showConsentPanel(snap.enrollment, level);
+  const enrolling = !system && !!snap && !consent && showEnrollPanel(snap.enrollment, level) && !!snap.enrollment;
+  const dashboard = !consent && !enrolling && level <= 1; // status + fatigue cards, speed card on two rows
 
+  return (
+    <HudStage
+      rows={rows}
+      style={danger ? { background: "radial-gradient(120% 100% at 50% 40%, #ef4444 0%, #dc2626 45%, #991b1b 100%)" } : undefined}
+      className={`transition-shadow ${rising ? "duration-150" : "duration-700"} ${danger ? "text-white" : "bg-hud-bg text-hud-ink"} ${ring}`}
+      underlay={
+        danger && (
+          <div
+            aria-hidden
+            style={{ background: "radial-gradient(120% 100% at 50% 40%, #991b1b 0%, #7f1d1d 55%, #450a0a 100%)" }}
+            className="pointer-events-none absolute inset-0 -z-10 animate-hud-pulse motion-reduce:hidden"
+          />
+        )
+      }
+      overlay={
+        <>
+          {confirmDriver && props.onVehicle && (
+            <ConfirmDialog
+              title="Đổi tài xế?"
+              text="Xe dừng lại. Người lái mới nhìn vào camera để đăng ký khuôn mặt, xong thì tiếp tục lái."
+              cancel="Không đổi"
+              confirm="Đổi tài xế"
+              onCancel={() => setConfirmDriver(false)}
+              onConfirm={() => {
+                setConfirmDriver(false);
+                props.onVehicle?.("change_driver");
+              }}
+            />
+          )}
+          {confirmEnd && props.onEndTrip && (
+            <EndTripDialog
+              ending={!!props.ending}
+              onCancel={() => setConfirmEnd(false)}
+              onConfirm={() => {
+                setConfirmEnd(false);
+                props.onEndTrip?.();
+              }}
+            />
+          )}
+          {toast && (
+            <div
+              role="status"
+              className="dg-card fixed inset-x-4 bottom-28 z-50 mx-auto w-fit animate-hud-in-fast px-6 py-4 text-hud-body text-hud-ink shadow-2xl"
+            >
+              {toast}
+            </div>
+          )}
+        </>
+      }
+    >
       <TopBar {...props} danger={danger} className={`transition-opacity duration-700 ${dim}`} />
 
       {soundBlocked && (
@@ -214,18 +249,18 @@ export default function HudView(props: HudViewProps) {
         <SystemPanel state={system ?? "connecting"} edgeUrl={edgeUrl} cause={snap?.unavailable_reason ?? null} />
       ) : danger ? (
         <DangerStage reasons={snap.reasons} />
+      ) : enrolling && snap.enrollment ? (
+        <main className="grid min-h-0 px-4 sm:px-8">
+          <EnrollPanel enrollment={snap.enrollment} />
+        </main>
       ) : (
         <main
           className={`grid min-h-0 gap-3.5 px-4 transition-opacity duration-700 sm:px-8 lg:grid-cols-[minmax(0,1fr)_400px] ${
-            level <= 1 && !showConsentPanel(snap.enrollment, level) && !showEnrollPanel(snap.enrollment, level)
-              ? "lg:grid-rows-[minmax(0,1fr)_auto]"
-              : "lg:grid-rows-[minmax(0,1fr)]"
+            dashboard ? "lg:grid-rows-[minmax(0,1fr)_210px]" : "lg:grid-rows-[minmax(0,1fr)]"
           } ${dim}`}
         >
-          {showConsentPanel(snap.enrollment, level) ? (
+          {consent ? (
             <ConsentPanel onAnswer={props.onVehicle} />
-          ) : showEnrollPanel(snap.enrollment, level) && snap.enrollment ? (
-            <EnrollPanel enrollment={snap.enrollment} />
           ) : level === 2 ? (
             <WarningStage snap={snap} rising={rising} />
           ) : (
@@ -234,7 +269,7 @@ export default function HudView(props: HudViewProps) {
               <FatigueCard snap={snap} level={level} />
             </>
           )}
-          <SpeedCard snap={snap} tall={level <= 1 && !showConsentPanel(snap.enrollment, level) && !showEnrollPanel(snap.enrollment, level)} />
+          <SpeedCard snap={snap} tall={dashboard} />
         </main>
       )}
 
@@ -243,48 +278,15 @@ export default function HudView(props: HudViewProps) {
         level={level}
         system={system}
         now={now}
-        target={danger ? null : feedbackTarget}
+        target={danger || enrolling ? null : feedbackTarget}
         onFalseAlarm={onFalseAlarm}
-        onAskDriver={props.onVehicle && !danger ? () => setConfirmDriver(true) : undefined}
-        onAskEnd={props.onEndTrip && !danger ? () => setConfirmEnd(true) : undefined}
+        onAskDriver={props.onVehicle && !danger && !enrolling ? () => setConfirmDriver(true) : undefined}
+        onAskEnd={props.onEndTrip && !danger && !enrolling ? () => setConfirmEnd(true) : undefined}
+        note={enrolling && snap?.enrollment ? enrollNote(snap.enrollment) : consent ? "Hướng dẫn sẽ được đọc to bằng giọng nói" : null}
         ending={!!props.ending}
         className={`transition-opacity duration-700 ${dim}`}
       />
-
-      {confirmDriver && props.onVehicle && (
-        <ConfirmDialog
-          title="Đổi tài xế?"
-          text="Xe dừng lại. Người lái mới nhìn vào camera để đăng ký khuôn mặt, xong thì tiếp tục lái."
-          cancel="Không đổi"
-          confirm="Đổi tài xế"
-          onCancel={() => setConfirmDriver(false)}
-          onConfirm={() => {
-            setConfirmDriver(false);
-            props.onVehicle?.("change_driver");
-          }}
-        />
-      )}
-
-      {confirmEnd && props.onEndTrip && (
-        <EndTripDialog
-          ending={!!props.ending}
-          onCancel={() => setConfirmEnd(false)}
-          onConfirm={() => {
-            setConfirmEnd(false);
-            props.onEndTrip?.();
-          }}
-        />
-      )}
-
-      {toast && (
-        <div
-          role="status"
-          className="dg-card fixed inset-x-4 bottom-28 z-50 mx-auto w-fit animate-hud-in-fast px-6 py-4 text-hud-body text-hud-ink shadow-2xl"
-        >
-          {toast}
-        </div>
-      )}
-    </div>
+    </HudStage>
   );
 }
 
@@ -772,6 +774,7 @@ function BottomBar({
   onFalseAlarm,
   onAskDriver,
   onAskEnd,
+  note,
   ending,
   className,
 }: {
@@ -783,6 +786,7 @@ function BottomBar({
   onFalseAlarm: () => void;
   onAskDriver?: () => void;
   onAskEnd?: () => void;
+  note: string | null; // replaces the computed note (enrollment, consent)
   ending: boolean;
   className: string;
 }) {
@@ -805,7 +809,7 @@ function BottomBar({
   ) : (
     <span className="flex min-w-0 items-center gap-2.5 text-[15px] text-hud-ink-3">
       <Flag aria-hidden className="size-[18px] shrink-0" />
-      <span className="min-w-0">{snap ? noteFor(snap) : "Đang chờ dữ liệu từ thiết bị"}</span>
+      <span className="min-w-0">{note ?? (snap ? noteFor(snap) : "Đang chờ dữ liệu từ thiết bị")}</span>
     </span>
   );
   return (
@@ -872,56 +876,64 @@ function FalseAlarmButton({ target, level, now, windowS, onPress }: { target: Hu
 
 // ------------------------------------------------------------------ enrollment, dialogs, system screens (restyled in M59)
 
-// Guided driver enrollment: one instruction at a time, big, with the step's progress. The
-// same words are spoken (HudScreen), since steps 2 and 3 are done without looking here.
-// Before the enrollment steps: why, and what happens to the face data; the steps start on "Đồng ý".
+// Before the enrollment steps (design "Đăng ký · Xin đồng ý"): why the face is enrolled and what happens
+// to the data; the steps start on "Đồng ý". A device screen, so it is blue (system), never a level colour.
 function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void }) {
   return (
-    <section
-      aria-labelledby="consent-title"
-      className="flex min-h-[52dvh] flex-col justify-center gap-6 rounded-hud-lg bg-hud-surface p-6 text-hud-ink ring-2 ring-hud-system sm:p-10 lg:min-h-0"
-    >
-      <span className="inline-flex w-fit items-center gap-2 rounded-full bg-hud-system/15 px-4 py-2 text-hud-label font-bold text-hud-system">
-        <ScanFace aria-hidden className="size-5" strokeWidth={2.5} />
-        {ENROLL_TEXT.title}
-      </span>
-      <div className="flex flex-col gap-3">
-        <h1 id="consent-title" className="m-0 text-hud-display font-extrabold tracking-tight text-balance">
-          {ENROLL_CONSENT.title}
-        </h1>
-        <p className="m-0 max-w-[60ch] text-hud-title font-medium text-hud-ink-2">{ENROLL_CONSENT.lead}</p>
+    <section aria-labelledby="consent-title" className="dg-alert sys flex min-h-0 flex-col gap-5 px-7 py-6">
+      <div className="flex items-start justify-between gap-3">
+        <span className="dg-card-title">
+          <h2 id="consent-title" className="m-0 text-base font-medium">
+            {ENROLL_CONSENT.title}
+          </h2>
+          <span>Khoảng 10 giây · khi xe đang dừng</span>
+        </span>
+        <span className="dg-chip" style={{ ["--dot" as string]: "var(--series-1)" }}>
+          <i />
+          Chưa đăng ký tài xế
+        </span>
       </div>
-      <ul aria-label="Dữ liệu khuôn mặt của bạn" className="m-0 grid list-none gap-3 p-0">
+      <div className="flex items-center gap-6">
+        <div className="dg-tile grid size-[88px] shrink-0 place-items-center !rounded-hud-xl text-[#93c5fd]">
+          <ScanFace aria-hidden className="size-11" strokeWidth={1.75} />
+        </div>
+        <div className="min-w-0">
+          <p className="m-0 text-[clamp(32px,4vw,48px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
+            {ENROLL_CONSENT.headline}
+          </p>
+          <p className="m-0 mt-2.5 max-w-[52ch] text-[17px] leading-normal text-[#b8c2d0]">{ENROLL_CONSENT.lead}</p>
+        </div>
+      </div>
+      <ul aria-label="Dữ liệu khuôn mặt của bạn" className="dg-tile m-0 flex list-none flex-col gap-3 px-5 py-[18px]">
         {ENROLL_CONSENT.privacy.map((line) => (
-          <li key={line} className="flex items-start gap-3 text-hud-body text-hud-ink">
-            <ShieldCheck aria-hidden className="mt-0.5 size-6 shrink-0 text-hud-safe" />
+          <li key={line} className="flex gap-3 text-base leading-[1.45] text-[#d4d4d4]">
+            <ShieldCheck aria-hidden className="mt-0.5 size-[18px] shrink-0 text-hud-safe" />
             <span>{line}</span>
           </li>
         ))}
       </ul>
       {onAnswer && (
-        <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
+        <div className="mt-auto grid gap-3 sm:grid-cols-[2fr_1fr]">
           <button
             type="button"
             onClick={() => onAnswer("enroll_start")}
-            className="min-h-16 rounded-full border-0 bg-hud-system px-6 text-hud-title font-bold text-hud-on-warning"
+            className="h-[60px] cursor-pointer rounded-hud-sm border-0 bg-[linear-gradient(180deg,#93c5fd_0%,#60a5fa_100%)] text-lg font-semibold text-[#0b1b33]"
           >
             {ENROLL_CONSENT.agree}
           </button>
-          <button
-            type="button"
-            onClick={() => onAnswer("enroll_later")}
-            className="min-h-16 rounded-full border-0 bg-hud-raised px-6 text-hud-body font-semibold text-hud-ink ring-1 ring-hud-line"
-          >
+          <button type="button" onClick={() => onAnswer("enroll_later")} className="dg-btn !h-[60px] !justify-center !text-[17px]">
             {ENROLL_CONSENT.later}
           </button>
         </div>
       )}
-      <p className="m-0 text-hud-label text-hud-ink-3">{ENROLL_CONSENT.laterNote}</p>
+      <span className="text-[13px] text-hud-ink-3">{ENROLL_CONSENT.laterNote}</span>
     </section>
   );
 }
 
+// Guided enrollment (design "Đăng ký · Bước 1-3/3"): one instruction at a time, big, the step's progress,
+// and the face alignment frame. The same words are spoken (HudScreen): steps 2 and 3 are done without
+// looking here. No cancel button: driving off pauses the enrollment (edge agent), nothing to cancel.
 function EnrollPanel({ enrollment }: { enrollment: HudEnrollment }) {
   const step = enrollStep(enrollment) as EnrollStep;
   const index = ENROLL_STEP_ORDER.indexOf(step);
@@ -933,57 +945,73 @@ function EnrollPanel({ enrollment }: { enrollment: HudEnrollment }) {
     <section
       aria-live="polite"
       aria-atomic="true"
-      className="relative flex min-h-[52dvh] flex-col justify-center gap-8 overflow-hidden rounded-hud-lg bg-hud-surface p-6 text-hud-ink ring-2 ring-hud-system sm:p-10 lg:min-h-0"
+      className="dg-alert sys grid min-h-0 gap-9 px-6 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_380px]"
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="inline-flex items-center gap-2 rounded-full bg-hud-system/15 px-4 py-2 text-hud-label font-bold text-hud-system">
-          <UserCheck aria-hidden className="size-5" strokeWidth={2.5} />
-          {ENROLL_TEXT.title}
+      <div className="flex min-w-0 flex-col justify-between gap-7">
+        <span className="dg-card-title">
+          <b>{ENROLL_CONSENT.title}</b>
+          <span>Xe đang đỗ · 0 km/h</span>
         </span>
-        <ol aria-label="Các bước" className="m-0 flex list-none gap-2 p-0">
-          {ENROLL_STEP_ORDER.map((s, i) => (
-            <li
-              key={s}
-              aria-current={i === index ? "step" : undefined}
-              className={`h-2 w-10 rounded-full ${i < index ? "bg-hud-safe" : i === index ? "bg-hud-system" : "bg-hud-raised"}`}
-            >
-              <span className="sr-only">
-                Bước {i + 1}: {ENROLL_STEPS[s].title}
-              </span>
-            </li>
-          ))}
-        </ol>
-        <span className="text-hud-label text-hud-ink-2 tabular-nums">
-          Bước {index + 1}/{ENROLL_STEP_ORDER.length}
-        </span>
-      </div>
-
-      {/* Re-mounted per step, so each new instruction animates in once. */}
-      <div key={step} className="flex animate-hud-in-fast flex-col gap-3 motion-reduce:animate-none">
-        <h1 className="m-0 text-hud-display font-extrabold tracking-tight text-balance">{text.title}</h1>
-        <p className="m-0 text-hud-title font-medium text-hud-ink-2">{text.detail}</p>
-      </div>
-
-      <div>
-        <div
-          role="progressbar"
-          aria-label={text.title}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct}
-          className="h-3 overflow-hidden rounded-full bg-hud-raised"
-        >
-          <div
-            className="h-full origin-left bg-hud-system transition-transform duration-300 ease-out"
-            style={{ transform: `scaleX(${pct / 100})` }}
-          />
+        <div className="flex items-center gap-3.5">
+          <ol aria-label="Các bước" className="m-0 flex list-none gap-2 p-0">
+            {ENROLL_STEP_ORDER.map((s, i) => (
+              <li
+                key={s}
+                aria-current={i === index ? "step" : undefined}
+                className={`h-2 w-12 rounded-full sm:w-[76px] ${i < index ? "bg-hud-safe" : i === index ? "bg-hud-system" : "bg-white/12"}`}
+              >
+                <span className="sr-only">
+                  Bước {i + 1}: {ENROLL_STEPS[s].title}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <span className="dg-num text-[15px] font-medium text-[#b8c2d0]">
+            Bước {index + 1}/{ENROLL_STEP_ORDER.length}
+          </span>
         </div>
-        <p className={`m-0 mt-4 min-h-[1.5em] text-hud-body font-semibold ${hint ? "text-hud-caution" : "text-hud-ink-3"}`}>
-          {hint ?? "Giữ nguyên tư thế"}
-        </p>
+        {/* Re-mounted per step, so each new instruction animates in once. */}
+        <div key={step} className="flex animate-hud-in-fast flex-col gap-3.5 motion-reduce:animate-none">
+          <h1 className="m-0 text-[clamp(44px,6vw,76px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{text.title}</h1>
+          <p className="m-0 text-[clamp(20px,2.2vw,26px)] text-[#b8c2d0]">{text.detail}</p>
+        </div>
+        <div className="flex flex-col gap-3.5">
+          {hint && (
+            <span className="inline-flex w-fit items-center gap-2 rounded-hud-xs border border-solid border-hud-caution/40 bg-hud-caution/10 px-2.5 py-1.5 text-[13px] font-medium text-[#fde68a]">
+              <span aria-hidden className="size-[7px] rounded-full bg-hud-caution" />
+              {hint}
+            </span>
+          )}
+          <div
+            role="progressbar"
+            aria-label={`Tiến độ bước ${index + 1}`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            className="h-2.5 overflow-hidden rounded-full bg-white/8"
+          >
+            <div
+              className="h-full origin-left rounded-full bg-[linear-gradient(90deg,#60a5fa,#93c5fd)] transition-transform duration-300 ease-out"
+              style={{ transform: `scaleX(${pct / 100})` }}
+            />
+          </div>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-col gap-3">
+        <FaceGuide step={step} hint={hint} />
+        <span className="flex items-center gap-2.5 text-sm leading-[1.45] text-[#b8c2d0]">
+          <Volume2 aria-hidden className="size-[18px] shrink-0 text-[#93c5fd]" />
+          Đặt mặt vào khung oval. Hướng dẫn được đọc to, hết bước có tiếng bíp.
+        </span>
       </div>
     </section>
   );
+}
+
+function enrollNote(e: HudEnrollment): string {
+  const i = Math.max(0, ENROLL_STEP_ORDER.indexOf(enrollStep(e) as EnrollStep));
+  const first = e.attempts > 0 ? `Làm lại ${e.attempts} lần` : i === 0 ? "Bước đầu tiên" : i === ENROLL_STEP_ORDER.length - 1 ? "Bước cuối" : `Bước ${i + 1}`;
+  return `${first} · xe chạy thì việc đăng ký tạm dừng`;
 }
 
 function EndTripDialog({ ending, onCancel, onConfirm }: { ending: boolean; onCancel: () => void; onConfirm: () => void }) {

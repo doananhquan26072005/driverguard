@@ -79,3 +79,24 @@ describe("M58 driving screens", () => {
     expect(footerNote({ ...snap, low_fps: true }, { ...labels, signalLost: "lost" })).toBe("lost");
   });
 });
+
+describe("M58 trip summary screen", () => {
+  it("words suggestions as tiles", async () => {
+    const { suggestionTile } = await import("./tripModel");
+    expect(suggestionTile("rest_after", 85)).toEqual({ value: "Nghỉ sau ~1 giờ 25 phút", label: "Lần sau nên dừng nghỉ" });
+    expect(suggestionTile("eyes_on_road").value).toBe("Giữ mắt nhìn đường");
+  });
+
+  it("groups a long trip into at most 65 bars and greys the stops", async () => {
+    const { summaryBars } = await import("./tripModel");
+    const { demoTripSummary } = await import("./demo");
+    const s = demoTripSummary(); // 130 minutes, stopped 70-79, tired from 95
+    const { perBar, bars } = summaryBars(s);
+    expect(perBar).toBe(2);
+    expect(bars).toHaveLength(65);
+    expect(bars[36].stopped).toBe(true); // minutes 72-73
+    expect(bars[0].zone).toBe("awake");
+    expect(bars.at(-1)?.zone).toBe("tired");
+    expect(summaryBars({ ...s, minutes: s.minutes.slice(0, 10) }).perBar).toBe(1);
+  });
+});

@@ -99,3 +99,46 @@ export function zoneOf(score: number, l1: number, l2: number): Zone {
 }
 
 export const ZONE_TEXT: Record<Zone, string> = { awake: "Tỉnh táo", tired: "Hơi mệt", very_tired: "Mệt" };
+
+// ------------------------------------------------------------------ redesigned summary screen (M58)
+
+/** A suggestion as a tile of the design: a short value and what it is about. */
+export function suggestionTile(code: SuggestionCode, minutes?: number | null): { value: string; label: string } {
+  const after = minutes != null ? formatDuration(minutes * 60) : "";
+  switch (code) {
+    case "rest_now":
+      return { value: "Nghỉ ngơi thật sự", label: "Trước khi lái tiếp" };
+    case "rest_after":
+      return { value: `Nghỉ sau ~${after}`, label: "Lần sau nên dừng nghỉ" };
+    case "regular_breaks":
+      return { value: `Nghỉ 15 phút mỗi ${after}`, label: "Khi lái liên tục" };
+    case "phone_away":
+      return { value: "Để điện thoại xa tầm tay", label: "Khi đang lái" };
+    case "eyes_on_road":
+      return { value: "Giữ mắt nhìn đường", label: "Nhìn gương, đồng hồ thật ngắn" };
+    case "check_camera":
+      return { value: "Chỉnh lại camera", label: "Để luôn thấy rõ mặt bạn" };
+    case "enroll":
+      return { value: "Đăng ký khuôn mặt", label: "Dừng xe vài giây ở lần sau" };
+  }
+}
+
+export interface SummaryBar {
+  score: number; // mean drowsy_score of the moving minutes of the bar (0 when all stopped)
+  zone: Zone;
+  stopped: boolean; // most of the bar's minutes the vehicle stood still
+}
+
+/** The whole trip in at most `maxBars` bars: `perBar` minutes each (1, 2, 3, ...), so a long trip still
+ *  fits on one screen. Zones use this trip's thresholds. */
+export function summaryBars(s: TripSummary, maxBars = 65): { perBar: number; bars: SummaryBar[] } {
+  const perBar = Math.max(1, Math.ceil(s.minutes.length / maxBars));
+  const bars: SummaryBar[] = [];
+  for (let i = 0; i < s.minutes.length; i += perBar) {
+    const group = s.minutes.slice(i, i + perBar);
+    const moving = group.filter((m) => m.moving);
+    const score = moving.length ? moving.reduce((a, m) => a + m.drowsy_score, 0) / moving.length : 0;
+    bars.push({ score, zone: zoneOf(score, s.score_l1, s.score_l2), stopped: moving.length * 2 < group.length });
+  }
+  return { perBar, bars };
+}

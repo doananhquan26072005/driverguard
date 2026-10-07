@@ -84,7 +84,7 @@ async function enrolled(page: Page) {
 async function endTrip(page: Page) {
   await page.getByRole("button", { name: "Kết thúc chuyến" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
-  await expect(page.getByText("DriverGuard · Tổng kết chuyến đi")).toBeVisible();
+  await expect(page.getByText(/^Tổng kết chuyến đi · /)).toBeVisible();
 }
 
 test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the trip ends with a summary", async ({ page }) => {
@@ -93,7 +93,7 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await startLive(page);
   const car = page.getByRole("region", { name: "Xe", exact: true });
   await agree(page);
-  await expect(car.getByText("Xe đang đỗ · đang đăng ký khuôn mặt")).toBeVisible();
+  await expect(page.getByText("Xe đang đỗ · 0 km/h")).toBeVisible(); // the enrollment steps fill the screen (M58)
   await enrolled(page);
 
   sim.speed = 60;

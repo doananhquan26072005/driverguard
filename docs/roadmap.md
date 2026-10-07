@@ -91,7 +91,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 |---|---|---|---|
 | [M57](#m57) | Nền giao diện chung: màu, font Inter tự đóng gói (không dùng Google Fonts vì HUD có thể không có mạng), cỡ chữ, nút, thẻ "kính"; sửa các lỗi tương phản của bản thiết kế (nền trắng trong giao diện tối, chữ đen trong ô nhập, màu cam tối trên nền tối) | Một bộ token dùng chung cho HUD và web; `#/hud-preview` và dashboard đổi sang nền tối mới; số FPS của `#/live` trước / sau không giảm dưới 15 | ✅ Xong · 07/10 (blur chưa dùng ở HUD / `#/live`: đo lại ở M58) |
 | [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ✅ Xong · 07/10 (màn sự cố / đăng ký vẫn giao diện cũ trong khung mới: M59) |
-| [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ⬜ Chưa làm |
+| [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | 🟡 Một phần · 07/10 (xin đồng ý, 3 bước đăng ký, tổng kết chuyến xong cùng đợt sửa M58; còn các màn sự cố, tạm ngưng, "Bạn còn ở đó không?") |
 | [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ⬜ Chưa làm |
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ⬜ Chưa làm |
 | [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ⬜ Chưa làm |
@@ -1057,8 +1057,15 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 - **Khác bản thiết kế:** bỏ nhãn vùng tốc độ (quyết định 07/10), chip tốc độ ghi "Đang chạy" / "Xe dừng" / "Mất tín hiệu xe"; máy chậm ghi "cảnh báo có thể trễ" chứ không ghi "đang giảm tải" (chưa có giảm tải); nút "Chạy mô phỏng" và "Dashboard" giữ thành ô icon trên thanh trên
 - **Hàm thuần mới** (`hudModel.ts`, `format.ts`): `fatigueBand`, `trendSlots`, `fatigueSummary`, `splitAction`, `alertDetail`, `footerNote`, `durationText`, `hourMinute`; nhãn ngắn `REASON_SHORT`
 - **Đo FPS `#/live`** (Chromium không GPU, camera giả 30 s): 20 FPS như trước; cả frame p50 12,6 → 14,5 ms, p95 23,5 → 23,6 ms. Camera giả không có mặt nên HUD lúc đo ở màn "không thấy mặt", chưa đo màn đang lái có kính mờ trên máy yếu
+- **Sửa sau khi xem (07/10, theo ảnh chụp của người dùng):**
+  - Khung 1280 × 800 cố định của bản thiết kế, phóng to / thu nhỏ theo màn hình (`HudStage`: màn ngang rộng ≥ 1024 px; viền thừa cùng màu nền). Trước đó bố cục co giãn tự do: màn thấp thì ô tràn khỏi thẻ, màn lớn thì chữ nhỏ và chừa khoảng trống. Điện thoại và màn dọc vẫn xếp dọc
+  - Hàng "Độ mệt và thông số" cao 210 px như canvas
+  - Kéo sớm phần của M59 được yêu cầu trực tiếp: màn xin đồng ý (thẻ xanh dương, ô icon, "Cho hệ thống làm quen với bạn", danh sách quyền riêng tư trong ô kính, nút xanh dương), 3 bước đăng ký (thẻ xanh dương toàn khung, chữ 76 px, thanh tiến độ, khung căn khuôn mặt `FaceGuide`: oval vạch đứt + điểm mốc của canvas, mặt quay ra đường ở bước 2, mắt nhắm ở bước 3, xanh khi ổn / vàng khi có nhắc), tổng kết chuyến trong khung HUD (thẻ đánh giá theo màu chuyến, 4 ô số liệu, biểu đồ tối đa 65 cột có trục giờ, ô gợi ý, nút "Xong")
+  - Khung khuôn mặt là hình hướng dẫn, không phải ảnh camera: HUD không bao giờ nhận ảnh. Không có nút "Huỷ đăng ký" của canvas: edge agent chưa có lệnh huỷ giữa chừng (xe chạy thì tự tạm dừng), backend / edge không đổi
+  - e2e `live.e2e.ts` đổi theo chữ mới: "Xe đang đỗ · 0 km/h" lúc đăng ký, "Tổng kết chuyến đi · …" ở màn tổng kết
+- **Đo FPS `#/live` sau đợt sửa:** vẫn 20 FPS; cả frame p50 17,3 ms, p95 25,8 ms (trước đổi giao diện 12,6 / 23,5 ms). Tăng dần nhưng xa ngân sách 66 ms; theo dõi tiếp trên máy yếu thật
 - **Giới hạn:** chưa chạy e2e `live.e2e.ts` (cần backend); chữ trên nút "Kết thúc chuyến", "Đổi tài xế", vùng "Xe" và câu L3 giữ đúng chữ e2e tìm
-- Test: 7 test mới (`src/hud/m58.test.ts`), tổng 102 test frontend pass, typecheck / build sạch; 17 test M65 pass
+- Test: 9 test mới (`src/hud/m58.test.ts`), tổng 104 test frontend pass, typecheck / build sạch; 17 test M65 pass
 
 <a id="m59"></a>
 
@@ -1066,7 +1073,7 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 **Xong là thấy gì:** mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Một phần (07/10): xin đồng ý, 3 bước đăng ký và tổng kết chuyến đã làm cùng đợt sửa M58 (xem M58). Còn lại các màn dưới đây
 
 - Theo bản thiết kế: mất camera, lỗi xử lý, mất kết nối thiết bị, tạm ngưng (không thấy mặt), mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến
 - Vẽ thêm theo phong cách mới (bản thiết kế chưa có): "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera / ảnh mờ (M43), không phát hiện được điện thoại (M50), đăng ký thất bại và "Để sau", xe đang đỗ, nút "Chạy mô phỏng"
