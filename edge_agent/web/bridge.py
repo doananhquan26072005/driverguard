@@ -92,8 +92,9 @@ def _error_site(e: BaseException) -> str:
     """file:line of the innermost edge_agent frame of an error (code location only, no data)."""
     site = "?"
     for fs in traceback.extract_tb(e.__traceback__):
-        if "edge_agent" in fs.filename:
-            site = f"{fs.filename.rsplit('edge_agent/', 1)[-1]}:{fs.lineno}"
+        filename = fs.filename.replace("\\", "/")  # Windows paths in tests, POSIX in Pyodide
+        if "edge_agent" in filename:
+            site = f"{filename.rsplit('edge_agent/', 1)[-1]}:{fs.lineno}"
     return site
 
 

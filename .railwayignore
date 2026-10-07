@@ -1,14 +1,47 @@
+# What `railway up` must never upload. Deploys run with --no-gitignore so the two pretrained models
+# that Dockerfile.railway copies (models/face_landmarker.task, models/yolov8n.onnx) are sent although
+# .gitignore keeps them out of git; everything else .gitignore holds back is therefore listed here.
+
+# Secrets, databases, outboxes, logs (M48: never in an image)
+.env
+.env.*
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.db.bak-*
+**/*.sqlite
+**/*.sqlite3
+logs/
+**/*.log
+kaggle.json
+push ai log phoenix.txt
+.ai-log/
+.claude/
+.agents/
 data/
-models/
+
+# Models the server does not serve
+models/tts/
+models/yolov8n_int8.onnx
+models/open_closed_eye.onnx
+
+# Not part of the image
 eval/
 docs/
 presentation/
+notebooks/
+.git/
+.github/
 .venv/
+venv/
+env/
 **/node_modules/
 frontend/dist/
-.git/
-.ai-log/
-.env
+frontend/test-results/
+frontend/playwright-report/
 **/__pycache__/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.vscode/
+.idea/

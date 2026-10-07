@@ -99,6 +99,12 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ✅ Xong · 07/10 (21 FPS; e2e 4 / 4 pass) |
 | [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
 
+### Vận hành (M66–)
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [M66](#m66) | Deploy lên Railway và tự deploy khi CI pass: `.railwayignore` gửi đúng hai model, job `deploy` trong CI (model lấy từ GitHub Release), hướng dẫn cấu hình | Merge vào `main` → CI pass → bản mới tự lên Railway; test fail thì không deploy | 🟡 Giai đoạn A xong · 07/10 (repo); chờ cấu hình Railway / GitHub và lần deploy đầu |
+
 ---
 
 ## Chi tiết từng mốc
@@ -1178,3 +1184,20 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 - **Chi phí:** `hud_view(15)` 7,9 µs mỗi frame trên máy dev (một frame ở 15 FPS có 66 ms)
 - **Giới hạn:** edge agent khởi động lại giữa chuyến thì mất chuyến như trước đây (không ghi ra đĩa, đúng ràng buộc); "lỗi xử lý" không có số lần thử (mỗi frame là một lần thử), chỉ có `since`
 - Test: 17 test mới bằng chuỗi số giả (`tests/test_edge_agent/test_m65_hud_trip.py`); tổng 968 Python pass, 1 lỗi có sẵn trên Windows (`test_a_failing_frame_names_the_error_and_its_code_location` so đường dẫn kiểu `/`); test hồi quy trace không đổi; `ruff` sạch ở `edge_agent/`, `tools/`, `tests/`; frontend typecheck sạch, 95 test pass (kiểu `HudTrip`, `HudIncident` trong `lib/types.ts`)
+
+### Vận hành (M66–)
+
+<a id="m66"></a>
+
+#### M66: Deploy lên Railway, tự deploy khi CI pass (`.railwayignore`, `ci.yml`, `docs/deploy-railway.md`)
+
+**Xong là thấy gì:** merge vào `main` → job `python`, `frontend`, `e2e` pass → job `deploy` đưa bản mới lên Railway; một job fail thì không deploy
+
+**Trạng thái:** Giai đoạn A xong (07/10, repo). Chưa làm: tạo release `models-v1`, cấu hình Railway (volume `/app/data`, `DG_JWT_SECRET`, domain, Project Token), secret `RAILWAY_TOKEN` + variable `RAILWAY_SERVICE` trên GitHub, lần deploy tay đầu tiên và kiểm tra trên bản thật (giai đoạn B, C)
+
+- **Model không tới được build:** `Dockerfile.railway` chép `models/face_landmarker.task` và `models/yolov8n.onnx`, nhưng `.railwayignore` cũ bỏ cả `models/`, và `railway up` mặc định còn bỏ mọi thứ trong `.gitignore` (có `models/*.task`, `models/*.onnx`). Nay deploy chạy `railway up --no-gitignore`; `.railwayignore` tự liệt kê mọi thứ không được gửi (`.env*`, database, log, `data/`, `.ai-log/`, `.claude/`, model không dùng, `node_modules`, ...)
+- **Job `deploy`** trong `.github/workflows/ci.yml`: chỉ khi push lên `main`, `needs: [python, frontend, e2e]` (job `template` của khoá học không chặn); `concurrency` để hai lần deploy không chồng nhau; kiểm tra secret / variable trước và báo đúng cái thiếu; tải hai model từ GitHub Release `models-v1` (`gh release download`), rồi `npx @railway/cli@5 up --ci --no-gitignore --service $RAILWAY_SERVICE`. Railway tự build `Dockerfile.railway`, chỉ chuyển sang bản mới khi `/health` trả 200
+- **Hướng dẫn:** `docs/deploy-railway.md` (cấu hình một lần, deploy tay, kiểm tra sau deploy, quay lui)
+- **Sửa kèm:** `_error_site` (`edge_agent/web/bridge.py`) đổi `\` thành `/` trước khi cắt đường dẫn, nên test `test_a_failing_frame_names_the_error_and_its_code_location` pass cả trên Windows; trong Pyodide đường dẫn vốn là `/`, không đổi hành vi
+- **Chưa kiểm:** chưa chạy job `deploy` thật (cần secret); chưa thử `railway up --no-gitignore` với `.railwayignore` mới trên Railway
+- Test: 969 Python pass trên Windows (trước 968 + 1 lỗi do đường dẫn); YAML của CI đọc được, đủ 5 job; `ruff` sạch
