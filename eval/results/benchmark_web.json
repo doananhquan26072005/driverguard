@@ -1,0 +1,154 @@
+{
+ "tr\u01b0\u1edbc M49 (m\u1eb7t t\u1ed5ng h\u1ee3p)": {
+  "date": "06/10/2026",
+  "machine": "arm64, Darwin",
+  "input": "synthetic moving face, 60 s at 30 FPS",
+  "native": {
+   "mean_ms": 0.1795500786198924,
+   "p50_ms": 0.17012500029522926,
+   "p95_ms": 0.2389062356087379,
+   "p99_ms": 0.3060079214628786,
+   "max_ms": 9.649834013544023
+  },
+  "pyodide": {
+   "pyodide": "0.29.3",
+   "node": "v26.9.0",
+   "startup_ms": 1076.257041,
+   "frames": 1500,
+   "mean_ms": 1.5134754999999984,
+   "p50_ms": 1.4725419999999758,
+   "p95_ms": 1.939332999999806,
+   "p99_ms": 2.2688329999996313,
+   "max_ms": 4.132500000000164,
+   "shares": {
+    "json_dumps": 0.005307824249372885,
+    "frame": 1,
+    "runtime_step": 0.1929573669325074,
+    "features": 0.7644488369909721,
+    "head_pose_solve_pnp": 0.6959662953909749,
+    "decision_pipeline": 0.18231513315655776
+   },
+   "project_calls_per_frame": 75.00333333333333
+  },
+  "software": {
+   "Python": "3.12.14",
+   "numpy": "1.26.4",
+   "Pyodide": "0.29.3",
+   "Node": "v26.9.0"
+  }
+ },
+ "tr\u01b0\u1edbc M49 (clip YawDD)": {
+  "date": "06/10/2026",
+  "machine": "arm64, Darwin",
+  "input": "1-FemaleNoGlasses.avi, 1800 frames with a face",
+  "native": {
+   "mean_ms": 0.185969919936421,
+   "p50_ms": 0.18227050895802677,
+   "p95_ms": 0.25189792504534125,
+   "p99_ms": 0.3245520769269205,
+   "max_ms": 0.6354160141199827
+  },
+  "pyodide": {
+   "pyodide": "0.29.3",
+   "node": "v26.9.0",
+   "startup_ms": 1445.624959,
+   "frames": 1500,
+   "mean_ms": 2.035001805999998,
+   "p50_ms": 1.9748749999998836,
+   "p95_ms": 2.698124999999891,
+   "p99_ms": 3.1112080000002607,
+   "max_ms": 7.1533330000002024,
+   "shares": {
+    "json_dumps": 0.0037802821117536947,
+    "frame": 1,
+    "decision_pipeline": 0.13129281611055882,
+    "features": 0.8265866207779883,
+    "head_pose_solve_pnp": 0.7716360862680837,
+    "runtime_step": 0.13956203878730464
+   },
+   "project_calls_per_frame": 101.27466666666666
+  },
+  "software": {
+   "Python": "3.12.14",
+   "numpy": "1.26.4",
+   "Pyodide": "0.29.3",
+   "Node": "v26.9.0"
+  }
+ },
+ "sau M49 (m\u1eb7t t\u1ed5ng h\u1ee3p)": {
+  "date": "06/10/2026",
+  "machine": "arm64, Darwin",
+  "input": "synthetic moving face, 60 s at 30 FPS",
+  "native": {
+   "mean_ms": 0.1552907144262766,
+   "p50_ms": 0.14237499271985143,
+   "p95_ms": 0.21341039537219328,
+   "p99_ms": 0.2765543569694273,
+   "max_ms": 9.895416005747393
+  },
+  "pyodide": {
+   "pyodide": "0.29.3",
+   "node": "v26.9.0",
+   "startup_ms": 1139.420125,
+   "frames": 1500,
+   "mean_ms": 0.5667227746666673,
+   "p50_ms": 0.5578339999999571,
+   "p95_ms": 0.7226250000001073,
+   "p99_ms": 0.8220830000000205,
+   "max_ms": 2.015125000000353,
+   "shares": {
+    "json_dumps": 0.013046362706602444,
+    "frame": 1,
+    "decision_pipeline": 0.17395209830235955,
+    "features": 0.6820418732265161,
+    "runtime_step": 0.20167318427730227,
+    "head_pose_solve_pnp": 0.5016450346726501
+   },
+   "project_calls_per_frame": 9.114666666666666
+  },
+  "software": {
+   "Python": "3.12.14",
+   "numpy": "1.26.4",
+   "Pyodide": "0.29.3",
+   "Node": "v26.9.0"
+  }
+ },
+ "sau M49 (clip YawDD)": {
+  "date": "06/10/2026",
+  "machine": "arm64, Darwin",
+  "input": "1-FemaleNoGlasses.avi, 1800 frames with a face",
+  "native": {
+   "mean_ms": 0.15224301151465625,
+   "p50_ms": 0.1451660064049065,
+   "p95_ms": 0.2126743973349221,
+   "p99_ms": 0.27814833301818,
+   "max_ms": 0.3175410092808306
+  },
+  "pyodide": {
+   "pyodide": "0.29.3",
+   "node": "v26.9.0",
+   "startup_ms": 1326.9447499999999,
+   "frames": 1500,
+   "mean_ms": 0.6780193853333322,
+   "p50_ms": 0.6059999999999945,
+   "p95_ms": 0.8766250000001037,
+   "p99_ms": 3.0174580000000333,
+   "max_ms": 11.01649999999995,
+   "shares": {
+    "json_dumps": 0.011366743936925114,
+    "frame": 1,
+    "features": 0.6974798376228905,
+    "head_pose_solve_pnp": 0.5213501153611239,
+    "decision_pipeline": 0.16795729168358337,
+    "runtime_step": 0.19447542686768296
+   },
+   "project_calls_per_frame": 9.844666666666667
+  },
+  "software": {
+   "Python": "3.12.14",
+   "numpy": "1.26.4",
+   "Pyodide": "0.29.3",
+   "Node": "v26.9.0"
+  }
+ }
+}

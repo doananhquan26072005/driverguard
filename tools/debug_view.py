@@ -122,8 +122,8 @@ def distraction_lines(
 
 def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
     eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
-    if d.eye_source == "cnn":  # block 5 decided: show its probability and why it was called
-        eyes += f" [CNN p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
+    if d.eye_source in ("cnn", "blendshape"):  # block 5 decided: show its score and why it was called
+        eyes += f" [{d.eye_source} p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
     elif d.eye_source == "ear":
         eyes += " [EAR]"
     if f.eye_blink is not None:  # block 3 blendshape: the vote on deep closures (block 7)
