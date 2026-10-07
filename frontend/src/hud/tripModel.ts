@@ -47,7 +47,7 @@ export function suggestionText(code: SuggestionCode, minutes?: number | null): s
   }
 }
 
-const DROWSY_REASONS = ["microsleep", "drowsy_score", "trend", "blink_rate"] as const;
+const DROWSY_REASONS = ["microsleep", "unresponsive", "drowsy_score", "trend", "blink_rate"] as const;
 
 function count(s: TripSummary, reasons: readonly string[]): number {
   return reasons.reduce((n, r) => n + (s.alerts_by_reason[r as keyof TripSummary["alerts_by_reason"]] ?? 0), 0);
@@ -68,6 +68,21 @@ export function driverStory(s: TripSummary): string {
   const said = nags.filter(([n]) => n > 0).map(([n, what]) => `${n} ${what}`);
   parts.push(said.length ? `Có ${said.join(", ")}.` : "Không có lần nhắc nào.");
   return parts.join(" ");
+}
+
+/** Phone time split by how the phone was held (M38, recorded only). "–" for summaries older than it. */
+export function phoneKindText(s: TripSummary): string {
+  if (s.phone_call_s == null || s.phone_text_s == null) return "–";
+  const other = Math.max(0, s.phone_s - s.phone_call_s - s.phone_text_s);
+  const parts = [`${Math.round(s.phone_call_s)} s gọi`, `${Math.round(s.phone_text_s)} s nhắn tin`];
+  if (Math.round(other) > 0) parts.push(`${Math.round(other)} s không rõ`);
+  return parts.join(" / ");
+}
+
+/** Glances away from the road (M38, measured only, never an alert). */
+export function glanceText(s: TripSummary): string {
+  if (s.glances == null || s.off_road_ratio_max == null) return "–";
+  return `${s.glances} lần; lúc nhiều nhất ${Math.round(s.off_road_ratio_max * 100)}% thời gian của cửa sổ đo (chỉ đo, chưa cảnh báo)`;
 }
 
 export const DELIVERY_TEXT: Record<TripDelivery, string> = {

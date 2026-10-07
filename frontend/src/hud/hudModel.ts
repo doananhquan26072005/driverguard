@@ -8,6 +8,8 @@ export type SystemState = "down" | "camera_lost" | "error" | "unavailable" | "st
 
 /** Most urgent first: the headline shows one reason, the others go in the detail line. */
 export const REASON_PRIORITY: readonly Reason[] = [
+  "unresponsive", // the alarm did not wake the driver: the headline says stop now
+  "repeated_l3",
   "microsleep",
   "no_face",
   "phone",
@@ -18,8 +20,32 @@ export const REASON_PRIORITY: readonly Reason[] = [
   "blink_rate",
 ];
 
-const DROWSY_REASONS: ReadonlySet<Reason> = new Set(["microsleep", "drowsy_score", "trend", "blink_rate", "repeated_l1"]);
+const DROWSY_REASONS: ReadonlySet<Reason> = new Set([
+  "microsleep",
+  "unresponsive",
+  "repeated_l3",
+  "drowsy_score",
+  "trend",
+  "blink_rate",
+  "repeated_l1",
+]);
 const DISTRACTION_REASONS: ReadonlySet<Reason> = new Set(["off_road", "phone", "no_face"]);
+
+/** What the driver must hear or see without waiting for the next poll (M50): a new alert, another
+ *  level, monitoring stopping or coming back, the presence question, an enrollment prompt. A source
+ *  that can push (#/live) hands the snapshot over in the frame this key changes. */
+export function urgentKey(snap: HudSnapshot): string {
+  return [
+    snap.level,
+    snap.alerts[0]?.event_id ?? "",
+    snap.unavailable ? (snap.unavailable_reason ?? "unavailable") : "",
+    snap.camera_lost ? "camera_lost" : "",
+    snap.processing_error ? "error" : "",
+    snap.presence?.asking ? "asking" : snap.presence?.unanswered ? "unanswered" : "",
+    snap.enrollment?.status ?? "",
+    snap.enrollment?.hint ?? "",
+  ].join("|");
+}
 
 export function primaryReason(reasons: readonly Reason[]): Reason | null {
   for (const r of REASON_PRIORITY) if (reasons.includes(r)) return r;
@@ -65,6 +91,14 @@ export function enrollStep(e: HudEnrollment | undefined): EnrollStep | null {
  *  failing. Each start of it is announced with a loud sound. */
 export function monitoringStopped(state: SystemState | null): boolean {
   return state === "down" || state === "stale" || state === "error";
+}
+
+/** "Bạn còn ở đó không?" is up (M44): asked, or asked and nobody answered. Only while the driver
+ *  panel would show "unavailable" (not over a lost camera or a dead link). */
+export function presenceUp(state: SystemState | null, snap: HudSnapshot | null): "asking" | "unanswered" | null {
+  if (state !== "unavailable" || !snap?.presence) return null;
+  if (snap.presence.asking) return "asking";
+  return snap.presence.unanswered ? "unanswered" : null;
 }
 
 /** The vehicle link went quiet, driving or parked (M26): the HUD says so and plays a sound. */

@@ -25,9 +25,11 @@ import {
   Coffee,
   Eye,
   EyeOff,
+  Hand,
   Flag,
   FlagTriangleRight,
   Hourglass,
+  PhoneOff,
   LayoutDashboard,
   LoaderCircle,
   Moon,
@@ -54,12 +56,24 @@ import {
   LEVELS,
   REASON_ACTIONS,
   LOW_FPS_TEXT,
+  PHONE_UNAVAILABLE_TEXT,
   SOUND_BLOCKED_TEXT,
   VEHICLE_SIGNAL_LOST_TEXT,
+  PRESENCE_TEXT,
   SYSTEM_TEXT,
+  UNAVAILABLE_CAUSES,
   reasonText,
 } from "../lib/labels";
-import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, VehicleAction } from "../lib/types";
+import type {
+  EnrollStep,
+  HudAlert,
+  HudEnrollment,
+  HudSnapshot,
+  Level,
+  Reason,
+  UnavailableCause,
+  VehicleAction,
+} from "../lib/types";
 import {
   ENROLL_STEP_ORDER,
   enrollReminder,
@@ -67,6 +81,7 @@ import {
   isDistractionReason,
   isDrowsyReason,
   orderedReasons,
+  presenceUp,
   showConsentPanel,
   showEnrollPanel,
   systemState,
@@ -140,6 +155,8 @@ const TONES: Record<Level, Tone> = {
 
 const REASON_ICONS: Partial<Record<Reason, LucideIcon>> = {
   microsleep: EyeOff,
+  unresponsive: EyeOff,
+  repeated_l3: EyeOff,
   drowsy_score: Coffee,
   trend: TrendingUp,
   blink_rate: Activity,
@@ -223,8 +240,10 @@ export default function HudView(props: HudViewProps) {
 
       {showStrip && snap && <VehicleStrip snap={snap} className={`transition-opacity duration-700 ${dim}`} />}
 
-      {system || !snap ? (
-        <SystemPanel state={system ?? "connecting"} edgeUrl={edgeUrl} />
+      {presenceUp(system, snap) ? (
+        <PresencePanel unanswered={presenceUp(system, snap) === "unanswered"} onAnswer={props.onVehicle} />
+      ) : system || !snap ? (
+        <SystemPanel state={system ?? "connecting"} edgeUrl={edgeUrl} cause={snap?.unavailable_reason ?? null} />
       ) : (
         <main
           className={`grid gap-4 p-4 transition-opacity duration-700 sm:gap-6 sm:p-6 ${dim} ${
@@ -333,6 +352,13 @@ function TopBar({
         <span role="status" className={`inline-flex ${CHIP} bg-hud-caution text-hud-on-warning ring-transparent`}>
           <Hourglass aria-hidden className="size-5" />
           <span className="hidden sm:inline">{LOW_FPS_TEXT}</span>
+        </span>
+      )}
+      {/* M50: the phone detector gives no fresh results; eyes and head are still watched. */}
+      {snap?.phone_unavailable && snap.connected && (
+        <span role="status" aria-label={PHONE_UNAVAILABLE_TEXT} className={`inline-flex ${CHIP} bg-hud-caution text-hud-on-warning ring-transparent`}>
+          <PhoneOff aria-hidden className="size-5" />
+          <span className="hidden sm:inline">{PHONE_UNAVAILABLE_TEXT}</span>
         </span>
       )}
       {/* Sound is always on (no mute: alerts must be heard). Amber while the browser blocks it. */}
@@ -839,9 +865,38 @@ function VehicleCard({
   );
 }
 
-function SystemPanel({ state, edgeUrl }: { state: SystemState; edgeUrl: string }) {
+/** "Bạn còn ở đó không?" (M44): the whole panel is one button, hit without aiming. Asked only while the
+ *  camera cannot see the driver, so it never takes the eyes off the road of a driver who is watched. */
+function PresencePanel({ unanswered, onAnswer }: { unanswered: boolean; onAnswer?: (action: VehicleAction) => void }) {
+  return (
+    <main className="grid p-4 sm:p-6">
+      <button
+        type="button"
+        role="alert"
+        onClick={() => onAnswer?.("presence_ok")}
+        className={`grid w-full place-items-center rounded-hud-lg border-0 p-8 text-center font-hud ring-4 ${
+          unanswered ? "bg-hud-danger text-white ring-white" : "bg-hud-surface text-hud-ink ring-hud-system"
+        }`}
+      >
+        <span>
+          <Hand aria-hidden strokeWidth={1.75} className="mx-auto size-24" />
+          <span className="mt-6 block text-[clamp(32px,6vw,72px)] leading-tight font-extrabold text-balance">
+            {PRESENCE_TEXT.title}
+          </span>
+          <span className="mt-4 block text-[clamp(22px,3vw,36px)] font-bold">{PRESENCE_TEXT.tap}</span>
+          <span className="mt-3 block text-hud-body text-pretty opacity-80">
+            {unanswered ? PRESENCE_TEXT.unanswered : PRESENCE_TEXT.detail}
+          </span>
+        </span>
+      </button>
+    </main>
+  );
+}
+
+function SystemPanel({ state, edgeUrl, cause }: { state: SystemState; edgeUrl: string; cause: UnavailableCause | null }) {
   const Icon = SYSTEM_ICONS[state];
-  const text = SYSTEM_TEXT[state];
+  // Unavailable: say what the driver can fix (camera covered, face too dark, ...), not only "no face".
+  const text = state === "unavailable" && cause ? { ...SYSTEM_TEXT[state], detail: UNAVAILABLE_CAUSES[cause].detail } : SYSTEM_TEXT[state];
   const code = "rounded bg-hud-raised px-1.5 py-0.5 text-hud-ink";
   return (
     <main className="grid place-items-center p-4 sm:p-6">

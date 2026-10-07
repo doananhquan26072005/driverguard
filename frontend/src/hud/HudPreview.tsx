@@ -1,8 +1,11 @@
-// #/hud-preview: every HUD state on demand, for design review and screenshots. Fixed
-// snapshots only (no edge agent, no sound played); the live screen stays #/hud.
+// #/hud-preview: every HUD state on demand, for design review, screenshots and the comprehension
+// session of PRD FR-17. Fixed snapshots only (no edge agent, no sound played); the live screen
+// stays #/hud. Every state picked by hand is logged with the tags `simulated` + `forced`
+// (forcedLog.ts); the log stays in this page and in the file the operator downloads.
 import { useEffect, useState } from "react";
 import type { HudAlert, HudSnapshot, Level, Reason } from "../lib/types";
 import { demoTripSummary } from "./demo";
+import { appendForced, forcedEntry, forcedLogFile, type ForcedEntry } from "./forcedLog";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
 import type { HudLink } from "./hudModel";
@@ -24,10 +27,26 @@ const SCENARIOS: Scenario[] = [
   { key: "l1t", label: "L1 xu hướng", level: 1, reasons: ["trend"], patch: { drowsy_score: 41 } },
   { key: "l2o", label: "L2 nhìn lệch", level: 2, reasons: ["off_road"], patch: { distraction_score: 100 } },
   { key: "l2p", label: "L2 điện thoại", level: 2, reasons: ["phone", "off_road"], patch: { distraction_score: 100 } },
-  { key: "off", label: "Tạm ngưng (mất mặt)", patch: { unavailable: true } },
+  { key: "off", label: "Tạm ngưng (mất mặt)", patch: { unavailable: true, unavailable_reason: "no_face" } },
+  { key: "offc", label: "Tạm ngưng (che camera)", patch: { unavailable: true, unavailable_reason: "camera_blocked" } },
+  { key: "offd", label: "Tạm ngưng (mặt tối)", patch: { unavailable: true, unavailable_reason: "low_light" } },
+  { key: "offg", label: "Tạm ngưng (chói)", patch: { unavailable: true, unavailable_reason: "glare" } },
+  { key: "offb", label: "Tạm ngưng (ảnh mờ)", patch: { unavailable: true, unavailable_reason: "blur" } },
+  {
+    key: "ask",
+    label: "Bạn còn ở đó không?",
+    patch: { unavailable: true, unavailable_reason: "no_face", presence: { asking: true, remaining_s: 8, unanswered: false } },
+  },
+  {
+    key: "ask2",
+    label: "Không trả lời",
+    patch: { unavailable: true, unavailable_reason: "no_face", presence: { asking: false, remaining_s: 0, unanswered: true } },
+  },
+  { key: "l3u", label: "L3 không phản ứng", level: 3, reasons: ["unresponsive", "microsleep"], patch: { drowsy_score: 71 } },
   { key: "mute", label: "Chưa có tiếng", soundBlocked: true },
   { key: "err", label: "Lỗi xử lý", patch: { processing_error: true } },
   { key: "slow", label: "Máy chậm", patch: { low_fps: true } },
+  { key: "nophone", label: "Mất dò điện thoại", patch: { phone_unavailable: true } },
   { key: "l3", label: "L3 ngủ gật", level: 3, reasons: ["microsleep"], patch: { drowsy_score: 71 } },
   {
     key: "en0",
@@ -119,6 +138,7 @@ export default function HudPreview() {
   const [since, setSince] = useState(() => Date.now() / 1000);
   const [now, setNow] = useState(() => Date.now() / 1000);
   const [toast, setToast] = useState<string | null>(null);
+  const [forced, setForced] = useState<ForcedEntry[]>([]); // FR-17: states set by hand, never sent anywhere
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now() / 1000), 250);
@@ -133,8 +153,18 @@ export default function HudPreview() {
   const scenario = SCENARIOS.find((s) => s.key === key) ?? SCENARIOS[0];
   const snap = snapshotFor(scenario, night, now, since);
   const pick = (k: string) => {
+    const label = SCENARIOS.find((s) => s.key === k)?.label ?? k;
+    setForced((log) => appendForced(log, forcedEntry(k, label, key, night)));
     setKey(k);
     setSince(Date.now() / 1000);
+  };
+  const downloadForced = () => {
+    const url = URL.createObjectURL(new Blob([forcedLogFile(forced)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `driverguard-forced-states-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -186,6 +216,15 @@ export default function HudPreview() {
           className="rounded-lg border-0 bg-transparent px-2.5 py-1.5 text-white ring-1 ring-white/30"
         >
           {night ? "Đêm" : "Ngày"}
+        </button>
+        <button
+          type="button"
+          onClick={downloadForced}
+          disabled={forced.length === 0}
+          title="Nhật ký các trạng thái đã ép tay (tag simulated + forced). Không gửi lên máy chủ, không tính vào số liệu."
+          className="rounded-lg border-0 bg-transparent px-2.5 py-1.5 text-white ring-1 ring-white/30 disabled:opacity-40"
+        >
+          Tải nhật ký ép tay ({forced.length})
         </button>
       </nav>
     </>

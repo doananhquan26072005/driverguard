@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TripSummary } from "../lib/types";
-import { shownStep } from "../live/agent";
-import { DELIVERY_TEXT, driverStory, formatDuration, suggestionText, zoneOf } from "./tripModel";
+import { loadingStep } from "../live/agent";
+import { DELIVERY_TEXT, driverStory, formatDuration, glanceText, phoneKindText, suggestionText, zoneOf } from "./tripModel";
 
 function trip(over: Partial<TripSummary> = {}): TripSummary {
   return {
@@ -80,10 +80,32 @@ describe("trip summary words", () => {
 
 describe("#/live start-up steps", () => {
   it("shows two steps, the downloads as one with its own progress", () => {
-    expect(shownStep("camera")).toEqual({ step: "camera", progress: 0 });
-    expect(shownStep("python")).toEqual({ step: "prepare", progress: 0 });
-    expect(shownStep("phone").step).toBe("prepare");
-    expect(shownStep("phone").progress).toBeCloseTo(2 / 3);
-    expect(shownStep("ready")).toEqual({ step: "ready", progress: 1 });
+    expect(loadingStep(false, 0, 3)).toEqual({ step: "camera", progress: 0 });
+    expect(loadingStep(true, 0, 3)).toEqual({ step: "prepare", progress: 0 });
+    expect(loadingStep(true, 2, 3).progress).toBeCloseTo(2 / 3);
+  });
+
+  it("the downloads run behind the camera question (M50): done ones show once the camera is on", () => {
+    expect(loadingStep(false, 3, 3)).toEqual({ step: "camera", progress: 0 }); // all loaded, still asking
+    expect(loadingStep(true, 3, 3)).toEqual({ step: "prepare", progress: 1 });
+  });
+});
+
+describe("block 8 measurements in the trip report (M38)", () => {
+  it("splits phone time into call / text / unknown", () => {
+    expect(phoneKindText(trip({ phone_s: 20, phone_call_s: 12, phone_text_s: 5 }))).toBe("12 s gọi / 5 s nhắn tin / 3 s không rõ");
+    expect(phoneKindText(trip({ phone_s: 8, phone_call_s: 0, phone_text_s: 8 }))).toBe("0 s gọi / 8 s nhắn tin");
+  });
+
+  it("says the glances are measured only", () => {
+    const text = glanceText(trip({ glances: 14, off_road_ratio_max: 0.62 }));
+    expect(text).toContain("14 lần");
+    expect(text).toContain("62%");
+    expect(text).toContain("chưa cảnh báo");
+  });
+
+  it("shows a dash for summaries stored before M38", () => {
+    expect(phoneKindText(trip())).toBe("–");
+    expect(glanceText(trip())).toBe("–");
   });
 });

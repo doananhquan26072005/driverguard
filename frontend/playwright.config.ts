@@ -12,7 +12,7 @@ const DB = `frontend/${CACHE}/e2e.db`;
 export default defineConfig({
   testDir: "e2e",
   testMatch: "**/*.e2e.ts", // not *.test.ts: those are vitest's
-  timeout: 240_000, // Pyodide + numpy + OpenCV download (~60 MB) on a cold browser profile
+  timeout: 240_000, // Pyodide + numpy download on a cold browser profile
   expect: { timeout: 20_000 },
   workers: 1,
   retries: process.env.CI ? 1 : 0,

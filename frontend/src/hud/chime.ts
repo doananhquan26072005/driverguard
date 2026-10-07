@@ -34,7 +34,8 @@ export type SoundKind =
   | "monitoring_restored"
   | "vehicle_signal_lost"
   | "vehicle_signal_restored"
-  | "monitoring_stopped";
+  | "monitoring_stopped"
+  | "presence";
 
 export interface Note {
   at: number; // seconds from the start of the sound
@@ -49,6 +50,9 @@ export interface Sound {
   notes: Note[];
 }
 
+/** "Bạn còn ở đó không?" is repeated this often until it is answered (M44). */
+export const PRESENCE_REPEAT_S = 2.0;
+
 /** L3 siren is repeated this often while the driver's eyes are still closed. */
 export const ALARM_REPEAT_S = 1.5;
 
@@ -62,6 +66,7 @@ const KIND_OF_REASON: Partial<Record<Reason, SoundKind>> = {
   blink_rate: "drowsy",
   trend: "trend",
   microsleep: "microsleep",
+  unresponsive: "microsleep",
   off_road: "off_road",
   phone: "phone",
   no_face: "no_face",
@@ -99,6 +104,8 @@ function notesFor(kind: SoundKind, level: Level): Note[] {
       return seq([440, 660], 0.18, 0.25, "sine");
     case "monitoring_stopped":
       return seq([587, 440, 294], 0.32, 0.3, "sawtooth");
+    case "presence": // a question: two rising pairs
+      return [...seq([523, 784], 0.16, 0.16, "triangle"), ...seq([523, 784], 0.16, 0.16, "triangle", 0.5)];
   }
 }
 
@@ -117,11 +124,12 @@ export type SystemSoundKind =
   | "monitoring_restored"
   | "vehicle_signal_lost"
   | "vehicle_signal_restored"
-  | "monitoring_stopped";
+  | "monitoring_stopped"
+  | "presence";
 
 export function systemSound(kind: SystemSoundKind): Sound {
   const loud =
-    kind === "camera_lost" || kind === "monitoring_unavailable" || kind === "vehicle_signal_lost" || kind === "monitoring_stopped";
+    kind === "camera_lost" || kind === "monitoring_unavailable" || kind === "vehicle_signal_lost" || kind === "monitoring_stopped" || kind === "presence";
   return { kind, gain: loud ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
 }
 

@@ -2,8 +2,27 @@ import { describe, expect, it } from "vitest";
 import { ALARM_REPEAT_S, alertSound, armAudio, play, systemSound } from "../hud/chime";
 import { DEMO_CYCLE_S, demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
 import { ago, changedValues, clockText, dayKey, dayRange, formatPercent, query, rangeStart } from "./format";
-import { ENROLL_CONSENT, fleetStateText, policyNote, reasonText, REASON_ACTIONS, RETENTION_DAYS } from "./labels";
-import { fleetCounts, sortFleet } from "../dashboard/FleetView";
+import {
+  auditActionText,
+  auditScopeText,
+  ENROLL_CONSENT,
+  EVENT_TAGS,
+  fleetStateText,
+  fleetVersionText,
+  modelsText,
+  perfDetail,
+  perfLines,
+  perfText,
+  policyNote,
+  eventReasonText,
+  reasonText,
+  unavailableCausesText,
+  REASON_ACTIONS,
+  RETENTION_DAYS,
+} from "./labels";
+import { fleetCounts, newUrgentIds, sortFleet, urgentDevices } from "../dashboard/FleetView";
+import { parseDeviceList } from "../dashboard/ThresholdsView";
+import { deletionStatusText, exportFileName } from "../dashboard/MyDataCard";
 import { primaryReason } from "../hud/hudModel";
 import type { FleetDevice } from "./types";
 import { linearScale, nearestIndex, niceTicks, timeTicks } from "./scale";
@@ -188,6 +207,49 @@ describe("fleet overview (M33)", () => {
     expect(dayRange("hôm nay")).toBeNull();
   });
 
+  it("lists vehicles that need attention now first, newest event first, and rings once per event (M44)", () => {
+    const urgent = (ts: string, id: string | null) => ({ ts, type: "drowsiness" as const, level: 3 as const, reasons: ["unresponsive" as const], event_id: id });
+    const list = [
+      device({ device_id: "a" }),
+      device({ device_id: "b", status: "offline" }),
+      device({ device_id: "c", urgent: urgent("2026-10-06T08:00:00Z", "e1") }),
+      device({ device_id: "d", urgent: urgent("2026-10-06T08:01:00Z", null) }),
+    ];
+    expect(sortFleet(list).map((d) => d.device_id)).toEqual(["c", "d", "b", "a"]);
+    expect(urgentDevices(list).map((d) => d.device_id)).toEqual(["d", "c"]);
+    expect(fleetCounts(list).urgent).toBe(2);
+    expect(newUrgentIds(list, new Set())).toEqual(["d:2026-10-06T08:01:00Z", "e1"]);
+    expect(newUrgentIds(list, new Set(["e1", "d:2026-10-06T08:01:00Z"]))).toEqual([]);
+    expect(reasonText("unresponsive")).toBe("Nhắm mắt không phản ứng với còi");
+    expect(reasonText("no_answer")).toContain("Bạn còn ở đó không?");
+  });
+
+  it("names a driver's export file and says what happened to a deletion request (M48)", () => {
+    expect(exportFileName("drv-001", new Date("2026-10-06T03:00:00Z"))).toBe("driverguard-drv-001-2026-10-06.json");
+    expect(exportFileName("../x y", new Date("2026-10-06T03:00:00Z"))).toBe("driverguard-.._x_y-2026-10-06.json");
+    const req = { id: 1, driver_id: "drv-001", requested_by: "an", requested_at: "2026-10-06T03:00:00Z", handled_by: null, handled_at: null };
+    expect(deletionStatusText({ ...req, status: "pending", reason: null })).toBe("Đang chờ quản trị xử lý");
+    expect(deletionStatusText({ ...req, status: "refused", reason: "incident_open" })).toContain("Đang có sự cố");
+    expect(deletionStatusText({ ...req, status: "done", reason: null })).toBe("Đã xoá");
+    expect(auditActionText("refuse_deletion")).toBe("Từ chối yêu cầu xoá dữ liệu");
+  });
+
+  it("reads the trial devices an engineer typed (M47)", () => {
+    expect(parseDeviceList(" cam-001, cam-007;web-an  cam-001 ")).toEqual(["cam-001", "cam-007", "web-an"]);
+    expect(parseDeviceList("  ")).toEqual([]);
+    expect(reasonText("config_applied")).toBe("Đã áp bộ ngưỡng mới");
+    expect(auditActionText("rollout_thresholds")).toBe("Áp phiên bản ngưỡng cho cả đội");
+  });
+
+  it("names why monitoring is unavailable (M43)", () => {
+    expect(eventReasonText("monitoring_unavailable", { cause: "camera_blocked" })).toBe("Tạm ngưng giám sát: camera bị che");
+    expect(eventReasonText("monitoring_unavailable", {})).toBe("Tạm ngưng giám sát");
+    expect(eventReasonText("monitoring_unavailable", { cause: "made_up" })).toBe("Tạm ngưng giám sát");
+    expect(eventReasonText("phone", { cause: "glare" })).toBe("Dùng điện thoại");
+    expect(unavailableCausesText({ low_light: 40.2, camera_blocked: 12, glare: 0 })).toBe("mặt quá tối 40 s, camera bị che 12 s");
+    expect(unavailableCausesText(undefined)).toBe("");
+  });
+
   it("says what the vehicle is doing in words, never a raw code", () => {
     expect(fleetStateText(device({}))).toBe("Đang giám sát · xe đang chạy");
     expect(fleetStateText(device({ moving: false }))).toBe("Đang giám sát · xe đang đỗ");
@@ -206,7 +268,7 @@ describe("fleet overview (M33)", () => {
       device({ device_id: "d", status: "never" }),
     ];
     expect(sortFleet(list).map((d) => d.device_id)).toEqual(["a", "c", "b", "d"]);
-    expect(fleetCounts(list)).toEqual({ total: 4, online: 1, offline: 1, alerts: 4 });
+    expect(fleetCounts(list)).toEqual({ total: 4, online: 1, offline: 1, alerts: 4, urgent: 0 });
   });
 });
 
@@ -233,5 +295,89 @@ describe("data policy texts (M37)", () => {
     expect(note).toContain("tự xoá sau 60 ngày");
     expect(note).toContain("tự xoá sau 365 ngày");
     expect(policyNote({ retention_events_days: 0, retention_summaries_days: 365 })).toContain("chưa đặt thời hạn xoá");
+  });
+});
+
+describe("loop timings (M49)", () => {
+  const perf = {
+    samples: 300,
+    stages_ms: {
+      capture: { p50: 1.2, p95: 2, max: 9 },
+      landmarks: { p50: 8, p95: 11.5, max: 30 },
+      python: { p50: 0.6, p95: 0.9, max: 4 },
+      total: { p50: 10.5, p95: 14, max: 41 },
+      yolo: { p50: 166, p95: 170, max: 181 },
+      yolo_age: { p50: 250, p95: 340, max: 380 },
+    },
+    landmarks_delegate: "GPU" as const,
+    yolo_threads: 1,
+    camera_delivered: 303,
+    camera_dropped: 3,
+  };
+
+  it("one number in the fleet table, every stage in its tooltip", () => {
+    expect(perfText(null)).toBe("–");
+    expect(perfText(perf)).toBe("p95 14 ms");
+    expect(perfDetail(null)).toBe("Thiết bị không gửi số đo tốc độ");
+    const detail = perfDetail(perf).split("\n");
+    expect(detail[0]).toBe("Cả frame: p50 10,5 · p95 14 · max 41 ms");
+    expect(detail).toContain("Model khuôn mặt chạy trên GPU");
+    expect(perfDetail({ ...perf, landmarks_delegate: "CPU", gpu: "software" })).toContain("WebGL: vẽ bằng phần mềm (không có GPU dùng được)");
+    expect(detail).toContain("Model điện thoại: 1 luồng");
+    expect(detail).toContain("Frame camera bị bỏ: 3 / 303");
+  });
+
+  it("short lines for the camera card of #/live", () => {
+    expect(perfLines(perf).split("\n")).toEqual([
+      "Frame p50 10,5 · p95 14 ms",
+      "Camera 2 · mặt 11,5 (GPU) · xử lý 0,9 ms",
+      "ĐT 170 ms · tuổi 340 ms · 1 luồng",
+      "Bỏ 3 / 303 frame",
+    ]);
+    const bare = { ...perf, stages_ms: { total: perf.stages_ms.total }, landmarks_delegate: null, camera_delivered: null, camera_dropped: null };
+    expect(perfLines(bare).split("\n")).toEqual(["Frame p50 10,5 · p95 14 ms", "Camera – · mặt – · xử lý – ms"]);
+  });
+});
+
+describe("versions, tags and the access log (M41)", () => {
+  const versions = { app: "3.0.0", thresholds_version: 2, thresholds_ignored: false, models: { phone: "0123456789ab" } };
+
+  it("says what a vehicle runs and when it is behind", () => {
+    expect(fleetVersionText({ versions: null })).toBe("–");
+    expect(fleetVersionText({ versions, thresholds_current: true, thresholds_latest: 2 })).toBe("app 3.0.0 · ngưỡng v2");
+    expect(fleetVersionText({ versions, thresholds_current: false, thresholds_latest: 3 })).toBe(
+      "app 3.0.0 · ngưỡng v2 (mới nhất: v3)",
+    );
+    const local = { ...versions, thresholds_version: 0 };
+    expect(fleetVersionText({ versions: local, thresholds_current: true, thresholds_latest: 0 })).toBe("app 3.0.0 · ngưỡng gốc");
+    const refused = { ...local, thresholds_ignored: true };
+    expect(fleetVersionText({ versions: refused, thresholds_current: false, thresholds_latest: 3 })).toContain("bỏ qua bộ ngưỡng từ xa");
+  });
+
+  it("lists model fingerprints in words", () => {
+    expect(modelsText(versions)).toBe("Model điện thoại: 0123456789ab");
+    expect(modelsText(null)).toBe("Thiết bị không gửi mã model");
+  });
+
+  it("has words for both event tags", () => {
+    expect(EVENT_TAGS.simulated.title).toBe("mô phỏng");
+    expect(EVENT_TAGS.forced.hint).toContain("không tính vào bất kỳ số liệu nào");
+  });
+
+  it("puts access-log rows in words", () => {
+    expect(auditActionText("read_events")).toBe("Xem nhật ký sự kiện");
+    expect(auditActionText("something_new")).toBe("something_new");
+    expect(auditScopeText({ driver_id: "drv-001", device_id: null, action: "read_events" })).toBe("Tài xế drv-001");
+    expect(auditScopeText({ driver_id: null, device_id: null, action: "read_stats" })).toBe("Cả đội xe");
+    expect(auditScopeText({ driver_id: null, device_id: null, action: "update_thresholds" })).toBe("–");
+    expect(auditScopeText({ driver_id: "drv-001", device_id: "cam-001", action: "read_trip_report" })).toBe(
+      "Tài xế drv-001 (thiết bị cam-001)",
+    );
+  });
+
+  it("tells every dashboard user that reads are logged", () => {
+    const note = policyNote({ retention_events_days: 60, retention_summaries_days: 365, retention_access_log_days: 365 });
+    expect(note).toContain("nhật ký truy cập");
+    expect(policyNote({ retention_events_days: 60, retention_summaries_days: 365 })).not.toContain("nhật ký truy cập");
   });
 });

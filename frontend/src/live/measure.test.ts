@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { bbox, channelDiff, concatFaces, largestFace, letterboxGeometry, meanLuma, toChw, toPixels } from "./measure";
+import {
+  bbox,
+  channelDiff,
+  concatFaces,
+  largestFace,
+  letterboxGeometry,
+  lumaSpread,
+  meanLuma,
+  sharpness,
+  toChw,
+  toPixels,
+} from "./measure";
 
 function image(w: number, h: number, rgb: (x: number, y: number) => [number, number, number]) {
   const px = new Uint8ClampedArray(w * h * 4);
@@ -62,5 +73,31 @@ describe("faces", () => {
     const b = new Float32Array([4, 5, 6]);
     expect(Array.from(concatFaces([a, b]))).toEqual([1, 2, 3, 4, 5, 6]);
     expect(concatFaces([]).length).toBe(0);
+  });
+});
+
+describe("frame quality numbers (M43)", () => {
+  const gray = (values: number[]) => new Uint8ClampedArray(values.flatMap((v) => [v, v, v, 255]));
+
+  it("a flat image has no spread, a checkerboard has", () => {
+    const flat = lumaSpread(gray(Array(64).fill(7)), 8, 8);
+    expect(flat.mean).toBeCloseTo(7, 3);
+    expect(flat.std).toBeCloseTo(0, 3);
+    const px = gray(Array.from({ length: 64 }, (_, i) => ((i % 8) + Math.floor(i / 8)) % 8 < 4 ? 0 : 200));
+    expect(lumaSpread(px, 8, 8).std).toBeGreaterThan(50);
+  });
+
+  it("sharpness is the Laplacian variance inside the box: 0 when flat, high on edges, null when tiny", () => {
+    expect(sharpness(gray(Array(64).fill(90)), 8, 8, [0, 0, 8, 8])).toBeCloseTo(0, 3);
+    const edges = gray(Array.from({ length: 64 }, (_, i) => (i % 2 ? 255 : 0)));
+    expect(sharpness(edges, 8, 8, [0, 0, 8, 8])!).toBeGreaterThan(1000);
+    expect(sharpness(edges, 8, 8, [0, 0, 2, 2])).toBeNull();
+  });
+
+  it("matches the Python definition on a known patch", () => {
+    // 3 x 3 with a bright centre: one Laplacian value (-4 * 10), variance 0.
+    expect(sharpness(gray([0, 0, 0, 0, 10, 0, 0, 0, 0]), 3, 3, [0, 0, 3, 3])).toBeCloseTo(0, 5);
+    // 4 x 3: two interior pixels, Laplacians -40 and +10 -> variance 625.
+    expect(sharpness(gray([0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0]), 4, 3, [0, 0, 4, 3])).toBeCloseTo(625, 3);
   });
 });

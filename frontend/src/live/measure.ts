@@ -42,6 +42,54 @@ export function channelDiff(px: Uint8ClampedArray, width: number, height: number
   return n ? (bg / n + gr / n) / 2 : 0;
 }
 
+/** Block 6 quality stage: mean and spread (std) of the whole frame's luminance on every 4th pixel
+ *  (edge_agent/perception/quality.py SCENE_STRIDE). A covered lens gives a dark or flat image. */
+export function lumaSpread(px: Uint8ClampedArray, width: number, height: number): { mean: number; std: number } {
+  let sum = 0;
+  let sq = 0;
+  let n = 0;
+  for (let y = 0; y < height; y += 4) {
+    for (let x = 0; x < width; x += 4) {
+      const v = luma(px, (y * width + x) * 4);
+      sum += v;
+      sq += v * v;
+      n++;
+    }
+  }
+  if (!n) return { mean: 0, std: 0 };
+  const mean = sum / n;
+  return { mean, std: Math.sqrt(Math.max(sq / n - mean * mean, 0)) };
+}
+
+/** Block 6 quality stage: variance of the 4-neighbour Laplacian of the luminance inside the box
+ *  (quality.laplacian_variance); null when the box is smaller than 3 x 3. Low = blurred. */
+export function sharpness(px: Uint8ClampedArray, width: number, height: number, box: Box): number | null {
+  const x1 = Math.max(Math.floor(box[0]), 0);
+  const y1 = Math.max(Math.floor(box[1]), 0);
+  const x2 = Math.min(Math.ceil(box[2]), width);
+  const y2 = Math.min(Math.ceil(box[3]), height);
+  const w = x2 - x1;
+  const h = y2 - y1;
+  if (w < 3 || h < 3) return null;
+  const y = new Float32Array(w * h);
+  for (let r = 0; r < h; r++) {
+    for (let c = 0; c < w; c++) y[r * w + c] = luma(px, ((y1 + r) * width + x1 + c) * 4);
+  }
+  let sum = 0;
+  let sq = 0;
+  for (let r = 1; r < h - 1; r++) {
+    for (let c = 1; c < w - 1; c++) {
+      const i = r * w + c;
+      const lap = y[i - w] + y[i + w] + y[i - 1] + y[i + 1] - 4 * y[i];
+      sum += lap;
+      sq += lap * lap;
+    }
+  }
+  const n = (w - 2) * (h - 2);
+  const mean = sum / n;
+  return sq / n - mean * mean;
+}
+
 /** Same geometry as phone_detector.letterbox: resize keeping aspect, pad to size x size. */
 export function letterboxGeometry(width: number, height: number, size: number) {
   const scale = Math.min(size / width, size / height);

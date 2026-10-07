@@ -110,6 +110,18 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await expect(page.getByText("Chế độ dùng thử: bản tổng kết không được gửi đi.")).toBeVisible();
 });
 
+test("no face in view: the frames still run in Python, monitoring pauses, nothing fails", async ({ page }) => {
+  // M50: a frame without a face used to raise in Pyodide (a JS null is not Python's None there).
+  await stubSimulator(page);
+  await page.addInitScript(() => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = { faces: [], blink: [], brow: [] }));
+  await startLive(page);
+  await page.waitForTimeout(3_000);
+  const s = (await state(page)) as State & { error?: string; processing_error?: boolean; fps?: number };
+  expect(s.error).toBeUndefined();
+  expect(s.processing_error).toBe(false);
+  expect(s.fps ?? 0).toBeGreaterThan(5);
+});
+
 test("signed-in driver: change of driver enrolls again; the manager gets the trip report", async ({ page, browser }) => {
   await stubSimulator(page);
   await obedientDriver(page);
@@ -142,6 +154,8 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await endTrip(page);
   await expect(page.getByText("Đã gửi bản tổng kết cho quản lý đội xe.")).toBeVisible();
   await fleetShows("Đã kết thúc chuyến"); // an ended trip, not a lost vehicle
+  // M49: the page timed its own loop and the heartbeat carried the numbers to the fleet overview.
+  await expect(vehicle).toContainText(/p95 [\d,.]+ ms/);
 
   await manager.getByRole("tab", { name: /Báo cáo chuyến đi/ }).click();
   const row = manager.getByRole("row").filter({ hasText: "drv-001" });

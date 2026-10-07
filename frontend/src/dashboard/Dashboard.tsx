@@ -3,6 +3,8 @@ import { type EventFilters, getEvents, getPolicy, getStats, getThresholds, getTr
 import { RANGES, type RangeKey } from "../lib/format";
 import { LEVELS, policyNote, ROLES } from "../lib/labels";
 import type { EventRecord, Session, Stats, Thresholds } from "../lib/types";
+import AuditView from "./AuditView";
+import { DeletionRequestsCard, MyDataCard } from "./MyDataCard";
 import EventLog from "./EventLog";
 import FleetView from "./FleetView";
 import Login from "./Login";
@@ -11,7 +13,7 @@ import ThresholdsView from "./ThresholdsView";
 import TimelineView from "./TimelineView";
 import TripReports from "./TripReports";
 
-type Tab = "events" | "fleet" | "timeline" | "reports" | "thresholds";
+type Tab = "events" | "fleet" | "timeline" | "reports" | "thresholds" | "audit";
 const REFRESH_MS = 15_000;
 const DEFAULT_L1 = 40; // config/thresholds.yaml risk.drowsy.l1 / l2
 const DEFAULT_L2 = 70;
@@ -103,6 +105,8 @@ export default function Dashboard() {
     { key: "timeline", label: "Timeline mệt mỏi" },
     { key: "reports", label: unreviewed ? `Báo cáo chuyến đi (${unreviewed} mới)` : "Báo cáo chuyến đi" },
     ...(canReadThresholds ? [{ key: "thresholds" as Tab, label: "Ngưỡng" }] : []),
+    ...(session.role === "admin" ? [{ key: "audit" as Tab, label: "Nhật ký truy cập" }] : []),
+    ...(session.role === "driver" ? [{ key: "audit" as Tab, label: "Dữ liệu của tôi" }] : []),
   ];
   const drivers = [...new Set(events.map((e) => e.driver_id).filter(Boolean))] as string[];
 
@@ -199,7 +203,7 @@ export default function Dashboard() {
             {error}
           </p>
         )}
-        {tab !== "fleet" && <StatsTiles stats={stats} />}
+        {tab !== "fleet" && tab !== "audit" && <StatsTiles stats={stats} />}
         {tab === "fleet" && canReadThresholds && <FleetView session={session} refreshKey={refreshKey} />}
 
         {tab === "events" && (
@@ -231,6 +235,13 @@ export default function Dashboard() {
         )}
         {tab === "thresholds" && canReadThresholds && (
           <ThresholdsView session={session} stats={stats} onSaved={setThresholds} />
+        )}
+        {tab === "audit" && (session.role === "admin" || session.role === "driver") && (
+          <>
+            {session.role === "driver" && <MyDataCard session={session} />}
+            {session.role === "admin" && <DeletionRequestsCard session={session} refreshKey={refreshKey} />}
+            <AuditView session={session} range={filters.range} refreshKey={refreshKey} />
+          </>
         )}
         {policy && <p className="muted small">{policy}</p>}
       </main>

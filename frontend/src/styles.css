@@ -162,3 +162,16 @@ legend { font-weight: 600; padding: 0 6px 0 0; }
 .key-line { width: 16px; height: 2px; background: var(--series-1); border-radius: 1px; }
 .key-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--lv); }
 .key-dot.hollow { background: transparent; border: 2px solid var(--ink-2); }
+
+/* Fleet view, live part (M44): vehicles that need a manager now. */
+.card.urgent {
+  border: 2px solid var(--critical);
+}
+.urgent-list {
+  margin: 0;
+  padding: 0 0 0 20px;
+  line-height: 1.9;
+}
+tr.row-urgent td {
+  background: color-mix(in srgb, var(--critical) 10%, transparent);
+}

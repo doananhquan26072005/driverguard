@@ -5,8 +5,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Camera, Check, Gauge, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
 import HudScreen from "../hud/HudScreen";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
+import { perfDetail, perfLines } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
-import { LiveAgent, STEPS, shownStep, type LiveStats, type Step } from "./agent";
+import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
 
 const BTN =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-0 px-5 text-hud-label font-semibold transition-colors disabled:opacity-50";
@@ -232,7 +233,7 @@ function LoginBox({ onLogin, onGuest }: { onLogin: (s: Session) => void; onGuest
 
 function Progress({ step }: { step: Step }) {
   const order = Object.keys(STEPS) as (keyof typeof STEPS)[];
-  const shown = shownStep(step);
+  const shown = step;
   const current = shown.step === "ready" ? order.length : order.indexOf(shown.step);
   return (
     <ol className="m-0 grid list-none gap-2 p-0" aria-live="polite">
@@ -313,6 +314,11 @@ function SelfView({
                 Yaw {fmt(m?.yaw, 0)}° · Pitch {fmt(m?.pitch, 0)}° · ĐT{" "}
                 {stats?.phoneOn ? `${m?.phone ? "có" : "không"} (${fmt(stats.yoloMs, 0)} ms)` : "tắt"}
               </span>
+              {stats?.perf?.stages_ms.total && (
+                <span className="whitespace-pre-line text-white/70" title={perfDetail(stats.perf)}>
+                  {perfLines(stats.perf)}
+                </span>
+              )}
               {stats?.enrollment && stats.enrollment.status !== "off" && (
                 <span className="text-white/70">{enrollText(stats.enrollment)}</span>
               )}
