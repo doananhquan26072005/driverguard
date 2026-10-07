@@ -165,6 +165,13 @@ export function perfDetail(p: PerfSnapshot | null | undefined): string {
   return lines.join("\n");
 }
 
+/** Start-up of #/live (M67), one line for the same tooltip: seconds from "start" to each part being ready. */
+export function startupText(s: { camera: number | null; python: number | null; face_model: number | null; phone_model: number | null; first_frame: number | null } | null | undefined): string {
+  if (!s || s.first_frame == null) return "";
+  const sec = (v: number | null) => (v == null ? "–" : (v / 1000).toFixed(1).replace(".", ","));
+  return `Khởi động ${sec(s.first_frame)} s (camera ${sec(s.camera)} · Python ${sec(s.python)} · model mặt ${sec(s.face_model)} · model điện thoại ${sec(s.phone_model)})`;
+}
+
 /** ... and the short form for the camera card of #/live ("Chi tiết kỹ thuật"): p95 per stage, one line each. */
 export function perfLines(p: PerfSnapshot): string {
   const s = p.stages_ms;

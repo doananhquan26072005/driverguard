@@ -24,7 +24,7 @@ import {
 import { frameTimeMs, type FrameMetadata } from "./frameTime";
 import { chooseDelegate, gpuKind, webglRenderer, type GpuKind } from "./gpu";
 import { urgentKey } from "../hud/hudModel";
-import { PerfWindow, type PerfSnapshot } from "./perf";
+import { PerfWindow, type PerfSnapshot, type PerfTotals } from "./perf";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
 
 // Pinned versions: the Python side is tested against this Pyodide (numpy, pyyaml). No OpenCV since M45
@@ -82,6 +82,17 @@ export interface LiveStats {
   enrollment: HudEnrollment | null;
   lastError: string | null; // M28: last frame error "Type · file:line" (code location only)
   perf: PerfSnapshot | null; // M49: time per stage of the loop over the last seconds
+  totals: PerfTotals | null; // M67: counted since the loop started (long runs)
+  startup: StartupMs | null; // M67: how long starting took
+}
+
+/** Start-up, in ms from the call to `LiveAgent.start` to each part being ready (M67; local only). */
+export interface StartupMs {
+  camera: number | null; // the camera stream plays
+  python: number | null; // Pyodide, its packages and the agent
+  face_model: number | null; // MediaPipe created
+  phone_model: number | null; // YOLO session ready; null = no detector
+  first_frame: number | null; // the first frame went through the whole loop
 }
 
 export interface Measures {
@@ -202,7 +213,7 @@ export class LiveAgent implements HudSource {
   /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
   readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -238,6 +249,7 @@ export class LiveAgent implements HudSource {
     private delegate: PerfSnapshot["landmarks_delegate"] = null, // what MediaPipe was created with
     private yoloThreads: number | null = null,
     private gpu: GpuKind | null = null, // what draws WebGL here (M51)
+    private startup: { t0: number; ms: StartupMs } | null = null, // M67
   ) {
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloCtx = this.yoloCanvas.getContext("2d", { willReadFrequently: true })!;
@@ -251,6 +263,9 @@ export class LiveAgent implements HudSource {
   ): Promise<LiveAgent> {
     // M50: Python, the face model and the phone model do not depend on each other or on the camera,
     // so all three load while the browser asks for the camera instead of one after the other.
+    const t0 = performance.now();
+    const startup: StartupMs = { camera: null, python: null, face_model: null, phone_model: null, first_frame: null };
+    const mark = (part: keyof StartupMs) => void (startup[part] = Math.round(performance.now() - t0));
     const parts = E2E ? 1 : 3;
     let done = 0;
     let cameraOn = false;
@@ -286,11 +301,13 @@ export class LiveAgent implements HudSource {
       video.playsInline = true;
       await video.play();
       cameraOn = true;
+      mark("camera");
       report();
       const { agent, settings } = await python;
+      mark("python");
       agent.expect_phone(!E2E); // also when YOLO fails to load: then Python reports it (M50)
       if (E2E) {
-        const live = new LiveAgent(video, stream, agent, settings, null, null, session);
+        const live = new LiveAgent(video, stream, agent, settings, null, null, session, null, null, null, { t0, ms: startup });
         live.run();
         onStep({ step: "ready", progress: 1 });
         return live;
@@ -317,8 +334,10 @@ export class LiveAgent implements HudSource {
         delegate = "CPU";
         landmarker = await FaceLandmarker.createFromOptions(fileset, { baseOptions: { modelAssetBuffer: model, delegate: "CPU" }, ...options });
       }
+      mark("face_model");
       const y = await LiveAgent.createYolo(await yolo!, settings.phone.num_threads);
-      const live = new LiveAgent(video, stream, agent, settings, landmarker, y?.worker ?? null, session, delegate, y?.threads ?? null, gpu);
+      if (y) mark("phone_model");
+      const live = new LiveAgent(video, stream, agent, settings, landmarker, y?.worker ?? null, session, delegate, y?.threads ?? null, gpu, { t0, ms: startup });
       live.run();
       onStep({ step: "ready", progress: 1 });
       return live;
@@ -399,7 +418,7 @@ export class LiveAgent implements HudSource {
   }
 
   getStats(): LiveStats {
-    return { ...this.stats, pending: this.pendingBodies.length, perf: this.perfSnapshot() };
+    return { ...this.stats, pending: this.pendingBodies.length, perf: this.perfSnapshot(), totals: this.perf.totals(), startup: this.startup?.ms ?? null };
   }
 
   private perfSnapshot(): PerfSnapshot {
@@ -514,6 +533,7 @@ export class LiveAgent implements HudSource {
     const done = performance.now();
     this.perf.add("python", done - pythonStart);
     this.perf.add("total", done - started);
+    if (this.startup && this.startup.ms.first_frame == null) this.startup.ms.first_frame = Math.round(done - this.startup.t0);
     if (state.flush) void this.flush(); // an L3 / unresponsive / no_answer event: not on the timer (M44)
     this.stats.level = state.level;
     this.stats.fps = state.fps ?? 0;

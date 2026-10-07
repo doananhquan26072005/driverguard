@@ -13,6 +13,7 @@ import {
   perfDetail,
   perfLines,
   perfText,
+  startupText,
   policyNote,
   eventReasonText,
   reasonText,
@@ -336,6 +337,14 @@ describe("loop timings (M49)", () => {
     ]);
     const bare = { ...perf, stages_ms: { total: perf.stages_ms.total }, landmarks_delegate: null, camera_delivered: null, camera_dropped: null };
     expect(perfLines(bare).split("\n")).toEqual(["Frame p50 10,5 · p95 14 ms", "Camera – · mặt – · xử lý – ms"]);
+  });
+
+  it("one line for the start-up, nothing before the first frame (M67)", () => {
+    const startup = { camera: 120, python: 1180, face_model: 1310, phone_model: 2040, first_frame: 1340 };
+    expect(startupText(startup)).toBe("Khởi động 1,3 s (camera 0,1 · Python 1,2 · model mặt 1,3 · model điện thoại 2,0)");
+    expect(startupText({ ...startup, phone_model: null })).toContain("model điện thoại –");
+    expect(startupText({ ...startup, first_frame: null })).toBe("");
+    expect(startupText(null)).toBe("");
   });
 });
 
