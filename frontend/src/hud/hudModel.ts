@@ -1,7 +1,7 @@
 // Pure view-model helpers for the HUD (unit-tested in hudModel.test.ts). No thresholds here:
 // the level and the reasons come from the edge agent, the HUD only decides what to show first.
 import { ENROLL_HINTS, ENROLL_STEPS, ENROLL_TEXT } from "../lib/labels";
-import type { EnrollStep, HudEnrollment, HudSnapshot, Level, Reason } from "../lib/types";
+import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, HudTrip, Level, Reason } from "../lib/types";
 
 export type HudLink = "connecting" | "ok" | "down";
 export type SystemState = "down" | "camera_lost" | "error" | "unavailable" | "stale" | "connecting";
@@ -141,4 +141,77 @@ export function enrollCue(prev: HudEnrollment | undefined, next: HudEnrollment |
     return { beep: false, say: `${ENROLL_HINTS[next.hint]}. ${ENROLL_STEPS[step].title}` };
   if (next.status === "failed" && prev?.status !== "failed") return { beep: false, say: ENROLL_TEXT.failed };
   return none;
+}
+
+// ------------------------------------------------------------------ driving screens (M58)
+
+/** Fatigue band of a drowsy_score against this trip's thresholds (risk.drowsy.l1 / l2 sent by the
+ *  agent): 0 low, 1 tired (rest soon), 2 very tired. No threshold lives in the HUD. */
+export type FatigueBand = 0 | 1 | 2;
+export function fatigueBand(score: number, l1: number, l2: number): FatigueBand {
+  return score >= l2 ? 2 : score >= l1 ? 1 : 0;
+}
+
+/** One bar of the fatigue chart: a judged minute, a minute with nothing judged (a rest, enrollment's
+ *  eyes-closed step: a gap, not 0), or a slot before the trip started (nothing drawn). */
+export type TrendSlot = { kind: "score"; score: number; band: FatigueBand; current: boolean } | { kind: "gap" } | { kind: "none" };
+
+/** The chart's `window_min` slots, oldest first, the running minute last. */
+export function trendSlots(trip: HudTrip | undefined): TrendSlot[] {
+  if (!trip) return [];
+  const recent = trip.recent_minutes;
+  const width = Math.max(trip.window_min ?? recent.length, recent.length);
+  const slots: TrendSlot[] = Array.from({ length: width - recent.length }, () => ({ kind: "none" }) as const);
+  recent.forEach((m, i) =>
+    slots.push(
+      m == null
+        ? { kind: "gap" }
+        : {
+            kind: "score",
+            score: m.drowsy_score,
+            band: fatigueBand(m.drowsy_score, trip.score_l1, trip.score_l2),
+            current: i === recent.length - 1,
+          },
+    ),
+  );
+  return slots;
+}
+
+/** The chip of the fatigue card: what the recent minutes say, in a few words. */
+export function fatigueSummary(trip: HudTrip | undefined, reasons: readonly Reason[], driving: boolean): { band: FatigueBand; text: string } {
+  const last = trip?.recent_minutes.filter((m) => m != null).at(-1);
+  const band = last && trip ? fatigueBand(last.drowsy_score, trip.score_l1, trip.score_l2) : 0;
+  if (reasons.includes("trend")) return { band: Math.max(band, 1) as FatigueBand, text: "Mệt · đang tăng dần" };
+  if (band === 2) return { band, text: "Rất mệt · dừng nghỉ ngay" };
+  if (band === 1) return { band, text: "Mệt · nên nghỉ sớm" };
+  return { band, text: driving ? "Thấp · chưa cần nghỉ" : "Thấp · xe đang đỗ" };
+}
+
+/** L3 action sentences are two lines: the order, then what to do ("Mở mắt!" / "Dừng xe nghỉ ngay"). */
+export function splitAction(text: string): [string, string] {
+  const bang = text.indexOf("! ");
+  if (bang > 0) return [text.slice(0, bang + 1), text.slice(bang + 2)];
+  const colon = text.indexOf(": ");
+  if (colon > 0) return [text.slice(0, colon), text.slice(colon + 2).replace(/^./, (c) => c.toUpperCase())];
+  return [text, ""];
+}
+
+/** The detail line under an L2 alert (M65 numbers): "Phát hiện lúc 15:40 · nhìn lệch 2,3 giây · không bật xi nhan". */
+export function alertDetail(alert: HudAlert | undefined, timeOf: (epochS: number) => string, num: (v: number) => string): string | null {
+  if (!alert) return null;
+  const parts = [`Phát hiện lúc ${timeOf(alert.at)}`];
+  const m = alert.metrics;
+  if (m && m.off_road_s > 0) parts.push(`nhìn lệch ${num(m.off_road_s)} giây`);
+  if (m && alert.reasons.includes("off_road"))
+    parts.push(m.turn_signal ? `xi nhan ${m.turn_signal === "left" ? "trái" : "phải"}` : "không bật xi nhan");
+  return parts.join(" · ");
+}
+
+/** What the left of the HUD's bottom bar says when no "false alarm" button is up, most useful first. */
+export function footerNote(snap: HudSnapshot, labels: { signalLost: string | null; lowFps: string; phoneOff: string; enroll: string | null; lastAlert: string | null }): string {
+  if (labels.signalLost) return labels.signalLost;
+  if (snap.low_fps) return labels.lowFps;
+  if (snap.phone_unavailable) return labels.phoneOff;
+  if (labels.enroll) return labels.enroll;
+  return labels.lastAlert ?? "Chưa có cảnh báo nào trong chuyến này";
 }

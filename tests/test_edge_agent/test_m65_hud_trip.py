@@ -62,6 +62,7 @@ def test_recent_minutes_are_the_last_window_oldest_first_with_the_running_minute
     p = drive(5 * 60 + 20, [(0, 60)])  # 5 full minutes and 20 s of the sixth
     recent = p.trip_log.hud_view(3)["recent_minutes"]
     assert [m["minute"] for m in recent] == [3, 4, 5]
+    assert p.trip_log.hud_view(3)["window_min"] == 3
     assert all(0 <= m["drowsy_score"] <= 100 and m["max_level"] == 0 for m in recent)
 
 

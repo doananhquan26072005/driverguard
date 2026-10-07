@@ -19,15 +19,23 @@
   --warning: #fbbf24;
   --serious: #f97316;
   --critical: #dc2626;
+  --level-on: #1c0d02; /* text on amber / orange (>= 7:1): never white on orange */
   --success-text: #4ade80;
   --error-text: #fca5a5;
   --radius: 16px;
 
   /* Glass surfaces of the redesign: a dark radial fill, a 1 px edge lit from the top left, a blur of
      what is behind. --glass-backdrop: none turns the blur off where it costs frames (#/live). */
-  --glass-fill: radial-gradient(120% 100% at 0% 0%, rgba(44, 44, 44, 0.77) 0%, rgba(26, 26, 26, 0.63) 38%, rgba(14, 14, 14, 0.7) 80%);
-  --glass-edge: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.06) 100%);
-  --glass-backdrop: blur(16px);
+  /* Design system tokens (M58): card-hi / mid / lo, tile-hi / lo, rim */
+  --card-hi: rgba(44, 44, 44, 0.86);
+  --card-mid: rgba(26, 26, 26, 0.8);
+  --card-lo: rgba(14, 14, 14, 0.86);
+  --tile-hi: rgba(39, 39, 39, 0.9);
+  --tile-lo: rgba(16, 16, 16, 0.9);
+  --rim: rgba(255, 255, 255, 0.2);
+  --glass-fill: radial-gradient(120% 100% at 0% 0%, var(--card-hi) 0%, var(--card-mid) 38%, var(--card-lo) 80%);
+  --glass-edge: linear-gradient(135deg, var(--rim) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.06) 100%);
+  --glass-backdrop: blur(18px) saturate(120%);
   /* Page backdrop: a soft light from the top left and one faint diagonal streak. */
   --page-light: radial-gradient(70% 45% at 25% 0%, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 70%),
     linear-gradient(120deg, rgba(255, 255, 255, 0) 52%, rgba(255, 255, 255, 0.035) 58%, rgba(255, 255, 255, 0) 64%);
@@ -59,6 +67,84 @@
       color-mix(in srgb, var(--tint) 35%, transparent) 100%) border-box;
 }
 
+/* ---------------------------------------------------------------- design system components (M58)
+   The DriverGuard design system's bundle, on the tokens above. Used by the HUD (Tailwind for layout,
+   these for surfaces) and later by the web pages. */
+.dg-card {
+  border-radius: 16px;
+  border: 1px solid transparent;
+  background: var(--glass-fill) padding-box, var(--glass-edge) border-box;
+  backdrop-filter: var(--glass-backdrop);
+  -webkit-backdrop-filter: var(--glass-backdrop);
+}
+.dg-card-title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.dg-card-title > b { font-size: 16px; font-weight: 500; }
+.dg-card-title > span { font-size: 13px; color: var(--muted); }
+.dg-tile {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background:
+    radial-gradient(140% 120% at 0% 0%, var(--tile-hi) 0%, rgba(24, 24, 24, 0.86) 38%, var(--tile-lo) 80%) padding-box,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.04) 100%) border-box;
+}
+/* Alert / status cards: near-opaque, one hue falling off evenly (never a black step in the middle). */
+.dg-alert { border-radius: 16px; border: 1px solid transparent; }
+.dg-alert.l0 {
+  background:
+    radial-gradient(70% 90% at 12% 18%, rgba(74, 222, 128, 0.22), rgba(74, 222, 128, 0) 70%) padding-box,
+    radial-gradient(140% 130% at 0% 0%, rgba(30, 74, 46, 0.94) 0%, rgba(22, 52, 34, 0.93) 38%, rgba(16, 34, 24, 0.93) 72%, rgba(13, 22, 17, 0.93) 100%) padding-box,
+    linear-gradient(135deg, rgba(74, 222, 128, 0.75) 0%, rgba(74, 222, 128, 0.1) 45%, rgba(74, 222, 128, 0.3) 100%) border-box;
+}
+.dg-alert.l1 {
+  background:
+    radial-gradient(140% 130% at 0% 0%, rgba(96, 74, 24, 0.92) 0%, rgba(66, 51, 20, 0.9) 40%, rgba(40, 32, 16, 0.9) 75%, rgba(28, 23, 14, 0.9) 100%) padding-box,
+    linear-gradient(135deg, rgba(251, 191, 36, 0.85) 0%, rgba(251, 191, 36, 0.12) 45%, rgba(251, 191, 36, 0.35) 100%) border-box;
+}
+.dg-alert.l2 {
+  color: var(--level-on);
+  background:
+    radial-gradient(120% 110% at 0% 0%, #fdba74 0%, #f97316 40%, #c2410c 100%) padding-box,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.25) 100%) border-box;
+}
+.dg-alert.sys {
+  background:
+    radial-gradient(140% 130% at 0% 0%, rgba(30, 44, 66, 0.92) 0%, rgba(24, 32, 46, 0.9) 40%, rgba(18, 22, 30, 0.9) 75%, rgba(14, 16, 20, 0.9) 100%) padding-box,
+    linear-gradient(135deg, rgba(96, 165, 250, 0.85) 0%, rgba(96, 165, 250, 0.12) 45%, rgba(96, 165, 250, 0.35) 100%) border-box;
+}
+/* Small status chip: a dot and a few words. --dot picks the colour. */
+.dg-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: #d4d4d4; white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.06);
+}
+.dg-chip > i { width: 7px; height: 7px; border-radius: 50%; background: var(--dot, var(--good)); flex-shrink: 0; }
+.dg-chip.solid-warn { background: var(--warning); color: var(--level-on); border-color: transparent; font-weight: 600; }
+/* 56 px buttons. secondary: dark glass; the chevron at the end says it leads somewhere. */
+.dg-btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px;
+  padding: 0 18px; border-radius: 12px; font: inherit; font-size: 16px; font-weight: 500; color: var(--ink);
+  cursor: pointer; text-align: left;
+  border: 1px solid transparent;
+  background:
+    radial-gradient(130% 140% at 0% 0%, rgba(42, 42, 42, 0.9) 0%, rgba(24, 24, 24, 0.86) 38%, rgba(15, 15, 15, 0.9) 80%) padding-box,
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.05) 100%) border-box;
+}
+.dg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.dg-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 0-100 meter with the L1 / L2 marks of this trip (--l1, --l2 in %). */
+.dg-meter { position: relative; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); }
+.dg-meter > b { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--fill, var(--good)); transition: width 300ms ease-out, background-color 300ms; }
+.dg-meter > i { position: absolute; top: -3px; bottom: -3px; width: 1px; }
+.dg-num { font-variant-numeric: tabular-nums; }
+/* HUD backdrop: one diagonal light at 30 degrees and one thin line, nothing else. */
+.dg-backdrop { position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.dg-backdrop::before, .dg-backdrop::after { content: ""; position: absolute; top: -200px; transform: rotate(30deg); }
+.dg-backdrop::before { left: 40%; width: 260px; height: 1200px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0) 60%); }
+.dg-backdrop::after { left: 67%; width: 2px; height: 900px; background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 70%); }
+/* Whole-screen rings of L1 / L2 (design system ring-l1 / ring-l2). */
+.dg-ring-1 { box-shadow: inset 0 0 0 3px rgba(251, 191, 36, 0.8), inset 0 0 140px rgba(251, 191, 36, 0.14); }
+.dg-ring-2 { box-shadow: inset 0 0 0 5px rgba(249, 115, 22, 0.8), inset 0 0 140px rgba(249, 115, 22, 0.2); }
+
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page-light), var(--page); background-attachment: fixed; color: var(--ink); }
 h1, h2 { margin: 0 0 8px; line-height: 1.2; }
@@ -84,7 +170,7 @@ input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 input[aria-invalid="true"] { border-color: var(--critical); }
-.primary { background: linear-gradient(180deg, #ffffff 0%, #d9d9d9 100%); color: #0a0a0a; border: 0; border-radius: 12px; padding: 8px 18px; min-height: 44px; font-weight: 700; }
+.primary { background: linear-gradient(180deg, #ffffff 0%, #d9d9d9 100%); color: #0a0a0a; border: 0; border-radius: 12px; padding: 8px 18px; min-height: 44px; font-weight: 600; }
 .ghost { background: transparent; border: 1px solid var(--field-border); border-radius: 10px; padding: 6px 14px; min-height: 40px; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
 .link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 
@@ -115,10 +201,10 @@ input[aria-invalid="true"] { border-color: var(--critical); }
 
 /* ---------------------------------------------------------------- dashboard */
 .dash-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; background: rgba(10, 10, 10, 0.8); border-bottom: 1px solid rgba(255, 255, 255, 0.07); position: sticky; top: 0; z-index: 5; backdrop-filter: var(--glass-backdrop); -webkit-backdrop-filter: var(--glass-backdrop); }
-.dash-brand { font-weight: 800; letter-spacing: -0.01em; }
+.dash-brand { font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; font-size: 15px; }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-right: auto; }
 .tab { background: transparent; border: 0; border-radius: 10px; padding: 8px 12px; min-height: 40px; color: var(--ink-2); font-weight: 600; }
-.tab.active { background: rgba(255, 255, 255, 0.08); color: var(--ink); font-weight: 700; }
+.tab.active { background: rgba(255, 255, 255, 0.08); color: var(--ink); font-weight: 600; }
 .dash-user { color: var(--ink-2); font-size: 13px; }
 .dash-main { max-width: 1280px; margin: 0 auto; padding: 16px 20px 40px; }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 16px; }
@@ -129,7 +215,7 @@ input[aria-invalid="true"] { border-color: var(--critical); }
   background: var(--glass-fill) padding-box, var(--glass-edge) border-box;
 }
 .tile-label { color: var(--ink-2); font-size: 13px; display: flex; align-items: center; }
-.tile-value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.tile-value { font-size: 28px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .tile-note { color: var(--muted); font-size: 12px; }
 
 .table-wrap { overflow-x: auto; }

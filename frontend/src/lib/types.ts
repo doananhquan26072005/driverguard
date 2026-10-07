@@ -214,6 +214,7 @@ export interface HudTrip {
   driving_s: number; // driving time of the whole trip
   score_l1: number; // risk.drowsy.l1 / l2 of this trip: colour bands of the fatigue chart
   score_l2: number;
+  window_min?: number; // the chart's width in minutes (hud.trend_minutes); recent_minutes may be shorter
   // drowsy_score of each of the last hud.trend_minutes minutes, oldest first, the running minute last;
   // null = no judged frame that minute (a rest, enrollment's eyes-closed step): a gap, not 0
   recent_minutes: ({ minute: number; drowsy_score: number; max_level: Level } | null)[];

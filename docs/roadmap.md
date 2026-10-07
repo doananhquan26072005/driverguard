@@ -90,7 +90,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | Mốc | Làm gì | Xong là thấy gì | Trạng thái |
 |---|---|---|---|
 | [M57](#m57) | Nền giao diện chung: màu, font Inter tự đóng gói (không dùng Google Fonts vì HUD có thể không có mạng), cỡ chữ, nút, thẻ "kính"; sửa các lỗi tương phản của bản thiết kế (nền trắng trong giao diện tối, chữ đen trong ô nhập, màu cam tối trên nền tối) | Một bộ token dùng chung cho HUD và web; `#/hud-preview` và dashboard đổi sang nền tối mới; số FPS của `#/live` trước / sau không giảm dưới 15 | ✅ Xong · 07/10 (blur chưa dùng ở HUD / `#/live`: đo lại ở M58) |
-| [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ⬜ Chưa làm |
+| [M58](#m58) | HUD khi đang lái: bình thường, Chú ý (buồn ngủ, mệt tăng dần), Cảnh báo (điện thoại, nhìn lệch), Nguy hiểm; các biến thể chưa có tiếng, máy chậm, chưa đăng ký (khối 13) | `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế, dùng cả dữ liệu M65 (lái liên tục, biểu đồ 15 phút, chi tiết cảnh báo) | ✅ Xong · 07/10 (màn sự cố / đăng ký vẫn giao diện cũ trong khung mới: M59) |
 | [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ⬜ Chưa làm |
 | [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ⬜ Chưa làm |
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ⬜ Chưa làm |
@@ -1046,16 +1046,19 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M58: HUD khi đang lái (khối 13)
 
-**Xong là thấy gì:** `#/hud` và `#/hud-preview` hiện đúng các màn hình đang lái của bản thiết kế
+**Xong là thấy gì:** `#/hud`, `#/hud-preview` và HUD trong `#/live` có các màn đang lái của bản thiết kế: L0 thẻ xanh, L1 thẻ vàng + viền màn hình, L2 thẻ cam đặc + viền, L3 màn đỏ toàn phần; thẻ "Độ mệt và thông số" có biểu đồ 15 phút; thẻ tốc độ hình bát giác có số P / D và xi nhan; dãy nút dưới
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/` (và thêm `window_min` vào `trip` của M65). Màn xin đồng ý / đăng ký / sự cố / "Bạn còn ở đó không?" nằm trong khung mới nhưng ruột vẫn như cũ, làm ở M59
 
-- Màn hình: bình thường, Chú ý (buồn ngủ; mệt tăng dần), Cảnh báo (điện thoại; nhìn lệch), Nguy hiểm; biến thể chưa có tiếng, máy chậm, chưa đăng ký
-- Chỉ dùng dữ liệu HUD đã có (`HudSnapshot`): mức, lý do, `drowsy_score`, `distraction_score`, `eyes_closed_s`, tốc độ, xi nhan, đăng ký, cảnh báo gần nhất, thời gian còn bấm "Cảnh báo này sai?"
-- Thanh trên: tên, icon camera / âm thanh, giờ (icon trăng ban đêm); ô tốc độ: số P / D, xi nhan trái / phải. Bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh" của bản thiết kế (là ngưỡng, quyết định 07/10)
-- "Đã lái liên tục", biểu đồ độ mệt 15 phút và dòng chi tiết L2 "nhìn lệch 1,2 giây · không bật xi nhan" lấy từ `trip` và `alerts[].metrics` của M65
-- Giữ quy tắc cũ: không hiện mã L0–L3 cho tài xế, L3 ẩn mọi nút, ban đêm L0–L1 dịu 80 %, hiện trong 150 ms, hạ mức mờ dần 600 ms
-- Test: `hudModel.test.ts` cập nhật theo màn hình mới, e2e HUD pass
+- **Theo Design System "DriverGuard"** (link thứ ba, tài liệu chuẩn khi canvas lệch): token `card-hi / mid / lo`, `tile`, `rim`, kính `blur(18px) saturate(120%)`; xi nhan màu vàng `level-1` (không còn xanh ngọc); đỏ L3 `#ef4444 → #dc2626 → #991b1b`; bo góc tối đa 16 px; chữ tối đa 600, 700 chỉ cho câu L2 / L3; component `.dg-card`, `.dg-tile`, `.dg-alert l0 / l1 / l2 / sys`, `.dg-chip`, `.dg-btn`, `.dg-meter`, `.dg-backdrop`, `.dg-ring-1 / 2` trong `src/styles.css`
+- **Bố cục 1280 × 800** như canvas: thanh trên 72 px (DRIVERGUARD, camera, âm thanh, mô phỏng, dashboard, giờ), nội dung `1fr | 400px`, dãy nút dưới (ghi chú hoặc "Cảnh báo này sai? · còn m:ss", "Đổi tài xế ›", "Kết thúc chuyến ›", nút 56 px). Màn hẹp xếp dọc; không tràn ngang ở 390 / 768 / 1280 px
+- **Số liệu của chuyến lấy từ edge agent (M65):** ô "Đã lái liên tục", ô "Cảnh báo gần nhất · HH:MM · lý do", biểu đồ `recent_minutes` (cột theo dải `score_l1` / `score_l2` của chuyến, phút nghỉ là khoảng trống, vạch "Nhắc nghỉ" ở `score_l1`), dòng chi tiết L2 "Phát hiện lúc … · nhìn lệch … giây · không bật xi nhan". HUD không giữ ngưỡng nào
+- **Giữ:** không hiện mã L0–L3, L3 không có nút, ban đêm L0–L1 dịu 80 %, hiện trong 150 ms / hạ mức mờ dần, L3 nhấp nháy 1 Hz, dải vàng "Âm thanh cảnh báo chưa bật"
+- **Khác bản thiết kế:** bỏ nhãn vùng tốc độ (quyết định 07/10), chip tốc độ ghi "Đang chạy" / "Xe dừng" / "Mất tín hiệu xe"; máy chậm ghi "cảnh báo có thể trễ" chứ không ghi "đang giảm tải" (chưa có giảm tải); nút "Chạy mô phỏng" và "Dashboard" giữ thành ô icon trên thanh trên
+- **Hàm thuần mới** (`hudModel.ts`, `format.ts`): `fatigueBand`, `trendSlots`, `fatigueSummary`, `splitAction`, `alertDetail`, `footerNote`, `durationText`, `hourMinute`; nhãn ngắn `REASON_SHORT`
+- **Đo FPS `#/live`** (Chromium không GPU, camera giả 30 s): 20 FPS như trước; cả frame p50 12,6 → 14,5 ms, p95 23,5 → 23,6 ms. Camera giả không có mặt nên HUD lúc đo ở màn "không thấy mặt", chưa đo màn đang lái có kính mờ trên máy yếu
+- **Giới hạn:** chưa chạy e2e `live.e2e.ts` (cần backend); chữ trên nút "Kết thúc chuyến", "Đổi tài xế", vùng "Xe" và câu L3 giữ đúng chữ e2e tìm
+- Test: 7 test mới (`src/hud/m58.test.ts`), tổng 102 test frontend pass, typecheck / build sạch; 17 test M65 pass
 
 <a id="m59"></a>
 

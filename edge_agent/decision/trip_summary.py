@@ -242,6 +242,7 @@ class TripCollector:
             "driving_s": round(self.driving, 1),
             "score_l1": self.tired_score,  # colour bands of the chart: risk.drowsy.l1 / l2 of this trip
             "score_l2": self.score_l2,
+            "window_min": window_min,  # the chart's width in minutes (hud.trend_minutes), recent may be shorter
             "recent_minutes": recent,
         }
 
