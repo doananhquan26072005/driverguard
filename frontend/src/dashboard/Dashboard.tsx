@@ -9,6 +9,7 @@ import { LEVELS, policyNote, ROLES } from "../lib/labels";
 import type { EventRecord, Session, Stats, Thresholds } from "../lib/types";
 import AuditView from "./AuditView";
 import { DriverOverview, DriverTrips } from "./DriverPages";
+import { ManagerOverview, ReportReview } from "./ManagerPages";
 import { DeletionRequestsCard, MyDataCard } from "./MyDataCard";
 import EventLog from "./EventLog";
 import FleetView from "./FleetView";
@@ -290,13 +291,18 @@ function PageBody(p: PageProps) {
       return session.role === "driver" ? (
         <DriverOverview session={session} refreshKey={p.refreshKey} />
       ) : (
-        <FleetView session={session} refreshKey={p.refreshKey} />
+        <ManagerOverview session={session} refreshKey={p.refreshKey} />
       );
     case "fleet":
       return <FleetView session={session} refreshKey={p.refreshKey} />;
     case "trips":
       return <DriverTrips session={session} refreshKey={p.refreshKey} hash={p.hash} />;
     case "reports":
+      // The manager reviews (design "Duyệt báo cáo chuyến"); engineer and admin keep every number.
+      if (session.role === "manager")
+        return (
+          <ReportReview session={session} range={p.filtersRange} refreshKey={p.refreshKey} onUnreviewed={p.onUnreviewed} onPickTrip={p.onPickTrip} />
+        );
       return <TripReports session={session} range={p.filtersRange} refreshKey={p.refreshKey} onUnreviewed={p.onUnreviewed} />;
     case "events":
     case "alerts":

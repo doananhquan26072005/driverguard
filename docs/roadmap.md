@@ -94,7 +94,7 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M59](#m59) | HUD sự cố, đăng ký và kết thúc chuyến: mất camera, lỗi xử lý, mất kết nối, tạm ngưng, mất tín hiệu xe, đỗ chưa có tín hiệu; xin đồng ý + 3 bước đăng ký; tổng kết chuyến. Vẽ thêm theo phong cách mới các trạng thái bản thiết kế thiếu: "Bạn còn ở đó không?" (M44), lý do tạm ngưng tối / chói / che camera (M43), mất phát hiện điện thoại (M50), đăng ký thất bại / "Để sau" (khối 13) | Mọi trạng thái của HUD hiện tại đều có màn hình mới, không trạng thái nào quay về giao diện cũ hay bị bỏ | ✅ Xong · 07/10 (làm dần cùng các đợt sửa M58; chưa chạy e2e) |
 | [M60](#m60) | Một trang đăng nhập chung, sau đăng nhập mỗi vai trò vào trang chủ và menu riêng (thay thanh tab hiện tại); thời hạn giữ dữ liệu lấy từ `/api/v1/policy`, không ghi cứng | Đăng nhập bằng tài xế / quản lý / kỹ sư / admin vào đúng trang chủ của mình; link "Chạy thử bằng camera" sang `#/live` | ✅ Xong · 07/10 (Tổng quan tài xế / quản lý, Tài khoản / Thiết bị tạm dùng trang cũ: M61–M63) |
 | [M61](#m61) | Trang tài xế: tổng quan (chuyến gần nhất, 30 ngày qua, gợi ý), chi tiết chuyến, lịch sử cảnh báo; giữ "Dữ liệu của tôi" (tải về, yêu cầu xoá, ai đã xem, M41 / M48) | Tài xế chỉ thấy dữ liệu của mình theo bố cục mới, không mất tính năng nào của M48 | ✅ Xong · 07/10 (Lịch sử cảnh báo / Dữ liệu của tôi giữ bảng cũ trong khung mới) |
-| [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ⬜ Chưa làm |
+| [M62](#m62) | Trang quản lý: tổng quan đội xe (việc cần xử lý, từng xe), duyệt báo cáo chuyến; vẽ mới Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý, M41 / M49) | Quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới | ✅ Xong · 07/10 (Nhật ký sự kiện, Timeline, Đội xe chi tiết giữ bảng cũ trong khung mới) |
 | [M63](#m63) | Trang kỹ sư và admin: ngưỡng + tỉ lệ báo sai theo lý do, giữ áp thử / lịch sử phiên bản / quay lui (M47); tài khoản, thiết bị, nhật ký truy cập, duyệt yêu cầu xoá (M41 / M48). Backend không đổi: trang Thiết bị chỉ có tạo thiết bị + hiện khoá một lần (chưa có API danh sách) | Kỹ sư sửa ngưỡng ở giao diện mới; admin tạo tài khoản / thiết bị và thấy khoá thiết bị đúng một lần | ⬜ Chưa làm |
 | [M64](#m64) | `#/live`: thiết lập (ai đang lái, đăng ký, bắt đầu), đang tải; vẽ mới màn hình đang chạy và `#/drive` | `#/live` từ lúc mở tới lúc kết thúc chuyến dùng giao diện mới; FPS không giảm dưới 15 | ⬜ Chưa làm |
 | [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
@@ -1119,16 +1119,14 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 #### M62: Trang quản lý (frontend)
 
-**Xong là thấy gì:** quản lý thấy "Cần xử lý" (M44) và đánh dấu đã xem báo cáo ở giao diện mới
+**Xong là thấy gì:** quản lý đăng nhập vào "Tổng quan đội xe" (số liệu hôm nay, "Cần xử lý", từng xe); "Báo cáo chuyến" là trang duyệt: danh sách bên trái, một báo cáo bên phải, nút "Đánh dấu đã xem"
 
-**Trạng thái:** Chưa làm
+**Trạng thái:** Xong (07/10). Chỉ đổi `frontend/`; cùng các API `/api/v1/fleet`, `/api/v1/trip-reports`, `…/review`
 
-- Theo bản thiết kế: Tổng quan đội xe (số liệu hôm nay, cần xử lý, từng xe), Duyệt báo cáo chuyến
-- Vẽ mới: Nhật ký sự kiện, Timeline mệt mỏi, Đội xe chi tiết (phiên bản, tốc độ xử lý; M41, M49), Ngưỡng (chỉ xem)
-- Giữ dòng "Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế"
-- Nhịp làm mới giữ như hiện tại (đội xe 5 s để thấy ngay tài xế không phản ứng, M44; các trang khác 15 s); chữ "tự cập nhật mỗi 15 giây" của bản thiết kế ghi theo số thật
-- Nhãn đánh giá chuyến giữ như code: "Chuyến đi an toàn" / "Cần chú ý" / "Có lúc rất nguy hiểm" (bản thiết kế có chỗ ghi "An toàn", "Rất nguy hiểm")
-- Test: test frontend cho từng trang, e2e dashboard pass
+- **Tổng quan** (thiết kế "Quản lý · Tổng quan đội xe"): xe đang hoạt động / tổng, mất liên lạc, cảnh báo hôm nay (L1 · L2 · L3), báo cáo chuyến chưa xem; "Cần xử lý": cần chú ý ngay (L3, không phản ứng, không trả lời: M44, đỏ, có tiếng chuông mỗi sự kiện mới như trang Đội xe), mất liên lạc chưa kết thúc chuyến (vàng), báo cáo mới và số chuyến "Có lúc rất nguy hiểm" (xanh dương), mỗi mục có nút dẫn tới trang xử lý; bảng từng xe có lọc trạng thái và ô tìm xe / tài xế. Làm mới mỗi 5 s như trang Đội xe
+- **Duyệt báo cáo** (thiết kế "Quản lý · Duyệt báo cáo chuyến"): lọc "Chưa xem (N)" / "Tất cả"; báo cáo: thẻ đánh giá, 8 ô (thời gian lái, lái liên tục dài nhất, L1 / L2 / L3, nhắm mắt lâu nhất, ngáp / gục đầu, nhìn lệch / điện thoại, được giám sát, tài xế báo sai), biểu đồ độ mệt + "Xem timeline từng phút", gợi ý đã đưa cho tài xế, "Đánh dấu đã xem" (sau đó ghi ai đã xem lúc nào), câu "Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế"
+- Kỹ sư và quản trị giữ bản báo cáo kỹ thuật đầy đủ số (`TripReports`); "Nhật ký sự kiện", "Timeline mệt mỏi", "Đội xe" (phiên bản, tốc độ xử lý: M41, M49) giữ bảng hiện có trong khung mới
+- Test: 112 test frontend pass, typecheck / build sạch; xem bằng tài khoản quản lý trên backend tạm (2 xe, 2 báo cáo), không lỗi trang
 
 <a id="m63"></a>
 

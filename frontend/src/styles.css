@@ -291,6 +291,26 @@ input[aria-invalid="true"] { border-color: var(--critical); }
 .alert-list li:first-child { border-top: 0; }
 .alert-list li > span:nth-child(2) { flex: 1; }
 a { color: var(--accent); }
+.tiles-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.todo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.todo { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.03); }
+.todo > span { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.todo b { font-size: 16px; }
+.todo.danger { border-color: rgba(248, 113, 113, 0.5); background: rgba(220, 38, 38, 0.1); color: #fecaca; }
+.todo.caution { border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.08); color: #fde68a; }
+.todo.info { border-color: rgba(96, 165, 250, 0.45); background: rgba(96, 165, 250, 0.08); color: #bfdbfe; }
+.todo .muted { color: var(--ink-2); }
+.dot-text { display: inline-flex; align-items: center; gap: 8px; }
+.dot-text i { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.review { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(0, 2.2fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .review { grid-template-columns: 1fr; } }
+.review-list { position: sticky; top: 16px; }
+.seg { display: inline-flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); justify-self: start; }
+.seg button { border: 0; border-radius: 9px; padding: 8px 14px; background: transparent; color: var(--ink-2); font-weight: 600; }
+.seg button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.1); color: var(--ink); }
+.review-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.review-items button { width: 100%; display: grid; gap: 6px; text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02); color: var(--ink); }
+.review-items button[aria-current="true"] { border-color: rgba(147, 197, 253, 0.6); background: rgba(96, 165, 250, 0.1); }
 
 /* ---------------------------------------------------------------- dashboard */
 .dash-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 20px; background: rgba(10, 10, 10, 0.8); border-bottom: 1px solid rgba(255, 255, 255, 0.07); position: sticky; top: 0; z-index: 5; backdrop-filter: var(--glass-backdrop); -webkit-backdrop-filter: var(--glass-backdrop); }
