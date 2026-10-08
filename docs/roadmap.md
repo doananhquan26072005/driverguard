@@ -100,6 +100,12 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M65](#m65) | Dữ liệu HUD từ edge agent (khối 1, 11, 13, 14): thời gian lái liên tục, độ mệt 15 phút gần nhất, số liệu sau mỗi cảnh báo, sự cố từ lúc nào / số lần thử mở lại camera / backend đã nhận sự kiện chưa | Tải lại HUD vẫn thấy ngay đúng số của chuyến (số nằm trong edge agent, không nằm trong trình duyệt); bản tổng kết chuyến không đổi | ✅ Xong · 07/10 (chưa có giao diện: M58 / M59 hiện) |
 | [M67](#m67) | Tốc độ vòng lặp `#/live` trên trình duyệt máy tính: YOLO chạy bằng WebGPU khi có GPU thật, chạy đúng nhịp cấu hình và nhận frame trước MediaPipe; vòng lặp không chờ YOLO lúc khởi động; công cụ đo cả lần chạy và chạy dài; đo nhánh điện thoại trên 3MDAD (khối 4, `frontend/src/live/`, `frontend/bench/live.bench.mjs`, `tools/phone_study.py`) | `eval/results/benchmark_live.md` mục 4–5: có GPU thật YOLO 94 → 17 ms mỗi lần, tuổi kết quả p95 333 → 131 ms, CPU của trang 109 → 32 % một nhân; không có GPU 329 → 274 ms; khởi động với cache trống 2,66 → 2,08 s. "Chi tiết kỹ thuật" ghi "WebGPU" hoặc số luồng | 🟡 Xong phần code · 08/10 (đo trong Chromium không giao diện trên một máy Mac, camera giả; **chạy dài 10 phút: bản mới FAIL 2 lần đầu, đạt 2 lần chạy lại, nguyên nhân chưa xác định**; mục tiêu tuổi p95 < 250 ms chưa đạt khi không có GPU; số frame bị bỏ không đổi) |
 
+### Vận hành (M66–)
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [M66](#m66) | Deploy lên Railway và tự deploy khi CI pass: `.railwayignore` gửi đúng hai model, job `deploy` trong CI (model lấy từ GitHub Release), hướng dẫn cấu hình | Merge vào `main` → CI pass → bản mới tự lên Railway; test fail thì không deploy | 🟡 Giai đoạn A, B xong · 08/10 (repo, cấu hình Railway / GitHub, deploy tay đầu tiên); chờ lần tự deploy đầu tiên từ CI |
+
 ---
 
 ## Chi tiết từng mốc
@@ -1224,3 +1230,22 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 - **Không thử:** FP16 (WebGPU FP32 đã 17 ms); INT8 (file hiện có không phát hiện được gì, M54); đổi `preprocess.target_width` (camera đã là 640, và đổi sẽ làm lệch các số đo chất lượng ảnh)
 - **Chưa làm / giới hạn:** một máy, Chromium không giao diện, camera giả; WebGPU mới thử trên Metal của Apple, chưa thử Windows / Linux hay GPU yếu (một GPU thật nhưng chậm vẫn được chọn); đường lùi về wasm mới được thử bằng một bản build cố ý làm lỗi, chưa gặp mất thiết bị thật; bản build nặng thêm một runtime (26,8 MB, nén 6,7 MB) chỉ máy có GPU mới tải; trên mạng rất chậm chip "Không phát hiện được điện thoại" có thể hiện vài giây đầu vì vòng lặp nay chạy trước khi model điện thoại tải xong; `perf.yolo_provider` cần backend mới (backend cũ từ chối trường lạ). Đề xuất mốc sau ở [improvements.md](improvements.md) việc 13, 14
 - Test: 965 Python (10 test mới của `tools/phone_study.py`, 1 bridge, 1 `perf_record`, 1 backend) + 115 frontend (20 test mới: nhịp YOLO, chọn nơi chạy, số đếm cả lần chạy, phép tính của chạy dài, nhãn) + 4 e2e pass; ruff, typecheck, build sạch; test hồi quy trace không đổi. Sau khi gộp `main` (M57–M65 của Version 4): 982 Python + 138 frontend + 4 e2e pass, và một lượt đo 60 giây mỗi cấu hình cho cùng kết quả (wasm: 5,0 lần / giây, tuổi p95 268 ms; WebGPU: 16,7 ms mỗi lần, tuổi p95 133 ms). Các bảng số ở trên đo trên nền code trước khi gộp
+
+### Vận hành (M66–)
+
+<a id="m66"></a>
+
+#### M66: Deploy lên Railway, tự deploy khi CI pass (`.railwayignore`, `ci.yml`, `docs/deploy-railway.md`)
+
+**Xong là thấy gì:** merge vào `main` → job `python`, `frontend`, `e2e` pass → job `deploy` đưa bản mới lên Railway; một job fail thì không deploy
+
+**Trạng thái:** Giai đoạn A xong (07/10, repo). Giai đoạn B xong (08/10): release `models-v1`, cấu hình Railway (volume `/app/data`, `DG_JWT_SECRET`, domain), secret `RAILWAY_TOKEN` + variable `RAILWAY_SERVICE` trên GitHub, lần deploy tay đầu tiên thành công (08/10 lúc 00:09, service `driveguard` Online). Chưa làm: lần tự deploy đầu tiên từ job `deploy` của CI và kiểm tra trên bản thật (giai đoạn C)
+
+- **Sửa build trên Railway (08/10):** stage `webpy` của `Dockerfile.railway` chạy `tools/build_web_py.py`, file này đọc dấu vân tay model qua `edge_agent.version` → `edge_agent.config` (cần `yaml`). Thiếu `pyyaml` nên ba lần deploy tay đầu tiên fail với `ModuleNotFoundError: No module named 'yaml'`; nay stage này cài `pyyaml>=6.0`
+- **Gộp `main` (M67 của nhánh DAQuan):** chỉ đụng `docs/roadmap.md` (cả hai cùng thêm mục mới); sau khi gộp: 980 Python + 138 frontend pass, `ruff` sạch, `vite build` chạy được (e2e để CI chạy)
+- **Model không tới được build:** `Dockerfile.railway` chép `models/face_landmarker.task` và `models/yolov8n.onnx`, nhưng `.railwayignore` cũ bỏ cả `models/`, và `railway up` mặc định còn bỏ mọi thứ trong `.gitignore` (có `models/*.task`, `models/*.onnx`). Nay deploy chạy `railway up --no-gitignore`; `.railwayignore` tự liệt kê mọi thứ không được gửi (`.env*`, database, log, `data/`, `.ai-log/`, `.claude/`, model không dùng, `node_modules`, ...)
+- **Job `deploy`** trong `.github/workflows/ci.yml`: chỉ khi push lên `main`, `needs: [python, frontend, e2e]` (job `template` của khoá học không chặn); `concurrency` để hai lần deploy không chồng nhau; kiểm tra secret / variable trước và báo đúng cái thiếu; tải hai model từ GitHub Release `models-v1` (`gh release download`), rồi `npx @railway/cli@5 up --ci --no-gitignore --service $RAILWAY_SERVICE`. Railway tự build `Dockerfile.railway`, chỉ chuyển sang bản mới khi `/health` trả 200
+- **Hướng dẫn:** `docs/deploy-railway.md` (cấu hình một lần, deploy tay, kiểm tra sau deploy, quay lui)
+- **Sửa kèm:** `_error_site` (`edge_agent/web/bridge.py`) đổi `\` thành `/` trước khi cắt đường dẫn, nên test `test_a_failing_frame_names_the_error_and_its_code_location` pass cả trên Windows; trong Pyodide đường dẫn vốn là `/`, không đổi hành vi
+- **Chưa kiểm:** chưa chạy job `deploy` thật (cần secret); chưa thử `railway up --no-gitignore` với `.railwayignore` mới trên Railway
+- Test: 969 Python pass trên Windows (trước 968 + 1 lỗi do đường dẫn); YAML của CI đọc được, đủ 5 job; `ruff` sạch
