@@ -80,11 +80,12 @@ def test_ended_trip_is_not_a_lost_device(client, settings):
     assert (d["status"], d["trip_id"]) == ("online", "trip-2")
 
 
-def test_older_heartbeat_arriving_late_does_not_overwrite_the_state(client):
+def test_the_heartbeat_that_arrives_last_is_the_state_whatever_its_own_time_says(client):
+    """M82: devices only send their newest heartbeat, so arrival order is the order (was: device time)."""
     now = datetime.now(UTC)
     beat(client, "ended", ts=iso(now))
     beat(client, "monitoring", ts=iso(now - timedelta(seconds=30)))
-    assert fleet(client)["cam-001"]["state"] == "ended"
+    assert fleet(client)["cam-001"]["state"] == "monitoring"
 
 
 def test_any_batch_is_a_sign_of_life_even_without_a_heartbeat(client):

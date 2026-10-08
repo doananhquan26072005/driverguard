@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS events (
     feedback          TEXT,
     feedback_at       TEXT,
     tags              TEXT,
-    versions          TEXT
+    versions          TEXT,
+    delay_s           REAL
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);
 CREATE INDEX IF NOT EXISTS idx_events_driver ON events (driver_id, ts);
@@ -59,7 +60,8 @@ CREATE TABLE IF NOT EXISTS fatigue_samples (
     drowsy_score REAL NOT NULL,
     perclos_60s  REAL,
     max_level    INTEGER NOT NULL,
-    off_road_ratio REAL
+    off_road_ratio REAL,
+    received_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_samples_trip ON fatigue_samples (trip_id, ts);
 CREATE TABLE IF NOT EXISTS trip_summaries (
@@ -85,7 +87,8 @@ CREATE TABLE IF NOT EXISTS device_status (
     moving    INTEGER,
     state_ts  TEXT,
     versions  TEXT,
-    perf      TEXT
+    perf      TEXT,
+    clock_skew_s REAL
 );
 CREATE TABLE IF NOT EXISTS threshold_versions (
     version    INTEGER PRIMARY KEY,
@@ -172,6 +175,16 @@ def migrate(conn: sqlite3.Connection) -> None:
         for col in cols:
             if col not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} TEXT")
+    # M82: server time decides order, the urgent window and retention; the device's clock is only kept.
+    for table, col, kind in (
+        ("events", "delay_s", "REAL"),
+        ("device_status", "clock_skew_s", "REAL"),
+        ("fatigue_samples", "received_at", "TEXT"),
+    ):
+        if col not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+    # Samples stored before M82 have no arrival time: their own, but never one in the future.
+    conn.execute("UPDATE fatigue_samples SET received_at = MIN(ts, ?) WHERE received_at IS NULL", (now_iso(),))
 
 
 def now_iso() -> str:
@@ -257,27 +270,37 @@ def touch_device(conn: sqlite3.Connection, device_id: str, driver_id: str | None
     )
 
 
-def apply_heartbeat(conn: sqlite3.Connection, device_id: str, h: dict[str, Any]) -> bool:
-    """Trip / monitoring state from a heartbeat; False if a newer one (device time) is already stored."""
+def apply_heartbeat(conn: sqlite3.Connection, device_id: str, h: dict[str, Any], received_at: str) -> float:
+    """Trip / monitoring state from a heartbeat. Devices only ever send their newest one, so the one
+    that arrives last is the current state (M82): the device's clock does not decide the order. Returns
+    the clock skew stored with it, seconds (server time minus the heartbeat's `ts`)."""
     versions = json.dumps(h["versions"], sort_keys=True) if h.get("versions") else None
     perf = json.dumps(h["perf"], sort_keys=True) if h.get("perf") else None  # M49: the last one that had any
-    cur = conn.execute(
-        """UPDATE device_status SET trip_id = ?, state = ?, moving = ?, state_ts = ?,
+    skew_s = (datetime.fromisoformat(received_at) - datetime.fromisoformat(h["ts"])).total_seconds()
+    conn.execute(
+        """UPDATE device_status SET trip_id = ?, state = ?, moving = ?, state_ts = ?, clock_skew_s = ?,
                   versions = COALESCE(?, versions), perf = COALESCE(?, perf)
-           WHERE device_id = ? AND (state_ts IS NULL OR state_ts <= ?)""",
-        (h["trip_id"], h["state"], h["moving"], h["ts"], versions, perf, device_id, h["ts"]),
+           WHERE device_id = ?""",
+        (h["trip_id"], h["state"], h["moving"], received_at, skew_s, versions, perf, device_id),
     )
-    return cur.rowcount == 1
+    return skew_s
+
+
+def device_clock_skew(conn: sqlite3.Connection, device_id: str) -> float | None:
+    """Clock skew of the device's last heartbeat, seconds; None: it never sent one."""
+    row = conn.execute("SELECT clock_skew_s FROM device_status WHERE device_id = ?", (device_id,)).fetchone()
+    return None if row is None else row["clock_skew_s"]
 
 
 def fleet_devices(conn: sqlite3.Connection, driver_id: str | None = None) -> list[dict[str, Any]]:
     """Every registered device plus every device heard from (browsers are not registered), by id."""
     rows = conn.execute(
         """SELECT d.device_id, COALESCE(s.driver_id, d.driver_id) AS driver_id,
-                  s.last_seen, s.trip_id, s.state, s.moving, s.versions, s.perf
+                  s.last_seen, s.trip_id, s.state, s.moving, s.versions, s.perf, s.clock_skew_s
            FROM devices d LEFT JOIN device_status s ON s.device_id = d.device_id
            UNION ALL
-           SELECT s.device_id, s.driver_id, s.last_seen, s.trip_id, s.state, s.moving, s.versions, s.perf
+           SELECT s.device_id, s.driver_id, s.last_seen, s.trip_id, s.state, s.moving, s.versions, s.perf,
+                  s.clock_skew_s
            FROM device_status s WHERE s.device_id NOT IN (SELECT device_id FROM devices)
            ORDER BY 1"""
     ).fetchall()
@@ -316,16 +339,21 @@ def last_event(conn: sqlite3.Connection, device_id: str, since: str | None, unti
 URGENT_REASONS = ("unresponsive", "repeated_l3", "no_answer")  # edge_agent/io/publisher.py URGENT_REASONS
 
 
-def urgent_event(conn: sqlite3.Connection, device_id: str, trip_id: str | None, since: str) -> dict[str, Any] | None:
-    """Newest event since `since` that needs a manager now (M44): an L3 alert, or one of URGENT_REASONS.
-    Only of the trip the device is on (an old trip's alert is history), never a forced one."""
+def urgent_event(
+    conn: sqlite3.Connection, device_id: str, trip_id: str | None, since: str, max_delay_s: float
+) -> dict[str, Any] | None:
+    """Newest event that needs a manager now (M44): an L3 alert, or one of URGENT_REASONS. Only of the
+    trip the device is on (an old trip's alert is history), never a forced one. "Now" is server time
+    (M82): it arrived since `since`, and it was not held back on the device for longer than
+    `max_delay_s` (an offline queue emptying is history too). The event's own `ts` is not compared."""
     if trip_id is None:
         return None
     rows = conn.execute(
         f"""SELECT event_id, ts, type, level, reasons FROM events
-            WHERE device_id = ? AND trip_id = ? AND ts >= ? AND {NOT_FORCED}
-            ORDER BY ts DESC LIMIT 50""",
-        (device_id, trip_id, since),
+            WHERE device_id = ? AND trip_id = ? AND received_at >= ? AND (delay_s IS NULL OR delay_s <= ?)
+                  AND {NOT_FORCED}
+            ORDER BY received_at DESC, id DESC LIMIT 50""",
+        (device_id, trip_id, since, max_delay_s),
     ).fetchall()
     for row in rows:
         reasons = json.loads(row["reasons"])
@@ -340,18 +368,21 @@ def urgent_event(conn: sqlite3.Connection, device_id: str, trip_id: str | None, 
 def purge_expired(
     conn: sqlite3.Connection, now: datetime, events_days: int, summaries_days: int, access_log_days: int = 0
 ) -> dict[str, int]:
-    """Delete metadata past its retention period (0 days = keep). Returns rows deleted per table."""
+    """Delete metadata past its retention period (0 days = keep). Returns rows deleted per table.
+    The period runs from when the backend received a row (M82), not from the device's timestamp: a
+    device with a wrong clock can neither have its rows deleted at once nor kept past the period."""
     out = {"events": 0, "fatigue_samples": 0, "trip_summaries": 0}
     if access_log_days > 0:  # the access log has a retention period of its own
         cutoff = (now - timedelta(days=access_log_days)).astimezone(UTC).isoformat()
         out["access_log"] = conn.execute("DELETE FROM access_log WHERE ts < ?", (cutoff,)).rowcount
     if events_days > 0:
         cutoff = (now - timedelta(days=events_days)).astimezone(UTC).isoformat()
-        out["events"] = conn.execute("DELETE FROM events WHERE ts < ?", (cutoff,)).rowcount
-        out["fatigue_samples"] = conn.execute("DELETE FROM fatigue_samples WHERE ts < ?", (cutoff,)).rowcount
+        out["events"] = conn.execute("DELETE FROM events WHERE received_at < ?", (cutoff,)).rowcount
+        samples = conn.execute("DELETE FROM fatigue_samples WHERE received_at < ?", (cutoff,))
+        out["fatigue_samples"] = samples.rowcount
     if summaries_days > 0:
         cutoff = (now - timedelta(days=summaries_days)).astimezone(UTC).isoformat()
-        out["trip_summaries"] = conn.execute("DELETE FROM trip_summaries WHERE started_at < ?", (cutoff,)).rowcount
+        out["trip_summaries"] = conn.execute("DELETE FROM trip_summaries WHERE received_at < ?", (cutoff,)).rowcount
     return out
 
 
@@ -490,12 +521,20 @@ def query_access_log(
 # --------------------------------------------------------------------------- events
 
 
-def insert_event(conn: sqlite3.Connection, device_id: str, driver_id: str | None, e: dict[str, Any]) -> bool:
-    """Insert one event; False if its event_id is already stored (idempotent retries)."""
+def insert_event(
+    conn: sqlite3.Connection,
+    device_id: str,
+    driver_id: str | None,
+    e: dict[str, Any],
+    received_at: str | None = None,
+    delay_s: float | None = None,
+) -> bool:
+    """Insert one event; False if its event_id is already stored (idempotent retries). `delay_s`: how
+    long the device held it before it arrived, its clock error taken out (None: not known, M82)."""
     cur = conn.execute(
         """INSERT OR IGNORE INTO events (event_id, device_id, driver_id, trip_id, ts, type, level, reasons,
-               drowsy_score, distraction_score, speed_kmh, metrics, received_at, tags, versions)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               drowsy_score, distraction_score, speed_kmh, metrics, received_at, tags, versions, delay_s)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             e["event_id"],
             device_id,
@@ -509,12 +548,19 @@ def insert_event(conn: sqlite3.Connection, device_id: str, driver_id: str | None
             e["distraction_score"],
             e["speed_kmh"],
             json.dumps(e["metrics"]),
-            now_iso(),
+            received_at or now_iso(),
             json.dumps(e["tags"]) if e.get("tags") else None,
             json.dumps(e["versions"], sort_keys=True) if e.get("versions") else None,
+            delay_s,
         ),
     )
     return cur.rowcount == 1
+
+
+def event_device(conn: sqlite3.Connection, event_id: str) -> str | None:
+    """The device that stored this event_id, None when nobody did."""
+    row = conn.execute("SELECT device_id FROM events WHERE event_id = ?", (event_id,)).fetchone()
+    return None if row is None else row["device_id"]
 
 
 def apply_feedback(conn: sqlite3.Connection, device_id: str, event_id: str, verdict: str, ts: str) -> bool:
@@ -526,11 +572,14 @@ def apply_feedback(conn: sqlite3.Connection, device_id: str, event_id: str, verd
     return cur.rowcount == 1
 
 
-def insert_sample(conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any]) -> bool:
+def insert_sample(
+    conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any], received_at: str | None = None
+) -> bool:
     cur = conn.execute(
         """INSERT OR IGNORE INTO fatigue_samples
-               (sample_id, device_id, driver_id, trip_id, ts, drowsy_score, perclos_60s, max_level, off_road_ratio)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (sample_id, device_id, driver_id, trip_id, ts, drowsy_score, perclos_60s, max_level, off_road_ratio,
+                received_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             s["sample_id"],
             device_id,
@@ -541,14 +590,17 @@ def insert_sample(conn: sqlite3.Connection, device_id: str, driver_id: str | Non
             s["perclos_60s"],
             s["max_level"],
             s.get("off_road_ratio"),
+            received_at or now_iso(),
         ),
     )
     return cur.rowcount == 1
 
 
-def upsert_summary(conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any]) -> bool:
+def upsert_summary(
+    conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any], received_at: str | None = None
+) -> bool:
     """Store a trip summary; a re-sent one (offline queue retry) replaces it but keeps the review."""
-    now = datetime.now(UTC).isoformat()
+    now = received_at or now_iso()
     cur = conn.execute(
         """INSERT INTO trip_summaries (trip_id, device_id, driver_id, started_at, received_at, rating, summary)
            VALUES (?, ?, ?, ?, ?, ?, ?)

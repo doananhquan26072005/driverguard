@@ -49,6 +49,7 @@ def test_web_feedback_and_samples(client):
     assert r.json() == {
         "accepted": 1,
         "duplicates": 0,
+        "conflicts": 0,
         "feedback_applied": 1,
         "samples_accepted": 1,
         "summaries_accepted": 0,
