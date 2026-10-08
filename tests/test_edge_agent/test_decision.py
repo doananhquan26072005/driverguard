@@ -124,7 +124,17 @@ def test_unavailable_mutes_every_rule():
 
 
 def test_not_unavailable_when_parked():
-    assert not assess(x=replace(X0, no_face_duration=10.0), c=replace(C0, moving=False)).unavailable
+    parked = replace(C0, speed_kmh=0.0, moving=False, stationary=True)
+    assert not assess(x=replace(X0, no_face_duration=10.0), c=parked).unavailable
+
+
+def test_unavailable_in_a_crawl_below_min_speed():
+    """M72: 1-5 km/h is not moving (distraction off) but not standing still either: a lost face is told."""
+    crawl = replace(C0, speed_kmh=3.0, moving=False)
+    r = assess(x=replace(X0, active=False, no_face_duration=10.0), c=crawl)
+    assert r.unavailable and r.unavailable_reason == "no_face" and r.level == 0
+    unknown = replace(C0, speed_kmh=None, moving=False)  # no speed, assume_moving off: as before
+    assert not assess(x=replace(X0, no_face_duration=10.0), c=unknown).unavailable
 
 
 def test_closure_carried_through_a_head_drop_stays_monitored():
@@ -351,19 +361,27 @@ def test_cooldown_is_per_reason():
 
 
 def test_dropping_a_level_is_not_a_new_alert():
+    # phone was alerted at L2, a microsleep came on top, the level drops back to L2 phone: no second sound
     m = AlertManager(CFG)
-    steps = [(3, ("microsleep",))] * 5 + [(2, ("phone",))] * 60
-    assert emitted_reasons(run_reasons(m, steps)) == [(0.0, 3, ("microsleep",))]
+    steps = [(2, ("phone",))] * 10 + [(3, ("microsleep",))] * 5 + [(2, ("phone",))] * 60
+    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("phone",)), (1.0, 3, ("microsleep",))]
     assert m.active_level == 2
 
 
 def test_flickering_reason_is_not_re_alerted():
-    # phone drops out for one frame every 2 s for 60 s: one phone alert, not one per cooldown.
+    # phone drops out for one frame every 2 s for 60 s: one phone alert, then the one reminder of the
+    # level when the 30 s cooldown has passed (M74), not an alert per flicker.
     m = AlertManager(CFG)
     steps = [(2, ("off_road",))] * 10
     for _ in range(30):
         steps += [(2, ("off_road", "phone"))] * 19 + [(2, ("off_road",))]
-    assert emitted_reasons(run_reasons(m, steps)) == [(0.5, 2, ("off_road",)), (1.5, 2, ("phone", "off_road"))]
+    assert emitted_reasons(run_reasons(m, steps)) == [
+        (0.5, 2, ("off_road",)),
+        (1.5, 2, ("phone", "off_road")),
+        (32.0, 2, ("off_road", "phone")),
+    ]
+    out = run_reasons(AlertManager(replace(CFG, remind=False)), steps)
+    assert emitted_reasons(out) == [(0.5, 2, ("off_road",)), (1.5, 2, ("phone", "off_road"))]
 
 
 def test_reason_gone_longer_than_fall_hold_is_new_again():

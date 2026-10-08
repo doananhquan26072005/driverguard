@@ -3,6 +3,7 @@ import type { EnrollStatus, HudEnrollment, HudSnapshot } from "../lib/types";
 import {
   enrollCue,
   enrollReminder,
+  hudCanLeave,
   monitoringStopped,
   orderedReasons,
   presenceUp,
@@ -127,6 +128,22 @@ describe("hudModel", () => {
 function enroll(status: EnrollStatus, hint: HudEnrollment["hint"] = null, attempts = 0): HudEnrollment {
   return { status, progress: 0.5, hint, attempts };
 }
+
+describe("ways out of the HUD (M72)", () => {
+  it("offers the demo and the Dashboard link only while no device is watched from this screen", () => {
+    expect(hudCanLeave("connecting", null, false, false)).toBe(true); // nothing behind the screen yet
+    expect(hudCanLeave("down", snap(), false, false)).toBe(true);
+    expect(hudCanLeave("ok", { ...snap(), connected: false }, false, false)).toBe(true);
+    expect(hudCanLeave("ok", snap(), false, false)).toBe(false); // a device is watching: one touch must not hide it
+    expect(hudCanLeave("ok", { ...snap(), speed_kmh: 0 }, false, false)).toBe(false); // parked too: enrollment, alerts when it drives off
+  });
+
+  it("always leads back out of the demo, and never out of #/live", () => {
+    expect(hudCanLeave("ok", snap(), true, false)).toBe(true); // "Về thiết bị thật"
+    expect(hudCanLeave("connecting", null, false, true)).toBe(false); // leaving #/live stops the camera
+    expect(hudCanLeave("down", null, true, true)).toBe(false);
+  });
+});
 
 describe("what is pushed to the HUD at once (M50)", () => {
   const alert = (event_id: string) => ({ event_id, level: 2 as const, reasons: ["off_road" as const], at: 1, feedback: null });

@@ -93,6 +93,16 @@ export function monitoringStopped(state: SystemState | null): boolean {
   return state === "down" || state === "stale" || state === "error";
 }
 
+/** May the HUD offer its two ways out, "Chạy mô phỏng" and the Dashboard link (M72)? Both take the
+ *  screen, and with it every alert sound, away from the driver with one touch and no question. So only
+ *  while nothing is watched from here: no device behind the screen yet (or the link is down), or the
+ *  scripted demo itself (its button leads back). Never on #/live (`inPage`): leaving that page stops
+ *  the camera. The demo and every state can always be seen on #/hud-preview. */
+export function hudCanLeave(link: HudLink, snap: HudSnapshot | null, demo: boolean, inPage: boolean): boolean {
+  if (inPage) return false;
+  return demo || link !== "ok" || !snap?.connected;
+}
+
 /** "Bạn còn ở đó không?" is up (M44): asked, or asked and nobody answered. Only while the driver
  *  panel would show "unavailable" (not over a lost camera or a dead link). */
 export function presenceUp(state: SystemState | null, snap: HudSnapshot | null): "asking" | "unanswered" | null {

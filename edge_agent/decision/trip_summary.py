@@ -141,7 +141,9 @@ class TripCollector:
         self.unavailable_by_cause: dict[str, float] = {}  # risk.unavailable_reason -> seconds
         self.enrolled = False
         self.driver_changes = 0  # "Đổi tài xế" presses (edge_agent.decision.pipeline.change_driver)
-        self._driver_run = 0.0  # continuous driving of the current driver (HUD, M65): reset by a rest or a new driver
+        # Continuous driving of the current driver (HUD, M65): block 10's drive_run_s, the counter the
+        # long-drive rule reads, so the HUD and the rule cannot disagree (M73).
+        self._driver_run = 0.0
         self._minutes: dict[int, list[float]] = {}  # minute -> [score sum, frames, max level, moving frames]
 
     def update(self, r: Any) -> None:
@@ -157,7 +159,6 @@ class TripCollector:
         if ctx.moving:
             self.driving += dt
             self._drive_run += dt
-            self._driver_run += dt
             self.longest_drive = max(self.longest_drive, self._drive_run)
             if ctx.speed_kmh is not None:
                 self._speed_sum += ctx.speed_kmh * dt
@@ -168,8 +169,9 @@ class TripCollector:
             self.stopped += dt
         if ctx.resting and not self._was_resting:
             self.rests += 1
-            self._drive_run = self._driver_run = 0.0
+            self._drive_run = 0.0
         self._was_resting = ctx.resting
+        self._driver_run = ctx.drive_run_s
         if r.risk.unavailable:
             self.unavailable += dt
             cause = r.risk.unavailable_reason or "no_face"

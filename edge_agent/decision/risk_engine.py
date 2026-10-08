@@ -13,14 +13,20 @@ Rule table (docs/workflow/workflow_full_4.jpg):
 - blink_rate outside [normal_min, normal_max]            -> blink.level (0 = note only)
 The final level is the highest level among the rules that fire.
 
-Monitoring unavailable (PRD FR-6): no face for `unavailable_no_face_s` while moving (camera
-covered, driver out of view, glare) -> `unavailable`, and no alert at all while it lasts: nothing
+Monitoring unavailable (PRD FR-6): no face for `unavailable_no_face_s` while the vehicle is not
+standing still (camera covered, driver out of view, glare) -> `unavailable`, and no alert at all while it lasts: nothing
 can be judged without a face, and guessing would be a false alarm. The HUD and the backend are
 told the driver is not monitored instead. Exception: a closure that block 7 keeps counting through
 a head drop (eyes seen closed, then the head fell out of view) is evidence, not a lost face, so
 it stays monitored and the microsleep L3 alarm goes on. A face in view that cannot be read (block 6
-quality stage: low_light, glare, blur) for `unavailable_low_quality_s` is unavailable as well, and
-`unavailable_reason` says which of them it is (a lost face: camera_blocked, bad_angle or no_face).
+quality stage: low_light, glare, blur, and bad_angle: partly out of the image or without a head
+pose, M72) for `unavailable_low_quality_s` is unavailable as well, and `unavailable_reason` says
+which of them it is (a lost face: camera_blocked, bad_angle or no_face). Before M72 bad_angle was
+timed nowhere: a face cut by the edge of the image was not measured, not "unavailable" and raised no
+alert, for as long as it stayed there. The head-drop exception holds for it too (a dropped head is
+often partly out of the image). "Not standing still" is block 10's `rolling`: also the crawl below
+context.min_speed_kmh, where the distraction rules are off but a driver out of view is still not
+watched (before M72: `moving`, so nobody was told at 1-5 km/h).
 Likewise a face lost right after a large
 head turn (block 8 `turned_away`, at most distraction.turned_away.max_s): the driver is looking
 behind, the off-road rule goes on instead of "unavailable".
@@ -31,7 +37,7 @@ further than the widened limit, still counts). Drowsiness rules while standing s
 `drowsy.stationary_max_level`: a microsleep at a red light still gets a chime, a driver
 closing the eyes to rest after parking gets no strong alarm. Once the stop is a rest
 (context.rest_after_s) they are off, and so they are while driver enrollment asks the driver
-to close the eyes (`drowsy_muted`). Stateless: same inputs -> same output.
+to close the eyes (`drowsy_muted`: drowsy_score and its terms read 0 too). Stateless: same inputs -> same output.
 """
 
 from __future__ import annotations
@@ -44,7 +50,7 @@ from edge_agent.analysis.drowsiness import DrowsinessState
 from edge_agent.config import config_from_dict
 from edge_agent.context.vehicle_context import VehicleContext
 from edge_agent.decision.trip_memory import TripState
-from edge_agent.perception.quality import FACE_ISSUES, NO_FACE_ISSUES, QualityState
+from edge_agent.perception.quality import NO_FACE_ISSUES, TIMED_ISSUES, QualityState
 
 UNRESPONSIVE = "unresponsive"  # L3 reason: eyes closed through the alarm (M44)
 
@@ -104,7 +110,7 @@ class RiskAssessment:
     drowsy_score: float  # 0..100
     distraction_score: float  # 0..100
     drowsy_terms: tuple[float, ...]  # perclos, microsleep, yawn, nod, slow_blink, brow (0..1)
-    unavailable: bool = False  # face lost too long while moving: not monitored, no alerts (FR-6)
+    unavailable: bool = False  # face lost / unreadable too long while rolling: not monitored, no alerts (FR-6)
     # Why: no_face, camera_blocked, bad_angle, low_light, glare or blur. None while monitored.
     unavailable_reason: str | None = None
 
@@ -179,6 +185,8 @@ class RiskEngine:
 
         # Drowsiness branch
         drowsy, terms = self.drowsy_score(d, ctx, trip)
+        if drowsy_muted:  # eyes closed on request: nothing to score
+            drowsy, terms = 0.0, (0.0,) * len(terms)
         cap = 0 if drowsy_muted else self.drowsy_level_cap(ctx)
         if cap > 0:
             if d.closed_duration >= cfg.microsleep_l3_s:
@@ -224,13 +232,15 @@ class RiskEngine:
         )
         # A face in view that cannot be read (too dark, washed out, blurred): what blocks 7 / 8 say
         # about it is a guess, so nothing is carried through, not even a closure being counted.
+        # Partly out of the image (bad_angle): the same, except a closure carried through a head drop.
         poor = (
             quality is not None
             and cfg.unavailable_low_quality_s > 0
-            and issue in FACE_ISSUES
+            and issue in TIMED_ISSUES
             and quality.duration >= cfg.unavailable_low_quality_s
+            and not (issue == "bad_angle" and d.head_drop)
         )
-        unavailable = ctx.moving and (no_face or poor)
+        unavailable = ctx.rolling and (no_face or poor)
         unavailable_reason = None
         if unavailable:
             hits, distraction = [], 0.0

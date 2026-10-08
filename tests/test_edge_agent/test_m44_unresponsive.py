@@ -154,8 +154,9 @@ def test_presence_tap_answers_and_it_is_not_asked_again_until_the_face_is_back()
     assert p.update(8.0, lost=True, ack=True).event == "answered"
     later = [p.update(8 + t / 10, lost=True) for t in range(1, 400)]
     assert not any(s.asking or s.unanswered or s.event for s in later)
-    p.update(50.0, lost=False)  # face seen again
-    again = [p.update(50 + t / 10, lost=True).event for t in range(1, 80)]
+    for t in range(0, 15):  # face seen again, for longer than back_s (M74)
+        p.update(70 + t / 10, lost=False)
+    again = [p.update(71.5 + t / 10, lost=True).event for t in range(0, 80)]  # past reask_after_s
     assert "asked" in again
 
 
@@ -164,9 +165,12 @@ def test_presence_face_back_ends_the_question_and_a_stray_tap_does_nothing():
     assert p.update(0.0, lost=True, ack=True).event is None  # nothing was asked
     for t in range(0, 70):
         p.update(t / 10, lost=True)
-    s = p.update(7.0, lost=False)
+    assert p.update(7.0, lost=False).asking  # one frame with a face is not the driver back (M74)
+    for t in range(1, 10):
+        p.update(7.0 + t / 10, lost=False)
+    s = p.update(8.0, lost=False)  # seen for back_s
     assert not s.asking and s.event is None
-    assert PresenceCheck(PresenceConfig(enabled=False)).update(99.0, lost=True) == p.update(7.1, lost=False)
+    assert PresenceCheck(PresenceConfig(enabled=False)).update(99.0, lost=True) == p.update(8.1, lost=False)
 
 
 def test_a_tap_after_no_answer_clears_it():

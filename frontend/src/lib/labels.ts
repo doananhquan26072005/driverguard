@@ -187,6 +187,16 @@ export function startupText(s: { camera: number | null; python: number | null; f
   return `Khởi động ${sec(s.first_frame)} s (camera ${sec(s.camera)} · Python ${sec(s.python)} · model mặt ${sec(s.face_model)} · model điện thoại ${sec(s.phone_model)})`;
 }
 
+/** What the loop of #/live did to keep getting frames (M71), for the camera card; "" when nothing. */
+export function recoveryText(r: { pulls: number; reopens: number } | null | undefined): string {
+  if (!r || (!r.pulls && !r.reopens)) return "";
+  const parts = [];
+  if (r.pulls) parts.push(`Vòng lặp đứng ${r.pulls} lần, đã tự chạy lại`);
+  if (r.reopens) parts.push(`mở lại camera ${r.reopens} lần`);
+  const text = parts.join(" · ");
+  return text[0].toUpperCase() + text.slice(1);
+}
+
 /** ... and the short form for the camera card of #/live ("Chi tiết kỹ thuật"): p95 per stage, one line each. */
 export function perfLines(p: PerfSnapshot): string {
   const s = p.stages_ms;

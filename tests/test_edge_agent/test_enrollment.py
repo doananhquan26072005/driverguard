@@ -238,6 +238,27 @@ def test_closing_the_eyes_for_enrollment_raises_no_alert():
     assert alerts == []
 
 
+def test_drowsy_score_reads_zero_through_the_eyes_closed_step():
+    results, _ = run_pipeline(15, [(0, 0)], obedient)
+    closing = [r for r in results if not r.observed]
+    assert closing and max(r.drowsiness.closed_duration for r in closing) >= 2.0  # block 7 did see it
+    assert {r.risk.drowsy_score for r in results} == {0.0}
+    assert {r.risk.drowsy_terms for r in results} == {(0.0,) * 6}
+
+
+def test_enrolling_starts_the_drowsiness_measures_from_zero():
+    def dozing_first(i, t, status):  # eyes shut 1.5 s before the steps are done: PERCLOS, a long blink
+        return obedient(i, t, status, ear=SHUT_EAR, blink=0.9) if 0.5 <= t < 2.0 else obedient(i, t, status)
+
+    results, _ = run_pipeline(20, [(0, 0)], dozing_first)
+    never, _ = run_pipeline(20, [(0, 0)], dozing_first, enroll_on=False)
+    assert never[-1].drowsiness.perclos_60s > 0  # not enrolled: still in the window
+    done = next(i for i, r in enumerate(results) if r.enrollment.enrolled and r.observed)
+    d = results[done].drowsiness
+    assert (d.perclos_60s, d.closed_duration, d.blink_rate, d.yawn_count_10min, d.nod_count_5min) == (0, 0, 0, 0, 0)
+    assert results[done].risk.drowsy_score == 0 and results[-1].risk.drowsy_score == 0
+
+
 ENROLL_THEN_DRIVE = [(0, 0), (15, 0), (15.1, 60)]  # enrolls while parked, drives off at 15 s
 
 

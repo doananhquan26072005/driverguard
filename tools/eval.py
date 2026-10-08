@@ -56,6 +56,7 @@ from tools.metrics import (  # noqa: E402
     branch_level,
     ci_text,
     exposure_seconds,
+    person_text,
     rate_ci,
     widen,
     window_scores,
@@ -342,7 +343,7 @@ def score_by_subject(
     return sorted(rows, key=lambda r: (-(r.fp_per_hour or 0.0), -r.false_alerts, r.subject))
 
 
-def subject_report(rows: list[SubjectRow], worst: int = 5) -> list[str]:
+def subject_report(rows: list[SubjectRow], worst: int = 5, cfg: EvalConfig | None = None) -> list[str]:
     """Distribution over people, then the worst few. Per-person rates are on minutes of video: the
     CI is the honest part, so nobody is called pass / fail here."""
     if not rows:
@@ -363,6 +364,13 @@ def subject_report(rows: list[SubjectRow], worst: int = 5) -> list[str]:
             "One person has minutes of video, so a single person's rate has a very wide CI: compare groups, "
             "not individuals."
         )
+    if cfg is not None:
+        lines += [
+            "",
+            "All false alerts per hour with the people as the sample: "
+            + person_text([r.false_alerts for r in rows], [r.hours for r in rows], cfg)
+            + ".",
+        ]
     lines += [
         "",
         f"The {min(worst, len(rows))} people with the highest false-alert rate:",
@@ -436,7 +444,13 @@ def report(
             f"{_fmt(s.precision, True)} | {_fmt(s.recall, True)} | {_fmt(s.f1)} | {s.exposure_h:.2f} | "
             f"{ci_text((s.fp_per_hour, s.fp_ci_low, s.fp_ci_high))} | {_fmt(s.delay_p50_s, digits=1)} s |"
         )
+    episodes_n = max((x.episodes for x in scores if not x.behavior.startswith(ALERT)), default=0)
     lines += [
+        "",
+        f"Units: recall counts labelled episodes ({sum(x.episodes for x in scores if not x.behavior.startswith(ALERT))} "
+        f"of them, {episodes_n} at most per behaviour), precision counts predictions, FP / hour counts hours of video "
+        f"({len(durations_s)} videos; the positive share of the time is the part inside the episodes). "
+        "Videos are not grouped by person unless the *Per person* section below says so.",
         "",
         "TP / FP / Dup: matched episodes / predictions outside every episode / extra predictions in an "
         "already matched episode. Delay: prediction time minus episode start (negative = inside the "
@@ -458,7 +472,7 @@ def report(
     if windows and cfg is not None:
         lines += ["", "## FAR / MAR on windows", ""] + window_table(windows, cfg)
     if by_subject:
-        lines += ["", "## Per person", ""] + subject_report(by_subject)
+        lines += ["", "## Per person", ""] + subject_report(by_subject, cfg=cfg)
     return "\n".join(lines) + "\n"
 
 
@@ -488,7 +502,6 @@ def run_video(
     import cv2
 
     from edge_agent.capture import Frame
-    from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
     from edge_agent.decision.pipeline import DecisionPipeline
     from edge_agent.perception import PreprocessConfig, Preprocessor
     from edge_agent.perception.eye_state import EyeStateConfig, make_estimator
@@ -515,7 +528,9 @@ def run_video(
         yolo = YoloPhoneModel(phone_cfg) if use_phone else None
         yolo_every = max(1, round(fps / phone_cfg.target_fps))  # same rate as the runtime thread
         pipeline = DecisionPipeline(thresholds)
-        can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]}))
+        from tools.seq_eval import replay_vehicle
+
+        can = replay_vehicle(thresholds, speed_kmh)
         preds: list[Prediction] = []
         detections: tuple = ()
         last_yolo_t = -1e9

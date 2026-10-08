@@ -105,8 +105,27 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   expect((await state(page)).reasons).toContain("microsleep");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Mở mắt! Dừng xe nghỉ ngay");
   await shutEyes(page, false);
+  await expect.poll(async () => (await state(page)).level, { timeout: 15_000 }).toBeLessThan(3);
 
-  await endTrip(page);
+  // M72: no one-touch way to stop or hide the monitoring. The demo button and the Dashboard link are
+  // not on this HUD; "Dừng camera" asks first, and "Tiếp tục lái" leaves everything running.
+  await expect(page.getByRole("button", { name: "Chạy mô phỏng" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Dừng camera" }).click();
+  const ask = page.getByRole("dialog");
+  await expect(ask.getByRole("heading", { name: "Kết thúc chuyến đi?" })).toBeVisible();
+  await ask.getByRole("button", { name: "Tiếp tục lái" }).click();
+  await expect(ask).toHaveCount(0);
+  const before = (await state(page)) as State & { updated_at?: number };
+  await page.waitForTimeout(1_000);
+  const after = (await state(page)) as State & { updated_at?: number };
+  expect(after.connected).toBe(true);
+  expect(after.updated_at ?? 0).toBeGreaterThan(before.updated_at ?? 0); // the loop is still running
+
+  // ... and "Kết thúc" there ends the trip like the HUD's own button: the summary, the camera off.
+  await page.getByRole("button", { name: "Dừng camera" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
+  await expect(page.getByText(/^Tổng kết chuyến đi · /)).toBeVisible();
   await expect(page.getByText("Chế độ dùng thử: bản tổng kết không được gửi đi.")).toBeVisible();
 });
 
@@ -120,6 +139,54 @@ test("no face in view: the frames still run in Python, monitoring pauses, nothin
   expect(s.error).toBeUndefined();
   expect(s.processing_error).toBe(false);
   expect(s.fps ?? 0).toBeGreaterThan(5);
+});
+
+test("the loop recovers by itself: quiet frame callback, frames failing in the page, camera ended", async ({ page }) => {
+  // M71. Nothing of this needed a reload before only by luck: the loop had no watch on itself.
+  type Health = State & {
+    updated_at?: number;
+    processing_error?: boolean;
+    camera_lost?: boolean;
+    error?: string;
+    incident?: { kind: string; attempts: number | null } | null;
+  };
+  const health = () => state(page) as Promise<Health>;
+  const fresh = async () => Date.now() / 1000 - ((await health()).updated_at ?? 0);
+  const open = { faces: [FACES.open], blink: [0.05, 0.05], brow: [0] };
+  await stubSimulator(page);
+  await page.addInitScript((f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f), open);
+  await startLive(page);
+
+  // 1. The browser stops calling requestVideoFrameCallback (what a stalled loop looked like in M67's
+  //    long runs): after capture.frame_timeout_s a timer pulls the frames.
+  await page.evaluate(() => void (HTMLVideoElement.prototype.requestVideoFrameCallback = () => 0));
+  await expect.poll(fresh, { timeout: 5_000 }).toBeGreaterThan(2); // it did stand still
+  await expect.poll(fresh, { timeout: 10_000 }).toBeLessThan(1);
+  await page.waitForTimeout(3_000);
+  expect(await fresh()).toBeLessThan(1); // and it keeps going
+  expect((await health()).camera_lost).toBe(false);
+
+  // 2. Frames fail in the page itself, before Python: "processing error", gone with the next good frame.
+  await page.evaluate(() => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = { faces: 1 }));
+  await expect.poll(async () => (await health()).processing_error, { timeout: 10_000 }).toBe(true);
+  expect((await health()).incident?.kind).toBe("processing_error");
+  await page.evaluate((f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f), open);
+  await expect.poll(async () => (await health()).processing_error, { timeout: 10_000 }).toBe(false);
+
+  // 3. The camera track ends: lost at once, asked for again, monitoring resumes on the new stream.
+  await page.evaluate(() => {
+    const ask = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      await new Promise((r) => setTimeout(r, 3_000)); // long enough for the test to see "lost"
+      return ask(c);
+    };
+    const video = document.querySelector("video")!;
+    (video.srcObject as MediaStream).getVideoTracks()[0].stop();
+  });
+  await expect.poll(async () => (await health()).camera_lost, { timeout: 5_000 }).toBe(true);
+  expect((await health()).incident).toMatchObject({ kind: "camera_lost", attempts: 1 });
+  await expect.poll(async () => (await health()).camera_lost, { timeout: 15_000 }).toBe(false);
+  await expect.poll(fresh, { timeout: 5_000 }).toBeLessThan(1);
 });
 
 test("signed-in driver: change of driver enrolls again; the manager gets the trip report", async ({ page, browser }) => {
@@ -189,4 +256,41 @@ test("web driving controls: #/drive on another page drives #/live; closing it is
   await remote.close(); // the remote goes quiet while driving
   await expect.poll(async () => (await state(page)).vehicle?.signal_lost, { timeout: 10_000 }).toBe(true);
   await expect(page.getByText("Mất tín hiệu xe: vẫn giám sát như đang chạy")).toBeVisible();
+});
+
+test("leaving #/live with the trip running ends the trip: the manager sees it ended, with its report", async ({ page, browser }) => {
+  // M72. Before, another address just stopped the camera: no summary, no "ended", a vehicle "lost" 90 s later.
+  await stubSimulator(page);
+  await page.addInitScript(
+    (f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f),
+    { faces: [FACES.open], blink: [0.05, 0.05], brow: [0] },
+  );
+  await startLive(page, "an");
+
+  const manager = await (await browser.newContext()).newPage();
+  await manager.goto("/#/dashboard");
+  await manager.getByLabel("Tên đăng nhập").fill("quanly");
+  await manager.getByLabel("Mật khẩu").fill(PASSWORD);
+  await manager.getByRole("button", { name: "Đăng nhập" }).click();
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
+  const vehicle = manager.getByRole("row").filter({ hasText: "web-an" });
+  const fleetShows = (text: string) =>
+    expect(async () => {
+      await manager.getByRole("button", { name: "Làm mới" }).click();
+      await expect(vehicle).toContainText(text, { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+  await fleetShows("Đang hoạt động");
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  const reports = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
+  await expect(manager.getByRole("region", { name: "Danh sách báo cáo" })).toBeVisible();
+  await manager.waitForTimeout(1_000); // the list has loaded
+  const before = await reports.count(); // reports of earlier tests still listed, if any
+
+  await page.evaluate(() => void (location.hash = "#/dashboard")); // the driver's page goes elsewhere
+  await expect(page.getByRole("button", { name: "Kết thúc chuyến" })).toHaveCount(0);
+
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
+  await fleetShows("Đã kết thúc chuyến");
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await expect(reports).toHaveCount(before + 1);
 });

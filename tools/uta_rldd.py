@@ -13,6 +13,7 @@ test subjects are scored once for a chosen configuration.
     python tools/uta_rldd.py grid --out eval/results/uta_rldd_grid_dev.md          # dev only
     python tools/uta_rldd.py compare --split test --set risk.drowsy.l1=45          # current vs the --set values
     python tools/uta_rldd.py personal --out eval/results/personalization_uta_rldd.md
+    python tools/uta_rldd.py fps --out eval/results/fps_low_uta_rldd.md             # dev only, frames left out
 
 The functions that score (summarize, metrics, the reports) are pure: they take traces / rows.
 """
@@ -29,6 +30,7 @@ import re
 import shutil
 import sys
 import time
+import zlib
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from dataclasses import asdict, dataclass
@@ -44,6 +46,7 @@ from edge_agent.config import PROJECT_ROOT  # noqa: E402
 
 UTA_DIR = PROJECT_ROOT / "data/eval_traces/uta_rldd"
 SPLIT_DIR = PROJECT_ROOT / "eval/splits"
+TEST_LOG = SPLIT_DIR / "uta_rldd_test_reads.tsv"  # one line per run that reads the held-out subjects
 VIDEO_EXT = {".mov", ".mp4", ".m4v", ".avi", ".mkv"}
 LABELS = (0, 5, 10)
 TERMS = ("perclos", "microsleep", "yawn", "nod", "slow_blink", "brow")  # RiskAssessment.drowsy_terms order
@@ -322,6 +325,34 @@ def _pct(x: np.ndarray, q: float) -> float:
     return float(np.percentile(x, q)) if len(x) else float("nan")
 
 
+MINUTE_S = 60.0  # the unit of "a minute of video"; not a threshold
+
+
+def minute_means(t: np.ndarray, score: np.ndarray, start_s: float) -> list[float]:
+    """Mean score of every whole minute from start_s on (a last partial minute is dropped)."""
+    out: list[float] = []
+    end = float(t[-1]) if len(t) else 0.0
+    lo = start_s
+    while lo + MINUTE_S <= end + 1e-9:
+        vals = score[(t >= lo) & (t < lo + MINUTE_S)]
+        if np.isfinite(vals).any():
+            out.append(round(float(np.nanmean(vals)), 2))
+        lo += MINUTE_S
+    return out
+
+
+def score_bands(minutes: dict[int, list[float]], width: float, top: float = 100.0) -> list[dict[str, Any]]:
+    """Count the minutes of each label (0 / 5 / 10) in score bands [lo, lo + width); the last band
+    also holds `top`. Rows come lowest band first."""
+    edges = list(np.arange(0.0, top, width)) or [0.0]
+    rows = [{"lo": float(lo), "hi": float(min(lo + width, top)), **{lb: 0 for lb in LABELS}} for lo in edges]
+    for lb, values in minutes.items():
+        for v in values:
+            i = min(int(v // width), len(rows) - 1) if v >= 0 else 0
+            rows[i][lb] += 1
+    return rows
+
+
 def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
     """One row of numbers for one (replayed) trace. Scores, levels and windows leave out the start-up
     stretch (eval.warmup_s); alerts are counted apart for the start-up and for the rest."""
@@ -347,6 +378,9 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
         "score_max": _pct(c["drowsy_score"][m], 100),
         "max_closed_s": _pct(c["closed_duration"], 100),
     }
+    gaps = np.diff(c["t"])  # time between two frames, as the loop saw them
+    s |= {"gap_p50": _pct(gaps, 50), "gap_p95": _pct(gaps, 95), "gap_max": _pct(gaps, 100)}
+    s["minute_scores"] = json.dumps(minute_means(c["t"], c["drowsy_score"], cfg.warmup_s))
     drowsy_level = c.get("drowsy_level", c["level"])
     dis_level = c.get("distraction_level", np.zeros(n))
     for lv in (1, 2, 3):
@@ -363,7 +397,7 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
             s["win"] = w.awake
             s[f"{branch}_win_l{lv}"] = w.false_alarms
 
-    alerts = [(round(i / fps, 2), int(lv), list(rs)) for i, lv, rs in tr["alerts"]]
+    alerts = [(round(float(c["t"][i]), 2), int(lv), list(rs)) for i, lv, rs in tr["alerts"]]
     count: Counter = Counter()
     first = float("nan")
     for t, lv, rs in alerts:
@@ -378,13 +412,22 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
                     count[f"a_drowsy_l{k}"] += 1
         if drowsy and math.isnan(first):
             first = t
-    for k in ("a_drowsy", "a_drowsy_l2", "a_drowsy_l3", "a_dis", "a_other", "a_drowsy_warm", "a_dis_warm"):
+    for k in (
+        "a_drowsy",
+        "a_drowsy_l2",
+        "a_drowsy_l3",
+        "a_dis",
+        "a_other",
+        "a_drowsy_warm",
+        "a_dis_warm",
+        "a_other_warm",
+    ):
         s[k] = count[k]
     s["first_drowsy_s"] = first
     if "traced_alerts" in tr:
         s["a_all"], s["a_traced"] = len(alerts), tr["traced_alerts"]
     s["alerts"] = json.dumps(alerts)
-    ev = Counter(e for i, e in tr["events"] if i / fps >= cfg.warmup_s)
+    ev = Counter(e for i, e in tr["events"] if c["t"][i] >= cfg.warmup_s)
     for e in EVENTS:
         s[f"ev_{e}"] = ev[e]
 
@@ -428,7 +471,7 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
         minutes = s["score_s"] / 60
         for e in ("blink", "microsleep", "yawn", "nod", "brow_raise"):
             s[f"{e}_per_min"] = ev[e] / minutes if minutes > 0 else float("nan")
-        b = [(d, r) for i, d, r in tr.get("blinks", []) if i / fps >= cfg.warmup_s]
+        b = [(d, r) for i, d, r in tr.get("blinks", []) if c["t"][i] >= cfg.warmup_s]
         s["blink_timed"] = len(b)
         s["blink_dur_med"] = float(np.median([d for d, _ in b])) if b else float("nan")
         s["blink_reopen_med"] = float(np.median([r for _, r in b])) if b else float("nan")
@@ -439,12 +482,18 @@ _CACHE: dict[str, dict] = {}
 
 
 def _replay_job(
-    args: tuple[str, str, dict[str, Any], bool, dict[str, float] | None, str],
+    args: tuple[str, str, dict[str, Any], bool, dict[str, float] | None, str, tuple[float, float, float, int] | None],
 ) -> tuple[str, dict[str, Any]]:
-    key, path, thresholds, extras, profile, eye = args
+    key, path, thresholds, extras, profile, eye, resample = args
     if key not in _CACHE:  # each worker reads a trace once and keeps it for the next configuration
         _CACHE[key] = load_trace(path)
-    return key, summarize(replay_plus(_CACHE[key], thresholds, extras, profile, eye), thresholds)
+    tr = _CACHE[key]
+    if resample is not None:  # the same video as a slower loop would have seen it
+        from tools.seq_eval import resample_trace
+
+        fps, jitter_cv, offset_s, seed = resample
+        tr = resample_trace(tr, fps, jitter_cv, offset_s, seed + zlib.crc32(key.encode()))
+    return key, summarize(replay_plus(tr, thresholds, extras, profile, eye), thresholds)
 
 
 def replay_rows(
@@ -454,11 +503,13 @@ def replay_rows(
     extras: bool = False,
     profiles: dict[str, dict[str, float]] | None = None,
     eye: str = "trace",
+    resample: tuple[float, float, float, int] | None = None,
 ) -> list[dict[str, Any]]:
     """One row per video: its identity + summarize() of blocks 7-12 replayed with these thresholds.
-    profiles: video key -> fake enrollment for that video (videos without one learn their baselines)."""
+    profiles: video key -> fake enrollment for that video (videos without one learn their baselines).
+    resample: (fps, jitter_cv, offset_s, seed) of seq_eval.resample_trace, applied to every video first."""
     meta = {v.key: v for v, _ in items}
-    jobs = [(v.key, str(p), thresholds, extras, (profiles or {}).get(v.key), eye) for v, p in items]
+    jobs = [(v.key, str(p), thresholds, extras, (profiles or {}).get(v.key), eye, resample) for v, p in items]
     results = pool.map(_replay_job, jobs, chunksize=1) if pool is not None else map(_replay_job, jobs)
     rows = []
     for key, s in results:
@@ -474,7 +525,7 @@ def replay_pool(workers: int) -> Any:
 # --------------------------------------------------------------------------- aggregation (pure)
 
 _SUM = {"frames", "dur_s", "warm_s", "score_s", "win", "blink_timed"}
-_MAX = {"score_max", "max_closed_s"}
+_MAX = {"score_max", "max_closed_s", "gap_max"}
 
 
 def by_subject(rows: list[dict[str, Any]], label: int) -> dict[str, dict[str, Any]]:
@@ -493,7 +544,7 @@ def by_subject(rows: list[dict[str, Any]], label: int) -> dict[str, dict[str, An
         w = np.array([max(p["score_s"], 1e-9) for p in parts])
         for k, v in parts[0].items():
             vals = [p[k] for p in parts]
-            if k == "alerts":
+            if k in ("alerts", "minute_scores"):
                 merged[k] = json.dumps([a for p in parts for a in json.loads(p[k])])
             elif not isinstance(v, (int, float)) or k in ("fold", "label"):
                 merged[k] = v
@@ -540,15 +591,57 @@ def _auc(a: dict[str, dict], b: dict[str, dict], key: str) -> float | None:
     return auc(np.array([r[key] for r in a.values()], dtype=float), np.array([r[key] for r in b.values()], dtype=float))
 
 
-def metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _alerts(r: dict[str, Any], warm: bool) -> int:
+    """Alerts of every branch in one row: after the start-up stretch, or inside it."""
+    return sum(r[f"a_{b}{'_warm' if warm else ''}"] for b in ("drowsy", "dis", "other"))
+
+
+def fps_groups(rows: list[dict[str, Any]], min_fps: float) -> list[dict[str, Any]]:
+    """Videos inside and below the working range (`eval.min_video_fps`), counted apart and never dropped:
+    awake videos with their scored hours and drowsiness false alarms, drowsy videos with an alert. Rows are
+    videos (not merged by subject): the frame rate belongs to a video."""
+    out = []
+    for name, test in (
+        (f"≥ {min_fps:g} FPS", lambda r: r["fps"] >= min_fps),
+        (f"< {min_fps:g} FPS", lambda r: r["fps"] < min_fps),
+    ):
+        mine = [r for r in rows if test(r)]
+        awake = [r for r in mine if r["label"] == 0]
+        drowsy = [r for r in mine if r["label"] == 10]
+        out.append(
+            {
+                "group": name,
+                "videos": len(mine),
+                "subjects": len({r["subject"] for r in mine}),
+                "v0": len(awake),
+                "awake_h": sum(r["score_s"] for r in awake) / 3600,
+                "fa": sum(r["a_drowsy"] for r in awake),
+                "fa_any_whole": sum(_alerts(r, False) + _alerts(r, True) for r in awake),
+                "whole_h": sum(r["dur_s"] for r in awake) / 3600,
+                "v10": len(drowsy),
+                "v10_alerted": sum((r["a_drowsy"] + r["a_drowsy_warm"]) > 0 for r in drowsy),
+            }
+        )
+    return out
+
+
+def metrics(rows: list[dict[str, Any]], cfg: Any = None) -> dict[str, Any]:
     """The numbers one configuration is judged on (docs/improvements.md task 5, "what is optimal")."""
-    from tools.metrics import rate_ci, wilson_ci
+    from tools.metrics import EvalConfig, person_rate_ci, rate_ci, wilson_ci
+
+    cfg = cfg or EvalConfig()
 
     s0, s5, s10 = (by_subject(rows, lb) for lb in LABELS)
     hours = sum(r["score_s"] for r in s0.values()) / 3600
     fa = sum(r["a_drowsy"] for r in s0.values())
     fa_l2 = sum(r["a_drowsy_l2"] for r in s0.values())
     rate = rate_ci(fa, hours)
+    by_person = person_rate_ci(
+        [r["a_drowsy"] for r in s0.values()],
+        [r["score_s"] / 3600 for r in s0.values()],
+        cfg.bootstrap_resamples,
+        cfg.bootstrap_seed,
+    )
     win0 = sum(r["win"] for r in s0.values())
     win10 = sum(r["win"] for r in s10.values())
     win5 = sum(r["win"] for r in s5.values())
@@ -562,9 +655,18 @@ def metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "fa_per_h": rate[0],
         "fa_per_h_lo": rate[1],
         "fa_per_h_hi": rate[2],
+        "fa_per_h_person_lo": by_person[1],
+        "fa_per_h_person_hi": by_person[2],
+        # the wider of the two 95 % upper bounds: by person cannot exceed 0 when no false alarm happened
+        "fa_per_h_hi_wide": max(rate[2], by_person[2]) if rate[2] is not None and by_person[2] is not None else None,
         "fa_l2plus": fa_l2,
         "fa_l3": sum(r["a_drowsy_l3"] for r in s0.values()),
         "fa_warmup": sum(r["a_drowsy_warm"] for r in s0.values()),
+        # what the PRD counts: every alert of every branch, on the whole video (start-up stretch included)
+        "whole_h": sum(r["dur_s"] for r in s0.values()) / 3600,
+        "fa_whole": sum(r["a_drowsy"] + r["a_drowsy_warm"] for r in s0.values()),
+        "fa_any": sum(_alerts(r, warm=False) for r in s0.values()),
+        "fa_any_whole": sum(_alerts(r, warm=False) + _alerts(r, warm=True) for r in s0.values()),
         "win0": win0,
         "far_l1": wilson_ci(sum(r["drowsy_win_l1"] for r in s0.values()), win0)[0],
         "far_l2": wilson_ci(sum(r["drowsy_win_l2"] for r in s0.values()), win0)[0],
@@ -590,6 +692,9 @@ def metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "v5_l3": sum(r["a_drowsy_l3"] > 0 for r in s5.values()),
         "v0": len(s0),
         "v0_alerted": sum((r["a_drowsy"] + r["a_drowsy_warm"]) > 0 for r in s0.values()),
+        # the same two counts with the false-alarm rule (only after the start-up stretch)
+        "v10_alerted_late": sum(r["a_drowsy"] > 0 for r in s10.values()),
+        "v0_alerted_late": sum(r["a_drowsy"] > 0 for r in s0.values()),
         "dis_alerts_0": sum(r["a_dis"] for r in s0.values()),
     }
     return out
@@ -615,11 +720,11 @@ def _med(values: list[float]) -> str:
 
 def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], title: str, note: str = "") -> str:
     """Markdown report of one configuration on one split (numbers only)."""
-    from tools.metrics import EvalConfig, ci_text, rate_ci, wilson_ci
+    from tools.metrics import EvalConfig, ci_text, person_text, rate_ci, wilson_ci
 
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
     subj = {lb: by_subject(rows, lb) for lb in LABELS}
-    m = metrics(rows)
+    m = metrics(rows, cfg)
     lines = [f"# {title}", ""]
     if note:
         lines += [note, ""]
@@ -630,6 +735,11 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
         f"assumed awake throughout. Scores, levels and windows leave out the first {cfg.warmup_s:g} s of each video.",
         "",
         "## 1. Measurability",
+        "",
+        "Unit: one video (per frame for the percentages). Videos by label: "
+        + ", ".join(f"`{lb}` {sum(r['label'] == lb for r in rows)}" for lb in LABELS)
+        + f" of {len(rows)} (positive share of `10`: {sum(r['label'] == 10 for r in rows)} / {len(rows)}). "
+        "Grouped by subject: each subject has one video per label.",
         "",
         "| Label | Subjects | Videos | Hours | Hours scored | Face found | Face reliable | Eye state judged | CNN used | FPS median (min–max) |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -694,10 +804,33 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
         if hi <= 1.0
         else f"upper bound {hi:.2f} / h > 1.0: the PRD target (≤ 1.0 / h, CI included) is not shown on this split"
     )
+    count_rows = (
+        ("Drowsiness branch, after the start-up (the number named above)", m["fa"], hours),
+        ("Drowsiness branch, whole video", m["fa_whole"], m["whole_h"]),
+        ("All branches, after the start-up", m["fa_any"], hours),
+        ("All branches, whole video", m["fa_any_whole"], m["whole_h"]),
+    )
     lines += [
         "",
-        f"Drowsiness false alarms per hour: {ci_text(rate_ci(m['fa'], hours))}; {verdict}. Not driving data: this "
-        "is a check before real drives, not the PRD verdict.",
+        f"Drowsiness-branch false alarms per hour, after the start-up: {ci_text(rate_ci(m['fa'], hours))}; "
+        f"{verdict}. This is one branch; the PRD target counts every alert, which is the last row of the next "
+        "table. Not driving data: this is a check before real drives, not the PRD verdict.",
+        "",
+        "Same alerts counted four ways. Unit: one alert on a `0` video; hours are those of the `0` videos "
+        f"(scored hours leave out the first {cfg.warmup_s:g} s of each video, whole-video hours do not). Exact "
+        "Poisson 95 % CI. Compare the PRD target (≤ 1.0 / h) with the last row only.",
+        "",
+        "| Count | Alerts | Hours | Per hour (95% CI) |",
+        "|---|---:|---:|---:|",
+        *[f"| {name} | {k} | {h:.2f} | {ci_text(rate_ci(k, h))} |" for name, k, h in count_rows],
+        "",
+        "The start-up stretch is left out of the earlier reports' rate, but a driver hears its alerts too; the "
+        "first row is the one those reports used.",
+        "",
+        "Same count with the people as the sample (the Poisson interval treats every false alarm as independent; "
+        "when they pile up on a few people the number of people is the real sample size): "
+        + person_text([r["a_drowsy"] for r in subj[0].values()], [r["score_s"] / 3600 for r in subj[0].values()], cfg)
+        + ".",
         "",
         f"Start-up stretch (first {cfg.warmup_s:g} s of each video, {warm_h * 60:.1f} min in all), reported apart: "
         + (", ".join(f"{r} L{lv} {k}" for (r, lv), k in sorted(warm_reason.items())) or "no alert")
@@ -712,10 +845,33 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
             + ".",
         ]
 
+    # ---- inside and below the working range
+    groups = fps_groups(rows, cfg.min_video_fps)
+    lines += [
+        "",
+        f"### Frame rate of the video (the system commits to ≥ {cfg.min_video_fps:g} FPS)",
+        "",
+        "Unit: one video. Videos below the frame rate are outside the working range, but they stay in every "
+        "number above and below (dropping them after seeing the result would be choosing data by the answer, "
+        "`eval/splits/README.md`). Frame rates of a video come from its container, not from per-frame timestamps.",
+        "",
+        "| Frame rate | Videos | Subjects | `0` videos | Awake hours scored | Drowsiness false alarms | Per hour (95% CI) | All-branch alerts on `0`, whole video | `10` videos with an alert |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for g in groups:
+        lines.append(
+            f"| {g['group']} | {g['videos']} | {g['subjects']} | {g['v0']} | {g['awake_h']:.2f} | {g['fa']} | "
+            f"{ci_text(rate_ci(g['fa'], g['awake_h']))} | {g['fa_any_whole']} | {g['v10_alerted']} / {g['v10']} |"
+        )
+
     # ---- windows
     lines += [
         "",
         "## 3. Windows",
+        "",
+        "Unit: one window of "
+        f"{cfg.window_s:g} s. Positive windows = windows of `10` videos (the label covers the whole video, so a "
+        "window of a `10` video is not always drowsy). Not grouped by subject in the counts.",
         "",
         f"Windows of {cfg.window_s:g} s, not overlapping, after the start-up stretch; a window counts when the "
         "drowsiness branch reaches the level in it. On `0` the share is the FAR. On `10` (and `5`) it is the "
@@ -736,6 +892,9 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
     lines += [
         "",
         "## 4. Does the system respond to the drowsiness level?",
+        "",
+        f"Unit: one subject per label ({len(subj[10])} with a `10` video, {len(subj[0])} with a `0`). Positive "
+        f"share of `10` among the `10` + `0` subjects: {len(subj[10])} / {len(subj[10]) + len(subj[0])}.",
         "",
         "Per subject and level; median (p25–p75) across subjects.",
         "",
@@ -772,6 +931,32 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
             f"{pr['higher']} / {pr['lower']} of {pr['pairs']} (p = {_f(pr['p'], 3)}) | {_f(pr['median_diff'], 3)} |"
         )
 
+    # ---- what a score band means
+    if all("minute_scores" in r for r in rows):
+        minutes = {lb: [v for r in rows if r["label"] == lb for v in json.loads(r["minute_scores"])] for lb in LABELS}
+        l1 = float(thresholds["risk"]["drowsy"]["l1"])
+        lines += [
+            "",
+            "## 4b. What a drowsy_score band means",
+            "",
+            f"Unit: one whole minute of video after the start-up stretch ({sum(len(v) for v in minutes.values())} "
+            f"minutes: `0` {len(minutes[0])}, `5` {len(minutes[5])}, `10` {len(minutes[10])}), its mean `drowsy_score`. "
+            f"Positive share = minutes of `10` videos in the band. The label covers a whole video, so a minute of a "
+            "`10` video can be an awake minute: read the direction and where it bends, not the absolute share "
+            "(the three labels have as many videos each, while a driver is awake most of the time). Not grouped by "
+            f"subject; the L1 threshold ({l1:g}) is marked.",
+            "",
+            "| Score band | Minutes `0` | Minutes `5` | Minutes `10` | Share from `10` (of all three) | `10` against `0` only |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for b in score_bands(minutes, cfg.score_band_width):
+            n = b[0] + b[5] + b[10]
+            mark = " ← L1" if b["lo"] <= l1 < b["hi"] else ""
+            lines.append(
+                f"| {b['lo']:g}–{b['hi']:g}{mark} | {b[0]} | {b[5]} | {b[10]} | "
+                f"{_p(b[10] / n) if n else '–'} | {_p(b[10] / (b[0] + b[10])) if b[0] + b[10] else '–'} |"
+            )
+
     # ---- DDAW
     sens = wilson_ci(m["v10_alerted"], m["v10"], z=1.644854)
     lines += [
@@ -783,6 +968,9 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
         "",
         f"- Sensitivity: {m['v10_alerted']}/{m['v10']} subjects = {ci_text(sens, True)} (Wilson 90 % CI). "
         "DDAW asks for a mean > 40 % and a 90 % lower bound > 20 %, on ≥ 10 subjects and ≥ 10 events.",
+        "- The detection counts below include alerts in the start-up stretch. Counted the way the false alarms "
+        f"are (after the start-up stretch only): {m['v10_alerted_late']}/{m['v10']} `10` videos and "
+        f"{m['v0_alerted_late']}/{m['v0']} `0` videos have a drowsiness alert.",
         f"- Never alone: drowsiness false alarms on `0` are {ci_text(rate_ci(m['fa'], hours))} / h over {hours:.2f} h, "
         f"and {m['v0_alerted']}/{m['v0']} awake videos get a drowsiness alert.",
         f"- `5` videos (KSS 6–7, reported apart): {m['v5_alerted']}/{m['v5']} get a drowsiness alert, "
@@ -867,6 +1055,71 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
     return "\n".join(lines) + "\n"
 
 
+def tradeoff_report(
+    dev: list[dict[str, Any]], test: dict[str, Any], current_l1: float, title: str, note: str = ""
+) -> str:
+    """The trade-off between false alarms per hour and drowsy subjects caught, from a sweep of
+    risk.drowsy.l1 on dev, and the one fixed point (the current thresholds) read on the held-out
+    subjects. The sweep never touches the held-out subjects: scoring them at every l1 would be
+    choosing the threshold with them."""
+    ok = [r for r in dev if not r.get("error")]
+    lines = [f"# {title}", ""]
+    if note:
+        lines += [note, ""]
+    n10 = test["v10"]
+    lines += [
+        "## Headline: the held-out subjects at the current thresholds",
+        "",
+        f"At `risk.drowsy.l1` = {current_l1:g} on {test['subjects']} held-out subjects ({test['awake_h']:.2f} h of awake "
+        f"video): **{_f(test['fa_per_h'])} false alarms per hour** (Poisson {_f(test['fa_per_h_lo'])}–"
+        f"{_f(test['fa_per_h_hi'])}; resampled by person {_f(test['fa_per_h_person_lo'])}–"
+        f"{_f(test['fa_per_h_person_hi'])}), and **{test['v10_alerted']} / {n10}** drowsy (`10`) videos get a "
+        f"drowsiness alert, **{test['v10_l3']} / {n10}** reach L3. "
+        + (
+            "The point estimate is at or under 1.0 / h; the upper bound is "
+            + (
+                "also."
+                if (test["fa_per_h_hi_wide"] or 0) <= 1.0
+                else "not: the PRD target is not shown, only not contradicted."
+            )
+            if (test["fa_per_h"] or 0) <= 1.0
+            else "The point estimate is above 1.0 / h."
+        ),
+        "",
+        "## Trade-off on the dev subjects",
+        "",
+        f"{ok[0]['subjects'] if ok else 0} dev subjects, {_f(ok[0]['awake_h']) if ok else '–'} h of awake video. One row "
+        "per `risk.drowsy.l1`, everything else as in `config/thresholds.yaml`. False alarms are drowsiness-branch alerts "
+        "on `0` videos after the start-up stretch; sensitivity counts `10` videos (one per subject) with at least one "
+        "drowsiness alert. Unit: subject (one `0` and one `10` video each), positive share = `10` videos among the "
+        "scored `10` + `0` videos.",
+        "",
+        "| l1 | False alarms | Per hour (95% CI) | Upper bound, wider of Poisson / by person | `10` with an alert | `10` at L2+ | `10` at L3 | ≤ 1.0 / h |",
+        "|---:|---:|---:|---:|---:|---:|---:|:---:|",
+    ]
+    from tools.metrics import ci_text
+
+    for r in ok:
+        l1 = float(r["config"].split("=")[-1]) if "=" in r["config"] else current_l1
+        mark = " (current)" if l1 == current_l1 else ""
+        rate = (r["fa_per_h"], r["fa_per_h_lo"], r["fa_per_h_hi"])
+        lines.append(
+            f"| {l1:g}{mark} | {r['fa']} | {ci_text(rate)} | {_f(r['fa_per_h_hi_wide'])} | "
+            f"{r['v10_alerted']} / {r['v10']} | {r['v10_l2plus']} / {r['v10']} | {r['v10_l3']} / {r['v10']} | "
+            f"{'yes' if (r['fa_per_h'] or 0) <= 1.0 else 'no'} |"
+        )
+    under = [r for r in ok if (r["fa_per_h"] or 0) <= 1.0]
+    if under:
+        best = max(under, key=lambda r: (r["v10_alerted"], -r["fa"]))
+        lines += [
+            "",
+            f"Among the dev rows at 1.0 / h or under (point estimate), the most `10` videos with an alert: "
+            f"{best['config']} ({best['v10_alerted']} / {best['v10']}). Reading only: no threshold is changed here; if "
+            "the curve suggests another `l1` that is a separate decision (M53 left 40 → 50 open).",
+        ]
+    return "\n".join(lines) + "\n"
+
+
 SIGNALS = {
     "score_mean": "block 9 drowsy_score, mean",
     "score_p90": "block 9 drowsy_score, p90",
@@ -943,6 +1196,8 @@ GRID_COLUMNS = (
     ("fa", "False alarms", str),
     ("fa_per_h", "/ h", _f),
     ("fa_per_h_hi", "95% upper", _f),
+    ("fa_per_h_person_hi", "95% upper, by person", _f),
+    ("fa_per_h_hi_wide", "95% upper, wider", _f),
     ("far_l1_worst_subject", "Worst subject FAR", _p),
     ("auc_mean", "AUC mean", lambda v: _f(v, 3)),
     ("auc_p90", "AUC p90", lambda v: _f(v, 3)),
@@ -962,7 +1217,8 @@ def grid_report(results: list[dict[str, Any]], title: str, note: str = "") -> st
     lines += [
         f"{ref.get('subjects', 0)} subjects, {_f(ref.get('awake_h'))} h of awake video scored, {ref.get('pairs', 0)} "
         f"subjects with both `0` and `10`, {ref.get('v10', 0)} `10` and {ref.get('v5', 0)} `5` subjects. "
-        "False alarms = drowsiness-branch alerts on `0` after the start-up stretch, exact Poisson upper bound. "
+        "False alarms = drowsiness-branch alerts on `0` after the start-up stretch, exact Poisson upper bound; "
+        "also the upper bound when the subjects are resampled, and the wider of the two. "
         "Blocking condition of task 5: upper bound ≤ 1.0 / h. Among those, the best separation of `10` from `0`.",
         "",
         "| Group | Configuration | " + " | ".join(h for _, h, _ in GRID_COLUMNS) + " |",
@@ -988,6 +1244,8 @@ def run_configs(
     eye: str = "trace",
 ) -> list[dict[str, Any]]:
     """metrics() of every (group, [assignments]) configuration; written to csv_path as it goes."""
+    from tools.metrics import EvalConfig
+
     results: list[dict[str, Any]] = []
     for n, (group, sets) in enumerate(configs, 1):
         name = "; ".join(sets) or "baseline"
@@ -1000,7 +1258,8 @@ def run_configs(
         except (ValueError, KeyError) as e:  # unknown key, or a broken consistency rule
             row = {"group": group, "config": name, "error": str(e)}
         else:
-            row = {"group": group, "config": name, **metrics(replay_rows(items, th, pool, eye=eye)), "error": ""}
+            cfg = EvalConfig.from_dict(th.get("eval"))
+            row = {"group": group, "config": name, **metrics(replay_rows(items, th, pool, eye=eye), cfg), "error": ""}
         results.append(row)
         if csv_path:
             write_csv(csv_path, results)
@@ -1055,6 +1314,190 @@ def default_grid() -> list[tuple[str, list[str]]]:
     g += [("ablation", [f"{r}.weight_slow_blink=0", f"{r}.weight_brow=0"])]
     g += [("ablation", [f"{r}.weight_slow_blink=0", f"{r}.weight_brow=0", f"{r}.weight_perclos={v}"]) for v in (50, 60)]
     return g
+
+
+# --------------------------------------------------------------------------- slower loop (frames left out)
+
+RECORDED = "as recorded"
+
+
+def fps_study(
+    items: list[tuple[Video, Path]], thresholds: dict[str, Any], pool: Any = None, eye: str = "trace"
+) -> tuple[dict[str, list[list[dict[str, Any]]]], list[dict[str, Any]]]:
+    """The same videos replayed as a slower loop would have seen them (seq_eval.resample_trace).
+
+    Returns (condition -> runs -> rows, rows of every video as recorded). Only videos recorded at
+    eval.fps_study_min_source_fps or more are slowed down, so every condition scores the same videos. Each
+    rate runs with even waits and with uneven ones (eval.fps_study_jitter_cv), eval.fps_study_repeats times:
+    the even runs start their grid at another moment each time, the uneven ones draw other waits. What moves
+    from run to run is the noise the difference between two rates has to be read against."""
+    from tools.metrics import EvalConfig
+
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    recorded = replay_rows(items, thresholds, pool, extras=True, eye=eye)
+    fast = {r["key"] for r in recorded if r["fps"] >= cfg.fps_study_min_source_fps}
+    kept = [(v, p) for v, p in items if v.key in fast]
+    runs = {RECORDED: [[r for r in recorded if r["key"] in fast]]}
+    for fps in cfg.fps_study_rates:
+        for cv in (0.0, cfg.fps_study_jitter_cv):
+            runs[f"{fps:g} FPS, {'uneven' if cv else 'even'}"] = [
+                replay_rows(
+                    kept,
+                    thresholds,
+                    pool,
+                    extras=True,
+                    eye=eye,
+                    resample=(fps, cv, k / cfg.fps_study_repeats / fps, cfg.bootstrap_seed + k),
+                )
+                for k in range(cfg.fps_study_repeats)
+            ]
+    return runs, recorded
+
+
+def _span(values: list[float | None], d: int = 0) -> str:
+    """One number when every run agrees, else "mean (lowest–highest)"."""
+    v = [float(x) for x in values if x is not None and math.isfinite(float(x))]
+    if not v:
+        return "–"
+    if min(v) == max(v):
+        return f"{v[0]:.{d}f}"
+    return f"{sum(v) / len(v):.{max(d, 1)}f} ({min(v):.{d}f}–{max(v):.{d}f})"
+
+
+def _per_hour(rows: list[dict[str, Any]], label: int, event: str) -> float | None:
+    mine = [r for r in rows if r["label"] == label]
+    hours = sum(r["score_s"] for r in mine) / 3600
+    return sum(r[f"ev_{event}"] for r in mine) / hours if hours > 0 else None
+
+
+def _video_mean(rows: list[dict[str, Any]], label: int, key: str) -> float | None:
+    x = np.array([r[key] for r in rows if r["label"] == label], dtype=float)
+    return float(np.mean(x[np.isfinite(x)])) if np.isfinite(x).any() else None
+
+
+def fps_report(
+    runs: dict[str, list[list[dict[str, Any]]]],
+    recorded: list[dict[str, Any]],
+    thresholds: dict[str, Any],
+    title: str,
+    note: str = "",
+) -> str:
+    """Alerts, signals and the videos that change, per frame rate; then the videos that were recorded slow."""
+    from tools.metrics import EvalConfig
+
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    base = runs[RECORDED][0]
+    lines = [f"# {title}", ""]
+    if note:
+        lines += [note, ""]
+    lines += [
+        f"{len(base)} videos of {len({r['subject'] for r in base})} subjects, all recorded at "
+        f"{cfg.fps_study_min_source_fps:g} FPS or more, replayed through blocks 7-12 with frames left out: the "
+        "loop asks for a frame every 1 / rate seconds and gets the first recorded frame at or after that moment, "
+        "with the time it was taken. Nothing but the frames a slow device would not have processed is removed. "
+        f'"uneven": the waits are log-normal around 1 / rate (coefficient of variation '
+        f"{cfg.fps_study_jitter_cv:g}). {cfg.fps_study_repeats} runs per row: the even runs start their grid at "
+        "another moment, the uneven ones draw other waits. A cell with one number: every run agrees; otherwise "
+        "mean (lowest–highest). The spread between runs of one row is noise: a difference between two rows "
+        "smaller than that is not a finding.",
+        "",
+        "Not covered: blocks 2-5 on a slow device (the landmarks here were computed on every frame of a fast "
+        "machine; only the decision blocks see fewer of them), the phone branch (no detector in these traces), "
+        "frame quality gating, enrollment. Measured only: no threshold was changed.",
+        "",
+        "## 1. Alerts",
+        "",
+        'False alarms: alerts on `0` (awake) videos. "Drowsiness" = drowsiness-branch alerts after the '
+        f'{cfg.warmup_s:g} s start-up stretch, per scored hour. "Every branch" = every alert of the whole '
+        "video, per hour of video (what the PRD counts). A gap above "
+        f"{float(thresholds['drowsiness']['max_gap_s']) * 1000:.0f} ms (`max_gap_s`) is not a slow frame for "
+        "blocks 7, 8 and 12 but a hole: running timers start again (M71).",
+        "",
+        "| Loop | Frames / s | Gap p50 / p95 / max (ms) | Drowsiness false alarms | / h | Every branch | / h | "
+        "`0` subjects with one | `10` subjects alerted | reaching L3 | `5` alerted | AUC of the mean score |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for name, reps in runs.items():
+        ms = [metrics(rows, cfg) for rows in reps]
+        every = [r for rows in reps for r in rows]
+        gap = [np.median([r[k] for r in every]) * 1000 for k in ("gap_p50", "gap_p95")]
+        lines.append(
+            f"| {name} | {np.median([r['fps'] for r in every]):.1f} | {gap[0]:.0f} / {gap[1]:.0f} / "
+            f"{max(r['gap_max'] for r in every) * 1000:.0f} | {_span([m['fa'] for m in ms])} | "
+            f"{_span([m['fa_per_h'] for m in ms], 2)} | {_span([m['fa_any_whole'] for m in ms])} | "
+            f"{_span([m['fa_any_whole'] / m['whole_h'] if m['whole_h'] else None for m in ms], 2)} | "
+            f"{_span([m['v0_alerted_late'] for m in ms])} / {ms[0]['v0']} | "
+            f"{_span([m['v10_alerted'] for m in ms])} / {ms[0]['v10']} | {_span([m['v10_l3'] for m in ms])} | "
+            f"{_span([m['v5_alerted'] for m in ms])} / {ms[0]['v5']} | {_span([m['auc_mean'] for m in ms], 3)} |"
+        )
+    m0 = metrics(base, cfg)
+    lines += [
+        "",
+        f"As recorded: {_f(m0['awake_h'])} h of awake video scored ({_f(m0['whole_h'])} h whole), "
+        f"{m0['v0']} / {m0['v10']} / {m0['v5']} subjects with a `0` / `10` / `5` video.",
+        "",
+        "## 2. What block 7 measures",
+        "",
+        "Events per scored hour and means over the videos of a label (start-up stretch left out). "
+        "A signal that follows the frame rate, with nothing else changed, is measured by frames, not by time.",
+        "",
+    ]
+    for label in (0, 10):
+        lines += [
+            f"`{label}` videos:",
+            "",
+            "| Loop | Blinks / min | Microsleep events / h | Yawns / h | Nods / h | PERCLOS-high events / h | "
+            "Mean PERCLOS | Mean drowsy_score | Longest closure (s), median | Blink duration (s), median |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+        for name, reps in runs.items():
+            hourly = {e: _span([_per_hour(rows, label, e) for rows in reps], 1) for e in EVENTS}
+            blinks = [None if (v := _per_hour(rows, label, "blink")) is None else v / 60 for rows in reps]
+            closure = [float(np.median([r["max_closed_s"] for r in rows if r["label"] == label])) for rows in reps]
+            lines.append(
+                f"| {name} | {_span(blinks, 1)} | {hourly['microsleep']} | {hourly['yawn']} | {hourly['nod']} | "
+                f"{hourly['perclos_high']} | {_span([_video_mean(rows, label, 'perclos_mean') for rows in reps], 3)} | "
+                f"{_span([_video_mean(rows, label, 'score_mean') for rows in reps], 1)} | {_span(closure, 2)} | "
+                f"{_span([_video_mean(rows, label, 'blink_dur_med') for rows in reps], 3)} |"
+            )
+        lines.append("")
+
+    def drowsy_alerts(r: dict[str, Any]) -> int:
+        return r["a_drowsy"] + r["a_drowsy_warm"]
+
+    names = [n for n in runs if n != RECORDED]
+    counts = {n: [{r["key"]: drowsy_alerts(r) for r in rows} for rows in runs[n]] for n in names}
+    changed = [r for r in base if any(c[r["key"]] != drowsy_alerts(r) for n in names for c in counts[n])]
+    lines += [
+        "## 3. Videos whose drowsiness alerts change",
+        "",
+        f"{len(changed)} of {len(base)} videos have another number of drowsiness-branch alerts (whole video) in "
+        "at least one run. One number per run.",
+        "",
+        "| Video | Label | As recorded | " + " | ".join(names) + " |",
+        "|---|---:|---:|" + "---:|" * len(names),
+    ]
+    for r in sorted(changed, key=lambda r: (r["label"], r["key"])):
+        cells = [" / ".join(str(c[r["key"]]) for c in counts[n]) for n in names]
+        lines.append(f"| {r['key']} | {r['label']} | {drowsy_alerts(r)} | " + " | ".join(cells) + " |")
+    lines += [
+        "",
+        "## 4. Videos that were recorded slow",
+        "",
+        "Every video of the split as recorded, by the frame rate of its file. These are other people and other "
+        "cameras, so this table cannot tell the frame rate from the person; sections 1-3 can, because there the "
+        "same video is compared with itself.",
+        "",
+        "| Group | Videos | Subjects | `0` videos | Hours scored | Drowsiness false alarms | / h | "
+        "`10` videos | with an alert |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for g in fps_groups(recorded, cfg.min_video_fps):
+        lines.append(
+            f"| {g['group']} | {g['videos']} | {g['subjects']} | {g['v0']} | {_f(g['awake_h'])} | {g['fa']} | "
+            f"{_f(g['fa'] / g['awake_h'] if g['awake_h'] else None)} | {g['v10']} | {g['v10_alerted']} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def video_rows(videos: list[Video]) -> list[dict[str, Any]]:
@@ -1183,13 +1626,48 @@ def personal_report(runs: dict[str, list[dict[str, Any]]], splits: dict[str, set
 # --------------------------------------------------------------------------- CLI
 
 
+def reads_test_subjects(study: str, split: str) -> bool:
+    """True when this run scores the held-out subjects: `tradeoff` reads them for the current point,
+    `personal` scores everyone, the others read the split they are given."""
+    return study in ("tradeoff", "personal") or (study in ("report", "signals", "compare") and split in ("test", "all"))
+
+
+def log_test_read(study: str, split: str, argv: list[str], log: Path | None = None) -> None:
+    """Append one line to the test-read log before the run starts (a run that fails still looked). The log
+    cannot be switched off from the command line: what it records is the number of times the held-out
+    subjects were looked at, which is what makes a score on them worth less each time."""
+    from datetime import UTC, datetime
+
+    from tools.metrics import ROOT, _git, file_hash
+
+    path = log or TEST_LOG
+    commit = _git("rev-parse", "--short", "HEAD") or "unknown"
+    dirty = _git("status", "--porcelain", "--untracked-files=no")
+    state = "unknown" if dirty is None else "uncommitted" if dirty else "clean"
+    row = [
+        datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        commit,
+        state,
+        file_hash(ROOT / "config" / "thresholds.yaml"),
+        study,
+        split,
+        " ".join(argv),
+    ]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = "time_utc\tcommit\ttree\tthresholds_sha256\tstudy\tsplit\targuments\n"
+    with path.open("a", encoding="utf-8") as f:
+        if f.tell() == 0:
+            f.write(header)
+        f.write("\t".join(row) + "\n")
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     from edge_agent.config import load_thresholds
 
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("study", choices=("report", "signals", "grid", "compare", "personal"))
+    p.add_argument("study", choices=("report", "signals", "grid", "compare", "personal", "tradeoff", "fps"))
     p.add_argument("--split", choices=("dev", "test", "all"), default="dev")
     p.add_argument("--set", action="append", default=[], help="what-if threshold, e.g. risk.drowsy.l1=45")
     p.add_argument("--out", default=None)
@@ -1203,6 +1681,8 @@ def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     args = p.parse_args(argv)
+    if reads_test_subjects(args.study, args.split):
+        log_test_read(args.study, args.split, list(sys.argv[1:] if argv is None else argv))
     base = load_thresholds()
     th = make_thresholds(base, args.set)
     what = "config/thresholds.yaml" + (f" with {', '.join(args.set)}" if args.set else "")
@@ -1219,6 +1699,36 @@ def main(argv: list[str] | None = None) -> int:
             text = grid_report(
                 results, f"DriverGuard - UTA-RLDD, current thresholds against a what-if ({args.split})", f"From {what}."
             )
+        elif args.study == "tradeoff":
+            from tools.metrics import EvalConfig
+
+            cfg = EvalConfig.from_dict(th.get("eval"))
+            dev = run_configs(
+                [("score l1", [f"risk.drowsy.l1={v:g}"]) for v in cfg.tradeoff_l1],
+                load_items("dev"),
+                base,
+                pool,
+                eye=args.eye,
+            )
+            test = run_configs([("current", [])], load_items("test"), base, pool, eye=args.eye)[0]
+            text = tradeoff_report(
+                dev,
+                test,
+                float(base["risk"]["drowsy"]["l1"]),
+                "DriverGuard - UTA-RLDD, false alarms against drowsy subjects caught",
+                f"From {what}.",
+            )
+        elif args.study == "fps":  # a measurement on the subjects thresholds are searched on, never the others
+            from tools.metrics import provenance
+
+            runs, recorded = fps_study(load_items("dev"), th, pool, args.eye)
+            text = fps_report(
+                runs,
+                recorded,
+                th,
+                "DriverGuard - UTA-RLDD, the same videos at a lower frame rate (dev)",
+                f"Thresholds: {what}. {provenance([UTA_DIR / 'index.csv'])}",
+            )
         elif args.study == "personal":
             runs = personal_study(load_items("all"), th, pool, args.eye)
             splits = {"all": None, "dev": split_subjects("dev"), "test": split_subjects("test")}
@@ -1228,7 +1738,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.study == "signals":
                 text = signals_report(rows, f"DriverGuard - UTA-RLDD, which signals follow the level ({args.split})")
             else:
-                text = baseline_report(rows, th, f"DriverGuard - UTA-RLDD ({args.split})", f"Thresholds: {what}.")
+                from tools.metrics import provenance
+
+                text = baseline_report(
+                    rows,
+                    th,
+                    f"DriverGuard - UTA-RLDD ({args.split})",
+                    f"Thresholds: {what}. {provenance([UTA_DIR / 'index.csv'])}",
+                )
     finally:
         if pool is not None:
             pool.shutdown()

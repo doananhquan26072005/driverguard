@@ -186,7 +186,9 @@ phone:
 
 # Block 7 - Drowsiness branch
 drowsiness:
-  max_gap_s: 0.5                # face dropouts shorter than this do not break an episode
+  # Face dropouts shorter than this do not break an episode. Two frames further apart than this (the
+  # loop stood still, frames lost) end every running episode uncounted: nothing was seen in between.
+  max_gap_s: 0.5
   eye:
     # Eye closed = EAR below close_ratio x the driver's own open-eye EAR
     # (percentile of recent EAR), reopened above open_ratio x (hysteresis).
@@ -246,6 +248,21 @@ drowsiness:
     # PROVISIONAL: colour video, no real infrared image yet (docs/improvements.md).
     blendshape: 0.55
     min_frac: 0.5
+    # Lids droop, then shut (falling asleep): the narrowed frames before it dilute min_frac, and the L3
+    # rule came late by the length of the drooping, or never (audit 08/10, A2 H2). Below min_frac, the
+    # running stretch of deep frames counts from its own first frame; frames that are not deep for
+    # longer than run_gap_s end it. 0 = every frame of the stretch deep, < 0 = off (the rule before
+    # M76). Measured 08/10, block 5 decided again, UTA-RLDD = the 24 dev subjects only:
+    #   run_gap_s   deep stretches >= 1.5 s    false drowsy alerts   YawDD false   own recordings: alerts   FL3D microsleep
+    #               at L3 on time, dev `10`    on dev `0` videos     microsleeps   answering no label       events false
+    #   -1 (off)    45 / 50                    8                     4             32                       4
+    #   0           47 / 50                    8                     4             32                       4
+    #   0.1         47 / 50                    9                     4             32                       4
+    #   0.2         47 / 50                    9                     4             32                       4
+    #   0.4         47 / 50                    10                    5             33                       5
+    # The 3 left at 0 are inside the yawn / talking mask (microsleep_mask). Looking down in the own
+    # recordings: no alert added at 0.
+    run_gap_s: 0
     # EAR deep frames also need MediaPipe eyeBlink >= this (0 = off): EAR also collapses for glare on
     # glasses, a head tilted down, narrow eyes before the baseline is learnt. NITYMED false microsleeps
     # 16 -> 7 / h with the same L3 recall; YawDD false microsleeps 7 -> 4.
@@ -387,6 +404,16 @@ distraction:
   pitch_down_off_road_deg: 20       # looking down (lap, phone)
   pitch_up_off_road_deg: 25
   on_road_confirm_s: 0.3            # must look back this long before the timer resets
+  # Two frames further apart than this (the loop stood still, frames lost): the off-road, no-face and
+  # turned-away timers start again, the driver was not seen in between. Same value as
+  # drowsiness.max_gap_s; at 10 FPS frames are 0.1 s apart.
+  max_gap_s: 0.5
+  # No reliable head pose (face lost, or partly out of the image): "off road" is held from the last
+  # pose, for at most this long (M72). Then the off-road state ends: nothing says where the driver
+  # looks, and risk.unavailable takes over (no face 3 s, face partly out 5 s). Before, a face cut by
+  # the edge of the image kept an L2 up without limit. A driver looking behind keeps turned_away.max_s.
+  # 0 = no limit. PROVISIONAL: see docs/roadmap.md M72 for what the traces say about the value.
+  pose_hold_s: 3.0
   # Turn signal on (and context.turn_signal_grace_s after): looking towards that side is
   # allowed this much further (left signal: up to 30 + 30 = 60 deg to the left). The other
   # side keeps 30 deg. Provisional, to check on real drives with a turn / lane change.
@@ -441,7 +468,7 @@ context:
   min_speed_kmh: 5              # below this the vehicle counts as stopped (risk engine + distraction branch)
   assume_moving_when_speed_unknown: true   # no speed signal (CAN missing) = moving
   high_speed_kmh: 80            # off-road threshold tightens above this
-  long_drive_s: 7200            # 2 h of driving = long drive
+  long_drive_s: 7200            # 2 h of driving since the last rest / driver change = long drive
   night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
   turn_signal_grace_s: 2.0      # looking to the signalled side stays widened this long after the blinker stops
   # Standing still = speed below stationary_kmh (crawling in a jam at 2-4 km/h is not a stop).
@@ -450,6 +477,14 @@ context:
   # since the stop (eyes closed to rest) is dropped when driving resumes.
   stationary_kmh: 1.0
   rest_after_s: 120             # longer than most red lights
+  # A stop this long that is not a rest (a red light): what blocks 7 and trip memory gathered since
+  # the vehicle stopped is dropped as well when it drives off (M73). Standing still raises no alert
+  # (risk.drowsy.stationary_max_level), and eyes closed at a light used to become an L1 / L2 on the
+  # first second of driving. Shorter stops (a stop sign, a jam) keep their evidence. Price: a driver
+  # who really dozed at a light starts the next stretch without that part of the score; L3 while
+  # driving is untouched. 0 = every stop, rest_after_s or more = only rests (as before M73).
+  # PROVISIONAL: no data with stops (the user's decision of 08/10).
+  short_stop_forget_s: 10
   # Default vehicle source = tools/drive_sim.py (later a real CAN reader). No fresh speed for this
   # long (simulator not running, link lost): never had one, or the last said standing still = parked
   # at 0 km/h; the last said driving = signal lost, speed unknown, monitored as moving (M26) and the
@@ -498,13 +533,15 @@ risk:
     off_road_s: 2.0
     off_road_high_speed_s: 1.5
     phone_ratio: 0.6
-  # PRD FR-6: no face this long while moving (camera covered, driver out of view, glare) ->
-  # monitoring unavailable: no alert while it lasts, the HUD and the backend are told instead.
+  # PRD FR-6: no face this long while the vehicle is not standing still (camera covered, driver out
+  # of view, glare) -> monitoring unavailable: no alert while it lasts, the HUD and the backend are
+  # told instead. "Not standing still" is from context.stationary_kmh (M72), not min_speed_kmh: a
+  # covered camera in a 3 km/h crawl is told too.
   # A closure carried through a head drop (block 7) stays monitored (microsleep L3 goes on).
-  # A face in view but unusable (quality: low_light, glare, blur) for low_quality_s: unavailable too,
-  # with that reason. Longer than no_face_s: a passing shadow or a tunnel entrance is not a reason
-  # to stop judging. The reason of a lost face is camera_blocked / bad_angle when the image says so,
-  # else no_face. PROVISIONAL.
+  # A face in view but unusable (quality: low_light, glare, blur, and from M72 bad_angle: partly out
+  # of the image or without a head pose) for low_quality_s: unavailable too, with that reason. Longer
+  # than no_face_s: a passing shadow or a tunnel entrance is not a reason to stop judging. The reason
+  # of a lost face is camera_blocked / bad_angle when the image says so, else no_face. PROVISIONAL.
   unavailable:
     no_face_s: 3.0              # 0 = never unavailable
     low_quality_s: 5.0          # 0 = a poor face never makes monitoring unavailable
@@ -546,16 +583,28 @@ trip_memory:
 # Block 12 - Alert manager
 alert:
   rise_confirm_s: {1: 1.0, 2: 0.5, 3: 0.0}   # a level must hold this long before it is raised
+  # Two frames further apart than this do not show the level held in between: the confirmation
+  # starts again at the second one (a level already active is not touched).
+  max_gap_s: 0.5
   fall_hold_s: 3.0                           # and stay lower this long before it is dropped
   # No repeated alert of the same (level, reason) within this. A new reason at the
   # active level (L2 off_road, then L2 phone) is emitted after rise_confirm_s.
   # L3 has none: fall_hold_s already keeps it from flickering, so a new L3 means the eyes were open
   # >= 3 s and closed again, a new microsleep (NITYMED: new L3 alert on 55 -> 76 % of microsleeps).
   cooldown_s: {1: 120, 2: 30, 3: 0}
+  # Reminder (M74): the cooldown holds an alert back, it does not swallow it. A reason still there at
+  # the active level once its cooldown has passed is alerted again (after holding rise_confirm_s):
+  # an episode that began inside the cooldown, a level that stays up, a reason that began under a
+  # higher level. So a steady L1 chimes every ~2 min and a steady L2 sounds every ~30 s; L3 (no
+  # cooldown) is not reminded, block 9 has `unresponsive` for that. false = one alert per episode,
+  # as before M74.
+  remind: true
   # Escalation over time (M32): the l1_repeat_count-th L1 alert of the same reason within
   # l1_repeat_window_s goes out as L2 (reason repeated_l1 added): told several times, still not
-  # resting. With the 120 s L1 cooldown, 3 alerts take at least 4 minutes. A rest (context.rest_after_s)
-  # or a driver change restarts the count. 0 = off. Provisional: no dataset has drives this long.
+  # resting. With the 120 s L1 cooldown, 3 alerts take at least 4 minutes. Reminders count; after
+  # the L2 the count of that reason starts again (M74), so a steady L1 is L1, L1, L2, L1, L1, L2.
+  # A rest (context.rest_after_s) or a driver change restarts the count. 0 = off. Provisional: no
+  # dataset has drives this long.
   l1_repeat_count: 3
   l1_repeat_window_s: 600
   # Repeated L3 (M44): the l3_repeat_count-th L3 alert within l3_repeat_window_s carries the reason
@@ -574,6 +623,11 @@ presence:
   enabled: true
   ask_after_s: 5.0
   answer_s: 10.0
+  # A face that flickers must not be asked again and again (M74). Once the question was asked, the
+  # face counts as back only after back_s of being seen; after a tap there is no new question for
+  # reask_after_s. PROVISIONAL, same lack of data; 0 and 0 = as before M74.
+  back_s: 1.0
+  reask_after_s: 60.0
 
 # Block 13 - In-car HUD server
 hud:
@@ -638,3 +692,33 @@ eval:
   # (a leak: frames live in RAM only, none may be kept). PROVISIONAL growth limit.
   soak_min_fps: 15
   soak_rss_growth_mb_per_h: 20
+  # Resampling by person (tools/metrics.py person_rate_ci): false alarms per hour with the people as
+  # the sample, next to the Poisson interval. Draws and seed make a report repeatable.
+  bootstrap_resamples: 10000
+  bootstrap_seed: 0
+  # tools/uta_rldd.py tradeoff: risk.drowsy.l1 values swept on the dev subjects (the current value is read
+  # on the held-out ones, never swept there).
+  tradeoff_l1: [30, 35, 40, 45, 50, 55, 60]
+  # tools/uta_rldd.py report: width of the drowsy_score bands in "what a score band means" (score 0-100).
+  score_band_width: 20
+  # tools/uta_rldd.py report: videos recorded below this many frames per second are outside the working
+  # range (CLAUDE.md: at least 15 FPS). They stay in every headline number and are also reported apart
+  # (eval/splits/README.md). Changing it is a decision made before the next scoring, never after.
+  min_video_fps: 15
+  # Replays and traces (tools/seq_eval.py, tools/uta_rldd.py, tools/eval.py) drive at this local hour
+  # with this much continuous driving already done. Noon and 0 = neither context factor
+  # (risk.drowsy.night_factor / long_drive_factor) is on, which is what every reported number was
+  # measured at. A what-if: --set eval.replay_clock_hour=2 --set eval.replay_drive_time_s=7200.
+  replay_clock_hour: 12
+  replay_drive_time_s: 0
+  # tools/uta_rldd.py fps (M75): the same videos replayed as a slower loop would have seen them. The
+  # loop asks for a frame every 1 / rate seconds and gets the first recorded frame at or after that.
+  # Rates below the 15 FPS of CLAUDE.md are what the target device is estimated to reach (11-14).
+  # jitter_cv: the "uneven" runs draw log-normal waits around 1 / rate with this coefficient of
+  # variation. PROVISIONAL: no frame-time distribution of the device has been measured.
+  # repeats: runs per rate (another grid start / other waits each); their spread is the noise.
+  # min_source_fps: only videos recorded at least this fast are slowed down.
+  fps_study_rates: [15, 12, 10]
+  fps_study_jitter_cv: 0.3
+  fps_study_repeats: 3
+  fps_study_min_source_fps: 25

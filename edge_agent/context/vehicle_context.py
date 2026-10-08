@@ -14,6 +14,20 @@ Standing still (speed below `stationary_kmh`, not just below `min_speed_kmh`: cr
 jam is not a stop) is what the drowsiness side uses: a short stop (red light) caps the
 drowsiness level, and standing still for `rest_after_s` is a rest (parked), when the
 driver may close the eyes on purpose. No speed signal is never standing still.
+
+`rolling` is everything that is not standing still: moving, and the crawl between `stationary_kmh`
+and `min_speed_kmh` (a jam). The distraction rules stay off in a crawl, but the driver must still be
+in view there, so "monitoring unavailable" (block 9) follows `rolling`, not `moving` (M72).
+
+Long drive is about the driver at the wheel now, so it is judged on `drive_run_s`: the driving time
+since the last rest or driver change (`ContextTracker.new_driver`), not on the source's
+`drive_time_s`, which only ever grows. Before M73 it was the latter: once two hours had been driven
+the long-drive factor stayed on through every rest and for every later driver. The HUD's
+"Lái liên tục" shows this same counter.
+
+A stop of `short_stop_forget_s` or longer that is not yet a rest (a red light) is reported as
+`long_stop`; the pipeline drops what the drowsiness side gathered during such a stop once the
+vehicle drives off (see edge_agent/decision/pipeline.py).
 """
 
 from __future__ import annotations
@@ -35,6 +49,7 @@ class ContextConfig:
     turn_signal_grace_s: float = 2.0
     stationary_kmh: float = 1.0
     rest_after_s: float = 120.0
+    short_stop_forget_s: float = 10.0  # a stop this long: what it gathered is dropped on driving off
     vehicle_signal_stale_s: float = 1.0  # external speed source silent this long = standing still
 
     @classmethod
@@ -66,6 +81,13 @@ class VehicleContext:
     stationary_s: float = 0.0  # seconds the vehicle has stood still, 0 otherwise
     resting: bool = False  # stood still for rest_after_s: a rest (parked), not a red light
     turn_side: str | None = None  # "left" / "right" while turning (the last signalled side)
+    drive_run_s: float = 0.0  # driving time since the last rest / driver change: what long_drive is judged on
+    long_stop: bool = False  # stood still for short_stop_forget_s (see module doc); stays True in a rest
+
+    @property
+    def rolling(self) -> bool:
+        """Not standing still: moving, or crawling below min_speed_kmh (see module doc)."""
+        return self.moving or (self.speed_kmh is not None and not self.stationary)
 
 
 def in_hours(hour: float, windows: tuple[tuple[float, float], ...]) -> bool:
@@ -84,6 +106,12 @@ class ContextTracker:
         self._last_signal_t: float | None = None
         self._last_side: str | None = None
         self._stationary_since: float | None = None
+        self._drive_time: float | None = None  # the source's drive_time_s at the last update
+        self._drive_run = 0.0
+
+    def new_driver(self) -> None:
+        """Another driver took the wheel: their continuous driving starts at 0."""
+        self._drive_run = 0.0
 
     def update(self, s: VehicleSignals) -> VehicleContext:
         cfg = self.config
@@ -97,18 +125,26 @@ class ContextTracker:
         elif self._stationary_since is None:
             self._stationary_since = s.t
         stationary_s = s.t - self._stationary_since if self._stationary_since is not None else 0.0
+        resting = stationary and stationary_s >= cfg.rest_after_s
+        # The first reading carries the driving done before the agent started (a scenario's initial_drive_time_s).
+        self._drive_run += s.drive_time_s - self._drive_time if self._drive_time is not None else s.drive_time_s
+        self._drive_time = s.drive_time_s
+        if resting:
+            self._drive_run = 0.0
         return VehicleContext(
             t=s.t,
             speed_kmh=s.speed_kmh,
             moving=cfg.is_moving(s.speed_kmh),
             high_speed=s.speed_kmh is not None and s.speed_kmh >= cfg.high_speed_kmh,
             night=in_hours(s.clock_hour, cfg.night_hours),
-            long_drive=s.drive_time_s >= cfg.long_drive_s,
+            long_drive=self._drive_run >= cfg.long_drive_s,
             turning=turning,
             drive_time_s=s.drive_time_s,
             clock_hour=s.clock_hour,
             stationary=stationary,
             stationary_s=stationary_s,
-            resting=stationary and stationary_s >= cfg.rest_after_s,
+            resting=resting,
             turn_side=self._last_side if turning else None,
+            drive_run_s=self._drive_run,
+            long_stop=stationary and stationary_s >= cfg.short_stop_forget_s,
         )

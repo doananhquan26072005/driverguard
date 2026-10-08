@@ -4,8 +4,10 @@ Per frame, from head pose + phone flag + whether the vehicle is moving, computes
 - off_road_duration: seconds the head has been continuously turned away from the road.
 - phone_ratio_2s: fraction of recent samples (window `phone_window_s`) with a phone
   in the driver zone.
-- no_face_duration: seconds without any face while moving (driver slumped out of
-  view, camera covered). The risk engine turns a long one into an alert.
+- no_face_duration: seconds without any face while the vehicle is not standing still (driver
+  slumped out of view, camera covered). The risk engine turns a long one into "monitoring
+  unavailable". It is the only number that runs on in a crawl below context.min_speed_kmh
+  (`rolling`, M72): the rules below are off there, but a driver out of view is still not watched.
 
 Anti false-positive rules:
 - The branch is disabled while the vehicle is not moving (parked / red light: looking
@@ -36,6 +38,10 @@ Anti false-positive rules:
   image right, yaw > 0). The baseline never learns from such widened-band samples.
 - Face lost: keep the previous state (turning far away often loses the face, while an
   occlusion when looking forward should not start the timer).
+- ... but not for ever (M72): "off road" is held for at most `pose_hold_s` after the last
+  reliable head pose. After that nothing says where the driver looks, so the off-road state
+  ends (a face partly out of the image used to keep an L2 alert up for as long as it stayed
+  there). A driver looking behind (`turned_away`, below) is held for its own, longer time.
 - Looking down with the head only partly bowed (block 7 `gaze_down`: head bowed, lids lowered,
   not firmly shut): the eyes are off the road even when the head is within the pitch limit, so the
   frame counts as off road. Such frames never teach the baseline.
@@ -44,6 +50,10 @@ Anti false-positive rules:
   old). That is a driver looking behind, not a covered camera: `turned_away` is set for at most
   `turned_away_max_s`, and the risk engine keeps the off-road rule instead of "monitoring
   unavailable" meanwhile. A face lost while looking ahead is unchanged (unavailable, no alert).
+- Two frames more than `max_gap_s` apart (the loop stood still, the camera dropped frames): the
+  driver was not seen in between, so the off-road, no-face, turned-away and gaze timers start again
+  from the frame after the gap. Durations are differences of timestamps: without this, a glance on
+  each side of a 3 s freeze read as one 3 s look away (L2). The baseline and the windows stay.
 
 Measured only, never an alert (M38; to be proven on data first, docs/improvements.md):
 - off_road_ratio / glance_count: share of the last `glance_window_s` spent off road, and how many
@@ -86,6 +96,8 @@ class DistractionConfig:
     pitch_down_off_road_deg: float = 20.0
     pitch_up_off_road_deg: float = 25.0
     on_road_confirm_s: float = 0.3
+    max_gap_s: float = 0.5  # a longer gap between two frames ends the running timers
+    pose_hold_s: float = 3.0  # "off road" held this long after the last reliable pose; 0 = no limit
     phone_window_s: float = 2.0
     baseline_adapt: bool = True
     baseline_tau_s: float = 30.0
@@ -153,11 +165,21 @@ class DistractionAnalyzer:
         self._no_face_since: float | None = None
         self._phone: deque[tuple[float, bool, str | None]] = deque()
         self._last_t: float | None = None
+        self._pose_t: float | None = None  # last frame with a reliable head pose
         self._turned_pose_t: float | None = None  # last reliable pose, when it was a large head turn
         self._turned_since: float | None = None  # face lost right after such a pose
         self._gaze_since: float | None = None  # start of the current look down
         self._gaze_last: float | None = None  # last frame the gaze was seen down
         self.clear_glances()
+
+    def _break_episodes(self) -> None:
+        """Nothing was seen since the last frame (see module doc): the running timers start again."""
+        self._off_road = False
+        self._off_road_since = self._on_road_since = None
+        self._no_face_since = None
+        self._pose_t = None
+        self._turned_pose_t = self._turned_since = None
+        self._gaze_since = self._gaze_last = None
 
     def clear_glances(self) -> None:
         """Empty the glance window (also called by the pipeline when monitoring becomes unavailable)."""
@@ -311,19 +333,30 @@ class DistractionAnalyzer:
         gaze_down: bool = False,
         phone_kind: str | None = None,
         eyes_shut: bool = False,
+        rolling: bool | None = None,
     ) -> DistractionState:
         """gaze_down: block 7 sees the driver looking down (head bowed, lids lowered): off road.
         phone_kind: how the phone is held on this frame (block 4), None when unknown / no phone.
-        eyes_shut: block 7 counts this frame as firmly shut: the gaze angle is not measured on it."""
+        eyes_shut: block 7 counts this frame as firmly shut: the gaze angle is not measured on it.
+        rolling: the vehicle is not standing still (block 10); None = the same as `moving`."""
         cfg = self.config
         t = features.timestamp
         dt = 0.0 if self._last_t is None else max(0.0, t - self._last_t)
         self._last_t = t
+        if dt > cfg.max_gap_s:
+            self._break_episodes()
 
         if not moving:
+            # A crawl (rolling, not moving): the rules are off, the no-face time alone runs on.
+            lost_since = None
+            if rolling and not features.face_found:
+                lost_since = t if self._no_face_since is None else self._no_face_since
             self.reset()
-            self._last_t = t
-            return DistractionState(t, False, False, 0.0, 0.0, None, None, self.baseline_yaw, self.baseline_pitch)
+            self._last_t, self._no_face_since = t, lost_since
+            no_face = 0.0 if lost_since is None else t - lost_since
+            return DistractionState(
+                t, False, False, 0.0, 0.0, None, None, self.baseline_yaw, self.baseline_pitch, no_face_duration=no_face
+            )
 
         yaw_off = pitch_off = None
         has_pose = (
@@ -332,6 +365,8 @@ class DistractionAnalyzer:
         if has_pose and not self.calibrated:
             self._calibrate(t, features.yaw, features.pitch)
         calibrating = not self.calibrated
+        if has_pose:
+            self._pose_t = t
         if calibrating:
             head_off = False  # baseline not known yet: never off road
         elif has_pose:
@@ -344,6 +379,15 @@ class DistractionAnalyzer:
             self._turned_pose_t = t if turned else None
         else:
             head_off = self._off_road  # face lost: hold previous state
+            looking_behind = (  # held by turned_away, for its own time
+                not features.face_found
+                and self._turned_since is not None
+                and t - self._turned_since <= cfg.turned_away_max_s
+            )
+            stale = self._pose_t is None or t - self._pose_t > cfg.pose_hold_s
+            if head_off and cfg.pose_hold_s > 0 and stale and not looking_behind:
+                head_off = self._off_road = False  # held too long: where the driver looks is not known
+                self._off_road_since = self._on_road_since = None
         if features.face_found:
             self._no_face_since = None
         elif self._no_face_since is None:

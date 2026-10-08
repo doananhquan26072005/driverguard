@@ -7,8 +7,13 @@ from tools.metrics import (
     WindowCounts,
     ci_text,
     exposure_seconds,
+    file_hash,
     per_second_max,
+    person_rate_ci,
+    person_spread,
+    person_text,
     poisson_ci,
+    provenance,
     rate_ci,
     union_length,
     wilson_ci,
@@ -90,4 +95,64 @@ def test_seq_eval_scores_yawdd_traces_like_the_dataset_tool():
     assert "2 videos, 2.0 min" in text
     assert "| yawn | 1 | 1 | 1 | 0 |" in text
     assert "| **all alerts** | 1 | 1 | 0 | 1 | 0 | 0.0% | – | – | 0.02 | 60.0 (" in text  # 1 per the 1-min Normal clip
-    assert "| Drowsiness, level ≥ L1 | 3 | 0.0%" in text and "| 3 | 100.0%" in text  # Yawning clip: 3 windows missed
+    assert (
+        "| Drowsiness, level ≥ L1 | 3 | 0.0%" in text and " | 3 | 3 / 6 (50.0%) | 100.0%" in text
+    )  # Yawning clip: 3 windows missed
+
+
+def test_by_person_interval_is_wider_when_every_false_alarm_is_one_persons():
+    hours = [0.17] * 24
+    spread = [1] * 4 + [0] * 20  # 4 false alarms, four different people
+    piled = [4] + [0] * 23  # the same 4, all on one person
+    even = person_rate_ci(spread, hours)
+    one = person_rate_ci(piled, hours)
+    assert even[0] == one[0] == pytest.approx(4 / (0.17 * 24))  # same estimate
+    assert one[2] - one[1] > even[2] - even[1]
+    assert one[1] == 0.0  # a draw without that person has no false alarm
+
+
+def test_by_person_interval_is_close_to_poisson_when_evenly_spread():
+    counts, hours = [1] * 30, [0.5] * 30
+    rate, lo, hi = person_rate_ci(counts, hours)
+    p_rate, p_lo, p_hi = rate_ci(30, 15.0)
+    assert rate == pytest.approx(p_rate)
+    assert (hi - lo) < (p_hi - p_lo)  # equal rates for everyone: no spread between people at all
+
+
+def test_by_person_interval_is_repeatable_and_needs_exposure():
+    counts, hours = [2, 0, 1, 0], [0.2, 0.3, 0.1, 0.4]
+    assert person_rate_ci(counts, hours, 500, seed=3) == person_rate_ci(counts, hours, 500, seed=3)
+    assert person_rate_ci([], []) == (None, None, None)
+    assert person_rate_ci([1], [0.0]) == (None, None, None)
+    assert person_rate_ci([0, 0], [1.0, 1.0]) == (0.0, 0.0, 0.0)  # nothing to draw: use the Poisson bound
+
+
+def test_person_spread_counts_people_with_an_alarm():
+    sp = person_spread([3, 0, 1, 0], [1.0, 2.0, 0.5, 0.0])
+    assert sp["people"] == 4
+    assert sp["with_alarm"] == 2
+    assert (sp["min"], sp["median"], sp["max"]) == (0.0, 2.0, 3.0)  # the person without exposure is left out
+
+
+def test_person_text_names_both_intervals_and_the_zero_case():
+    cfg = EvalConfig(bootstrap_resamples=200)
+    text = person_text([4, 0, 0, 0], [0.5] * 4, cfg)
+    assert "Poisson" in text
+    assert "resampled by person (4 people, 200 draws" in text
+    assert "1 of 4 people have at least one" in text
+    assert "read the Poisson bound" in person_text([0, 0], [1.0, 1.0], cfg)
+    assert person_text([], [], cfg) == "no exposure"
+
+
+def test_provenance_line_names_the_thresholds_hash_and_the_input_files(tmp_path):
+    th = tmp_path / "thresholds.yaml"
+    th.write_text("a: 1\n", encoding="utf-8")
+    trace = tmp_path / "fl3d_v2.pkl"
+    trace.write_bytes(b"x")
+    line = provenance([trace, tmp_path / "missing.pkl"], th)
+    assert line.startswith("Source: commit ") and line.endswith(".")
+    assert f"thresholds.yaml sha256 {file_hash(th)}" in line and len(file_hash(th)) == 12
+    assert "fl3d_v2.pkl (modified 20" in line and "missing.pkl" not in line  # a file that is not there is not named
+    th.write_text("a: 2\n", encoding="utf-8")
+    assert provenance([], th) != provenance([], tmp_path / "other.yaml")  # a changed threshold file changes the line
+    assert file_hash(tmp_path / "nope") == "missing"

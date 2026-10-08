@@ -1,12 +1,16 @@
 // #/live: DriverGuard on the visitor's own camera, everything computed in this browser.
 // Setup (who is driving, face enrollment, privacy) -> loading steps -> the in-car HUD fed by
 // LiveAgent, with a small self-view so the driver can place the camera.
+// M72: nothing here stops the monitoring with one touch. "Dừng camera" asks the HUD's "Kết thúc
+// chuyến?" and ends the trip like that button; leaving the page with the trip running ends it too
+// (summary and "ended" sent) and says aloud that the driver is no longer watched.
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
+import { play, speak, systemSound } from "../hud/chime";
 import HudScreen from "../hud/HudScreen";
 import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "../hud/voice";
 import { ApiError, loadSession, login, saveSession } from "../lib/api";
-import { perfDetail, perfLines, startupText } from "../lib/labels";
+import { perfDetail, perfLines, recoveryText, startupText } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
 import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
 
@@ -25,6 +29,7 @@ function cameraError(err: unknown): string {
 }
 
 const TECH_KEY = "driverguard.live.tech"; // per-browser convenience only
+const LEAVE_VOICE_MS = 700; // the spoken line follows the chime (as HudScreen's CHIME_TO_VOICE_MS)
 
 function readTech(): boolean {
   try {
@@ -60,9 +65,19 @@ export default function LiveScreen() {
   const [error, setError] = useState<string | null>(null);
   const [agent, setAgent] = useState<LiveAgent | null>(null);
   const [ended, setEnded] = useState(false); // trip ended: the summary is on screen, the camera is off
+  const [askEnd, setAskEnd] = useState(0); // "Dừng camera": each press asks the HUD's end-of-trip question
   const voice = useVietnameseVoice();
 
-  useEffect(() => () => void agent?.stop(), [agent]);
+  useEffect(
+    () => () => {
+      if (!agent?.running) return; // the trip was ended on the HUD: nothing left to stop
+      // Back button, another address: the page goes, and the monitoring with it. Not silently.
+      play(systemSound("monitoring_stopped"));
+      setTimeout(() => speak("sys.stopped"), LEAVE_VOICE_MS);
+      void agent.endTrip().catch(() => agent.stop());
+    },
+    [agent],
+  );
 
   async function start() {
     if (!videoRef.current) return;
@@ -90,8 +105,8 @@ export default function LiveScreen() {
   const ready = agent != null;
   return (
     <>
-      {ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} />}
-      <SelfView videoRef={videoRef} agent={ended ? null : agent} onStop={stop} />
+      {ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} askEnd={askEnd} />}
+      <SelfView videoRef={videoRef} agent={ended ? null : agent} onStop={() => setAskEnd((n) => n + 1)} />
       {!ready && (
         <div className="live-setup font-hud text-hud-ink antialiased [color-scheme:dark]">
           {/* M64 (designs "Chạy thử trên trình duyệt · Thiết lập / Đang tải"): the pitch and the privacy
@@ -317,7 +332,8 @@ function Progress({ step }: { step: Step }) {
   );
 }
 
-/** Small mirror of the driver's own camera (local only) with a plain status and a stop button.
+/** Small mirror of the driver's own camera (local only) with a plain status and a stop button
+ * (which asks first, and ends the trip: M72).
  * The measurements (EAR, angles, FPS, YOLO time) are for engineers: hidden unless "Chi tiết kỹ thuật"
  * is switched on (remembered in this browser). At L3 it shrinks to the stop button. */
 function SelfView({
@@ -377,7 +393,7 @@ function SelfView({
                   className="whitespace-pre-line text-white/70"
                   title={[perfDetail(stats.perf), startupText(stats.startup)].filter(Boolean).join("\n")}
                   // The same numbers as JSON, for bench/live.bench.mjs (M67). Timings and counts only.
-                  data-perf={JSON.stringify({ perf: stats.perf, totals: stats.totals, startup: stats.startup, fps: stats.fps })}
+                  data-perf={JSON.stringify({ perf: stats.perf, totals: stats.totals, startup: stats.startup, fps: stats.fps, recovery: stats.recovery })}
                 >
                   {perfLines(stats.perf)}
                 </span>
@@ -385,6 +401,7 @@ function SelfView({
               {stats?.enrollment && stats.enrollment.status !== "off" && (
                 <span className="text-white/70">{enrollText(stats.enrollment)}</span>
               )}
+              {stats && recoveryText(stats.recovery) && <span className="text-hud-caution">{recoveryText(stats.recovery)}</span>}
               {stats?.lastError && <span className="break-all text-hud-caution">Lỗi gần nhất: {stats.lastError}</span>}
               {stats && stats.sent > 0 && <span className="text-white/70">Đã lưu {stats.sent} cảnh báo</span>}
             </>
@@ -415,7 +432,7 @@ function SelfView({
               type="button"
               onClick={onStop}
               aria-label="Dừng camera"
-              title="Dừng camera"
+              title="Dừng camera và kết thúc chuyến"
               className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white"
             >
               <Square aria-hidden className="size-3.5" />

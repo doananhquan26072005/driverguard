@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import pickle
 import re
 import sys
@@ -116,7 +117,6 @@ class Tracer:
         use_phone: bool = True,
         yolo_every: int | None = None,
     ) -> None:
-        from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
         from edge_agent.decision.pipeline import DecisionPipeline
         from edge_agent.perception import PreprocessConfig, Preprocessor
         from edge_agent.perception.eye_state import EyeStateConfig, EyeStateEstimator, make_estimator
@@ -133,9 +133,7 @@ class Tracer:
         self.yolo = YoloPhoneModel(self.phone_cfg) if use_phone else None
         self.yolo_every = yolo_every
         self.pipeline = DecisionPipeline(thresholds)
-        self.can = CanSimulator(
-            scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": speed_kmh}]})
-        )
+        self.can = replay_vehicle(thresholds, speed_kmh)
         self.landmarks = FaceLandmarkDetector(LandmarkConfig.from_dict(thresholds.get("landmarks")))
         self.face_memory = FaceBoxMemory(self.phone_cfg.face_memory_s)
         self.detections: tuple = ()
@@ -337,6 +335,24 @@ def run_traces(
     Path(out).write_bytes(pickle.dumps(done))
 
 
+def replay_vehicle(thresholds: dict[str, Any], speed_kmh: float = 60.0) -> Any:
+    """The vehicle of a trace or replay: constant speed, starting at eval.replay_clock_hour with
+    eval.replay_drive_time_s already driven (noon and 0 by default: no night, no long drive)."""
+    from edge_agent.context.can_sim import CanSimulator, Scenario, scenario_from_dict
+    from tools.metrics import EvalConfig
+
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    base = scenario_from_dict({"timeline": [{"t": 0, "speed_kmh": speed_kmh}]})
+    return CanSimulator(
+        Scenario(
+            base.name,
+            base.keyframes,
+            start_clock_s=(cfg.replay_clock_hour % 24.0) * 3600.0,
+            initial_drive_time_s=cfg.replay_drive_time_s,
+        )
+    )
+
+
 # --------------------------------------------------------------------------- what-if replay (blocks 7-12 only)
 
 
@@ -359,7 +375,6 @@ def replay(
     profile: ear_open, mar_closed, road_yaw, road_pitch (and road_iris_y, block 8 only) handed to blocks
     7 and 8 before the first frame, as a finished driver enrollment does (tools/trace_studies.py personal).
     """
-    from edge_agent.context.can_sim import CanSimulator, scenario_from_dict
     from edge_agent.decision.pipeline import DecisionPipeline
     from edge_agent.perception.features import FrameFeatures
 
@@ -381,7 +396,7 @@ def replay(
     if profile is not None:
         pipeline.drowsiness.set_profile(**{k: v for k, v in profile.items() if k != "road_iris_y"})
         pipeline.distraction.set_road_pose(profile["road_yaw"], profile["road_pitch"], profile.get("road_iris_y"))
-    can = CanSimulator(scenario_from_dict({"start_clock": "12:00", "timeline": [{"t": 0, "speed_kmh": 60.0}]}))
+    can = replay_vehicle(thresholds)
     out = {
         k: np.empty(tr["n"])
         for k in (
@@ -494,6 +509,43 @@ def block5_scores(c: dict[str, np.ndarray], thresholds: dict[str, Any]) -> np.nd
         if est.decide(float(c["t"][i]), reason) is not None:
             out[i] = score[i]
     return out
+
+
+def resample_trace(tr: dict, fps: float, jitter_cv: float = 0.0, offset_s: float = 0.0, seed: int = 0) -> dict:
+    """The trace as a slower loop would have seen it: fewer frames, each with the time it was taken.
+
+    The loop asks for a frame every 1 / fps seconds from offset_s on and gets the first traced frame at or
+    after that moment (a frame is never used twice). jitter_cv > 0 makes the waits uneven: log-normal with
+    mean 1 / fps and this coefficient of variation, drawn from `seed`. Nothing is interpolated, so a trace
+    cannot be made faster than it was recorded. The result replays like any trace: `fps` is the rate it
+    reached (frames / duration, so n / fps is still the duration), `source_fps` the rate of the recording.
+    Events and alerts of the original run move to the nearest kept frame."""
+    c, n = tr["cols"], tr["n"]
+    if n == 0 or fps <= 0:
+        return tr
+    t = c["t"]
+    if jitter_cv > 0:
+        sigma2 = math.log(1.0 + jitter_cv**2)
+        count = int((t[-1] - offset_s) * fps * 1.5) + 16  # more waits than can fit
+        waits = np.random.default_rng(seed).lognormal(-math.log(fps) - sigma2 / 2.0, math.sqrt(sigma2), count)
+        asked = offset_s + np.concatenate(([0.0], np.cumsum(waits)))
+    else:
+        asked = offset_s + np.arange(int((t[-1] - offset_s) * fps) + 1) / fps
+    idx = np.unique(np.searchsorted(t, asked - 1e-9))
+    idx = idx[idx < n]
+
+    def moved(rows: list[tuple]) -> list[tuple]:
+        return [(int(min(np.searchsorted(idx, r[0]), len(idx) - 1)), *r[1:]) for r in rows]
+
+    return {
+        **tr,
+        "fps": len(idx) * tr["fps"] / n,
+        "source_fps": tr["fps"],
+        "n": len(idx),
+        "cols": {k: v[idx] for k, v in c.items()},
+        "events": moved(tr["events"]),
+        "alerts": moved(tr["alerts"]),
+    }
 
 
 def set_threshold(thresholds: dict[str, Any], assignment: str) -> None:
@@ -1194,11 +1246,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.replay or args.set:
         traces = replay_all(traces, thresholds, args.replay or "trace", args.workers)
     text = {"fl3d": fl3d_report, "sust": sust_report, "yawdd": yawdd_report}[args.cmd](traces, thresholds)
+    from tools.metrics import provenance
+
+    notes = []
     if args.replay or args.set:
         note = f"Blocks {'5, ' if args.replay == 'block5' else ''}7-12 replayed from the traces with config/thresholds.yaml"
         note += f" and {', '.join(args.set)}." if args.set else "."
-        head, _, rest = text.partition("\n\n")
-        text = f"{head}\n\n{note}\n\n{rest}"
+        notes.append(note)
+    else:
+        notes.append(
+            "Alerts and levels AS TRACED, not replayed with today's config/thresholds.yaml (pass --replay block5 for that)."
+        )
+    notes.append(provenance([args.traces]))
+    head, _, rest = text.partition("\n\n")
+    text = f"{head}\n\n" + "\n\n".join(notes) + f"\n\n{rest}"
     print(text)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

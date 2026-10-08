@@ -121,7 +121,7 @@ class HudState:
             "eyes_closed_s": round(r.drowsiness.closed_duration, 2),
             "perclos_60s": round(r.drowsiness.perclos_60s, 3),
             "fps": round(fps, 1),
-            "unavailable": r.risk.unavailable,  # face lost while moving: not monitored, no alerts (FR-6)
+            "unavailable": r.risk.unavailable,  # face lost / unreadable while rolling: not monitored (FR-6)
             "unavailable_reason": r.risk.unavailable_reason,  # no_face, camera_blocked, low_light, ...
             "quality": {"issue": r.quality.issue, "score": round(r.quality.score, 2)},  # block 6 stage
             "presence": {  # M44: "Bạn còn ở đó không?" while the driver is out of view

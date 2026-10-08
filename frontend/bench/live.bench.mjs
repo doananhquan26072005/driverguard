@@ -15,6 +15,8 @@
 // frames never processed, YOLO runs), with the memory and CPU time of the browser's processes. A run of
 // two minutes or more gets a verdict against eval.soak_min_fps (every minute) and
 // eval.soak_rss_growth_mb_per_h (renderer process, after the first minute) of config/thresholds.yaml.
+// The page also says how often its loop watch had to step in (M71): the frame callback gone quiet and
+// frames pulled by a timer, the camera asked for again.
 // Headless Chromium on a development machine is not the hub: use it to compare versions of the code.
 import { chromium } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -190,6 +192,7 @@ async function main() {
     rss_mb: { start: first.rss_mb ?? null, end: end.rss_mb ?? null },
     cpu_pct: cpu,
     last_window: last.perf,
+    recovery: last.recovery ?? null, // M71: { pulls, reopens } since the loop started
     problems: [...new Set(problems)],
   };
 
@@ -209,6 +212,8 @@ async function main() {
         (end.rss_mb["gpu-process"] != null ? ` · GPU process ${f(first.rss_mb["gpu-process"], 0)} -> ${f(end.rss_mb["gpu-process"], 0)} MB` : "") +
         (growth == null ? "" : ` · page growth after the first minute ${growth >= 0 ? "+" : ""}${f(growth)} MB / h`),
     );
+  if (summary.recovery)
+    console.log(`Loop watch: frame callback went quiet ${summary.recovery.pulls} time(s), camera asked for again ${summary.recovery.reopens} time(s)`);
   if (Object.keys(cpu).length) console.log(`CPU (100 % = one core): ${Object.entries(cpu).map(([type, pct]) => `${type} ${f(pct, 0)} %`).join(" · ")}`);
   if (span >= 120) {
     const yaml = readFileSync(fileURLToPath(new URL("../../config/thresholds.yaml", import.meta.url)), "utf8");

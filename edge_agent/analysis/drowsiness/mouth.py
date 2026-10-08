@@ -114,6 +114,12 @@ class YawnCounter:
             events.append("yawn")
         return self._fired
 
+    def gap(self) -> None:
+        """No frame for too long: an open mouth on both sides is not one long opening. A yawn already
+        counted stays counted once (the mouth is still open)."""
+        if not self._fired:
+            self._open_since = None
+
     def count(self, t: float) -> int:
         expire(self._yawns, t, self.config.yawn_window_s)
         return len(self._yawns)
