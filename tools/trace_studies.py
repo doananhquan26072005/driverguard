@@ -48,6 +48,7 @@ from tools.seq_eval import (  # noqa: E402
     prf,
     replay,
     set_threshold,
+    trace_seconds,
     yawdd_meta,
 )
 
@@ -76,7 +77,7 @@ def _share(num: float, den: float) -> float | None:
 
 
 def seconds(tr: dict) -> float:
-    return tr["n"] / tr["fps"] if tr["fps"] else 0.0
+    return trace_seconds(tr) if tr["fps"] else 0.0
 
 
 def is_negative(dataset: str, key: str) -> bool | None:
@@ -587,7 +588,8 @@ def lighting_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any]
         "",
         f"- Faces darker than the low-light threshold ({low_light}) are rare here: only the `< {edges[0]:g}` rows "
         "above, a few minutes in all (FL3D night clips are lit to 70-90). Infrared, backlight and glare: no video; "
-        "`is_ir` is 0 on every trace.",
+        "`is_ir` is 0 on every trace of these datasets (not on dark colour video: the two dark own recordings "
+        "read as infrared on 98-100 % of their frames).",
         "- Day / night per clip is not labelled in YawDD or SUST; FL3D is all night.",
         "- Sunglasses: YawDD has a few clips, but its labels are yawning only, so they say nothing about closed "
         "eyes behind dark lenses (NTHU-DDD is the set for that).",

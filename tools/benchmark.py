@@ -20,6 +20,7 @@ sampling once a second what a vehicle hub would run out of: CPU, memory, tempera
     python tools/benchmark.py --source clip.mp4 --duration 60m --condition face --out eval/results/benchmark_soak.md
     python tools/benchmark.py --duration 10m --condition no_face          # synthetic frames
     python tools/edge_sim.py --profile jetson_nano --duration 10m --source clip.mp4   # the same in a limited container
+    python tools/benchmark.py --duration 90s --pace-fps 0 --condition drawn_face --check   # CI (M87)
 
 - Frames of --source are looped from RAM at --pace-fps (30 = a camera; 0 = as fast as possible).
 - Every second: FPS, p95 frame latency, CPU of this process (100 % = one core), resident memory,
@@ -29,6 +30,9 @@ sampling once a second what a vehicle hub would run out of: CPU, memory, tempera
   report `simulated`. The CPU / memory limits themselves are applied from outside (a container:
   tools/edge_sim.py); the report prints the limits the process really sees (cgroup), so a run
   without them cannot pass for a limited one.
+- --condition drawn_face needs no video: a face made of ellipses (tools/drawn_face.py) that MediaPipe
+  finds on every frame, so the landmark model and blocks 5-6 do their work. --check makes the exit code
+  1 when a judged criterion fails or FPS could not be judged: the CI step that measures FPS (M87).
 A capped container on a fast machine is not the device: per-core speed, GPU and heat differ.
 """
 
@@ -511,6 +515,16 @@ def soak_verdict(result: dict[str, Any], min_fps: float, max_growth: float) -> l
     return out
 
 
+def check_failures(verdict: list[tuple[str, bool | None, str]]) -> list[str]:
+    """--check: what a long run failed. FPS that could not be judged (a run under 30 s) fails too: a
+    gate that measured nothing must not pass. Memory and temperature only fail when judged."""
+    return [
+        f"{name}: {measured}"
+        for name, ok, measured in verdict
+        if ok is False or (ok is None and name.startswith("FPS"))
+    ]
+
+
 def soak(args: argparse.Namespace, th: dict[str, Any]) -> dict[str, Any]:
     """The main loop (blocks 2-12, YOLO on its own thread) for args.duration seconds, sampled every second."""
     import mediapipe
@@ -541,7 +555,14 @@ def soak(args: argparse.Namespace, th: dict[str, Any]) -> dict[str, Any]:
         phone_over["num_threads"] = int(profile["threads"])
         cv2.setNumThreads(int(profile["threads"]))
     phone_cfg = PhoneDetectorConfig.from_dict(phone_over)
-    frames, source_desc = load_frames(args.source if args.condition != "no_face" else None, args.frames)
+    if args.condition == "drawn_face":
+        from edge_agent.capture import CaptureConfig
+        from tools.drawn_face import drawn_face_frames
+
+        capture = CaptureConfig.from_dict(th.get("capture"))
+        frames, source_desc = drawn_face_frames(args.frames, capture.camera_width, capture.camera_height)
+    else:
+        frames, source_desc = load_frames(args.source if args.condition != "no_face" else None, args.frames)
     pre = Preprocessor(PreprocessConfig.from_dict(th.get("preprocess")))
     ext = FeatureExtractor(FeatureConfig.from_dict(th.get("features")))
     eye_state = make_estimator(EyeStateConfig.from_dict(th.get("eye_state")))
@@ -791,8 +812,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--duration", default=None, help="long run instead (M42): e.g. 90s, 10m, 1h")
     p.add_argument("--pace-fps", type=float, default=30.0, help="long run: frames per second fed (0 = flat out)")
     p.add_argument(
-        "--condition", choices=("no_face", "face", "face_phone"), default="face", help="long run: what the frames show"
+        "--condition",
+        choices=("no_face", "face", "face_phone", "drawn_face"),
+        default="face",
+        help="long run: what the frames show (drawn_face: tools/drawn_face.py, no --source needed)",
     )
+    p.add_argument("--check", action="store_true", help="long run: exit code 1 when a criterion fails")
     p.add_argument("--profile", default=None, help="long run: resource profile of config/edge_profiles.yaml")
     p.add_argument("--phone-model", default=None, help="long run: ONNX to use, e.g. models/yolov8n_int8.onnx")
     p.add_argument("--label", default=None, help="long run: name of the run in the report (machine, setup)")
@@ -839,6 +864,11 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.csv).write_text("\n".join(rows) + "\n", encoding="utf-8")
         if args.json:
             Path(args.json).write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
+        if args.check:
+            failed = check_failures(soak_verdict(result, cfg.soak_min_fps, cfg.soak_rss_growth_mb_per_h))
+            for line in failed:
+                print(f"[benchmark] FAILED {line}", file=sys.stderr)
+            return 1 if failed else 0
         return 0
 
     result = run(args)

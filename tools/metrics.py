@@ -74,12 +74,21 @@ class EvalConfig:
     # Replays and traces: local hour at the first frame, and continuous driving already done by then.
     replay_clock_hour: float = 12.0
     replay_drive_time_s: float = 0.0
+    replay_speed_kmh: float = 60.0
+    # tools/uta_rldd.py: EAR / baseline ratios counted as "closed" in the signals study, and the share
+    # of reliable frames below which a video is listed by name.
+    perclos_ratios: tuple[float, ...] = (0.48, 0.55, 0.65, 0.75)
+    low_reliable_frac: float = 0.8
     # tools/uta_rldd.py fps: loop rates the videos are replayed at with frames left out, how uneven the
     # waits of the "uneven" runs are, runs per rate, and the slowest recording that is slowed down.
     fps_study_rates: tuple[float, ...] = (15.0, 12.0, 10.0)
     fps_study_jitter_cv: float = 0.3
     fps_study_repeats: int = 3
     fps_study_min_source_fps: float = 25.0
+    # Video files: the rate assumed when the container has none, and how many nominal frames a wait
+    # between two frames must last to be counted as a long gap (tools/seq_eval.py VideoClock, gap_stats).
+    fallback_video_fps: float = 30.0
+    clock_long_gap_frames: float = 2.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EvalConfig:
@@ -368,6 +377,57 @@ def file_hash(path: str | Path) -> str:
     """First 12 hex digits of the sha256 of a file ('missing' when it is not there)."""
     p = Path(path)
     return hashlib.sha256(p.read_bytes()).hexdigest()[:12] if p.is_file() else "missing"
+
+
+MODEL_LIBRARIES = {"mediapipe": "mediapipe", "opencv": "cv2", "numpy": "numpy", "onnxruntime": "onnxruntime"}
+
+
+def environment(models_dir: str | Path | None = None) -> dict[str, Any]:
+    """What a trace is made with, stored in the trace as `meta`: commit, thresholds hash, Python, the
+    libraries that decide its numbers (None = not installed) and the sha256 of every model file. A trace
+    is only repeatable with the same ones; a replay of a trace needs none of them."""
+    import importlib
+    import platform
+
+    versions: dict[str, str | None] = {}
+    for name, module in MODEL_LIBRARIES.items():
+        try:
+            versions[name] = importlib.import_module(module).__version__
+        except Exception:  # absent, or broken on this machine: the trace says so instead of failing
+            versions[name] = None
+    folder = Path(models_dir) if models_dir else ROOT / "models"
+    models = {}
+    for p in sorted(folder.glob("*")) if folder.is_dir() else []:
+        if p.suffix in (".task", ".onnx"):
+            models[p.name] = hashlib.sha256(p.read_bytes()).hexdigest()
+    dirty = _git("status", "--porcelain", "--untracked-files=no")
+    return {
+        "commit": _git("rev-parse", "HEAD") or "unknown",
+        "tree": "unknown" if dirty is None else "uncommitted" if dirty else "clean",
+        "thresholds_sha256": file_hash(ROOT / "config" / "thresholds.yaml"),
+        "python": platform.python_version(),
+        "versions": versions,
+        "models_sha256": models,
+    }
+
+
+def environment_text(metas: Iterable[dict[str, Any] | None], unit: str = "traces") -> str:
+    """One sentence for a report: what its traces were made with. Traces made before `meta` existed
+    (None) are counted, not guessed."""
+    metas = list(metas)
+    known = [m for m in metas if m]
+    if not known:
+        return f"Traced with: not recorded ({len(metas)} {unit} made before M86)."
+    kinds: dict[str, int] = {}
+    for m in known:
+        libs = ", ".join(f"{k} {v}" for k, v in m["versions"].items())
+        models = ", ".join(f"{k} {v[:12]}" for k, v in m["models_sha256"].items())
+        tree = f" ({m['tree']})" if m.get("tree") else ""
+        key = f"commit {m['commit'][:7]}{tree}, Python {m['python']}, {libs}; models {models}"
+        kinds[key] = kinds.get(key, 0) + 1
+    text = "; ".join(f"{k} [{n} {unit}]" for k, n in kinds.items())
+    missing = len(metas) - len(known)
+    return f"Traced with: {text}" + (f"; {missing} {unit} without a record." if missing else ".")
 
 
 def provenance(inputs: Iterable[str | Path] = (), thresholds: str | Path | None = None) -> str:
