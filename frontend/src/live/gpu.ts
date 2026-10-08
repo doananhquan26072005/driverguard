@@ -40,3 +40,21 @@ export function yoloThreads(wanted: number, isolated: boolean, cores: number | u
   if (!isolated) return 1;
   return Math.max(1, Math.min(Math.floor(wanted) || 1, cores || 1));
 }
+
+// Where the phone detector runs (M67): "webgpu" or "wasm" (onnxruntime-web execution providers).
+export type YoloProvider = "webgpu" | "wasm";
+
+/** What navigator.gpu.requestAdapter() gave, reduced to what the choice below reads. */
+export interface GpuAdapter {
+  fallback: boolean; // the browser's software adapter
+  name: string; // vendor / architecture / device / description, as far as the browser says
+}
+
+/** WebGPU only where the settings allow it (phone.web_gpu) and a real GPU adapter exists: a software
+ *  adapter would be slower than wasm, as with MediaPipe's delegate above. A forced value
+ *  (measurements) wins, as long as there is an adapter at all. */
+export function yoloProvider(allowed: boolean, adapter: GpuAdapter | null, forced: string | null): YoloProvider {
+  if (forced === "wasm" || !adapter) return "wasm";
+  if (forced === "webgpu") return "webgpu";
+  return allowed && !adapter.fallback && !SOFTWARE.test(adapter.name) ? "webgpu" : "wasm";
+}

@@ -213,6 +213,7 @@ PERF_STAGES = ("camera_lag", "capture", "landmarks", "measure", "yolo_prep", "py
 PERF_MAX_MS = 600_000.0
 PERF_DELEGATES = ("GPU", "CPU")
 PERF_GPU_KINDS = ("hardware", "software", "none")  # what draws WebGL on the page (M51)
+PERF_YOLO_PROVIDERS = ("webgpu", "wasm")  # where the page runs the phone detector (M67)
 
 
 def perf_record(raw: Any) -> dict[str, Any] | None:
@@ -240,6 +241,7 @@ def perf_record(raw: Any) -> dict[str, Any] | None:
         return None
     delegate = raw.get("landmarks_delegate")
     gpu = raw.get("gpu")
+    provider = raw.get("yolo_provider")
     yolo_threads = count("yolo_threads", 64)
     return {
         "samples": samples,
@@ -247,6 +249,7 @@ def perf_record(raw: Any) -> dict[str, Any] | None:
         "landmarks_delegate": delegate if delegate in PERF_DELEGATES else None,
         "gpu": gpu if gpu in PERF_GPU_KINDS else None,
         "yolo_threads": yolo_threads or None,
+        "yolo_provider": provider if provider in PERF_YOLO_PROVIDERS else None,
         "camera_delivered": count("camera_delivered", 10_000_000),
         "camera_dropped": count("camera_dropped", 10_000_000),
     }

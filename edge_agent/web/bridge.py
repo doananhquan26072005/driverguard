@@ -177,7 +177,13 @@ class WebAgent:
                     "min_tracking_confidence": lm.min_tracking_confidence,
                     "blendshapes": lm.blendshapes,
                 },
-                "phone": {"input_size": ph.input_size, "target_fps": ph.target_fps, "num_threads": ph.num_threads},
+                "phone": {
+                    "input_size": ph.input_size,
+                    "target_fps": ph.target_fps,
+                    "num_threads": ph.num_threads,
+                    "web_gpu": ph.web_gpu,  # M67: WebGPU where there is a real GPU, at its own rate
+                    "gpu_target_fps": ph.web_gpu_target_fps,
+                },
                 "flush_interval_s": pub.flush_interval_s,
                 "config_poll_s": pub.config_poll_s,
                 "problems": self.problems,

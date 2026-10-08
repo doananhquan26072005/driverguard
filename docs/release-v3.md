@@ -10,7 +10,7 @@
 | **Phiên bản** | Version 3, dựa trên v2.2 (M9–M31). **Chưa deploy**: bản đang chạy vẫn là v2.2 |
 | **Mã nguồn** | nhánh `DAQuan`, commit ngày 05/10/2026; M38–M56 (06–07/10/2026) chưa commit (PR `DAQuan` → `main`) |
 | **Web đang chạy (v2.2)** | https://driveguard-v2-production.up.railway.app |
-| **Mốc trong lộ trình** | M32 (leo thang cảnh báo theo thời gian), M33 (nhịp "còn sống" và tổng quan đội xe), M34 (test hồi quy bằng trace), M35 (prototype thời lượng chớp), M36 (tiêu chí sẵn sàng pilot), M37 (chính sách dữ liệu, tự xoá theo thời hạn), M38 (khối 8: liếc cộng dồn, gọi / nhắn tin, quay hẳn đi), M39 (công cụ ghi số từ camera), M40 (đo offline: PERCLOS P80, ánh sáng, cá nhân hoá, theo người), M41 (phiên bản, tag, nhật ký truy cập), M42 (chạy dài, container giới hạn kiểu Jetson), M43 (chất lượng frame), M44 (không phản ứng, "Bạn còn ở đó không?", báo quản lý ngay), M45 (dung lượng tải lần đầu), M46 (cùng video, ánh sáng khác), M47 (tải lại ngưỡng khi đỗ, áp thử, quay lui), M48 (dữ liệu của tài xế), M49 (tốc độ bản web: công cụ đo, góc đầu, đồng hồ từng chặng), M50 (báo khi model điện thoại không cho kết quả, đẩy cảnh báo ngay, giờ chụp của frame, tải song song), M51 (model mặt chọn GPU / CPU, YOLO hai luồng, công cụ đo trong trình duyệt), M52–M55 (bản tự ghi, UTA-RLDD, hướng mắt), M56 (ngưỡng `eyeBlink` cho bản web, mốc mống mắt theo tài xế), xem [roadmap.md](roadmap.md) |
+| **Mốc trong lộ trình** | M32 (leo thang cảnh báo theo thời gian), M33 (nhịp "còn sống" và tổng quan đội xe), M34 (test hồi quy bằng trace), M35 (prototype thời lượng chớp), M36 (tiêu chí sẵn sàng pilot), M37 (chính sách dữ liệu, tự xoá theo thời hạn), M38 (khối 8: liếc cộng dồn, gọi / nhắn tin, quay hẳn đi), M39 (công cụ ghi số từ camera), M40 (đo offline: PERCLOS P80, ánh sáng, cá nhân hoá, theo người), M41 (phiên bản, tag, nhật ký truy cập), M42 (chạy dài, container giới hạn kiểu Jetson), M43 (chất lượng frame), M44 (không phản ứng, "Bạn còn ở đó không?", báo quản lý ngay), M45 (dung lượng tải lần đầu), M46 (cùng video, ánh sáng khác), M47 (tải lại ngưỡng khi đỗ, áp thử, quay lui), M48 (dữ liệu của tài xế), M49 (tốc độ bản web: công cụ đo, góc đầu, đồng hồ từng chặng), M50 (báo khi model điện thoại không cho kết quả, đẩy cảnh báo ngay, giờ chụp của frame, tải song song), M51 (model mặt chọn GPU / CPU, YOLO hai luồng, công cụ đo trong trình duyệt), M52–M55 (bản tự ghi, UTA-RLDD, hướng mắt), M56 (ngưỡng `eyeBlink` cho bản web, mốc mống mắt theo tài xế), M67 (tốc độ `#/live`: YOLO trên WebGPU, nhịp chạy, khởi động), xem [roadmap.md](roadmap.md) |
 
 ---
 
@@ -20,8 +20,8 @@ Phần này dành cho người dùng muốn biết ngay v3 nâng cấp gì so v�
 [mục 1](#1-tóm-tắt-thay-đổi-so-với-v2).
 
 - **Nhanh hơn và nhẹ hơn trên web**: lần đầu tải khoảng 30 MB thay vì 42 MB. Trên máy không có GPU
-  thật, tốc độ tăng từ khoảng 20 lên 30 FPS. Nhận diện điện thoại mỗi lần còn 91 ms thay vì 172 ms.
-  Cảnh báo hiện ngay trong frame đó, không chờ 300 ms.
+  thật, tốc độ tăng từ khoảng 20 lên 30 FPS. Nhận diện điện thoại mỗi lần còn 91 ms thay vì 172 ms,
+  và còn 17 ms trên máy có GPU thật (M67). Cảnh báo hiện ngay trong frame đó, không chờ 300 ms.
 - **Ít cảnh báo sai hơn**: chớp chậm và nhướn mày chỉ còn được ghi nhận, không tự gây cảnh báo. Đo
   trên 24 người giữ riêng của UTA-RLDD, cảnh báo sai giảm từ 8 xuống 4 lần.
 - **Cảnh báo mạnh dần khi tài xế không phản ứng**: nhắc nhẹ lặp lại 3 lần trong 10 phút thì lần thứ
@@ -103,6 +103,12 @@ v3 chưa deploy: bản đang chạy trên web vẫn là v2.2.
 | **Thêm** | Đánh giá trên UTA-RLDD (48 người, 25 giờ, buồn ngủ thật): `tools/uta_rldd.py`, notebook Kaggle để trace, tập dev / test theo người, báo cáo `eval/results/dataset_uta_rldd.md` và `personalization_uta_rldd.md` | M53 | 06/10 |
 | **Sửa** | Bản web / APK: `eyeBlink` có ngưỡng riêng ở khối 7 (0,4 / 0,3 / 0,55) thay cho ngưỡng của CNN mắt. Camera xám / hồng ngoại trước đó bỏ sót mọi lần nhắm mắt (replay 0 / 48 → 46 / 48, FL3D 0 / 95 → 64 / 95). Bản thiết bị không đổi | M56 | 07/10 |
 | **Thêm** | Bước nhìn đường của đăng ký ghi mốc mống mắt của tài xế (`DriverProfile.road_iris_y`); khối 8 dùng nó cho góc nhìn xuống. Vẫn chỉ đo | M56 | 07/10 |
+| **Thêm** | `#/live`: model điện thoại chạy bằng WebGPU khi trình duyệt có GPU thật (94 → 17 ms mỗi lần, 10 lần / giây), không thì wasm như cũ; tự lùi về wasm khi WebGPU lỗi. Khoá `phone.web_gpu`, `phone.web_gpu_target_fps` | M67 | 08/10 |
+| **Sửa** | `#/live`: model điện thoại chạy đúng `phone.target_fps` (trước đó 4,5 lần / giây cho mục tiêu 5) và nhận frame trước khi model mặt chạy. Tuổi kết quả khi dùng p95 333 → 267 ms (wasm), → 131 ms (WebGPU) | M67 | 08/10 |
+| **Sửa** | `#/live` khởi động: gói của Pyodide tải song song với runtime, vòng lặp không chờ model điện thoại. Cache trống 2,66 → 2,08 s, cache ấm 1,36 → 1,29 s | M67 | 08/10 |
+| **Thêm** | `frontend/bench/live.bench.mjs`: số đếm cả lần chạy, thời gian khởi động từng phần, chạy dài có kết luận (`--duration`), cache ấm (`--profile`), ép nơi chạy YOLO (`--yolo`). "Chi tiết kỹ thuật" ghi "WebGPU" / số luồng và thời gian khởi động | M67 | 08/10 |
+| **Thêm** | `tools/phone_study.py` và `eval/results/phone_web_3mdad.md`: nhánh điện thoại trên 3MDAD theo tần số YOLO, độ trễ kết quả và cỡ ảnh đầu vào | M67 | 08/10 |
+| **Bỏ** | Ba thứ đã đo rồi không giữ: wasm chạy 10 lần / giây (CPU 216 % so với 136 %), mở sẵn kết nối tới CDN (không đo được lợi), ảnh đầu vào nhỏ hơn cho YOLO (chờ quyết định) | M67 | 08/10 |
 
 ---
 
@@ -476,6 +482,19 @@ thì lúc đó không ai biết ([FMEA dòng 6](safety-fmea.md#6-guc-ra-khoi-khu
   - Góc nhìn xuống trên 6 người UTA-RLDD (2,8 giờ): bật 32 lần, 20 lần của một người, không có nhãn để biết đúng sai.
   - Bản đêm hồng ngoại của 3MDAD không dùng được: MediaPipe tìm ra mặt ở 3–8 % số frame.
 
+### 2.28 Tốc độ `#/live`: YOLO trên WebGPU, nhịp chạy, khởi động (M67)
+
+- Đo lại trước khi sửa: vòng lặp đã chạy theo tốc độ camera (30 FPS, mỗi frame bận 11–14 ms). Chỗ còn xa mục
+  tiêu là kết quả của model điện thoại đã cũ bao lâu khi một frame dùng nó (p95 333 ms), và thứ tự tải lúc khởi động.
+- Model điện thoại chạy bằng WebGPU khi trình duyệt có GPU thật: 94 → 17 ms mỗi lần, 10 lần / giây, CPU của trang
+  109 → 32 % một nhân. Kết quả giống wasm tới 5 phần triệu trên 200 frame thật; không quyết định nào đổi.
+- Máy không có GPU thật vẫn chạy wasm, nay đúng 5 lần / giây: tuổi kết quả p95 329 → 274 ms.
+- Khởi động với cache trống nhanh hơn 0,4–0,6 s; cache ấm gần như không đổi (1,36 → 1,29 s).
+- Số frame camera bị bỏ (0–4 %) không đổi: nguyên nhân là nhịp vẽ của trình duyệt, không phải vòng lặp bận.
+- Bảng trước / sau: [`eval/results/benchmark_live.md`](../eval/results/benchmark_live.md) mục 4–5. Nhánh điện thoại
+  trên 3MDAD: [`eval/results/phone_web_3mdad.md`](../eval/results/phone_web_3mdad.md).
+- Chi tiết, những gì đã thử và bỏ: [roadmap M67](roadmap.md#m67).
+
 ### 2.25 Đánh giá trên UTA-RLDD (M53)
 
 Bộ đầu tiên có buồn ngủ thật, video dài và cùng một người ở ba mức (`0` tỉnh, `5`, `10` buồn ngủ).
@@ -562,6 +581,13 @@ còn nhận cảnh báo "Mệt mỏi tăng dần"; sự kiện cũ vẫn hiển 
 trên chuyến dài hay không thì chưa đo, bật lại bằng `risk.trend.level: 1`.
 
 ## 4. Tương thích khi nâng cấp từ v2.2
+
+- **M67:** hai khoá mới `phone.web_gpu` (true) và `phone.web_gpu_target_fps` (10); file `thresholds.yaml` cũ thiếu
+  chúng vẫn chạy với giá trị mặc định trong code. Muốn giữ cách cũ: `phone.web_gpu: false`. Bản web phải build lại
+  (`npm run prepare-live` rồi `vite build`); bản build có thêm một runtime của ONNX Runtime (26,8 MB, nén 6,7 MB),
+  chỉ trình duyệt có GPU thật mới tải. Nhịp "còn sống" của trang có thêm `perf.yolo_provider`: **backend trước**,
+  vì backend cũ từ chối trường lạ và nhịp đó bị bỏ (frontend và backend chung một image thì không gặp).
+  Trang cần trình duyệt chạy được worker dạng module. Bản thiết bị không đổi.
 
 - **Ngưỡng mới (M56):** `drowsiness.eye.blendshape_closed`, `drowsiness.eye.blendshape_open`,
   `drowsiness.microsleep_deep.blendshape`. File `thresholds.yaml` cũ thiếu ba khoá này vẫn chạy với giá trị mặc định
@@ -653,6 +679,8 @@ trên chuyến dài hay không thì chưa đo, bật lại bằng `risk.trend.le
 - E2e chạy trên máy dev (Chrome, camera giả): `#/live` đăng nhập tài xế → tab "Đội xe" của quản lý hiện
   `web-an` "Đang hoạt động", kết thúc chuyến thì thành "Đã kết thúc chuyến".
 
+**Sau M67 (08/10):** 965 test Python, 115 test frontend, 4 e2e pass; ruff, typecheck, build sạch; test hồi quy trace không phải chốt lại. Báo cáo replay của FL3D / YawDD / SUST và của bản tự ghi giống hệt trước và sau. Chạy dài 10 phút của `#/live`: bản mới FAIL hai lần đầu (vòng lặp ngừng nhận frame), đạt hai lần chạy lại; nguyên nhân chưa xác định ([`benchmark_live.md`](../eval/results/benchmark_live.md) mục 5).
+
 **Sau M56 (07/10):** 953 test Python pass (9 test mới bằng chuỗi số giả); test hồi quy trace không phải chốt lại. `ruff`
 sạch ở `edge_agent/`, `tools/`, `tests/`; 8 lỗi có sẵn ở `scripts/` chưa sửa. Test frontend và e2e không chạy lại: không đổi
 code frontend, và bản web chưa build lại.
@@ -679,6 +707,15 @@ lần chạy tay bản build thật (MediaPipe + YOLO) trong Chromium không gia
 typecheck, build sạch.
 
 ## 6. Giới hạn đã biết
+
+- **M67, chưa giải thích được:** hai lần chạy dài 10 phút đầu tiên của bản mới ngừng nhận frame giữa chừng; bốn lần chạy
+  sau đó (2 lần 10 phút, 2 lần 15 phút chạy cùng bản cũ) không lặp lại. Dấu hiệu nghiêng về trình duyệt ngừng trình chiếu
+  video khi máy không ai dùng, nhưng chưa chứng minh được.
+- **M67:** mọi số là Chromium không giao diện trên một máy Mac với camera giả; chưa đo camera thật, trình duyệt có
+  giao diện, Windows / Linux, GPU yếu, hay hub. WebGPU mới chạy trên Metal. Không có GPU thật thì tuổi kết quả
+  điện thoại p95 vẫn 274 ms (mục tiêu đề ra 250). Frame camera bị bỏ 0–4 % chưa sửa. Phép đo nhánh điện thoại trên
+  3MDAD là đoạn diễn 3–5 giây: không thấy lịch chạy mới làm đổi recall hay báo sai, nhưng cũng không đủ để loại
+  trừ một thay đổi nhỏ (1–2 cảnh báo sai trên 6 lượt so với 0, cùng một tài xế đang uống nước).
 
 - **M56:** ngưỡng `eyeBlink` dò và báo cáo trên cùng các bộ dữ liệu, bằng replay video màu chạy như thể camera xám; chưa
   chạy trên `#/live`, chưa có ảnh IR thật. Với camera xám / IR bản web vẫn kém đường EAR của thiết bị (FL3D 64 so với

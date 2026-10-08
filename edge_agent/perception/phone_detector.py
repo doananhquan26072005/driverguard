@@ -50,6 +50,8 @@ class PhoneDetectorConfig:
     conf_threshold: float = 0.35
     iou_threshold: float = 0.45
     target_fps: float = 5.0
+    web_gpu: bool = True  # the page may run YOLO on WebGPU (frontend/src/live/yolo.worker.ts)
+    web_gpu_target_fps: float = 10.0  # the page's rate on WebGPU (frontend/src/live/pace.ts); on wasm: target_fps
     num_threads: int = 2
     max_result_age_s: float = 0.6
     zone_expand_x: float = 1.0

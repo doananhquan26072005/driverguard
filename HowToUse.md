@@ -701,6 +701,16 @@ python tools/bench_web.py --label "clip thật" --clip data\videos\clip01.mp4
   Kết quả mẫu và các biến thể (ép GPU / CPU, GPU thật hay phần mềm): `eval/results/benchmark_live.md`.
 - Dòng "ĐT … ms · tuổi … ms": tuổi là kết quả YOLO đang dùng đã cũ bao lâu. Quá `phone.max_result_age_s` (0,6 s)
   thì kết quả không được tính; phần lớn 10 giây như vậy thì HUD hiện "Không phát hiện được điện thoại" (M50).
+  Cuối dòng là "WebGPU" khi model điện thoại chạy trên GPU thật (M67), hoặc số luồng khi chạy bằng wasm.
+- Cùng công cụ đó, từ M67:
+  - `--duration 10m --json soak.json`: chạy dài, mỗi 10 giây đọc số đếm từ lúc bắt đầu (frame đã xử lý, frame camera
+    không kịp xử lý, số lần YOLO chạy) cùng bộ nhớ và CPU của các tiến trình trình duyệt; từ 2 phút trở lên có
+    kết luận theo `eval.soak_min_fps` (từng phút) và `eval.soak_rss_growth_mb_per_h` (tiến trình của trang, sau phút đầu).
+  - `--profile /tmp/dg-profile`: giữ hồ sơ trình duyệt giữa các lần chạy, lần thứ hai là khởi động khi đã có cache.
+    `--think-s 3`: dừng 3 giây ở màn hình trước khi bấm bắt đầu, như tài xế đọc màn hình.
+  - `--yolo wasm` / `--yolo webgpu`: ép nơi chạy model điện thoại (khoá `dg.phone.provider` trong localStorage),
+    giống `--delegate` với model mặt.
+  - Rê chuột lên các dòng số trong "Chi tiết kỹ thuật": dòng cuối là thời gian khởi động từng phần.
 
 ---
 
@@ -715,6 +725,22 @@ python tools\gaze_study.py report --traces data\eval_traces\3mdad_day.pkl --out 
   16 hành động, camera hướng mặt. Mỗi tài xế chạy qua khối 2–12 như một chuyến; chỉ giữ số, không giữ ảnh.
 - Báo cáo: số đo theo hành động, cảnh báo hệ thống đưa ra, và góc nhìn xuống của khối 8 (chỉ đo) giữ 2 s ở vài ngưỡng.
 - Tốc độ khung hình không có trong dữ liệu: `--fps` (30) là giả định, ảnh hưởng mọi con số tính theo giây.
+
+### 9.11 Nhánh điện thoại theo cách và lúc YOLO chạy: `tools/phone_study.py`
+
+```powershell
+python tools\phone_study.py detect --out data\eval_traces\3mdad_phone.pkl
+python tools\phone_study.py detect --out ... --model 416=C:\tmp\yolov8n_416.onnx      # thêm một bản xuất cỡ khác
+python tools\phone_study.py report --dets data\eval_traces\3mdad_phone.pkl --out eval\results\phone_web_3mdad.md
+```
+
+- `detect` chạy YOLO một lần trên **mọi** frame của 3MDAD (cùng ảnh 640 mà khối 4 nhận), chỉ giữ hộp điện thoại.
+- `report` mô phỏng một lịch chạy trên các hộp đó (bao nhiêu lần mỗi giây, bao lâu thì có kết quả, cách chọn frame
+  như `frontend/src/live/pace.ts`), chạy lại khối 7–12 trên trace của `tools/gaze_study.py` với cờ điện thoại mới,
+  rồi đếm cảnh báo `phone` trong bốn hành động có điện thoại và ngoài chúng. Cần trace `3mdad_day.pkl` (mục 9.10).
+- Dùng khi đổi tần số YOLO, nơi chạy, hay cỡ ảnh đầu vào: trace không giữ ảnh nên không chạy lại model khác được.
+- Bản xuất cỡ khác của cùng trọng số pretrained làm như ghi ở đầu `tools/download_models.py` (venv tạm có
+  `ultralytics`, `imgsz` khác); không train.
 
 ## 10. Kiểm thử
 

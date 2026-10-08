@@ -173,10 +173,18 @@ export function perfDetail(p: PerfSnapshot | null | undefined): string {
     });
   if (p.landmarks_delegate) lines.push(`Model khuôn mặt chạy trên ${p.landmarks_delegate}`);
   if (p.gpu) lines.push(`WebGL: ${{ hardware: "GPU thật", software: "vẽ bằng phần mềm (không có GPU dùng được)", none: "không có" }[p.gpu]}`);
-  if (p.yolo_threads) lines.push(`Model điện thoại: ${p.yolo_threads} luồng`);
+  if (p.yolo_provider === "webgpu") lines.push("Model điện thoại chạy trên GPU (WebGPU)");
+  else if (p.yolo_threads) lines.push(`Model điện thoại: ${p.yolo_threads} luồng`);
   if (p.camera_delivered != null && p.camera_dropped != null)
     lines.push(`Frame camera bị bỏ: ${p.camera_dropped} / ${p.camera_delivered}`);
   return lines.join("\n");
+}
+
+/** Start-up of #/live (M67), one line for the same tooltip: seconds from "start" to each part being ready. */
+export function startupText(s: { camera: number | null; python: number | null; face_model: number | null; phone_model: number | null; first_frame: number | null } | null | undefined): string {
+  if (!s || s.first_frame == null) return "";
+  const sec = (v: number | null) => (v == null ? "–" : (v / 1000).toFixed(1).replace(".", ","));
+  return `Khởi động ${sec(s.first_frame)} s (camera ${sec(s.camera)} · Python ${sec(s.python)} · model mặt ${sec(s.face_model)} · model điện thoại ${sec(s.phone_model)})`;
 }
 
 /** ... and the short form for the camera card of #/live ("Chi tiết kỹ thuật"): p95 per stage, one line each. */
@@ -187,7 +195,7 @@ export function perfLines(p: PerfSnapshot): string {
     `Frame p50 ${s.total ? ms(s.total.p50) : "–"} · p95 ${p95("total")} ms`,
     `Camera ${p95("capture")} · mặt ${p95("landmarks")}${p.landmarks_delegate ? ` (${p.landmarks_delegate})` : ""} · xử lý ${p95("python")} ms`,
   ];
-  if (s.yolo) lines.push(`ĐT ${p95("yolo")} ms · tuổi ${p95("yolo_age")} ms · ${p.yolo_threads ?? "?"} luồng`);
+  if (s.yolo) lines.push(`ĐT ${p95("yolo")} ms · tuổi ${p95("yolo_age")} ms · ${p.yolo_provider === "webgpu" ? "WebGPU" : `${p.yolo_threads ?? "?"} luồng`}`);
   if (p.camera_delivered != null && p.camera_dropped != null) lines.push(`Bỏ ${p.camera_dropped} / ${p.camera_delivered} frame`);
   return lines.join("\n");
 }

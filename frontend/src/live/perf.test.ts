@@ -41,9 +41,21 @@ describe("PerfWindow", () => {
     expect(snap.camera_dropped).toBe(3);
   });
 
+  it("keeps counting past the window for a long run", () => {
+    const w = new PerfWindow(2); // window of 2 samples, totals of everything
+    [1, 1, 3, 1, 2].forEach((n) => {
+      w.cameraFrames(n);
+      w.add("total", 10);
+    });
+    w.add("yolo", 90);
+    expect(w.snapshot(null, null).camera_delivered).toBe(3); // the window: the last two deliveries
+    expect(w.totals()).toEqual({ processed: 5, camera_delivered: 8, camera_dropped: 3, yolo_runs: 1 });
+  });
+
   it("says nothing about dropped frames when the browser does not report them", () => {
     const snap = new PerfWindow().snapshot(null, null);
     expect(snap.camera_delivered).toBeNull();
     expect(snap.camera_dropped).toBeNull();
+    expect(new PerfWindow().totals()).toEqual({ processed: 0, camera_delivered: null, camera_dropped: null, yolo_runs: 0 });
   });
 });
