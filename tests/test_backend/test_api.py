@@ -60,6 +60,7 @@ def test_device_posts_batch(client):
     assert r.json() == {
         "accepted": 2,
         "duplicates": 0,
+        "conflicts": 0,
         "feedback_applied": 0,
         "samples_accepted": 0,
         "summaries_accepted": 0,

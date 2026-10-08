@@ -15,6 +15,12 @@ the in-car HUD screen talks to:
 - POST /end-trip  the driver pressed "end trip": the main loop builds the trip summary
                   (block 11), sends it to the backend, and the reply carries it for the HUD
 
+Who may call it (M84): the request must name this machine in `Host` (a page that reaches
+127.0.0.1 under another name, DNS rebinding, is refused), a POST that carries an `Origin` must
+come from an allowed one, and a POST with a body must be `application/json`. A browser sends
+`Origin` with every cross-origin POST, so another page open on this machine can no longer end the
+trip, change the driver or answer "Bạn còn ở đó không?".
+
 Only numbers and short strings go through it - never images. Feedback is forwarded to
 the backend by the metadata publisher (block 14), so it also survives offline periods.
 """
@@ -31,15 +37,17 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+from edge_agent.analysis.drowsiness import DrowsinessConfig
 from edge_agent.config import config_from_dict
+from edge_agent.context.vehicle_context import in_hours
 from edge_agent.decision.alert_manager import LEVEL_ACTIONS
 from edge_agent.decision.pipeline import DecisionResult
+from edge_agent.decision.risk_engine import RiskConfig
 
 log = logging.getLogger("driverguard.hud")
 
 MAX_BODY = 1024
 VEHICLE_ACTIONS = ("change_driver", "enroll_start", "enroll_later", "presence_ok")
-END_TRIP_WAIT_S = 10.0  # the main loop answers on its next frame
 
 
 @dataclass(frozen=True)
@@ -48,21 +56,68 @@ class HudConfig:
     processing_error_s: float = 1.0  # frames failing this long: "processing error" (not monitored)
     low_fps_below: float = 14.5  # smoothed FPS below this ...
     low_fps_s: float = 5.0  # ... for this long: "alerts may be late"
+    fps_smoothing: float = 0.9  # weight of the last FPS value against the newest frame gap
     trend_minutes: int = 15  # minutes of drowsy_score in the HUD's fatigue chart (M65)
+    recent_alerts: int = 10  # alerts kept for the HUD
+    end_trip_wait_s: float = 10.0  # POST /end-trip waits this long for the main loop's summary
+    summary_wait_s: float = 3.0  # the main loop waits this long for the HUD to fetch it
+    # The screen's own numbers (frontend/src/hud), sent with every state as `display`:
+    poll_s: float = 0.3
+    state_timeout_s: float = 1.0
+    link_down_failures: int = 3
+    stale_s: float = 3.0
+    chime_to_voice_s: float = 0.7
+    alarm_repeat_s: float = 1.5
+    presence_repeat_s: float = 2.0
+    gain_1: float = 0.12  # hud.gain: loudness per level
+    gain_2: float = 0.25
+    gain_3: float = 0.35
+    # Local hours in which the calm screens are dimmed. The screen's own window: block 10's
+    # context.night_hours is about the score, and neither moves the other.
+    dim_hours: tuple[tuple[float, float], ...] = ((18.0, 6.0),)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> HudConfig:
+        d = dict(d or {})
+        if "dim_hours" in d:
+            d["dim_hours"] = tuple((float(a), float(b)) for a, b in d["dim_hours"])
         return config_from_dict(cls, d, "hud")
+
+
+def hud_display(thresholds: dict[str, Any]) -> dict[str, Any]:
+    """What the screen needs from thresholds.yaml to show and sound a state: it keeps no number of its
+    own. Sent with every state (`display`), and written to frontend/src/lib/defaults.gen.json by
+    tools/web_defaults.py for the time before the first state. Two numbers are another block's: the
+    eye tile says "open" for closures up to a blink and turns red where the L3 rule starts."""
+    cfg = HudConfig.from_dict(thresholds.get("hud"))
+    risk = RiskConfig.from_dict(thresholds.get("risk"))
+    return {
+        "poll_s": cfg.poll_s,
+        "state_timeout_s": cfg.state_timeout_s,
+        "link_down_failures": cfg.link_down_failures,
+        "stale_s": cfg.stale_s,
+        "chime_to_voice_s": cfg.chime_to_voice_s,
+        "alarm_repeat_s": cfg.alarm_repeat_s,
+        "presence_repeat_s": cfg.presence_repeat_s,
+        "gain": [0.0, cfg.gain_1, cfg.gain_2, cfg.gain_3],  # by level
+        "feedback_window_s": cfg.feedback_window_s,
+        "blink_max_s": DrowsinessConfig.from_dict(thresholds.get("drowsiness")).blink_max_s,
+        "microsleep_l3_s": risk.microsleep_l3_s,
+        "score_l1": risk.drowsy_l1,
+        "score_l2": risk.drowsy_l2,
+    }
 
 
 class HudState:
     """Latest decision snapshot shared between the main loop and the HUD server. Thread-safe."""
 
-    def __init__(self, config: HudConfig | None = None, recent_alerts: int = 10) -> None:
+    def __init__(self, config: HudConfig | None = None, display: dict[str, Any] | None = None) -> None:
+        """display: hud_display(thresholds), handed to the screen with every state (None: left out)."""
         self.config = config or HudConfig()
+        self.display = display
         self._lock = threading.Lock()
         self._snapshot: dict[str, Any] = {"connected": False, "level": 0, "reasons": []}
-        self._alerts: deque[dict[str, Any]] = deque(maxlen=recent_alerts)
+        self._alerts: deque[dict[str, Any]] = deque(maxlen=self.config.recent_alerts)
         self._camera_lost = False
         self._processing_error = False  # frames keep failing: not monitored (M28)
         self._low_fps = False  # FPS too low for a while: alerts may be late (M28)
@@ -117,7 +172,8 @@ class HudState:
             "distraction_score": round(r.risk.distraction_score, 1),
             "speed_kmh": None if c.speed_kmh is None else round(c.speed_kmh, 1),
             "clock_hour": round(c.clock_hour, 3),
-            "night": c.night,
+            "night": c.night,  # block 10's window: the score's night factor
+            "dim": in_hours(c.clock_hour, self.config.dim_hours),  # the screen's window: calm screens dimmed
             "eyes_closed_s": round(r.drowsiness.closed_duration, 2),
             "perclos_60s": round(r.drowsiness.perclos_60s, 3),
             "fps": round(fps, 1),
@@ -264,11 +320,18 @@ class HudState:
                 "trip_ended": self._summary is not None,
                 "vehicle": dict(self._vehicle),  # speed source, parked / driving by the speed
                 "feedback_window_s": self.config.feedback_window_s,  # the HUD hides the button after it
+                **({} if self.display is None else {"display": dict(self.display)}),
                 "alerts": [dict(a) for a in reversed(self._alerts)],
             }
 
 
 DEFAULT_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+LOCAL_HOSTS = ("127.0.0.1", "localhost")  # the names this server answers to (it only binds 127.0.0.1)
+
+
+def host_name(header: str | None) -> str:
+    """`Host` header without its port, lowercased ("" when missing)."""
+    return (header or "").strip().rsplit(":", 1)[0].lower()
 
 
 def make_handler(
@@ -301,21 +364,38 @@ def make_handler(
             self.end_headers()
             self.wfile.write(data)
 
+        def _local(self) -> bool:
+            """False (and 403 sent) when the request does not name this machine in `Host`."""
+            if host_name(self.headers.get("Host")) in LOCAL_HOSTS:
+                return True
+            self._json(403, {"detail": "host not allowed"})
+            return False
+
         def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming
+            if not self._local():
+                return
             self.send_response(204)
             self._cors()
             self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802
+            if not self._local():
+                return
             if self.path.split("?")[0] == "/state":
                 self._json(200, state.to_json())
             else:
                 self._json(404, {"detail": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if not self._local():
+                return
+            origin = self.headers.get("Origin")
+            if origin is not None and origin not in allowed_origins:
+                self._json(403, {"detail": "origin not allowed"})
+                return
             if self.path == "/end-trip":
                 state.request_end()
-                summary = state.wait_summary(END_TRIP_WAIT_S)
+                summary = state.wait_summary(state.config.end_trip_wait_s)
                 if summary is None:
                     self._json(503, {"detail": "the agent did not answer"})
                     return
@@ -324,6 +404,9 @@ def make_handler(
                 return
             if self.path not in ("/feedback", "/vehicle"):
                 self._json(404, {"detail": "not found"})
+                return
+            if self.headers.get_content_type() != "application/json":
+                self._json(415, {"detail": "expected application/json"})
                 return
             length = int(self.headers.get("Content-Length") or 0)
             if length <= 0 or length > MAX_BODY:

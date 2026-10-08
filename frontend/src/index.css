@@ -18,6 +18,26 @@
 @import "@fontsource/inter/800.css";
 @import "@fontsource/jetbrains-mono/500.css"; /* config keys and JSON only (design system) */
 
+/* Breakpoints of the HUD follow its stage (src/hud/HudStage.tsx, container "hud"), not the screen: the
+   stage is scaled as a whole, so an 800 px wide upright stage on a 1200 px screen is still 800 wide.
+   Same widths as sm / md / lg. hud-tall: inside the upright 800 x 1280 stage. */
+@custom-variant hud-sm {
+  @container hud (min-width: 640px) {
+    @slot;
+  }
+}
+@custom-variant hud-md {
+  @container hud (min-width: 768px) {
+    @slot;
+  }
+}
+@custom-variant hud-lg {
+  @container hud (min-width: 1024px) {
+    @slot;
+  }
+}
+@custom-variant hud-tall (&:where([data-shape="portrait"] *));
+
 /* HUD design tokens (Version 4 redesign: M57, aligned with the DriverGuard design system in M58). px on
    purpose: styles.css sets the root font-size to 15px. Glass cards, alert cards, chips, buttons and meters
    are the .dg-* classes of styles.css (the design system's component bundle). */

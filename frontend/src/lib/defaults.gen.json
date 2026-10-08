@@ -1,0 +1,33 @@
+{
+  "hud": {
+    "poll_s": 0.3,
+    "state_timeout_s": 1.0,
+    "link_down_failures": 3,
+    "stale_s": 3.0,
+    "chime_to_voice_s": 0.7,
+    "alarm_repeat_s": 1.5,
+    "presence_repeat_s": 2.0,
+    "gain": [
+      0.0,
+      0.12,
+      0.25,
+      0.35
+    ],
+    "feedback_window_s": 120,
+    "blink_max_s": 0.5,
+    "microsleep_l3_s": 1.5,
+    "score_l1": 40,
+    "score_l2": 70,
+    "trend_minutes": 15
+  },
+  "camera": {
+    "width": 640,
+    "height": 480,
+    "fps": 30
+  },
+  "vehicle": {
+    "poll_s": 0.25,
+    "send_s": 0.2,
+    "stale_s": 1.0
+  }
+}

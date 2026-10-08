@@ -844,5 +844,5 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | M9–M29 | **Version 2**: đăng ký tài xế, tạm ngưng giám sát, chớp chậm, gục / cúi, nhướn mày, giao diện cho tài xế, kết thúc chuyến + báo cáo, mô phỏng lái xe, xi nhan, lớp chung + e2e, FMEA, âm thanh luôn bật, đồng ý trước khi đăng ký, cúi nhìn xuống ≠ nhắm mắt, mất tín hiệu xe, sửa tổng kết, sức khoẻ vòng lặp, tài liệu | Xong (v2.0.0 deploy 01/10 gồm M9–M18) |
 | M43–M48 | **Version 3 (06/10)**: tạm ngưng giám sát có lý do khi ảnh không đọc được, không phản ứng với còi / "Bạn còn ở đó không?" / báo quản lý ngay, bản web bỏ OpenCV và server nén + cache, phép thử ánh sáng trong RAM, ngưỡng tải lại khi đỗ + áp thử + quay lui, tài xế tự tải và yêu cầu xoá dữ liệu | Xong, chưa deploy (ngưỡng tạm; xem `docs/release-v3.md`) |
 
-Chi tiết từng mốc: `docs/roadmap.md`; thay đổi ở v2: `docs/release-v2.md`, v3: `docs/release-v3.md`; việc chưa làm:
+Chi tiết từng mốc: `docs/roadmap.md`; thay đổi ở v2: `docs/release-v2.md`, v3: `docs/release-v3.md`, v4 (từ M70): `docs/release-v4.md`; việc chưa làm:
 `docs/improvements.md`. Quy ước làm việc: `CLAUDE.md`.

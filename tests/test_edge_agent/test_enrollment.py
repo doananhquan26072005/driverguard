@@ -5,6 +5,7 @@ frame asked for, like a real driver reacting to the prompt.
 """
 
 import json
+from datetime import UTC, datetime
 
 import numpy as np
 import pytest
@@ -331,10 +332,11 @@ def test_not_enrolled_keeps_monitoring_and_asks_to_stop():
 def test_backend_gets_the_status_not_the_profile():
     results, _ = run_pipeline(15, [(0, 0)], obedient)
     r = next(r for r in results if "enrolled" in r.enrollment.events)
-    event = build_enrolled_event(r, "trip-1")
+    # A fixed time: the wall clock's own digits (…T10:21:51.5…) would now and then hold "1.5", SHAPE[4].
+    event = build_enrolled_event(r, "trip-1", now=datetime(2026, 1, 2, 3, 4, 6, tzinfo=UTC))
     assert event["type"] == "system" and event["reasons"] == ["driver_enrolled"]
     assert set(event["metrics"]) == {"enroll_s", "enroll_redo"}
-    text = json.dumps(event)
+    text = json.dumps({k: v for k, v in event.items() if k != "event_id"})  # a random uuid proves nothing
     for secret in ("shape", "ear", "anchor", "center", str(SHAPE[4])):
         assert secret not in text
 
@@ -387,12 +389,13 @@ def test_enrolled_driver_is_chosen_over_a_bigger_passenger():
     assert selector.choose([passenger, driver], w) == 1
 
 
-def test_a_single_face_is_always_taken():
+def test_a_single_face_near_the_drivers_seat_is_taken():
+    # Whatever its shape; one further than landmarks.driver_max_distance is nobody (M83, test_m83_*).
     selector = DriverSelector(LandmarkConfig())
     driver = place(synthetic_mesh(1), 1.0, 220, 240)
     center, size = face_center_size(driver, 640)
     selector.set_anchor(DriverAnchor(face_shape(driver), center, size))
-    assert selector.choose([place(synthetic_mesh(2), 1.0, 400, 240)], 640) == 0
+    assert selector.choose([place(synthetic_mesh(2), 1.0, 400, 240)], 640) == 0  # 3 inter-ocular distances away
     assert selector.choose([], 640) == -1
 
 

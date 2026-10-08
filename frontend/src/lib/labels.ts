@@ -39,7 +39,7 @@ export const REASONS: Record<Reason, string> = {
   repeated_l3: "Ngủ gật nhiều lần",
   no_answer: "Không trả lời “Bạn còn ở đó không?”",
   config_applied: "Đã áp bộ ngưỡng mới",
-  config_refused: "Từ chối bộ ngưỡng mới (không nhất quán)",
+  config_refused: "Từ chối bộ ngưỡng mới (không nhất quán, hoặc cần mở lại ứng dụng)",
   camera_lost: "Mất camera: ngừng giám sát",
   camera_restored: "Camera hoạt động lại",
   driver_enrolled: "Đã đăng ký tài xế",
@@ -54,6 +54,7 @@ export const REASONS: Record<Reason, string> = {
   fps_restored: "Tốc độ xử lý bình thường lại",
   phone_detection_lost: "Không phát hiện được điện thoại",
   phone_detection_restored: "Phát hiện điện thoại hoạt động lại",
+  road_pose_recalibrated: "Hiệu chuẩn lại hướng nhìn đường",
 };
 
 /** One or two words per alert reason, for the HUD's "Cảnh báo gần nhất" tile (M58). */
@@ -135,6 +136,17 @@ export function fleetVersionText(d: Pick<FleetDevice, "versions" | "thresholds_c
   return `app ${v.app} · ${own}${note}`;
 }
 
+/** "Đồng hồ thiết bị chậm 10 phút" for a vehicle whose clock the backend found wrong (M82); null: fine. */
+export function clockSkewText(d: Pick<FleetDevice, "clock_skew_s" | "clock_wrong">): string | null {
+  if (!d.clock_wrong || d.clock_skew_s == null) return null;
+  const s = Math.abs(d.clock_skew_s);
+  let size = `${Math.round(s)} giây`;
+  if (s >= 2 * 86400) size = `${Math.round(s / 86400)} ngày`;
+  else if (s >= 2 * 3600) size = `${Math.round(s / 3600)} giờ`;
+  else if (s >= 120) size = `${Math.round(s / 60)} phút`;
+  return `Đồng hồ thiết bị ${d.clock_skew_s > 0 ? "chậm" : "nhanh"} ${size}`;
+}
+
 const MODEL_NAMES: Record<string, string> = { landmarks: "khuôn mặt", eye_state: "mắt", phone: "điện thoại" };
 
 /** Model fingerprints of a vehicle, for a tooltip. */
@@ -188,11 +200,12 @@ export function startupText(s: { camera: number | null; python: number | null; f
 }
 
 /** What the loop of #/live did to keep getting frames (M71), for the camera card; "" when nothing. */
-export function recoveryText(r: { pulls: number; reopens: number } | null | undefined): string {
-  if (!r || (!r.pulls && !r.reopens)) return "";
+export function recoveryText(r: { pulls: number; reopens: number; yoloRestarts?: number } | null | undefined): string {
+  if (!r || (!r.pulls && !r.reopens && !r.yoloRestarts)) return "";
   const parts = [];
   if (r.pulls) parts.push(`Vòng lặp đứng ${r.pulls} lần, đã tự chạy lại`);
   if (r.reopens) parts.push(`mở lại camera ${r.reopens} lần`);
+  if (r.yoloRestarts) parts.push(`khởi động lại model điện thoại ${r.yoloRestarts} lần`);
   const text = parts.join(" · ");
   return text[0].toUpperCase() + text.slice(1);
 }
@@ -326,6 +339,7 @@ export const REASON_ACTIONS: Record<Reason, string> = {
   fps_restored: "Đang giám sát bình thường",
   phone_detection_lost: "Các cảnh báo khác vẫn hoạt động",
   phone_detection_restored: "Đang giám sát bình thường",
+  road_pose_recalibrated: "Đang giám sát bình thường",
 };
 
 // Top bar chip while the device is too slow for a while (M28).

@@ -16,7 +16,6 @@ import {
   bbox,
   channelDiff,
   concatFaces,
-  largestFace,
   letterboxGeometry,
   lumaSpread,
   meanLuma,
@@ -27,19 +26,30 @@ import {
 import { frameTimeMs, type FrameMetadata } from "./frameTime";
 import { chooseDelegate, gpuKind, webglRenderer, type GpuKind, type YoloProvider } from "./gpu";
 import { YoloPacer } from "./pace";
+import { YoloWatch } from "./yoloWatch";
 import { urgentKey } from "../hud/hudModel";
 import { PerfWindow, type PerfSnapshot, type PerfTotals } from "./perf";
+import { RepeatCheck } from "./frozen";
+import { tripId } from "./tripId";
 import { LoopWatchdog, type CameraTrack } from "./watchdog";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
+import { DEFAULTS } from "../lib/defaults";
 
 // Pinned versions: the Python side is tested against this Pyodide (numpy, pyyaml). No OpenCV since M45
 // (11.7 MB less to download): head pose and box suppression run in numpy (edge_agent/perception/geometry.py).
 const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
-const PYODIDE_PACKAGES = ["numpy", "pyyaml", "sqlite3"];
+const PYODIDE_PACKAGES = ["numpy", "pyyaml"]; // not sqlite3: the page has no outbox (publisher.py imports it there only)
 const BASE = import.meta.env.BASE_URL;
+// Asked for before Python has loaded (the camera opens meanwhile), so from the build's copy of
+// thresholds.yaml: capture.web_camera_width / web_camera_height / camera_fps.
 const CAMERA: MediaStreamConstraints = {
-  video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" },
+  video: {
+    width: { ideal: DEFAULTS.camera.width },
+    height: { ideal: DEFAULTS.camera.height },
+    frameRate: { ideal: DEFAULTS.camera.fps },
+    facingMode: "user",
+  },
   audio: false,
 };
 const WATCH_LOOKS = 3; // looks at the loop per capture.frame_timeout_s
@@ -88,6 +98,7 @@ export interface LiveStats {
   phoneOn: boolean;
   sent: number;
   pending: number;
+  dropped: number; // POST bodies pushed out of a full queue (publisher.max_queue), oldest first
   sendError: string | null;
   measures: Measures | null;
   enrollment: HudEnrollment | null;
@@ -102,6 +113,7 @@ export interface LiveStats {
 export interface Recovery {
   pulls: number; // times the browser's frame callback went quiet and a timer took over
   reopens: number; // times the camera was asked for again
+  yoloRestarts: number; // times the phone detector's worker stopped answering and was replaced
 }
 
 /** Start-up, in ms from the call to `LiveAgent.start` to each part being ready (M67; local only). */
@@ -123,8 +135,11 @@ export interface Measures {
 }
 
 interface Settings {
-  capture: { frame_timeout_s: number; reconnect_interval_s: number; camera_fps: number };
+  capture: { frame_timeout_s: number; reconnect_interval_s: number; camera_fps: number; frozen_stride: number; max_frame_age_s: number };
   target_width: number;
+  sample_stride: number; // preprocess.sample_stride: the whole-image numbers, as the device takes them
+  eye_blink_missing: number; // eye_state.web_blink_missing
+  vehicle: { poll_s: number; stale_s: number }; // context.vehicle_poll_s / vehicle_signal_stale_s
   landmarks: {
     num_faces: number;
     min_face_detection_confidence: number;
@@ -132,8 +147,9 @@ interface Settings {
     min_tracking_confidence: number;
     blendshapes: boolean;
   };
-  phone: { input_size: number; target_fps: number; num_threads: number; web_gpu: boolean; gpu_target_fps: number };
+  phone: { input_size: number; target_fps: number; num_threads: number; web_gpu: boolean; gpu_target_fps: number; run_timeout_s: number; load_timeout_s: number; restart_limit: number };
   flush_interval_s: number;
+  max_queue: number; // publisher.max_queue: POST bodies kept while the backend cannot be reached
   config_poll_s: number; // ask the backend for tuned thresholds this often (M47); 0 = only at start
   problems: string[];
 }
@@ -166,19 +182,11 @@ interface Pyodide {
   toPy(obj: unknown): unknown;
 }
 
-function tripId(d = new Date()): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `trip-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
 // One default mode (bridge scenario "sim"): speed and turn signal come from the web driving controls
 // (#/drive?code=<driveCode>, relayed by the backend, M31) or else from the driving simulator
 // (tools/drive_sim.py on 127.0.0.1); both polled by pollSim. None = parked at 0 km/h. Time of day =
-// real clock.
-const SIM_POLL_MS = 250;
-// A remote reading older than this is not passed on: the vehicle signal goes stale (M26). Same as
-// context.vehicle_signal_stale_s in config/thresholds.yaml.
-const REMOTE_FRESH_S = 1.0;
+// real clock. How often, and how old a remote reading may be before it is not passed on (the vehicle
+// signal goes stale, M26): settings.vehicle, i.e. context.vehicle_poll_s / vehicle_signal_stale_s.
 async function loadPython(session: Session | null): Promise<{ agent: PyAgent; settings: Settings }> {
   const mod = (await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`)) as {
     loadPyodide(o: { indexURL: string; packages?: string[] }): Promise<Pyodide>;
@@ -242,7 +250,7 @@ export class LiveAgent implements HudSource {
   /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
   readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null, recovery: { pulls: 0, reopens: 0 } };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, dropped: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null, recovery: { pulls: 0, reopens: 0, yoloRestarts: 0 } };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -252,6 +260,7 @@ export class LiveAgent implements HudSource {
   private yoloProvider: YoloProvider | null = null;
   private yoloBusy = false;
   private yoloPacer: YoloPacer;
+  private yoloWatch: YoloWatch; // a worker that stops answering is replaced
   private pendingBodies: string[] = [];
   private heartbeatBody: string | null = null; // M33: newest heartbeat not sent yet (never queued)
   private sending = false;
@@ -270,12 +279,13 @@ export class LiveAgent implements HudSource {
   private listeners = new Set<(snap: HudSnapshot) => void>(); // M50: the HUD hears of an alert at once
   private pushed = "";
   private watch: LoopWatchdog; // M71
+  private repeat: RepeatCheck; // M83: the camera hands the same image again and again
   private watchTimer: number | undefined;
   private pullTimer: number | undefined; // set while a timer drives the loop
   private frameCallback: number | null = null; // the pending requestVideoFrameCallback / requestAnimationFrame
   private cameraLost = false;
   private reopening = false;
-  private recovery: Recovery = { pulls: 0, reopens: 0 };
+  private recovery: Recovery = { pulls: 0, reopens: 0, yoloRestarts: 0 };
 
   private constructor(
     private video: HTMLVideoElement,
@@ -291,8 +301,10 @@ export class LiveAgent implements HudSource {
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloCtx = this.yoloCanvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloPacer = new YoloPacer(settings.phone.target_fps);
+    this.yoloWatch = new YoloWatch(settings.phone.run_timeout_s * 1000, settings.phone.restart_limit);
     const cap = settings.capture;
     this.watch = new LoopWatchdog(cap.frame_timeout_s * 1000, cap.reconnect_interval_s * 1000, performance.now());
+    this.repeat = new RepeatCheck(cap.frozen_stride);
   }
 
   /** Ask for the camera, load the models, start the loop. onStep reports progress for the setup screen. */
@@ -396,10 +408,10 @@ export class LiveAgent implements HudSource {
 
   /** YOLO in a worker; without it the agent still runs, phone detection off (Python reports that, M50).
    *  Resolves once the model is downloaded; `createYolo` then builds the session. */
-  private static async loadYolo(): Promise<Worker | null> {
+  private static async loadYolo(timeoutMs = 0): Promise<Worker | null> {
     const worker = new Worker(new URL("./yolo.worker.ts", import.meta.url), { type: "module" });
     const init: YoloRequest = { type: "init", modelUrl: `${BASE}models/yolov8n.onnx` };
-    if ((await LiveAgent.askYolo(worker, init))?.type === "fetched") return worker;
+    if ((await LiveAgent.askYolo(worker, init, timeoutMs))?.type === "fetched") return worker;
     worker.terminate();
     return null;
   }
@@ -409,7 +421,7 @@ export class LiveAgent implements HudSource {
   private static async createYolo(worker: Worker | null, cfg: Settings["phone"]): Promise<YoloSession | null> {
     if (!worker) return null;
     const request: YoloRequest = { type: "create", threads: cfg.num_threads, webgpu: cfg.web_gpu, forced: forced(PROVIDER_KEY), size: cfg.input_size };
-    const answer = await LiveAgent.askYolo(worker, request);
+    const answer = await LiveAgent.askYolo(worker, request, cfg.load_timeout_s * 1000);
     if (answer?.type === "ready") return { worker, threads: answer.threads, provider: answer.provider };
     worker.terminate();
     return null;
@@ -436,16 +448,41 @@ export class LiveAgent implements HudSource {
     y.worker.onerror = () => void (this.yoloBusy = false);
   }
 
-  /** One request to the worker and its answer; null when it failed. */
-  private static askYolo(worker: Worker, request: YoloRequest): Promise<YoloResponse | null> {
+  /** One request to the worker and its answer; null when it failed, or gave none within timeoutMs
+   *  (0 = waits as long as it takes: the first download, before the settings are known). */
+  private static askYolo(worker: Worker, request: YoloRequest, timeoutMs = 0): Promise<YoloResponse | null> {
     return new Promise((resolve) => {
-      worker.onmessage = (e: MessageEvent<YoloResponse>) => {
-        if (e.data.type === "error") console.warn("[live] phone detector disabled:", e.data.message);
-        resolve(e.data.type === "error" ? null : e.data);
+      const timer = timeoutMs > 0 ? window.setTimeout(() => done(null, `no answer to "${request.type}" in ${timeoutMs} ms`), timeoutMs) : undefined;
+      const done = (answer: YoloResponse | null, why?: string) => {
+        window.clearTimeout(timer);
+        if (why) console.warn("[live] phone detector disabled:", why);
+        resolve(answer);
       };
-      worker.onerror = () => resolve(null);
+      worker.onmessage = (e: MessageEvent<YoloResponse>) => (e.data.type === "error" ? done(null, e.data.message) : done(e.data));
+      worker.onerror = () => done(null);
       worker.postMessage(request);
     });
+  }
+
+  /** The worker did not answer its run in phone.web_run_timeout_s (yoloWatch.ts): it is terminated,
+   *  which is the only way to stop a run, and a new one is built beside the running loop. Frames have
+   *  no phone answer meanwhile; a detector that does not come back is reported by Python (M50). */
+  private checkYolo() {
+    const verdict = this.yoloWatch.check(performance.now());
+    if (verdict === "ok" || this.stopped) return;
+    console.warn(`[live] phone detector gave no answer in ${this.settings.phone.run_timeout_s} s:`, verdict === "restart" ? "starting it again" : "given up");
+    this.yolo?.terminate();
+    this.yolo = null;
+    this.yoloBusy = false;
+    this.stats.phoneOn = false;
+    this.stats.yoloMs = null;
+    if (verdict !== "restart") return;
+    this.recovery.yoloRestarts += 1;
+    const cfg = this.settings.phone;
+    void LiveAgent.loadYolo(cfg.load_timeout_s * 1000)
+      .then((worker) => LiveAgent.createYolo(worker, cfg))
+      .then((y) => y && this.attachYolo(y))
+      .catch(() => undefined);
   }
 
   // ------------------------------------------------------------------ HudSource
@@ -500,8 +537,11 @@ export class LiveAgent implements HudSource {
     this.flushTimer = window.setInterval(() => void this.flush(), this.settings.flush_interval_s * 1000);
     if (this.session && this.settings.config_poll_s > 0)
       this.configTimer = window.setInterval(() => void this.pollThresholds(), this.settings.config_poll_s * 1000);
-    this.simTimer = window.setInterval(() => void this.pollSim(), SIM_POLL_MS);
-    this.watchTimer = window.setInterval(() => this.checkLoop(), (this.settings.capture.frame_timeout_s * 1000) / WATCH_LOOKS);
+    this.simTimer = window.setInterval(() => void this.pollSim(), this.settings.vehicle.poll_s * 1000);
+    this.watchTimer = window.setInterval(() => {
+      this.checkLoop();
+      this.checkYolo();
+    }, (this.settings.capture.frame_timeout_s * 1000) / WATCH_LOOKS);
     this.armFrameCallback();
   }
 
@@ -533,7 +573,7 @@ export class LiveAgent implements HudSource {
       this.lastVideoTime = this.video.currentTime;
       this.watch.frame(performance.now(), pulled);
       if (!pulled) this.stopPulling(); // the browser calls again
-      this.setCameraLost(false);
+      this.setCameraLost(this.watch.still);
       const presented = metadata?.presentedFrames;
       if (presented != null) {
         // Frames the camera delivered since the last one processed: more than 1 = the loop skipped some.
@@ -631,7 +671,7 @@ export class LiveAgent implements HudSource {
     if (!vw || !vh) return;
     const started = performance.now(); // M49: the stages below are timed, numbers only
     // M50: the frame's own time (when the camera took it), not the time the loop got round to it.
-    const frameMs = frameTimeMs(started, metadata, this.lastFrameMs);
+    const frameMs = frameTimeMs(started, metadata, this.lastFrameMs, this.settings.capture.max_frame_age_s * 1000);
     this.lastFrameMs = frameMs;
     if (frameMs < started) this.perf.add("camera_lag", started - frameMs);
     // Block 2: downscale only, to preprocess.target_width, aspect kept.
@@ -644,13 +684,19 @@ export class LiveAgent implements HudSource {
 
     const captured = performance.now();
     this.perf.add("capture", captured - started);
+    // M83: the same image for capture.frame_timeout_s is a lost camera, not a driver sitting still.
+    const live = this.watch.image(captured, !this.repeat.repeated(px, w, h));
+    this.setCameraLost(!live);
+    if (!live) return;
     const t = frameMs / 1000;
     // Block 4 first (M67): it only needs the pixels, and its worker then runs while MediaPipe does,
     // so the answer is that much younger when a frame uses it.
     const fedYolo = this.maybeRunYolo(t, w, h); // own thread
     const nowMs = performance.now();
     if (fedYolo) this.perf.add("yolo_prep", nowMs - captured);
-    const ts = Math.max(Math.round(nowMs), this.lastTsMs + 1); // VIDEO mode: strictly increasing
+    // MediaPipe gets the frame's own time, the one blocks 6-12 use, not the time the loop got round
+    // to it: its tracking then sees the same spacing between frames as the rules do.
+    const ts = Math.max(Math.round(frameMs), this.lastTsMs + 1); // VIDEO mode: strictly increasing
     this.lastTsMs = ts;
     let faces: Float32Array[];
     let blink: number[] | null = null;
@@ -662,12 +708,13 @@ export class LiveAgent implements HudSource {
     } else {
       const result = this.landmarker!.detectForVideo(this.canvas, ts); // 3 (always set outside E2E)
       faces = result.faceLandmarks.map((f) => toPixels(f, w, h));
-      // eyeBlink (left, right) per face in the same order as the faces, 0.05 = open when missing;
+      // eyeBlink (left, right) per face in the same order as the faces, eye_blink_missing (open) when missing;
       // browOuterUp (mean of both sides) per face: raising the brows to keep the eyes open (block 7).
       if (result.faceBlendshapes?.length) {
         const score = (i: number, name: string, missing: number) =>
           result.faceBlendshapes?.[i]?.categories?.find((c) => c.categoryName === name)?.score ?? missing;
-        blink = faces.flatMap((_, i) => [score(i, "eyeBlinkLeft", 0.05), score(i, "eyeBlinkRight", 0.05)]);
+        const open = this.settings.eye_blink_missing;
+        blink = faces.flatMap((_, i) => [score(i, "eyeBlinkLeft", open), score(i, "eyeBlinkRight", open)]);
         brow = faces.map((_, i) => (score(i, "browOuterUpLeft", 0) + score(i, "browOuterUpRight", 0)) / 2);
       }
     }
@@ -675,13 +722,15 @@ export class LiveAgent implements HudSource {
     this.perf.add("landmarks", landmarksDone - nowMs);
     // Every face goes to Python, which picks the driver (largest until enrollment, then the enrolled one).
     const points = faces.length ? concatFaces(faces) : null;
-    // Brightness of the largest face: the driver's in nearly every frame, a cheap per-frame estimate.
-    const k = largestFace(faces);
-    const brightness = meanLuma(px, w, h, k >= 0 ? bbox(faces[k]) : null);
-    const diff = channelDiff(px, w, h);
+    // Brightness and sharpness of every face, in the order of the landmarks: Python reads the
+    // driver's (the largest face is a passenger's when they lean in). NaN = not measured. Without a
+    // face, the brightness of the frame.
+    const boxes = faces.map(bbox);
+    const brightness = faces.length ? boxes.map((b) => meanLuma(px, w, h, b)) : meanLuma(px, w, h, null);
+    const diff = channelDiff(px, w, h, this.settings.sample_stride);
     // Block 6 quality stage: is the image usable (covered lens, blurred face). Thresholds are Python's.
-    const scene = lumaSpread(px, w, h);
-    const sharp = k >= 0 ? sharpness(px, w, h, bbox(faces[k])) : null;
+    const scene = lumaSpread(px, w, h, this.settings.sample_stride);
+    const sharp = faces.length ? boxes.map((b) => sharpness(px, w, h, b) ?? NaN) : null;
 
     const measured = performance.now();
     this.perf.add("measure", measured - landmarksDone);
@@ -735,6 +784,7 @@ export class LiveAgent implements HudSource {
     this.yoloCtx.drawImage(this.canvas, 0, 0, w, h, g.padX, g.padY, g.w, g.h);
     const input = toChw(this.yoloCtx.getImageData(0, 0, size, size).data, size);
     this.yoloBusy = true;
+    this.yoloWatch.sent(performance.now());
     this.yoloGeometry = { ...g, w, h };
     const req: YoloRequest = { type: "run", input, size, t };
     this.yolo.postMessage(req, [input.buffer]);
@@ -751,6 +801,7 @@ export class LiveAgent implements HudSource {
       return;
     }
     this.yoloBusy = false;
+    this.yoloWatch.answered(msg.type === "result");
     if (msg.type !== "result") {
       if (msg.type === "error") console.warn("[live] YOLO run failed:", msg.message);
       return;
@@ -784,6 +835,12 @@ export class LiveAgent implements HudSource {
     if (beat && this.session) this.heartbeatBody = beat;
     for (let body = this.py.take_batch(); body; body = this.py.take_batch()) {
       if (this.session) this.pendingBodies.push(body); // guest mode: nothing leaves the browser
+    }
+    // Offline for hours, or a login that expired: the oldest bodies go, as in the device's outbox.
+    // Not the first one while it is on its way: the sender takes that one off itself.
+    while (this.pendingBodies.length > this.settings.max_queue) {
+      this.pendingBodies.splice(this.sending ? 1 : 0, 1);
+      this.stats.dropped += 1;
     }
     if (!this.session || this.sending || !(this.pendingBodies.length || this.heartbeatBody)) return;
     this.sending = true;
@@ -828,17 +885,18 @@ export class LiveAgent implements HudSource {
   private async pollSim() {
     if (this.simBusy || this.stopped) return;
     this.simBusy = true;
+    const pollMs = this.settings.vehicle.poll_s * 1000;
     try {
       const remote = await fetch(`${API_URL}/api/v1/drive/${this.driveCode}`, {
         cache: "no-store",
-        signal: AbortSignal.timeout(SIM_POLL_MS * 2),
+        signal: AbortSignal.timeout(pollMs * 2),
       }).catch(() => null);
       if (remote?.ok) {
         const r = (await remote.json()) as { speed_kmh: number; turn_signal: string | null; age_s: number };
-        if (r.age_s < REMOTE_FRESH_S && !this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+        if (r.age_s < this.settings.vehicle.stale_s && !this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
         return;
       }
-      const resp = await fetch(DRIVE_SIM_URL, { cache: "no-store", signal: AbortSignal.timeout(SIM_POLL_MS * 2) });
+      const resp = await fetch(DRIVE_SIM_URL, { cache: "no-store", signal: AbortSignal.timeout(pollMs * 2) });
       if (resp.ok) {
         const r = (await resp.json()) as { speed_kmh?: number; turn_signal?: string | null };
         if (!this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);

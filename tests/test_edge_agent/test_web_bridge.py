@@ -174,7 +174,16 @@ def test_unknown_scenario_rejected():
 def test_settings_come_from_thresholds(agent):
     s = json.loads(agent.settings())
     # M67: on WebGPU the page runs YOLO at its own rate; on wasm at the device's target_fps
-    assert s["phone"] == {"input_size": 640, "target_fps": 5, "num_threads": 2, "web_gpu": True, "gpu_target_fps": 10}
+    assert s["phone"] == {
+        "input_size": 640,
+        "target_fps": 5,
+        "num_threads": 2,
+        "web_gpu": True,
+        "gpu_target_fps": 10,
+        "run_timeout_s": 5.0,
+        "load_timeout_s": 30.0,
+        "restart_limit": 3,
+    }
     assert s["target_width"] == 640
     assert s["landmarks"]["num_faces"] == 2 and s["flush_interval_s"] == 5.0 and s["problems"] == []
 
@@ -285,6 +294,8 @@ def test_the_page_gets_block_1s_numbers_for_its_loop_watch(agent):
         "frame_timeout_s": th["capture"]["frame_timeout_s"],
         "reconnect_interval_s": th["capture"]["reconnect_interval_s"],
         "camera_fps": th["capture"]["camera_fps"],
+        "frozen_stride": th["capture"]["frozen_stride"],
+        "max_frame_age_s": th["capture"]["web_max_frame_age_s"],
     }
 
 

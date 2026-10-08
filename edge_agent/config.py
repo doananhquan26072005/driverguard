@@ -61,6 +61,7 @@ CONSISTENCY_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("risk.drowsy.perclos_low", "<", "risk.drowsy.perclos_high", "PERCLOS term ramps up"),
     ("risk.distraction.off_road_high_speed_s", "<=", "risk.distraction.off_road_s", "stricter at high speed"),
     ("risk.blink.normal_min", "<", "risk.blink.normal_max", "normal blink range"),
+    ("risk.blink.min_observed_s", "<=", "drowsiness.blink_window_s", "blink coverage fits in the window"),
     ("drowsiness.microsleep_min_s", "<=", "risk.microsleep_l3_s", "microsleep event no later than the L3 rule"),
     ("risk.microsleep_l3_s", "<", "risk.unresponsive.closed_s", "unresponsive comes after the L3 alarm"),
     ("drowsiness.blink_max_s", "<", "drowsiness.microsleep_min_s", "a blink is shorter than a microsleep"),
@@ -88,6 +89,19 @@ CONSISTENCY_RULES: tuple[tuple[str, str, str, str], ...] = (
     ("drowsiness.nod.return_deg", "<", "drowsiness.nod.pitch_down_deg", "nod hysteresis"),
     ("context.min_speed_kmh", "<", "context.high_speed_kmh", "moving before high speed"),
     ("context.stationary_kmh", "<=", "context.min_speed_kmh", "standing still is not moving"),
+    (
+        "context.vehicle_poll_s",
+        "<",
+        "context.vehicle_signal_stale_s",
+        "a working vehicle link is read before it goes stale",
+    ),
+    (
+        "context.vehicle_send_s",
+        "<",
+        "context.vehicle_signal_stale_s",
+        "a working vehicle link is fed before it goes stale",
+    ),
+    ("hud.poll_s", "<", "hud.stale_s", "the screen asks more often than it calls the loop frozen"),
 )
 _OPS = {"<": lambda a, b: a < b, "<=": lambda a, b: a <= b}
 
@@ -126,6 +140,37 @@ def consistency_errors(th: dict[str, Any]) -> list[str]:
         va, vb = lookup(th, a), lookup(th, b)
         if isinstance(va, (int, float)) and isinstance(vb, (int, float)) and not _OPS[op](va, vb):
             errors.append(f"{a} ({va}) must be {op} {b} ({vb}): {why}")
+    return errors + _alert_errors(th) + _trip_memory_errors(th)
+
+
+def _number(th: dict[str, Any], dotted: str) -> float | None:
+    v = lookup(th, dotted)
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _alert_errors(th: dict[str, Any]) -> list[str]:
+    """Block 12: an escalation that the cooldown makes impossible is a rule switched off by accident."""
+    count, window = _number(th, "alert.l1_repeat_count"), _number(th, "alert.l1_repeat_window_s")
+    cooldown = lookup(th, "alert.cooldown_s")
+    l1_cooldown = cooldown.get(1, cooldown.get("1")) if isinstance(cooldown, dict) else None
+    if count is None or window is None or not isinstance(l1_cooldown, (int, float)) or count <= 1:
+        return []  # 0 = off; 1 = every L1 alert, no wait between
+    if (count - 1) * l1_cooldown >= window:
+        return [
+            f"alert.l1_repeat_count ({count}) alerts cannot fit in alert.l1_repeat_window_s ({window}) with "
+            f"alert.cooldown_s[1] ({l1_cooldown}) between them: repeated_l1 would never fire"
+        ]
+    return []
+
+
+def _trip_memory_errors(th: dict[str, Any]) -> list[str]:
+    """Block 11: bins of no length, or a trend over no bin."""
+    errors = []
+    bin_s, bins = _number(th, "trip_memory.bin_s"), _number(th, "trip_memory.trend_window_bins")
+    if bin_s is not None and bin_s <= 0:
+        errors.append(f"trip_memory.bin_s ({bin_s}) must be > 0")
+    if bins is not None and bins < 1:
+        errors.append(f"trip_memory.trend_window_bins ({bins}) must be >= 1")
     return errors
 
 

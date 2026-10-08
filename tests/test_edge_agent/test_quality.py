@@ -22,6 +22,8 @@ FPS = 15
 CFG = QualityConfig()
 OPEN, SHUT = 0.30, 0.08
 
+STRIDE = 4  # preprocess.sample_stride
+
 
 def face(t, ear=OPEN, **q):
     """A face looking at the road; q: face_brightness, sharpness, scene_brightness, scene_contrast."""
@@ -112,10 +114,10 @@ def test_measure_reads_the_face_box_and_the_whole_image():
     rng = np.random.default_rng(0)
     luma = np.full((120, 160), 20, np.uint8)
     luma[30:90, 40:100] = rng.integers(100, 200, (60, 60), dtype=np.uint8)  # a lit, textured "face"
-    m = measure(_pre(luma), _lm(40, 30, 100, 90, 160, 120))
+    m = measure(_pre(luma), _lm(40, 30, 100, 90, 160, 120), STRIDE)
     assert 140 < m["face_brightness"] < 160 and m["sharpness"] > 100
     assert m["scene_brightness"] < 60 and m["scene_contrast"] > 20
-    flat = measure(_pre(np.full((120, 160), 4, np.uint8)), None)
+    flat = measure(_pre(np.full((120, 160), 4, np.uint8)), None, STRIDE)
     assert flat["scene_contrast"] == 0.0 and flat["face_brightness"] is None and flat["sharpness"] is None
 
 
@@ -137,7 +139,7 @@ def test_web_placeholder_without_luma_measures_nothing():
         frame_id=0,
         timestamp=0.0,
     )
-    assert set(measure(pre, None).values()) == {None}
+    assert set(measure(pre, None, STRIDE).values()) == {None}
 
 
 # ------------------------------------------------------------------ block 9: unavailable with a reason

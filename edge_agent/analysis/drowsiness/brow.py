@@ -19,7 +19,7 @@ from edge_agent.perception.features import FrameFeatures
 class BrowRaise:
     def __init__(self, config: DrowsinessConfig) -> None:
         self.config = config
-        self._window = RollingWindow(config.brow_baseline_window_s)
+        self._window = RollingWindow(config.brow_baseline_window_s, config.baseline_recompute_s)
         self._enrolled: float | None = None
         self._since: float | None = None
         self._fired = False

@@ -133,31 +133,46 @@ def fleet_status(row: dict[str, Any], now: datetime, offline_after_s: int) -> st
 
 
 def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str | None) -> BatchResult:
-    accepted = feedback = samples = 0
+    accepted = feedback = samples = conflicts = 0
+    now = datetime.now(UTC)  # M82: order, "urgent now" and retention all run on this clock, not the device's
+    received_at = now.isoformat()
     db.touch_device(conn, dev, drv)  # any post is a sign of life (M33)
     if batch.heartbeat is not None:
         beat = batch.heartbeat.model_dump(mode="json")
         beat["ts"] = batch.heartbeat.ts.astimezone(UTC).isoformat()
-        db.apply_heartbeat(conn, dev, beat)
+        skew_s: float | None = db.apply_heartbeat(conn, dev, beat, received_at)
+    else:
+        skew_s = db.device_clock_skew(conn, dev)
     for e in batch.events:  # events first: feedback in the same batch may refer to them
         row = e.model_dump(mode="json")  # tags / versions (M41) are stored with the event
         row["ts"] = e.ts.astimezone(UTC).isoformat()  # one format so ts strings sort in time order
-        accepted += db.insert_event(conn, dev, drv, row)
+        # A heartbeat is never queued, so its skew is the clock's error; what an event is late beyond that
+        # is time it waited on the device.
+        delay_s = None if skew_s is None else max(0.0, (now - e.ts).total_seconds() - skew_s)
+        if db.insert_event(conn, dev, drv, row, received_at, delay_s):
+            accepted += 1
+        elif db.event_device(conn, row["event_id"]) != dev:
+            # Not a retry: the id belongs to another device's event (event_id is unique over all
+            # devices). It is not stored, and it is said: before, it counted as this device's own
+            # duplicate and nobody knew an event was lost (A4 L5 of the 08/10 audit).
+            conflicts += 1
+            log.warning("device %s sent an event_id that another device already used: not stored", dev)
     for f in batch.feedback:
         feedback += db.apply_feedback(conn, dev, str(f.event_id), f.verdict, f.ts.astimezone(UTC).isoformat())
     for smp in batch.samples:
         row = smp.model_dump(mode="json")
         row["ts"] = smp.ts.astimezone(UTC).isoformat()
-        samples += db.insert_sample(conn, dev, drv, row)
+        samples += db.insert_sample(conn, dev, drv, row, received_at)
     summaries = 0
     for summ in batch.summaries:
         row = summ.model_dump(mode="json")
         row["started_at"] = summ.started_at.astimezone(UTC).isoformat()
         row["ended_at"] = summ.ended_at.astimezone(UTC).isoformat()
-        summaries += db.upsert_summary(conn, dev, drv, row)
+        summaries += db.upsert_summary(conn, dev, drv, row, received_at)
     return BatchResult(
         accepted=accepted,
-        duplicates=len(batch.events) - accepted,
+        duplicates=len(batch.events) - accepted - conflicts,
+        conflicts=conflicts,
         feedback_applied=feedback,
         samples_accepted=samples,
         summaries_accepted=summaries,
@@ -454,13 +469,17 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
             status = fleet_status(row, now, settings.device_offline_after_s)
             urgent = None
             if status == "online":  # a vehicle that went quiet is already shown as lost
-                urgent = db.urgent_event(conn, row["device_id"], row["trip_id"], urgent_since)
+                urgent = db.urgent_event(
+                    conn, row["device_id"], row["trip_id"], urgent_since, settings.fleet_urgent_window_s
+                )
             v = row["versions"]
             newest = pins.get(row["device_id"], fleet_version)  # what this device should run
             current = None if v is None else v["thresholds_version"] == newest and not v.get("thresholds_ignored")
+            skew = row["clock_skew_s"]
             out.append(
                 {
                     **row,
+                    "clock_wrong": None if skew is None else abs(skew) > settings.clock_skew_warn_s,
                     "thresholds_current": current,
                     "thresholds_latest": newest,
                     "status": status,

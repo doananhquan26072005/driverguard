@@ -9,6 +9,7 @@ import { appendForced, forcedEntry, forcedLogFile, type ForcedEntry } from "./fo
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
 import type { HudLink } from "./hudModel";
+import { HUD_DEFAULTS } from "../lib/defaults";
 
 interface Scenario {
   key: string;
@@ -111,10 +112,11 @@ function snapshotFor(s: Scenario, night: boolean, now: number, since: number): H
     speed_kmh: 68,
     clock_hour: night ? 2.5 : 14.25,
     night,
+    dim: night,
     eyes_closed_s: level === 3 ? Math.min(1.5 + (now - since), 6) : 0,
     perclos_60s: 0.06,
     fps: 30,
-    feedback_window_s: 120,
+    feedback_window_s: HUD_DEFAULTS.feedback_window_s,
     vehicle: {
       source: "sim",
       connected: true,

@@ -31,6 +31,9 @@ driver is dropped (eye / mouth / pose baselines, PERCLOS, blinks, trend, road po
 and the new driver enrolls, and their continuous driving (block 10 `drive_run_s`, what "long drive" is
 judged on) starts at 0. The rest of the vehicle context and the whole-trip summary (block 11) go on.
 
+Thresholds reloaded during the trip (`reconfigure`, M47): only the sections in RELOADABLE can change
+under a running trip, and the caller applies them during a rest only (M79).
+
 Presence check (block 12 stage, M44): while monitoring is unavailable because the driver is out of
 view, the HUD asks "Bạn còn ở đó không?"; `presence_answer` is the driver's tap.
 """
@@ -52,6 +55,10 @@ from edge_agent.decision.trip_summary import TripCollector, TripSummaryConfig
 from edge_agent.perception.enrollment import DriverEnrollment, DriverProfile, EnrollmentConfig, EnrollmentState
 from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.quality import QualityConfig, QualityMonitor, QualityState
+
+# Thresholds sections `reconfigure` puts into effect. A reloaded version that changes any other
+# section cannot be applied during the trip (edge_agent.runtime.TripRuntime.apply_thresholds).
+RELOADABLE = ("drowsiness", "distraction", "trip_memory", "alert", "presence", "risk")
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,7 @@ class DecisionPipeline:
             tired_score=self.risk.config.drowsy_l1,
             long_drive_s=self.context.config.long_drive_s,
             score_l2=self.risk.config.drowsy_l2,
+            bin_s=TripMemoryConfig.from_dict(th.get("trip_memory")).bin_s,
         )
         self._stop_from: float | None = None  # frame time the vehicle stopped, once the stop is long enough to forget
         self._stop_rested = False  # ... and it became a rest
@@ -171,14 +179,18 @@ class DecisionPipeline:
 
     def reconfigure(self, thresholds: dict[str, Any]) -> None:
         """New thresholds between two frames (M47, engineers' tuned values reloaded from the backend).
-        The caller only does this while the vehicle is parked: blocks 7, 8, 12 and trip memory start
-        again on the new numbers, which while parked holds nothing an alert depends on (what a stop
-        gathered is dropped when driving resumes anyway). The driver stays enrolled, the vehicle
-        context and the whole-trip summary go on."""
-        enrollment = self.enrollment
+        The caller only does this during a rest (block 10 `resting`, not a red light: M79): blocks 7, 8
+        and 12 start again on the new numbers, and what they gathered since the vehicle stopped is
+        dropped when driving resumes anyway. Trip memory goes on (microsleeps and the trend from before
+        the rest still count) unless its own section changed. The driver stays enrolled, the vehicle
+        context and the whole-trip summary go on. Only the RELOADABLE sections are read."""
+        enrollment, trip, trip_state = self.enrollment, self.trip, self._trip_state
+        keep_trip = thresholds.get("trip_memory") == self._th.get("trip_memory")
         self._th = thresholds
         self._new_driver()
         self.enrollment = enrollment  # consent given, steps done, attempts: all kept
+        if keep_trip:
+            self.trip, self._trip_state = trip, trip_state
         if enrollment.profile is not None:
             self._apply_profile(enrollment.profile)
         self.risk = RiskEngine(RiskConfig.from_dict(thresholds.get("risk")))
@@ -198,7 +210,7 @@ class DecisionPipeline:
         self._track_enrollment(enrollment, ctx, features.timestamp)
         closing_eyes = self._closing_from is not None
         quality = self.quality.update(features)
-        drowsy = self.drowsiness.update(features)
+        drowsy = self.drowsiness.update(features, moving=ctx.moving)
         distraction = self.distraction.update(
             features,
             phone_near_face,

@@ -38,7 +38,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tools.metrics import EvalConfig, ci_text, rate_ci  # noqa: E402
-from tools.seq_eval import Tracer, dataset_videos, load_fl3d_labels, prf  # noqa: E402
+from tools.seq_eval import Tracer, VideoClock, dataset_videos, load_fl3d_labels, prf  # noqa: E402
 from tools.trace_studies import DATASET_NOTE, _p, _share, condition_rows  # noqa: E402
 
 ORIGINAL = "original"
@@ -103,7 +103,8 @@ def trace_transformed(path: Path, thresholds: dict[str, Any], kind: str, value: 
         if not cap.isOpened():
             raise RuntimeError(f"cannot open {path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
-        fps = fps if 0 < fps < 1000 else 30.0
+        fps = fps if 0 < fps < 1000 else EvalConfig.from_dict(thresholds.get("eval")).fallback_video_fps
+        clock = VideoClock(fps)  # the same frame times as the untouched video in seq_eval.trace_video
         reasons: Counter = Counter()
         issues: Counter = Counter()
         with Tracer(thresholds, 60.0, use_phone=False) as tracer:
@@ -112,13 +113,13 @@ def trace_transformed(path: Path, thresholds: dict[str, Any], kind: str, value: 
                 ok, image = cap.read()
                 if not ok:
                     break
-                r = tracer.step(apply(image, kind, value), i, i / fps)
+                r = tracer.step(apply(image, kind, value), i, clock.time(cap.get(cv2.CAP_PROP_POS_MSEC)))
                 if r.risk.unavailable:
                     reasons[r.risk.unavailable_reason or "no_face"] += 1
                 if r.quality.issue is not None:
                     issues[r.quality.issue] += 1
                 i += 1
-            tr = tracer.result(fps)
+            tr = tracer.result(fps, clock)
         tr["unavailable_reasons"] = dict(reasons)
         tr["quality_issues"] = dict(issues)
         return tr

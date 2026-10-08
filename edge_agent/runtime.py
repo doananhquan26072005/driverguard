@@ -27,6 +27,10 @@ Phone detector health (M50): with `phone_expected`, frames without a fresh block
 counted (PhoneHealth); most of a window unknown = `phone_detection_lost` on the HUD and to the
 backend, until results come back (`phone_detection_restored`). Alerts of the other branches go on.
 
+Road pose recalibrated (M80): block 8 took a head pose held off road for a long time as the road pose
+(its baseline was wrong); `road_pose_recalibrated` tells the backend when, so a trip that began with
+false "off road" alerts can be read for what it was.
+
 A caller that times its own loop sets `perf` (publisher.perf_record, M49): it goes out with every
 heartbeat, so a slow device says which stage is slow. Numbers only.
 
@@ -37,7 +41,12 @@ by hand: the "forced" tag of the PRD exists for the HUD preview page, which neve
 
 Thresholds reloaded during the trip (M47): `apply_thresholds`, called by the device loop / the page
 only while `parked`, restarts blocks 7, 8, 12 on the new numbers (the driver stays enrolled, the
-summary goes on) and sends `config_applied` with the new version, or `config_refused`.
+summary goes on) and sends `config_applied` with the new version, or `config_refused`. `parked` is a
+rest (block 10: standing still for context.rest_after_s), not any stop: at a red light the restart
+would wipe what the drowsiness side knows about a driver who drives on in seconds (M79). A version
+that changes a section the running trip cannot take (anything outside the pipeline's RELOADABLE:
+capture, context, quality, ...) is refused whole, so `config_applied` and the version reported
+always mean "exactly these thresholds are in use"; it is applied when the agent next starts.
 
 Records go to `emit(kind, data)` with kind "event", "sample", "feedback", "summary" or "heartbeat": the device
 hands them to MetadataPublisher, the browser queues them for its own POST. The callers keep only
@@ -56,6 +65,7 @@ image, testable with fake sequences.
 
 from __future__ import annotations
 
+import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -64,9 +74,9 @@ from typing import Any
 
 from edge_agent.context.can_sim import CanSimulator, ExternalVehicle, VehicleSignals, hud_vehicle
 from edge_agent.context.vehicle_context import ContextConfig
-from edge_agent.decision.pipeline import DecisionPipeline, DecisionResult
+from edge_agent.decision.pipeline import RELOADABLE, DecisionPipeline, DecisionResult
 from edge_agent.decision.presence import NO_ANSWER
-from edge_agent.hud.server import HudConfig, HudState
+from edge_agent.hud.server import HudConfig, HudState, hud_display
 from edge_agent.io.publisher import (
     PublisherConfig,
     build_enrolled_event,
@@ -84,6 +94,13 @@ Emit = Callable[[str, dict[str, Any]], None]
 
 # Monitoring state in a heartbeat, most specific first (backend/schemas.py MonitorState).
 MONITOR_STATES = ("ended", "camera_lost", "stalled", "error", "unavailable", "monitoring")
+
+
+def new_trip_id(now: datetime | None = None) -> str:
+    """Id of a new trip (the page's is frontend/src/live/tripId.ts). The local date and time are for a
+    person reading it; the random part makes it unique, because a wrong clock or a changed time zone
+    can give the same second twice and the backend keys a trip summary on (device_id, trip_id) (M82)."""
+    return f"{(now or datetime.now()).strftime('trip-%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
 
 
 def alert_detail(r: DecisionResult, signals: VehicleSignals) -> dict[str, Any]:
@@ -136,13 +153,15 @@ class TripRuntime:
         self._emit = emit
         self.stationary_kmh = ContextConfig.from_dict(thresholds.get("context")).stationary_kmh
         self.decisions = DecisionPipeline(thresholds)
-        self.hud = HudState(HudConfig.from_dict(thresholds.get("hud")))
+        self.hud = HudState(HudConfig.from_dict(thresholds.get("hud")), hud_display(thresholds))
         self.started_at = datetime.now(UTC)
         self.fps = 0.0
         self.last_speed: float | None = None
         self._t0: float | None = None
         self._last_clock: float | None = None
         self._unavailable = False
+        self._th = thresholds  # in use: what a reloaded version is compared with
+        self._resting = False  # block 10 on the last frame: a rest, when new thresholds may be applied
         self._bins_sent = 0
         self._minute_max_level = 0
         self._minute_max_ratio = 0.0  # highest off_road_ratio (block 8) of the running minute
@@ -254,6 +273,7 @@ class TripRuntime:
         self._track_vehicle_signal(t)
         self._last_t = t
         r = self.decisions.step(features, phone_flag, signals, phone_kind)  # 6 enrollment, 7, 8, 10, 11, 9, 12
+        self._resting = r.context.resting
         changed = r.risk.unavailable != self._unavailable
         if changed:  # 9: face lost or unusable while moving / back (FR-6)
             self._unavailable = r.risk.unavailable
@@ -262,6 +282,8 @@ class TripRuntime:
             else:
                 self._system_event("monitoring_restored")
         self.hud.set_vehicle(self._vehicle_state(signals))  # 0 km/h = parked
+        if r.distraction.recalibrated:  # 8: the road pose was wrong, set again (M80)
+            self._system_event("road_pose_recalibrated")
         if r.presence.event == NO_ANSWER:  # 12: asked "Bạn còn ở đó không?", nobody answered (M44)
             self._system_event(NO_ANSWER)
         if "enrolled" in r.enrollment.events and r.enrollment.profile is not None:
@@ -272,7 +294,8 @@ class TripRuntime:
         self._clock = self._frame_clock = clock
         if self._last_clock is not None and clock > self._last_clock:
             dt = clock - self._last_clock
-            self.fps = 1.0 / dt if self.fps == 0 else 0.9 * self.fps + 0.1 / dt
+            keep = self._hud_cfg.fps_smoothing
+            self.fps = 1.0 / dt if self.fps == 0 else keep * self.fps + (1.0 - keep) / dt
         self._last_clock = clock
         self._frame_ok()
         self._track_fps(clock)
@@ -287,6 +310,10 @@ class TripRuntime:
             event_id = event["event_id"]
             self.hud.add_alert(event_id, r.alert.new_alert.level, r.alert.new_alert.reasons, alert_detail(r, signals))
             self._record("event", event)
+        if r.trip.bins_completed < self._bins_sent:  # trip memory started again (driver change, reload, M79)
+            self._bins_sent = r.trip.bins_completed
+            self._minute_max_level = r.alert.active_level
+            self._minute_max_ratio = r.distraction.off_road_ratio
         if r.trip.bins_completed > self._bins_sent:  # a minute just closed: one fatigue timeline point
             self._bins_sent = r.trip.bins_completed
             if r.trip.minute_scores:
@@ -359,15 +386,25 @@ class TripRuntime:
     # ------------------------------------------------------------------ HUD buttons, camera status
     @property
     def parked(self) -> bool:
-        """The vehicle stands still (or no frame was processed yet): new thresholds may be applied."""
-        return self.last_speed is not None and self.last_speed < self.stationary_kmh if self.started else True
+        """The driver is resting (block 10 `resting` on the last frame), or no frame was processed yet:
+        new thresholds may be applied. A shorter stop (a red light) is not enough, see the module doc."""
+        return self._resting if self.started else True
 
-    def apply_thresholds(self, thresholds: dict[str, Any], version: int, refused: bool = False) -> None:
+    def needs_restart(self, thresholds: dict[str, Any]) -> list[str]:
+        """Sections in which `thresholds` differ from the ones in use and that a running trip cannot take."""
+        old = self._th
+        return sorted(k for k in {*old, *thresholds} if k not in RELOADABLE and old.get(k) != thresholds.get(k))
+
+    def apply_thresholds(self, thresholds: dict[str, Any], version: int, refused: bool = False) -> bool:
         """Thresholds reloaded from the backend (M47), between two frames, only while `parked`.
         refused: the version was inconsistent, the thresholds in use stay; the backend still learns
-        which version this device runs (heartbeat and events) and that it ignored one."""
+        which version this device runs (heartbeat and events) and that it ignored one. A version
+        that `needs_restart` is refused the same way. Returns whether it is now in use."""
+        refused = refused or bool(self.needs_restart(thresholds))
         if not refused:
             self.decisions.reconfigure(thresholds)
+            self._th = thresholds
+            self.hud.display = hud_display(thresholds)  # the screen follows the rules it shows
         if self.versions is not None:
             self.versions = {
                 **self.versions,
@@ -376,6 +413,7 @@ class TripRuntime:
             }
         self._system_event("config_refused" if refused else "config_applied")
         self._heartbeat(force=True)
+        return not refused
 
     def change_driver(self) -> None:
         """ "Đổi tài xế": drop the previous driver's baselines and block 3's anchor; the new driver enrolls."""

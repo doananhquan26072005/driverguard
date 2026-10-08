@@ -21,6 +21,10 @@ class BackendSettings(BaseSettings):
     # Live fleet view (M44): an L3 alert, `unresponsive`, `repeated_l3` or `no_answer` newer than this
     # puts the vehicle in "needs attention now" (while it is online and its trip has not ended).
     fleet_urgent_window_s: int = Field(default=300, ge=10, le=24 * 3600)
+    # Device clocks (M82): the backend orders heartbeats, picks "urgent now" and counts retention on
+    # its own clock. A heartbeat whose `ts` is further than this from the time it arrived marks the
+    # device's clock as wrong in the fleet overview (its event times are shown as the device sent them).
+    clock_skew_warn_s: int = Field(default=120, ge=5, le=24 * 3600)
     # Data policy (M37, docs/data-policy.md): metadata older than this is deleted, at start-up and then
     # once a day. Events (alerts, system events, false-alarm marks) and per-minute samples: 60 days;
     # end-of-trip summaries: 365 days. 0 = keep forever. The consent screen states these defaults

@@ -10,8 +10,8 @@ Two datasets that tools/dataset.py cannot score as they are:
 - SUST-DDD (Sivas University, 2074 phone-camera clips of 10 s, real driving): one label per
   clip, drowsy (d_*.mp4) or not (n_*.mp4).
 
-Step 1 `trace` runs blocks 2-12 on every video (fresh state per video, every frame, time =
-frame_index / fps) and keeps one row of numbers per frame (EAR, MAR, pose, eye state, PERCLOS,
+Step 1 `trace` runs blocks 2-12 on every video (fresh state per video, every frame, time = the
+container's timestamp of the frame, see VideoClock) and keeps one row of numbers per frame (EAR, MAR, pose, eye state, PERCLOS,
 events, risk level, alerts). The eye-state CNN is also run on every frame as a diagnostic
 column (`p_cnn`), separate from what the pipeline used (`p_closed`). Traces hold metadata only,
 no image; frames stay in RAM.
@@ -105,7 +105,7 @@ BLENDSHAPE_COLUMNS = {
 class Tracer:
     """Blocks 2-12 frame by frame (same wiring as tools/eval.py), keeping one row of numbers per frame.
 
-    Used on video files (`trace_video`: time = frame index / fps, YOLO every `yolo_every` frames)
+    Used on video files (`trace_video`: time from VideoClock, YOLO every `yolo_every` frames)
     and on a live camera (tools/record_trace.py: the caller's clock, YOLO at phone.target_fps).
     Only numbers are kept: the image given to `step` is not stored.
     """
@@ -113,7 +113,7 @@ class Tracer:
     def __init__(
         self,
         thresholds: dict[str, Any],
-        speed_kmh: float = 60.0,
+        speed_kmh: float | None = None,
         use_phone: bool = True,
         yolo_every: int | None = None,
     ) -> None:
@@ -173,7 +173,7 @@ class Tracer:
             phone_flag = phone_near_face(self.detections, face, self.phone_cfg)
             held = phone_kind(self.detections, face, self.phone_cfg)
         feats = self.extractor(lm, i, t)
-        feats = replace(feats, **quality.measure(pre, lm))
+        feats = replace(feats, **quality.measure(pre, lm, self.preprocessor.config.sample_stride))
         diag = self.eye_diag.estimate(pre, lm, feats)
         if self.eye_state is not None:
             feats = self.eye_state(pre, lm, feats)
@@ -240,18 +240,139 @@ class Tracer:
             self.alerts.append((i, r.alert.new_alert.level, tuple(r.alert.new_alert.reasons)))
         return r
 
-    def result(self, fps: float) -> dict:
-        """The trace: per-frame columns (NaN = not measured), events and alerts by frame index."""
+    def result(self, fps: float, clock: VideoClock | None = None) -> dict:
+        """The trace: per-frame columns (NaN = not measured), events and alerts by frame index.
+
+        `meta` says what made it (tools/metrics.py environment). clock: the VideoClock of a video file;
+        the trace then also carries `clock` (where its times come from) and `duration_s`."""
+        from tools.metrics import environment
+
         cols = {name: np.full(0, np.nan) for name in COLUMNS}
         if self.rows:
             cols = {
                 name: np.array([np.nan if v is None else float(v) for v in col])
                 for name, col in zip(COLUMNS, zip(*self.rows))
             }
-        return {"fps": fps, "n": len(self.rows), "cols": cols, "events": self.events, "alerts": self.alerts}
+        tr = {"fps": fps, "n": len(self.rows), "cols": cols, "events": self.events, "alerts": self.alerts}
+        tr["meta"] = environment()
+        if clock is not None:
+            tr["clock"] = clock.summary()
+            tr["duration_s"] = clock.duration_s
+        return tr
 
 
-def trace_video(path: Path, thresholds: dict[str, Any], speed_kmh: float = 60.0, use_phone: bool = True) -> dict:
+class VideoClock:
+    """Time of each frame of a video file, in seconds from its first frame.
+
+    The time is the container's timestamp of the frame (OpenCV CAP_PROP_POS_MSEC read after the frame),
+    so a video recorded at a varying frame rate keeps its real timing. frame index / fps is only right
+    at a constant rate, and every time rule (eyes shut 1.5 s, PERCLOS over 60 s) and the hours behind
+    a false-alarm rate are measured on this clock. A timestamp that is missing or does not move forward
+    is replaced by one nominal frame after the previous time, and counted."""
+
+    def __init__(self, fps: float) -> None:
+        self.fps = fps
+        self.frames = 0
+        self.patched = 0  # frames whose timestamp could not be used
+        self.offset_max = 0.0  # largest |time - frame index / fps| of any frame so far
+        self._first_ms: float | None = None
+        self._last = 0.0
+
+    def time(self, pos_msec: float | None) -> float:
+        usable = pos_msec is not None and math.isfinite(pos_msec)
+        if self.frames == 0:
+            self._first_ms = pos_msec if usable else None
+            t = 0.0
+        else:
+            t = (pos_msec - self._first_ms) / 1000.0 if usable and self._first_ms is not None else -1.0
+            if t <= self._last:
+                t = self._last + 1.0 / self.fps
+                self.patched += 1
+        self.offset_max = max(self.offset_max, abs(t - self.frames / self.fps))
+        self.frames += 1
+        self._last = t
+        return t
+
+    @property
+    def duration_s(self) -> float:
+        """From the first frame to the end of the last one (shown for one nominal frame)."""
+        return self._last + 1.0 / self.fps if self.frames else 0.0
+
+    def summary(self) -> dict[str, Any]:
+        """Where the times of a trace come from, and how far they are from frame index / fps."""
+        by_index = self.frames / self.fps
+        return {
+            "source": "container" if self._first_ms is not None and self.patched < self.frames - 1 else "index",
+            "patched_frames": self.patched,
+            "duration_s": round(self.duration_s, 3),
+            "index_duration_s": round(by_index, 3),
+            "drift_s": round(self.duration_s - by_index, 3),
+            "offset_max_s": round(self.offset_max, 3),
+        }
+
+
+def trace_seconds(tr: dict) -> float:
+    """Length of a trace in seconds: what its clock measured when it has one (`duration_s`), else
+    frames / fps (traces made before the clock, live recordings, traces with frames left out)."""
+    if tr.get("duration_s") is not None:
+        return float(tr["duration_s"])
+    return tr["n"] / tr["fps"] if tr["n"] else 0.0
+
+
+def frame_seconds(tr: dict, frame: int) -> float:
+    """Time of a frame index on the trace's clock. One past the last frame is the end of the trace
+    (labels given as frame ranges end there); beyond that the nominal rate carries on."""
+    n = tr["n"]
+    if 0 <= frame < n:
+        return float(tr["cols"]["t"][frame])
+    return trace_seconds(tr) + (frame - n) / tr["fps"]
+
+
+def gap_stats(times: np.ndarray, fps: float, long_gap: float) -> dict[str, float]:
+    """How even the frame times (seconds) are against the nominal rate. long_gap: a wait of this many
+    nominal frames or more is counted as a long one (eval.clock_long_gap_frames)."""
+    n = len(times)
+    out = {"frames": n, "fps": round(fps, 3), "index_s": round(n / fps, 2) if fps > 0 else float("nan")}
+    if n < 2 or fps <= 0:
+        return out | {"clock_s": float("nan"), "drift_s": float("nan"), "offset_max_s": float("nan"), "long_gaps": 0}
+    gaps = np.diff(times)
+    clock_s = float(times[-1] - times[0]) + 1.0 / fps
+    # The container FPS is an average, so the two clocks can agree at the end and still be seconds apart
+    # in between (a stretch without frames): offset_max_s is the largest distance at any frame.
+    offset = (times - times[0]) - np.arange(n) / fps
+    return out | {
+        "clock_s": round(clock_s, 2),
+        "drift_s": round(clock_s - n / fps, 2),
+        "offset_max_s": round(float(np.abs(offset).max()), 2),
+        "gap_p50_ms": round(float(np.percentile(gaps, 50)) * 1000, 1),
+        "gap_p95_ms": round(float(np.percentile(gaps, 95)) * 1000, 1),
+        "gap_max_ms": round(float(gaps.max()) * 1000, 1),
+        "long_gaps": int(np.sum(gaps >= long_gap / fps)),
+    }
+
+
+def video_clock(path: Path, thresholds: dict[str, Any]) -> dict[str, float]:
+    """gap_stats of one video file. Frames are stepped through without running any model and no image
+    is kept, so a 10-minute video takes seconds."""
+    import cv2
+
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    cap = cv2.VideoCapture(str(path))
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"cannot open {path}")
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = fps if 0 < fps < 1000 else cfg.fallback_video_fps
+        clock = VideoClock(fps)
+        times = []
+        while cap.grab():
+            times.append(clock.time(cap.get(cv2.CAP_PROP_POS_MSEC)))
+        return gap_stats(np.array(times), fps, cfg.clock_long_gap_frames) | {"patched": clock.patched}
+    finally:
+        cap.release()
+
+
+def trace_video(path: Path, thresholds: dict[str, Any], speed_kmh: float | None = None, use_phone: bool = True) -> dict:
     """Blocks 2-12 on one video; per-frame numbers, events and alerts (same wiring as tools/eval.py)."""
     import cv2
 
@@ -262,17 +383,18 @@ def trace_video(path: Path, thresholds: dict[str, Any], speed_kmh: float = 60.0,
         if not cap.isOpened():
             raise RuntimeError(f"cannot open {path}")
         fps = cap.get(cv2.CAP_PROP_FPS)
-        fps = fps if 0 < fps < 1000 else 30.0
+        fps = fps if 0 < fps < 1000 else EvalConfig.from_dict(thresholds.get("eval")).fallback_video_fps
         yolo_every = max(1, round(fps / PhoneDetectorConfig.from_dict(thresholds.get("phone")).target_fps))
+        clock = VideoClock(fps)
         with Tracer(thresholds, speed_kmh, use_phone, yolo_every) as tracer:
             i = 0
             while True:
                 ok, image = cap.read()
                 if not ok:
                     break
-                tracer.step(image, i, i / fps)
+                tracer.step(image, i, clock.time(cap.get(cv2.CAP_PROP_POS_MSEC)))
                 i += 1
-            return tracer.result(fps)
+            return tracer.result(fps, clock)
     finally:
         cap.release()
 
@@ -335,13 +457,15 @@ def run_traces(
     Path(out).write_bytes(pickle.dumps(done))
 
 
-def replay_vehicle(thresholds: dict[str, Any], speed_kmh: float = 60.0) -> Any:
-    """The vehicle of a trace or replay: constant speed, starting at eval.replay_clock_hour with
-    eval.replay_drive_time_s already driven (noon and 0 by default: no night, no long drive)."""
+def replay_vehicle(thresholds: dict[str, Any], speed_kmh: float | None = None) -> Any:
+    """The vehicle of a trace or replay: constant speed (None: eval.replay_speed_kmh), starting at
+    eval.replay_clock_hour with eval.replay_drive_time_s already driven (noon and 0 by default: no
+    night, no long drive)."""
     from edge_agent.context.can_sim import CanSimulator, Scenario, scenario_from_dict
     from tools.metrics import EvalConfig
 
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    speed_kmh = cfg.replay_speed_kmh if speed_kmh is None else speed_kmh
     base = scenario_from_dict({"timeline": [{"t": 0, "speed_kmh": speed_kmh}]})
     return CanSimulator(
         Scenario(
@@ -718,7 +842,7 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
     mar_open = float(d_cfg["yawn"]["mar_open"])
     cnn_thr = float(d_cfg["eye"]["cnn_closed"])
     close_ratio = float(d_cfg["perclos_close_ratio"])
-    minutes = sum(v["n"] / v["fps"] for v in ok.values()) / 60
+    minutes = sum(trace_seconds(v) for v in ok.values()) / 60
 
     # alignment check: MAR AUC for yawning vs alert at a few frame offsets
     align = []
@@ -826,13 +950,15 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
         yw_runs = [r for r in runs if r.label == "yawning"]
         drowsy_runs = ms_runs + yw_runs
         # FAR / MAR windows: drowsy = microsleep / yawning runs, awake = runs labelled alert
-        secs = lambda rs: [(r.start / fps, (r.end + 1) / fps) for r in rs]  # noqa: E731
+        # Labels are frame ranges; windows and levels are on the trace's clock. Label lengths and
+        # detection delays below stay in frames / nominal FPS (NITYMED is recorded at a constant 25).
+        secs = lambda rs: [(frame_seconds(tr, r.start), frame_seconds(tr, r.end + 1)) for r in rs]  # noqa: B023, E731
         col = tr["cols"].get("drowsy_level", tr["cols"]["level"])  # traces scored without replay: any reason
-        per_sec = per_second_max(tr["cols"]["t"], [int(v) for v in np.nan_to_num(col)], tr["n"] / fps)
+        per_sec = per_second_max(tr["cols"]["t"], [int(v) for v in np.nan_to_num(col)], trace_seconds(tr))
         for lv in win_levels:
             lv_cfg = EvalConfig(eval_cfg.window_s, eval_cfg.warmup_s, eval_cfg.positive_frac, lv)
             awake = secs([r for r in runs if r.label == "alert"])
-            windows[lv] += window_scores(tr["n"] / fps, secs(drowsy_runs), awake, per_sec, lv_cfg, tol_s)
+            windows[lv] += window_scores(trace_seconds(tr), secs(drowsy_runs), awake, per_sec, lv_cfg, tol_s)
         ev = defaultdict(list)
         for f, e in tr["events"]:
             ev[e].append(f)
@@ -864,7 +990,7 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
             c = classify_predictions([f], drowsy_runs, lb, round(3.0 * fps), gap)
             kind = next(iter(c))
             pred_class[f"L{lv} alert"] += c
-            alert_rows.append((vid, f / fps, lv, ",".join(reasons), kind))
+            alert_rows.append((vid, frame_seconds(tr, f), lv, ",".join(reasons), kind))
     lines += [
         "",
         "## 4. Episodes (runs of one label, gaps ≤ 0.5 s joined)",
@@ -948,7 +1074,7 @@ def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) ->
         lv = Counter(a[1] for a in tr["alerts"])
         fa = sum(1 for a in alert_rows if a[0] == vid and a[4] == "fp")
         lines.append(
-            f"| {vid} | {tr['n'] / fps / 60:.1f} | {_p(np.nanmean(tr['cols']['face']))} | "
+            f"| {vid} | {trace_seconds(tr) / 60:.1f} | {_p(np.nanmean(tr['cols']['face']))} | "
             f"{len(ms)} ({sum(detected(r, ev['microsleep'], tol) is not None for r in ms)}) | "
             f"{len(yw)} ({sum(detected(r, ev['yawn'], tol) is not None for r in yw)}) | "
             f"{lv[1]}/{lv[2]}/{lv[3]} | {fa} |"
@@ -987,7 +1113,7 @@ def sust_features(tr: dict, thresholds: dict[str, Any]) -> dict[str, float]:
         "microsleep_events": float(ev["microsleep"]),
         "yawn_events": float(ev["yawn"]),
         "nod_events": float(ev["nod"]),
-        "blinks_per_min": ev["blink"] / (tr["n"] / fps) * 60 if tr["n"] else np.nan,
+        "blinks_per_min": ev["blink"] / trace_seconds(tr) * 60 if tr["n"] else np.nan,
         "max_closed_duration": float(np.max(c["closed_duration"])) if tr["n"] else 0.0,
         "closed_frac_block7": float(np.mean(ec == 1)) if len(ec) else np.nan,
         "perclos_init_base": float(np.mean(ear < 0.65 * base_init)) if len(ear) else np.nan,
@@ -1051,8 +1177,8 @@ def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
     y = np.array([k.startswith("drowsiness/") for k in feats])
     names = list(next(iter(feats.values())))
     feat = {n: np.array([feats[k][n] for k in feats]) for n in names}
-    hours_neg = sum(ok[k]["n"] / ok[k]["fps"] for k in feats if not k.startswith("drowsiness/")) / 3600
-    hours_pos = sum(ok[k]["n"] / ok[k]["fps"] for k in feats if k.startswith("drowsiness/")) / 3600
+    hours_neg = sum(trace_seconds(ok[k]) for k in feats if not k.startswith("drowsiness/")) / 3600
+    hours_pos = sum(trace_seconds(ok[k]) for k in feats if k.startswith("drowsiness/")) / 3600
     lines = [
         "# DriverGuard - evaluation on SUST-DDD (clip labels)",
         "",
@@ -1170,18 +1296,18 @@ def yawdd_report(traces: dict, thresholds: dict[str, Any]) -> str:
         lab = label_of(YAWDD_ROOT / key, YAWDD_ROOT.parent, preset)
         if lab is None:
             continue
-        fps, c = tr["fps"], tr["cols"]
-        dur = tr["n"] / fps
+        c = tr["cols"]
+        dur = trace_seconds(tr)
         durations[key] = dur
         if lab[0] == preset.positive:
             episodes.append(ev.Episode(key, "yawn", 0.0, round(dur, 3)))
         for i, e in tr["events"]:
             if e in ev.EVENT_TO_BEHAVIOR:
-                predictions.append(ev.Prediction(key, ev.EVENT_TO_BEHAVIOR[e], i / fps))
+                predictions.append(ev.Prediction(key, ev.EVENT_TO_BEHAVIOR[e], frame_seconds(tr, i)))
         for i, lv, reasons in tr["alerts"]:
-            predictions.append(ev.Prediction(key, ev.ALERT, i / fps, lv))
+            predictions.append(ev.Prediction(key, ev.ALERT, frame_seconds(tr, i), lv))
             for b in {ev.REASON_TO_BEHAVIOR[r] for r in reasons if r in ev.REASON_TO_BEHAVIOR}:
-                predictions.append(ev.Prediction(key, b, i / fps, lv))
+                predictions.append(ev.Prediction(key, b, frame_seconds(tr, i), lv))
         levels[key] = {
             branch: per_second_max(c["t"], [int(v) for v in np.nan_to_num(c.get(f"{branch}_level", c["level"]))], dur)
             for branch in ("drowsy", "distraction")
@@ -1211,7 +1337,7 @@ def main(argv: list[str] | None = None) -> int:
     tr.add_argument("dataset", choices=("fl3d", "sust", "yawdd"))
     tr.add_argument("--out", required=True)
     tr.add_argument("--workers", type=int, default=4)
-    tr.add_argument("--speed", type=float, default=60.0)
+    tr.add_argument("--speed", type=float, default=None, help="km/h (default: eval.replay_speed_kmh)")
     tr.add_argument("--no-phone", action="store_true")
     tr.add_argument("--limit", type=int, default=None, help="sust: at most this many clips per class")
     tr.add_argument(
@@ -1246,7 +1372,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.replay or args.set:
         traces = replay_all(traces, thresholds, args.replay or "trace", args.workers)
     text = {"fl3d": fl3d_report, "sust": sust_report, "yawdd": yawdd_report}[args.cmd](traces, thresholds)
-    from tools.metrics import provenance
+    from tools.metrics import environment_text, provenance
 
     notes = []
     if args.replay or args.set:
@@ -1257,7 +1383,8 @@ def main(argv: list[str] | None = None) -> int:
         notes.append(
             "Alerts and levels AS TRACED, not replayed with today's config/thresholds.yaml (pass --replay block5 for that)."
         )
-    notes.append(provenance([args.traces]))
+    made = environment_text(tr.get("meta") for tr in traces.values() if not isinstance(tr, str))
+    notes.append(f"{provenance([args.traces])} {made}")
     head, _, rest = text.partition("\n\n")
     text = f"{head}\n\n" + "\n\n".join(notes) + f"\n\n{rest}"
     print(text)

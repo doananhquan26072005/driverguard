@@ -42,7 +42,6 @@ FACE_ISSUES = ("low_light", "glare", "blur")
 NO_FACE_ISSUES = ("camera_blocked", "bad_angle")
 ISSUES = NO_FACE_ISSUES + FACE_ISSUES
 TIMED_ISSUES = (*FACE_ISSUES, "bad_angle")
-SCENE_STRIDE = 4  # the whole-image numbers are taken on every 4th pixel (as block 2's IR test)
 
 
 @dataclass(frozen=True)
@@ -78,14 +77,15 @@ def laplacian_variance(luma: np.ndarray) -> float | None:
     return float(lap.var())
 
 
-def measure(pre: PreprocessedFrame, lm: FaceLandmarks | None) -> dict[str, float | None]:
-    """The quality numbers of one frame, as FrameFeatures fields. All None without block 2's luminance."""
+def measure(pre: PreprocessedFrame, lm: FaceLandmarks | None, stride: int) -> dict[str, float | None]:
+    """The quality numbers of one frame, as FrameFeatures fields. All None without block 2's luminance.
+    stride: preprocess.sample_stride, the whole-image numbers are taken on every stride-th pixel."""
     out: dict[str, float | None] = dict.fromkeys(("face_brightness", "scene_brightness", "scene_contrast", "sharpness"))
     luma = pre.luma
     if luma is None or luma.size == 0:
         return out
     out["scene_brightness"] = float(pre.brightness)
-    out["scene_contrast"] = float(luma[::SCENE_STRIDE, ::SCENE_STRIDE].std())
+    out["scene_contrast"] = float(luma[::stride, ::stride].std())
     if lm is None:
         return out
     h, w = luma.shape[:2]

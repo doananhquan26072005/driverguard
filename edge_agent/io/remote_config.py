@@ -3,7 +3,8 @@
 At startup the edge agent fetches the overrides meant for it (GET /api/v1/device/thresholds: the
 fleet's version, or the one pinned to this device for a trial) and applies them on top of
 config/thresholds.yaml. During the trip it asks again every publisher.config_poll_s, and
-`ThresholdReloader` holds a changed version back until the vehicle is parked (M47): thresholds
+`ThresholdReloader` holds a changed version back until the vehicle is parked (M47; the callers pass
+TripRuntime.parked, a rest of context.rest_after_s, not a red light: M79): thresholds
 never change under a driver who is being judged. Keys are dotted paths into the YAML
 ("risk.drowsy.l1", "alert.cooldown_s.2"). Offline, or if the merged result is not
 consistent (edge_agent.config.consistency_errors, the same rules the backend checks
@@ -26,13 +27,13 @@ from edge_agent.config import consistency_errors
 log = logging.getLogger("driverguard.remote_config")
 
 
-def fetch_thresholds(base_url: str, device_key: str, timeout_s: float = 5.0) -> dict[str, float] | None:
+def fetch_thresholds(base_url: str, device_key: str, timeout_s: float) -> dict[str, float] | None:
     """Overrides from the backend, {} if none were set, None if the backend is unreachable."""
     remote = fetch_remote(base_url, device_key, timeout_s)
     return None if remote is None else remote[1]
 
 
-def fetch_remote(base_url: str, device_key: str, timeout_s: float = 5.0) -> tuple[int, dict[str, float]] | None:
+def fetch_remote(base_url: str, device_key: str, timeout_s: float) -> tuple[int, dict[str, float]] | None:
     """(version, overrides) from the backend: version 0 and {} if none were set; None if it is unreachable.
     The version goes back to the backend with every heartbeat and event (edge_agent/version.py)."""
     req = urllib.request.Request(

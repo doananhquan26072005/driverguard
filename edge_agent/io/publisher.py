@@ -15,26 +15,34 @@ quiet. Only the newest one matters, so it never enters the outbox: it is kept in
 in a POST of its own before the queued records. A backend that does not know it yet refuses it
 (422) and it is dropped; the records still go through.
 
-- `publish()` only checks the event and appends it to a persistent outbox (SQLite file,
-  metadata JSON only), so the main loop never waits on the network.
+- `publish()` only checks the event and hands it over, so the main loop never waits on the
+  network, and not on the disk either: while the sender thread runs, the record waits in memory
+  and that thread writes it to the persistent outbox (SQLite file, metadata JSON only) at once,
+  before it sends anything. One synchronous write on eMMC storage can take tens of ms, and it
+  used to happen on the loop's thread on the very frame that raised the alert. A record is only
+  in memory for that moment; without a sender thread (tools, tests) it is written by the caller.
 - A background thread flushes up to `batch_size` events every `flush_interval_s`
   (sooner when a full batch is waiting). Events leave the outbox only after the
   backend answered 2xx, so nothing is lost when the network is down or the device
-  restarts. Failed attempts back off exponentially up to `backoff_max_s`.
+  restarts. Failed attempts back off exponentially up to `backoff_max_s`, each wait stretched by
+  up to `backoff_jitter` of itself at random: a fleet that lost the backend together does not
+  come back at the same second.
+- The outbox file is readable by its owner only, like the backend's database.
 - Retries are safe: every event has an event_id and the backend ignores duplicates.
 - A batch the backend refuses as invalid (400 / 413 / 422) is retried event by event and
   only the refused events are dropped, so one bad event cannot block the queue.
 - The outbox is capped at `max_queue` events (oldest dropped first).
 - Privacy guard before anything is queued: binary data, image-like field names and
-  base64 / data-URI strings are refused on the device already.
+  base64 / data-URI strings are refused on the device already, by the rules the backend applies
+  (edge_agent/io/metadata_guard.py).
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import re
-import sqlite3
+import os
+import random
 import threading
 import time
 import urllib.error
@@ -45,11 +53,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from edge_agent.config import PROJECT_ROOT, config_from_dict
 from edge_agent.decision.alert_manager import Alert
 from edge_agent.decision.pipeline import DecisionResult
+from edge_agent.io.metadata_guard import find_image_data
+
+if TYPE_CHECKING:
+    import sqlite3
 
 log = logging.getLogger("driverguard.publisher")
 
@@ -57,24 +69,25 @@ DROWSINESS_REASONS = {"microsleep", "unresponsive", "drowsy_score", "trend", "bl
 # Sent at once instead of with the next batch (M44): the fleet view shows these while they happen.
 URGENT_REASONS = {"unresponsive", "repeated_l3", "no_answer"}
 DROP_STATUSES = {400, 413, 422}  # the backend will never accept this content
-FORBIDDEN_KEY_PARTS = ("image", "img", "frame", "photo", "picture", "snapshot", "thumbnail", "jpeg", "png", "crop")
-BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
 
 # body (JSON-ready dict) -> HTTP status code; raises OSError when the backend is unreachable
 Transport = Callable[[dict[str, Any]], int]
 KINDS = {"event": "events", "feedback": "feedback", "sample": "samples", "summary": "summaries"}  # kind -> field
 DELIVERED_KEEP = 64  # accepted event_ids remembered for the HUD (M65): a few minutes of events
+OWNER_ONLY = 0o600  # mode of the outbox file
 
 
 @dataclass(frozen=True)
 class PublisherConfig:
     batch_size: int = 20
+    web_batch_size: int = 100  # the page: records of each kind per POST (the backend's limit)
     flush_interval_s: float = 5.0
     timeout_s: float = 5.0
     outbox_path: str = "data/outbox.db"
     max_queue: int = 10000
     backoff_initial_s: float = 1.0
     backoff_max_s: float = 60.0
+    backoff_jitter: float = 0.2  # each retry wait is longer by up to this share of itself, at random
     heartbeat_interval_s: float = 30.0  # 0 = no heartbeat
     heartbeat_stalled_s: float = 10.0  # no frame for this long (camera not reported lost): "stalled"
     config_poll_s: float = 300.0  # ask the backend for tuned thresholds this often (M47); 0 = start-up only
@@ -93,20 +106,12 @@ class PublisherConfig:
 # --------------------------------------------------------------------------- event building
 
 
-def check_metadata_only(obj: Any, path: str = "$") -> None:
-    """Raise ValueError if `obj` could carry image data (device-side privacy guard)."""
-    if isinstance(obj, (bytes, bytearray, memoryview)) or hasattr(obj, "__array__"):
-        raise ValueError(f"{path}: binary / array data is not metadata")
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if any(part in str(k).lower() for part in FORBIDDEN_KEY_PARTS):
-                raise ValueError(f"{path}.{k}: image-like field name")
-            check_metadata_only(v, f"{path}.{k}")
-    elif isinstance(obj, (list, tuple)):
-        for i, v in enumerate(obj):
-            check_metadata_only(v, f"{path}[{i}]")
-    elif isinstance(obj, str) and (";base64," in obj or BASE64_RUN.search(obj)):
-        raise ValueError(f"{path}: base64-like string")
+def check_metadata_only(obj: Any) -> None:
+    """Raise ValueError if `obj` could carry image data (device-side privacy guard). The rules are
+    the backend's own (edge_agent/io/metadata_guard.py)."""
+    problem = find_image_data(obj)
+    if problem:
+        raise ValueError(f"not metadata ({problem})")
 
 
 def _round(x: float | None, nd: int = 3) -> float | None:
@@ -208,7 +213,7 @@ def build_enrolled_event(r: DecisionResult, trip_id: str, now: datetime | None =
 
 # Loop timings a caller may attach to the heartbeat (M49; the page's frontend/src/live/perf.ts, the
 # backend's schemas.PerfIn): stage -> p50 / p95 / max in milliseconds over the last seconds. No name
-# here may contain a FORBIDDEN_KEY_PARTS word ("total", not "frame"): the image guard reads key names.
+# here may contain a metadata_guard.FORBIDDEN_KEY_PARTS word ("total", not "frame"): the image guard reads key names.
 PERF_STAGES = ("camera_lag", "capture", "landmarks", "measure", "yolo_prep", "python", "total", "yolo", "yolo_age")
 PERF_MAX_MS = 600_000.0
 PERF_DELEGATES = ("GPU", "CPU")
@@ -294,26 +299,43 @@ class Outbox:
     """FIFO of {"kind", "data"} records as JSON in SQLite. Thread-safe."""
 
     def __init__(self, path: str) -> None:
+        # Imported here: the page (Pyodide) builds its records with this module and has no outbox,
+        # so it does not have to download the sqlite3 package.
+        import sqlite3
+
         if path != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn: sqlite3.Connection = sqlite3.connect(path, check_same_thread=False)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT NOT NULL)"
         )
         self._conn.commit()
+        if path != ":memory:" and os.name != "nt":
+            try:  # drivers' metadata: closed to the other accounts of the device
+                os.chmod(path, OWNER_ONLY)
+            except OSError as e:
+                log.warning("cannot restrict %s to its owner: %s", path, e)
         self._lock = threading.Lock()
+        self._n = self._conn.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]  # rows, kept in step below
 
     def put(self, event: dict[str, Any], max_queue: int) -> int:
         """Append; returns how many old events were dropped to respect max_queue."""
+        return self.put_many([event], max_queue)
+
+    def put_many(self, events: list[dict[str, Any]], max_queue: int) -> int:
+        """Append in one transaction; returns how many old events were dropped to respect max_queue."""
+        if not events:
+            return 0
         with self._lock:
-            self._conn.execute("INSERT INTO outbox (event) VALUES (?)", (json.dumps(event),))
-            excess = self._count() - max_queue
-            if excess > 0:
+            self._conn.executemany("INSERT INTO outbox (event) VALUES (?)", [(json.dumps(e),) for e in events])
+            excess = max(self._n + len(events) - max_queue, 0)
+            if excess:
                 self._conn.execute(
                     "DELETE FROM outbox WHERE id IN (SELECT id FROM outbox ORDER BY id LIMIT ?)", (excess,)
                 )
             self._conn.commit()
-            return max(excess, 0)
+            self._n += len(events) - excess
+            return excess
 
     def peek(self, n: int) -> list[tuple[int, dict[str, Any]]]:
         with self._lock:
@@ -330,15 +352,14 @@ class Outbox:
         if not ids:
             return
         with self._lock:
-            self._conn.executemany("DELETE FROM outbox WHERE id = ?", [(i,) for i in ids])
+            cur = self._conn.executemany("DELETE FROM outbox WHERE id = ?", [(i,) for i in ids])
             self._conn.commit()
-
-    def _count(self) -> int:
-        return self._conn.execute("SELECT COUNT(*) FROM outbox").fetchone()[0]
+            self._n -= cur.rowcount
 
     def count(self) -> int:
+        """Rows in the outbox. Counted once when it is opened, then kept in step: no query per record."""
         with self._lock:
-            return self._count()
+            return self._n
 
     def close(self) -> None:
         with self._lock:
@@ -377,12 +398,19 @@ class MetadataPublisher:
         transport: Transport,
         config: PublisherConfig | None = None,
         clock: Callable[[], float] = time.monotonic,
+        jitter: Callable[[], float] = random.random,
     ) -> None:
+        """jitter: a number in [0, 1) for each retry wait (see `backoff_jitter`); tests hand in a fixed one."""
         self.config = config or PublisherConfig()
         self.device_id = device_id
         self._transport = transport
         self._clock = clock
+        self._jitter = jitter
         self._outbox = Outbox(self.config.resolved_outbox_path())
+        # Records the loop handed over that the sender thread has not written to the outbox yet.
+        self._pending: deque[dict[str, Any]] = deque()
+        self._pending_lock = threading.Lock()
+        self._flush_now = threading.Event()  # a full batch or an urgent event is waiting
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -428,18 +456,33 @@ class MetadataPublisher:
 
     def _enqueue(self, kind: str, data: dict[str, Any]) -> None:
         check_metadata_only(data)
-        overflow = self._outbox.put({"kind": kind, "data": data}, self.config.max_queue)
+        with self._pending_lock:
+            self._pending.append({"kind": kind, "data": data})
+            overflow = len(self._pending) - self.config.max_queue  # the disk is not taking them
+            if overflow > 0:
+                self._pending.popleft()
+                self.dropped += 1
+        if self._thread is None:
+            self._persist()  # no sender thread (tools, tests): written here
+        if self.queued >= self.config.batch_size or (kind == "event" and is_urgent(data)):
+            self._flush_now.set()  # a full batch, or an alert that cannot wait for the flush interval (M44)
+        self._wake.set()  # the sender thread writes it to the outbox now, whenever it sends
+
+    def _persist(self) -> None:
+        """Write the records handed over since the last call to the outbox, in one transaction."""
+        with self._pending_lock:
+            records = list(self._pending)
+            self._pending.clear()
+        overflow = self._outbox.put_many(records, self.config.max_queue)
         if overflow:
             self.dropped += overflow
             log.warning("outbox full: dropped %d oldest events", overflow)
-        if self._outbox.count() >= self.config.batch_size or (kind == "event" and is_urgent(data)):
-            self._wake.set()  # a full batch, or an alert that cannot wait for the flush interval (M44)
 
     @property
     def queued(self) -> int:
         if self._queued_at_stop is not None:  # outbox already closed
             return self._queued_at_stop
-        return self._outbox.count()
+        return len(self._pending) + self._outbox.count()
 
     def start(self) -> MetadataPublisher:
         if self._thread is None:
@@ -453,6 +496,7 @@ class MetadataPublisher:
         if self._thread is not None:
             self._thread.join(timeout=self.config.timeout_s + 2.0)
             self._thread = None
+        self._persist()  # what the thread had not written yet
         if final_flush:
             self._next_attempt = 0.0
             self.flush_once()  # best effort; whatever is left stays in the outbox for next start
@@ -499,6 +543,7 @@ class MetadataPublisher:
     def flush_once(self) -> int:
         """Try to send one batch. Returns the number of events the backend accepted."""
         with self._send_lock:
+            self._persist()
             if self._clock() < self._next_attempt:
                 return 0
             if not self._send_heartbeat():
@@ -560,16 +605,22 @@ class MetadataPublisher:
         self.failed_attempts += 1
         cfg = self.config
         self._backoff = min(max(cfg.backoff_initial_s, self._backoff * 2), cfg.backoff_max_s)
-        self._next_attempt = self._clock() + self._backoff
+        self._next_attempt = self._clock() + self._backoff * (1.0 + cfg.backoff_jitter * self._jitter())
         if status is not None:
             log.warning("backend answered HTTP %s, retrying in %.0f s", status, self._backoff)
 
     def _run(self) -> None:
+        due = time.monotonic() + self.config.flush_interval_s
         while not self._stop.is_set():
-            self._wake.wait(self.config.flush_interval_s)
+            self._wake.wait(max(due - time.monotonic(), 0.0))
             self._wake.clear()
             if self._stop.is_set():
                 break
+            self._persist()  # every wake-up: a record handed over is on disk before anything else
+            if not self._flush_now.is_set() and time.monotonic() < due:
+                continue  # woken only to write
+            self._flush_now.clear()
+            due = time.monotonic() + self.config.flush_interval_s
             # Drain full batches while the backend keeps accepting.
             while self.flush_once() >= self.config.batch_size and not self._stop.is_set():
                 pass

@@ -25,15 +25,17 @@ def summary(started):
 
 
 def seed(settings, driver="drv-001", device="cam-001"):
-    """Old and recent rows of every kind, written straight to the database."""
+    """Old and recent rows of every kind, written straight to the database (received when they say:
+    retention counts from the arrival, M82)."""
     import uuid
 
     with db.closing(settings.db_path) as conn:
         for days in (1, 59, 61, 400):
-            e = make_event(ts=ago(days=days), event_id=str(uuid.uuid4()))
-            db.insert_event(conn, device, driver, e)
-            db.insert_sample(conn, device, driver, {**sample(ago(days=days)), "sample_id": str(uuid.uuid4())})
-            db.upsert_summary(conn, device, driver, summary(ago(days=days)))
+            at = ago(days=days)
+            e = make_event(ts=at, event_id=str(uuid.uuid4()))
+            db.insert_event(conn, device, driver, e, at)
+            db.insert_sample(conn, device, driver, {**sample(at), "sample_id": str(uuid.uuid4())}, at)
+            db.upsert_summary(conn, device, driver, summary(at), at)
         db.touch_device(conn, device, driver)
 
 

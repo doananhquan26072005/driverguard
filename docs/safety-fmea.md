@@ -5,7 +5,8 @@ thể đang buồn ngủ hoặc mất tập trung: vì sao, có tự biết khô
 đa bao lâu, test nào kiểm. Đối chiếu với code ngày 02/10/2026 (sau M21), mốc M22; dòng 1 cập nhật
 theo M23, dòng 2 theo M26, dòng 3 và 9 theo M28.
 
-Sản phẩm là **APK bọc code web, chạy trên hub gắn trên xe**; bản web chỉ để xem thử. Bản Python trên
+Sản phẩm được thiết kế là **APK bọc code web, chạy trên hub gắn trên xe**; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](improvements.md#bo-hub)), nên đầu ra
+hiện tại là bản web mô phỏng và các dòng về APK (4, một phần của 1 và 8) không có việc nào đang mở. Bản Python trên
 thiết bị (`edge_agent.main`) dùng cùng logic khối 6–14 (`edge_agent/runtime.py`).
 
 ## Mức nghiêm trọng
@@ -34,7 +35,7 @@ thiết bị (`edge_agent.main`) dùng cùng logic khối 6–14 (`edge_agent/ru
 | 12 | [Đứng yên / nghỉ](#12-dung-yen-nghi) | Thấp | Có | Theo thiết kế: 0 km/h không cảnh báo (M30) | Suốt lúc đỗ | Có |
 | 13 | [Chưa đăng ký / đăng ký thất bại / đang đăng ký](#13-dang-ky) | Thấp | Có | Có (thẻ nhắc) | Bước nhắm mắt: ~2 s + 2 s | Có |
 | 14 | [Cooldown chặn cảnh báo lặp](#14-cooldown) | Thấp | Có | HUD vẫn hiện mức | L1 120 s, L2 30 s, L3 không | Có |
-| 15 | [Hub mất mạng giữa chuyến](#15-mat-mang) | Thấp | Có | Không cần | Không ảnh hưởng cảnh báo | Thiết bị có; app chưa |
+| 15 | [Hub mất mạng giữa chuyến](#15-mat-mang) | Thấp | Có | Không cần | Đang chạy: không ảnh hưởng cảnh báo. Mở bản web khi không có mạng: không giám sát được | Thiết bị có; app chưa |
 | 16 | [Thiết bị: mặt tối hoặc ảnh xám, CNN mắt đọc là mở](#16-cnn-mat-toi) | **Cao** *(đo trên video biến đổi, chưa có dữ liệu thật)* | Không | Không | Không giới hạn | Không (có phép đo: `tools/light_study.py`) |
 | 17 | [Model điện thoại không còn cho kết quả](#17-yolo-qua-han) | Vừa | Có (M50) | Có (chip trên HUD, không âm thanh) | 10 s rồi được báo; nhánh điện thoại tắt tới khi có lại kết quả | Có |
 
@@ -76,7 +77,7 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Test:** `lib.test.ts` ("reports sound as blocked where there is no audio, and plays nothing"); e2e
   chạy qua `#/live`. Chưa có test hiển thị dải nhắc.
 - **Còn lại:** trong APK cho WebView phát âm thanh không cần chạm (*chưa kiểm chứng*), thuộc việc
-  [Đóng gói app APK](improvements.md#viec-apk).
+  [Đóng gói app APK](improvements.md#bo-hub) (đã bỏ 08/10: không còn hub và xe thật).
 
 <a id="2-mat-tin-hieu-xe"></a>
 
@@ -153,7 +154,7 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Phát hiện:** chưa có (chưa có app).
 - **Hướng sửa:** chế độ kiosk, giữ màn hình sáng; bắt sự kiện vòng đời của app (tạm dừng / tiếp tục) →
   `monitoring_unavailable` + tiếng; lần mở sau gửi sự kiện "chuyến bị ngắt". Thuộc việc
-  [Đóng gói app APK](improvements.md#viec-apk).
+  [Đóng gói app APK](improvements.md#bo-hub) (đã bỏ 08/10), nên dòng này không có việc nào đang mở để đóng.
 
 <a id="5-mat-bi-che"></a>
 
@@ -186,6 +187,10 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   mới coi là trở lại; sau một lần chạm thì `presence.reask_after_s` (60 s) sau mới hỏi lại. Mặt hiện một frame mỗi
   12 s: 10 lần hỏi trong 2 phút thành một. Đánh đổi: trong 60 s sau lần chạm, tài xế gục ra khỏi khung không được
   hỏi. Test: `tests/test_edge_agent/test_m74_alert_reminders.py`.
+- **Từ M90:** lần nhắm mắt được "mang theo" qua lúc gục kết thúc sau `head_drop.carry_max_lost_s` (30 s, tạm) không
+  thấy mắt lẫn đầu đang cúi; sau đó là tạm ngưng `no_face` và câu hỏi ở trên. Trước: còi L3 kêu cho tới khi mặt hiện
+  lại, kể cả khi mặt mất vì lý do khác, và câu hỏi không bao giờ chạy ở nhánh này. Đầu còn thấy đang cúi thì vẫn đếm.
+  Test: `tests/test_edge_agent/test_m90_small_findings.py`.
 - **Còn lại:** bốn ngưỡng là tạm (chưa có số liệu tài xế rời khung có chủ ý trong bao lâu); tài xế bất tỉnh mà
   mặt vẫn trong khung, mắt mở thì ngoài khả năng của camera.
 - **Test thêm:** `tests/test_edge_agent/test_m44_unresponsive.py` (hỏi, chạm, không trả lời, che camera thì
@@ -239,12 +244,16 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   `frame_timeout_s` (kể cả khi đã kéo frame bằng timer) cũng là mất camera. Trang xin lại camera mỗi
   `reconnect_interval_s`, HUD hiện "Lần thử N"; frame đầu tiên của luồng mới là `camera_restored`. Trước M71
   bản web chỉ báo khi track kết thúc và không bao giờ mở lại.
+- **Camera đứng hình (từ M83):** driver giao lại mãi một ảnh thì không lỗi đọc nào xảy ra. Ảnh giống hệt frame
+  trước (so mỗi điểm ảnh thứ `capture.frozen_stride`) suốt `frame_timeout_s` là mất camera, ở cả hai bản: frame
+  không vào vòng lặp, camera được mở lại, chỉ một ảnh khác mới là `camera_restored`. Ảnh một màu (che kín ống
+  kính) thuộc bước chất lượng, không thuộc đường này. Chưa camera thật nào được thấy lỗi kiểu này.
 - **Phát hiện:** có.
 - **Tài xế thấy:** "Mất camera: ngừng giám sát", tiếng báo to.
 - **Quản lý thấy:** sự kiện `camera_lost` / `camera_restored`; bản tổng kết có `camera_lost_s`.
 - **Đã chốt (02/10):** quản lý biết **sau chuyến**, qua bản tổng kết. Đầu mỗi chuyến nhắc tài xế kiểm tra
   camera (thấy mặt rõ) trước khi chạy: **chưa có**, thuộc việc
-  [Đóng gói app APK](improvements.md#viec-apk). Bước đăng ký (bước 1 cần thấy rõ mặt) đã kiểm camera
+  [Đóng gói app APK](improvements.md#bo-hub) (đã bỏ 08/10). Bước đăng ký (bước 1 cần thấy rõ mặt) đã kiểm camera
   gián tiếp, nhưng tài xế được phép lái khi chưa đăng ký.
 - **Im lặng tối đa:** đến khi camera về.
 - **Test:** `test_lost_camera_is_reopened_and_frames_resume`, `test_camera_that_cannot_be_reopened_stays_lost`,
@@ -262,7 +271,7 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   **"Máy chậm: cảnh báo có thể trễ"**, sự kiện `low_fps` kèm số FPS; hồi lại thì `fps_restored`. Vẫn giám
   sát (chỉ trễ hơn), không tạm ngưng.
 - **Còn lại:** hạ tải theo thứ tự (YOLO thưa hơn, giảm độ phân giải) chờ có hub
-  ([việc đo phần cứng](improvements.md#viec-do-phan-cung)).
+  ([việc đo phần cứng](improvements.md#bo-hub), đã bỏ 08/10).
 - **Test:** `test_low_fps_for_a_while_warns_and_clears`, `test_fps_at_the_15_fps_minimum_is_not_low`.
 
 <a id="10-mat-khong-danh-gia-duoc"></a>
@@ -282,9 +291,12 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - Microsleep → L3 chạy **từ frame đầu**. Các luật chậm hơn:
   - PERCLOS: cần `perclos_min_coverage_s` (30 s) dữ liệu mắt;
   - nhìn khỏi đường: không xét trong `baseline.calibrate_s` (5 s) đầu khi xe chạy (bỏ qua nếu đã đăng ký);
+    5 s đó rơi vào lúc tài xế nhìn sang bên hơn 30° thì mốc sai, L2 "nhìn lệch" sai kéo dài: từ M80 tự hiệu chuẩn
+    lại sau `baseline.recalibrate_s` (60 s) lái xe với đầu đứng yên ngoài vùng, còn 2 cảnh báo sai (trước: cả chuyến);
   - chớp chậm: so với 20 lần chớp đầu chuyến; xu hướng: cần 5 phút; mốc mắt: `baseline_min_data_s` 10 s.
 - **Test:** `test_perclos_needs_coverage`, `test_perclos_high_after_coverage_only`,
-  `test_no_off_road_while_calibrating_and_median_ignores_glances`, `test_calibration_waits_for_driving_and_is_clamped`.
+  `test_no_off_road_while_calibrating_and_median_ignores_glances`, `test_calibration_waits_for_driving_and_is_clamped`,
+  `test_a_start_up_calibration_on_a_look_aside_heals_itself`, `test_a_camera_that_moves_mid_trip_heals_itself_enrolled_or_not`.
 
 <a id="12-dung-yen-nghi"></a>
 
@@ -327,7 +339,9 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 ### 14. Cooldown chặn cảnh báo lặp — Thấp
 
 - Cùng (mức, lý do) không phát lại trong `alert.cooldown_s`: L1 120 s, L2 30 s, L3 0 s. HUD vẫn hiện mức
-  đang bật; chỉ không có tiếng / sự kiện mới. Mức cao hơn luôn được phát. Còi L3 lặp lại khi mắt còn nhắm.
+  đang bật; chỉ không có tiếng / sự kiện mới. Cooldown của mức thấp không giữ mức cao hơn lại, nhưng cooldown của
+  chính mức đó thì có: L2 cùng lý do trong 30 s sau lần L2 trước vẫn bị giữ, kể cả khi đi lên từ L1. Còi L3 lặp
+  lại khi mắt còn nhắm.
 - **Từ M74:** cooldown chỉ giữ lại, không nuốt. Lý do còn đó khi cooldown hết thì được phát lại (`alert.remind`).
   Trước M74 có ba ca mất tiếng: đợt bắt đầu trong cooldown (nhìn lệch 40 s không tiếng vì 5 s trước có một lần
   ngắn), mức đứng yên (L1 nửa giờ một chuông), lý do bắt đầu dưới một mức cao hơn. Còn lại: lần nhìn lệch thứ hai
@@ -340,7 +354,13 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 
 ### 15. Hub mất mạng giữa chuyến — Thấp
 
-- Giám sát và cảnh báo chạy offline, không ảnh hưởng. Chỉ quản lý biết trễ.
+- Trang đã chạy rồi mới mất mạng: giám sát và cảnh báo chạy tiếp tại chỗ, không ảnh hưởng; chỉ quản lý biết trễ.
+- **Không đúng cho lúc khởi động bản web:** `#/live` tải Pyodide và wasm của MediaPipe từ `cdn.jsdelivr.net`
+  (`frontend/src/live/agent.ts`), tải trang và ngưỡng đã chỉnh từ server. Không có mạng lúc mở thì không giám sát
+  được; chưa đóng gói hai runtime vào bản build (audit 08/10, A4 H3). Bản thiết bị (Python) không cần mạng.
+- Tốc độ xe của bản web cũng đi qua mạng (`#/drive` qua backend, hoặc `127.0.0.1`). Đã có số đọc rồi mất: dòng 2.
+  **Chưa từng có số đọc nào** thì khối 10 coi xe đang đỗ ở 0 km/h và không có cảnh báo nào (dòng 12); xem việc
+  [tốc độ xe từ GPS](improvements.md#viec-gps).
 - Thiết bị: outbox SQLite giữ qua khởi động lại, tối đa `publisher.max_queue` (10 000). App (bọc code web):
   chỉ giữ trong RAM, app tắt là mất → việc [Hàng đợi offline cho app](improvements.md#viec-outbox-web).
 - **Test:** `test_offline_keeps_events_and_backs_off`, `test_queue_survives_restart`, `test_queue_is_capped`,
@@ -384,6 +404,9 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Tài xế / quản lý thấy:** chip "Không phát hiện được điện thoại" trên HUD (không âm thanh: các nhánh khác vẫn
   chạy); sự kiện hệ thống trong nhật ký. Trạng thái giám sát vẫn là "đang giám sát".
 - **Im lặng tối đa:** khoảng 10 s trước khi được báo. Sau đó nhánh điện thoại vẫn tắt, nhưng có người biết.
+- **Tự hồi phục:** từ M78. Bản thiết bị: một lần chạy ném exception không còn làm chết luồng. Bản web: worker
+  không trả lời quá `phone.web_run_timeout_s` (5 s) thì được thay, tối đa `phone.web_restart_limit` (3) lần liên
+  tiếp. YOLO chỉ chậm (không treo, không lỗi) thì không có gì hồi phục: vẫn là dòng này.
 - **Phạm vi:** cả hai bản. Thiết bị chạy `--no-phone` là tắt có chủ ý, không báo.
 - **Còn hở:** nhìn xuống điện thoại vẫn được nhánh hướng đầu bắt (`off_road`); cầm điện thoại ngang tầm mắt thì
   không. Ngưỡng tạm, chưa có dữ liệu. Thời gian mất nhánh chưa vào bảng tổng kết chuyến.
@@ -396,14 +419,14 @@ Dòng chưa có test hoặc chưa có cách phát hiện (ghi ở [improvements.
 
 | Dòng | Việc |
 |---|---|
-| 1 | Âm thanh cảnh báo luôn bật: xong ở M23; phần APK thuộc Đóng gói app APK (đã có) |
+| 1 | Âm thanh cảnh báo luôn bật: xong ở M23; phần APK thuộc Đóng gói app APK (đã bỏ 08/10) |
 | 2 | Mất tín hiệu xe khi đang chạy: xong ở M26 |
 | 3, 9 | Báo khi vòng xử lý dừng hoặc chậm: xong ở M28 (hạ tải chờ hub) |
 | 5 | Phát hiện mắt bị che (mới) |
-| 4, 8 (nhắc kiểm tra camera) | Đóng gói app APK (đã có) |
+| 4, 8 (nhắc kiểm tra camera) | Đóng gói app APK (đã bỏ 08/10, không có việc nào đang mở) |
 | 6 | Cảnh báo cần xác nhận, báo quản lý ngay: xong ở M44 |
 | 7 | Điểm chất lượng frame: xong ở M43 (ngưỡng tạm) |
 | 16 | Khối 5 trên thiết bị: CNN mắt bỏ sót nhắm mắt khi mặt tối / ảnh xám (mới, từ M46) |
-| 15 | Hàng đợi offline cho app (đã có) |
+| 15 | Hàng đợi offline cho app (đã có); đóng gói runtime vào bản build để khởi động không cần CDN (chưa có việc) |
 
 Khi sửa code liên quan tới một dòng, cập nhật dòng đó ở đây (mức, im lặng tối đa, test).

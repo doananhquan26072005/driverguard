@@ -578,7 +578,9 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--labels", required=True)
     run.add_argument("--videos", required=True, help="directory with the video files named in the labels")
     run.add_argument("--config", default=None, help="thresholds.yaml to evaluate (default: config/thresholds.yaml)")
-    run.add_argument("--speed", type=float, default=60.0, help="simulated vehicle speed, km/h (default 60)")
+    run.add_argument(
+        "--speed", type=float, default=None, help="simulated vehicle speed, km/h (default: eval.replay_speed_kmh)"
+    )
     run.add_argument("--no-phone", action="store_true", help="skip YOLO (faster; phone gets no predictions)")
     run.add_argument("--phone-model", default=None, help="ONNX to use instead, e.g. models/yolov8n_int8.onnx")
     run.add_argument("--save", default=None, help="write predictions JSON (re-score later with `score`)")

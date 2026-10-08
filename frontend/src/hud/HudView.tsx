@@ -6,7 +6,8 @@
 //   stop order on a red screen (no card, no button)
 // - colour is never the only cue: circle with a tick (L0), circle "!" (L1), triangle (L2), octagon (L3)
 // - alerts appear in 150 ms, calm-down fades over 600 ms; L3 pulses at 1 Hz
-// - at night L0-L1 are dimmed (no glare), L2-L3 always at full brightness
+// - in the dark hours (snap.dim: hud.dim_hours, not the score's night window) L0-L1 are dimmed (no
+//   glare), L2-L3 always at full brightness
 // - no L0-L3 codes for the driver (codes stay on the dashboard)
 // - the trip numbers (continuous driving, the last minutes' fatigue, an alert's detail) come from the
 //   agent (M65), so a reload shows them again at once; nothing here counts them
@@ -56,6 +57,7 @@ import {
   WifiOff,
   type LucideIcon,
 } from "lucide-react";
+import { HUD_DEFAULTS } from "../lib/defaults";
 import { clockText, durationText, formatNumber, hourMinute } from "../lib/format";
 import {
   ENROLL_CONSENT,
@@ -91,6 +93,7 @@ import {
   showConsentPanel,
   showEnrollPanel,
   splitAction,
+  hudDimmed,
   systemState,
   trendSlots,
   type Tone,
@@ -135,7 +138,7 @@ const REASON_ICONS: Partial<Record<Reason, LucideIcon>> = {
 
 
 // Small glass square of the top bar (camera, sound, demo, dashboard): 40 px, icon only.
-// No display here: each use says inline-grid or hidden sm:inline-grid (two display classes would clash).
+// No display here: each use says inline-grid or hidden hud-sm:inline-grid (two display classes would clash).
 const TOP_TILE = "dg-tile size-10 shrink-0 place-items-center text-[#bdbdbd] no-underline";
 // Amber outlined note of the top bar (slow machine, phone detector down).
 const TOP_NOTE =
@@ -160,7 +163,7 @@ export default function HudView(props: HudViewProps) {
   const level: Level = system || !snap ? 0 : snap.level;
   const rising = useRising(level);
   const danger = level === 3;
-  const dim = !system && !!snap?.night && level <= 1 ? "opacity-80" : "";
+  const dim = hudDimmed(snap, level, system) ? "opacity-80" : "";
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDriver, setConfirmDriver] = useState(false);
   const [askedEnd, setAskedEnd] = useState(props.askEnd ?? 0);
@@ -231,7 +234,7 @@ export default function HudView(props: HudViewProps) {
       <TopBar {...props} danger={danger} className={`transition-opacity duration-700 ${dim}`} />
 
       {soundBlocked && (
-        <div className="px-4 pb-3.5 sm:px-8">
+        <div className="px-4 pb-3.5 hud-sm:px-8">
           <button
             type="button"
             role="alert"
@@ -248,25 +251,27 @@ export default function HudView(props: HudViewProps) {
         <PresencePanel unanswered={presence === "unanswered"} remainingS={snap?.presence?.remaining_s ?? null} onAnswer={props.onVehicle} />
       ) : system || !snap ? (
         snap && (system === "unavailable" || system === "camera_lost" || system === "error") ? (
-          <main className="grid min-h-0 gap-3.5 px-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[minmax(0,1fr)]">
+          <main className="grid min-h-0 gap-3.5 px-4 hud-sm:px-8 hud-lg:grid-cols-[minmax(0,1fr)_360px] hud-lg:grid-rows-[minmax(0,1fr)] hud-tall:grid-rows-[minmax(0,1fr)_auto]">
             <IncidentPanel state={system} snap={snap} now={now} />
             <SpeedCard snap={snap} tall={false} />
           </main>
         ) : (
-          <main className="grid min-h-0 px-4 sm:px-8">
+          <main className="grid min-h-0 px-4 hud-sm:px-8">
             <IncidentPanel state={system ?? "connecting"} snap={snap} now={now} edgeUrl={edgeUrl} />
           </main>
         )
       ) : danger ? (
         <DangerStage reasons={snap.reasons} />
       ) : enrolling && snap.enrollment ? (
-        <main className="grid min-h-0 px-4 sm:px-8">
+        <main className="grid min-h-0 px-4 hud-sm:px-8">
           <EnrollPanel enrollment={snap.enrollment} camera={props.camera ?? null} />
         </main>
       ) : (
         <main
-          className={`grid min-h-0 gap-3.5 px-4 transition-opacity duration-700 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] ${
-            dashboard ? "lg:grid-rows-[minmax(0,1fr)_220px]" : "lg:grid-rows-[minmax(0,1fr)]"
+          className={`grid min-h-0 gap-3.5 px-4 transition-opacity duration-700 hud-sm:px-8 hud-lg:grid-cols-[minmax(0,1fr)_360px] ${
+            dashboard
+              ? "hud-lg:grid-rows-[minmax(0,1fr)_220px] hud-tall:grid-rows-[minmax(0,1fr)_auto_auto]"
+              : "hud-lg:grid-rows-[minmax(0,1fr)] hud-tall:grid-rows-[minmax(0,1fr)_auto]"
           } ${dim}`}
         >
           {consent ? (
@@ -313,10 +318,10 @@ function TopBar({
   onToggleDemo,
 }: HudViewProps & { danger: boolean; className: string }) {
   return (
-    <header className={`relative flex min-w-0 items-center gap-4 px-4 sm:px-8 ${className}`}>
+    <header className={`relative flex min-w-0 items-center gap-4 px-4 hud-sm:px-8 ${className}`}>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
-        <span className={`hidden text-xs sm:block ${danger ? "text-white/70" : "text-hud-ink-3"}`}>Giám sát tài xế trên thiết bị</span>
+        <span className={`hidden text-xs hud-sm:block ${danger ? "text-white/70" : "text-hud-ink-3"}`}>Giám sát tài xế trên thiết bị</span>
       </span>
       <span className="flex-1" />
 
@@ -329,14 +334,14 @@ function TopBar({
           {snap?.low_fps && snap.connected && (
             <span role="status" className={TOP_NOTE}>
               <Hourglass aria-hidden className="size-4" />
-              <span className="hidden md:inline">{LOW_FPS_TEXT}</span>
+              <span className="hidden hud-md:inline">{LOW_FPS_TEXT}</span>
             </span>
           )}
           {/* M50: the phone detector gives no fresh results; eyes and head are still watched. */}
           {snap?.phone_unavailable && snap.connected && (
             <span role="status" aria-label={PHONE_UNAVAILABLE_TEXT} className={TOP_NOTE}>
               <PhoneOff aria-hidden className="size-4" />
-              <span className="hidden md:inline">{PHONE_UNAVAILABLE_TEXT}</span>
+              <span className="hidden hud-md:inline">{PHONE_UNAVAILABLE_TEXT}</span>
             </span>
           )}
           {cameraLost ? (
@@ -344,7 +349,7 @@ function TopBar({
               <CameraOff aria-hidden className="size-[18px]" />
             </span>
           ) : (
-            <span role="img" aria-label="Camera hoạt động" className={`${TOP_TILE} hidden sm:inline-grid`}>
+            <span role="img" aria-label="Camera hoạt động" className={`${TOP_TILE} hidden hud-sm:inline-grid`}>
               <Camera aria-hidden className="size-[18px]" />
             </span>
           )}
@@ -366,17 +371,17 @@ function TopBar({
                 aria-label={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
                 title={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
                 onClick={onToggleDemo}
-                className={`${TOP_TILE} hidden cursor-pointer sm:inline-grid`}
+                className={`${TOP_TILE} hidden cursor-pointer hud-sm:inline-grid`}
               >
                 {demo ? <Square aria-hidden className="size-[18px]" /> : <Play aria-hidden className="size-[18px]" />}
               </button>
-              <a href="#/dashboard" aria-label="Dashboard" title="Dashboard" className={`${TOP_TILE} hidden sm:inline-grid`}>
+              <a href="#/dashboard" aria-label="Dashboard" title="Dashboard" className={`${TOP_TILE} hidden hud-sm:inline-grid`}>
                 <LayoutDashboard aria-hidden className="size-[18px]" />
               </a>
             </>
           )}
           <span className="dg-tile inline-flex h-10 items-center gap-2.5 px-3.5">
-            {snap?.night ? <Moon aria-label="Ban đêm" className="size-4 text-[#bdbdbd]" /> : <Clock aria-hidden className="size-4 text-[#bdbdbd]" />}
+            {snap?.dim ? <Moon aria-label="Ban đêm" className="size-4 text-[#bdbdbd]" /> : <Clock aria-hidden className="size-4 text-[#bdbdbd]" />}
             <span className="dg-num text-[17px] font-medium">{clockText(snap?.clock_hour)}</span>
           </span>
         </div>
@@ -416,7 +421,7 @@ function StatusCard({ snap, level, rising }: { snap: HudSnapshot; level: Level; 
     <section
       aria-live={level ? "assertive" : "polite"}
       aria-atomic="true"
-      className={`dg-alert ${level === 1 ? "l1" : "l0"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 lg:col-start-1 lg:row-start-1 lg:min-h-0`}
+      className={`dg-alert ${level === 1 ? "l1" : "l0"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 hud-lg:col-start-1 hud-lg:row-start-1 hud-lg:min-h-0 hud-tall:min-h-0`}
     >
       {level === 1 ? (
         <span className="absolute top-6 right-6 inline-flex items-center gap-2 rounded-hud-xs bg-hud-caution px-3 py-1.5 text-base font-semibold text-hud-on-warning">
@@ -435,25 +440,25 @@ function StatusCard({ snap, level, rising }: { snap: HudSnapshot; level: Level; 
         {/* Level badge: a filled circle (L0 tick, L1 the reason), shape + colour + words. */}
         <div
           aria-hidden
-          className={`grid size-24 shrink-0 place-items-center rounded-full sm:size-[124px] ${
+          className={`grid size-24 shrink-0 place-items-center rounded-full hud-sm:size-[124px] ${
             level === 1 ? "bg-hud-caution text-hud-on-warning" : "bg-hud-safe text-[#05210f]"
           } shadow-[0_10px_40px_rgba(0,0,0,0.35)]`}
         >
-          {level === 1 ? <ReasonIcon className="size-14 sm:size-16" strokeWidth={2.25} /> : <Check className="size-14 sm:size-[72px]" strokeWidth={3} />}
+          {level === 1 ? <ReasonIcon className="size-14 hud-sm:size-16" strokeWidth={2.25} /> : <Check className="size-14 hud-sm:size-[72px]" strokeWidth={3} />}
         </div>
         <div className="min-w-0">
           <h1
             className={`m-0 leading-[1.02] font-semibold tracking-[-0.035em] text-balance ${
-              long ? "text-[clamp(40px,5.6vw,72px)]" : "text-[clamp(52px,7.5vw,96px)]"
+              long ? "text-[clamp(40px,5.6cqw,72px)] hud-tall:text-[54px]" : "text-[clamp(52px,7.5cqw,96px)] hud-tall:text-[68px]"
             }`}
           >
             {headline}
           </h1>
-          <p className={`m-0 mt-3 text-[clamp(20px,2.2vw,28px)] font-medium ${level === 1 ? "text-[#f3dfae]" : "text-[#c6e6cf]"}`}>{sub}</p>
+          <p className={`m-0 mt-3 text-[clamp(20px,2.2cqw,28px)] font-medium ${level === 1 ? "text-[#f3dfae]" : "text-[#c6e6cf]"}`}>{sub}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 hud-sm:grid-cols-2">
         {snap.trip && <BigTile icon={Clock} value={durationText(snap.trip.drive_run_s)} label="Lái liên tục" />}
         <BigTile
           icon={History}
@@ -483,16 +488,16 @@ function BigTile({ icon: Icon, value, label }: { icon: LucideIcon; value: string
 
 function MetricsCard({ snap, level }: { snap: HudSnapshot; level: Level }) {
   const trip = snap.trip;
-  const l1 = trip?.score_l1 ?? 40;
-  const l2 = trip?.score_l2 ?? 70;
+  const l1 = trip?.score_l1 ?? HUD_DEFAULTS.score_l1;
+  const l2 = trip?.score_l2 ?? HUD_DEFAULTS.score_l2;
   const drowsy = drowsyWord(snap.drowsy_score, l1, l2);
   const attention = attentionWord(level > 0 ? snap.reasons : [], level);
-  const eyes = eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1));
+  const eyes = eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1), snap.display ?? HUD_DEFAULTS);
   const slots = trendSlots(trip);
 
   return (
-    <section aria-label="Chỉ số tài xế" className="dg-card flex flex-col justify-center gap-4 px-6 py-5 lg:col-start-1 lg:row-start-2">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <section aria-label="Chỉ số tài xế" className="dg-card flex flex-col justify-center gap-4 px-6 py-5 hud-lg:col-start-1 hud-lg:row-start-2">
+      <div className="grid grid-cols-1 gap-3 hud-sm:grid-cols-3">
         <WordTile icon={Coffee} label="Buồn ngủ" {...drowsy} value={snap.drowsy_score} />
         <WordTile icon={Navigation} label="Chú ý đường" {...attention} value={snap.distraction_score} />
         <WordTile icon={eyes.tone === "ok" ? Eye : EyeOff} label="Mắt" {...eyes} />
@@ -562,7 +567,7 @@ function WarningStage({ snap, rising }: { snap: HudSnapshot; rising: boolean }) 
     <section
       aria-live="assertive"
       aria-atomic="true"
-      className="dg-alert l2 flex min-h-[52dvh] flex-col justify-between gap-6 px-6 py-6 sm:px-8 lg:col-start-1 lg:row-start-1 lg:min-h-0"
+      className="dg-alert l2 flex min-h-[52dvh] flex-col justify-between gap-6 px-6 py-6 hud-sm:px-8 hud-lg:col-start-1 hud-lg:row-start-1 hud-lg:min-h-0 hud-tall:min-h-0"
     >
       <span className="inline-flex items-center gap-2 self-end rounded-hud-xs border border-solid border-hud-on-warning/18 bg-hud-on-warning/14 px-3 py-1.5 text-base font-semibold">
         <TriangleAlert aria-hidden className="size-5" strokeWidth={2.5} />
@@ -571,23 +576,23 @@ function WarningStage({ snap, rising }: { snap: HudSnapshot; rising: boolean }) 
 
       <div
         key={`2:${primary ?? ""}`}
-        className={`flex flex-col gap-6 motion-reduce:animate-none sm:flex-row sm:items-center sm:gap-9 ${rising ? "animate-hud-in-fast" : "animate-hud-in-slow"}`}
+        className={`flex flex-col gap-6 motion-reduce:animate-none hud-sm:flex-row hud-sm:items-center hud-sm:gap-9 ${rising ? "animate-hud-in-fast" : "animate-hud-in-slow"}`}
       >
-        <div className="grid size-28 shrink-0 place-items-center rounded-hud-xl border border-solid border-hud-on-warning/18 bg-hud-on-warning/12 sm:size-[150px]">
-          <Icon aria-hidden className="size-16 sm:size-20" strokeWidth={1.75} />
+        <div className="grid size-28 shrink-0 place-items-center rounded-hud-xl border border-solid border-hud-on-warning/18 bg-hud-on-warning/12 hud-sm:size-[150px]">
+          <Icon aria-hidden className="size-16 hud-sm:size-20" strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
-          <h1 className="m-0 text-[clamp(44px,7vw,92px)] leading-[0.98] font-bold tracking-[-0.035em] text-balance">{headline}</h1>
+          <h1 className="m-0 text-[clamp(44px,7cqw,92px)] hud-tall:text-[64px] leading-[0.98] font-bold tracking-[-0.035em] text-balance">{headline}</h1>
           <p className="m-0 mt-[18px] text-2xl font-medium opacity-80">{ordered.map(reasonText).join(" · ")}</p>
         </div>
       </div>
 
       <div className="flex flex-col gap-2.5">
-        <div aria-label="Thông số" className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <div aria-label="Thông số" className="grid grid-cols-1 gap-2.5 hud-sm:grid-cols-3">
           {[
-            { label: "Buồn ngủ", ...drowsyWord(snap.drowsy_score, snap.trip?.score_l1 ?? 40, snap.trip?.score_l2 ?? 70) },
+            { label: "Buồn ngủ", ...drowsyWord(snap.drowsy_score, snap.trip?.score_l1 ?? HUD_DEFAULTS.score_l1, snap.trip?.score_l2 ?? HUD_DEFAULTS.score_l2) },
             { label: "Chú ý đường", ...attentionWord(snap.reasons, 2) },
-            { label: "Mắt", ...eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1)) },
+            { label: "Mắt", ...eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1), snap.display ?? HUD_DEFAULTS) },
           ].map((m) => (
             <div key={m.label} className={tile}>
               <span className="block text-[15px] opacity-75">{m.label}</span>
@@ -607,17 +612,17 @@ function DangerStage({ reasons }: { reasons: Reason[] }) {
   const primary = orderedReasons(reasons)[0] ?? null;
   const [order, todo] = splitAction(primary ? REASON_ACTIONS[primary] : LEVELS[3].action);
   return (
-    <main aria-live="assertive" aria-atomic="true" className="flex flex-col items-center justify-center gap-7 px-4 text-center sm:px-8">
+    <main aria-live="assertive" aria-atomic="true" className="flex flex-col items-center justify-center gap-7 px-4 text-center hud-sm:px-8">
       <span className="inline-flex items-center gap-2 rounded-[10px] border border-solid border-white/20 bg-black/25 px-4 py-2 text-base font-semibold tracking-[0.04em]">
         NGUY HIỂM
       </span>
-      <OctagonAlert aria-hidden className="size-28 drop-shadow-[0_8px_30px_rgba(0,0,0,0.35)] sm:size-[150px]" strokeWidth={1.4} />
-      <h1 className="m-0 flex flex-col items-center gap-3 text-[clamp(64px,10vw,128px)] leading-[0.95] font-bold tracking-[-0.04em]">
+      <OctagonAlert aria-hidden className="size-28 drop-shadow-[0_8px_30px_rgba(0,0,0,0.35)] hud-sm:size-[150px]" strokeWidth={1.4} />
+      <h1 className="m-0 flex flex-col items-center gap-3 text-[clamp(64px,10cqw,128px)] hud-tall:text-[112px] leading-[0.95] font-bold tracking-[-0.04em]">
         {order}
         {todo && (
           <>
             {" "}
-            <span className="text-[clamp(30px,4vw,52px)] leading-[1.1] font-semibold tracking-[-0.02em]">{todo}</span>
+            <span className="text-[clamp(30px,4cqw,52px)] leading-[1.1] font-semibold tracking-[-0.02em]">{todo}</span>
           </>
         )}
       </h1>
@@ -641,7 +646,7 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
   return (
     <section
       aria-label="Xe"
-      className={`dg-card relative flex min-h-0 flex-col gap-4 px-5 pt-5 pb-5 lg:col-start-2 lg:row-start-1 ${tall ? "lg:row-span-2" : ""}`}
+      className={`dg-card relative flex min-h-0 flex-col gap-4 px-5 pt-5 pb-5 hud-lg:col-start-2 hud-lg:row-start-1 ${tall ? "hud-lg:row-span-2" : ""}`}
     >
       <div className="grid grid-cols-3 gap-3">
         <TurnTile side="left" on={turn === "left"} />
@@ -787,22 +792,22 @@ function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap
   const deviceSide = state === "down" || state === "stale" || state === "connecting";
 
   return (
-    <section aria-live="assertive" className={`dg-alert ${deviceSide ? "sys" : "l1"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 lg:min-h-0`}>
+    <section aria-live="assertive" className={`dg-alert ${deviceSide ? "sys" : "l1"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 hud-lg:min-h-0 hud-tall:min-h-0`}>
       <span className="dg-chip solid-warn absolute top-6 right-6 !px-3 !py-1.5 !text-base">
         <EyeOff aria-hidden className="size-5" strokeWidth={2.25} />
         KHÔNG giám sát
       </span>
       <div className="flex flex-1 items-center gap-8">
-        <div className={`grid size-24 shrink-0 place-items-center rounded-full sm:size-[124px] ${deviceSide ? "bg-hud-system/20 text-[#93c5fd]" : "bg-hud-caution/18 text-hud-caution"}`}>
-          <view.Icon aria-hidden className={`size-14 sm:size-16 ${state === "connecting" ? "animate-spin motion-reduce:animate-none" : ""}`} strokeWidth={1.75} />
+        <div className={`grid size-24 shrink-0 place-items-center rounded-full hud-sm:size-[124px] ${deviceSide ? "bg-hud-system/20 text-[#93c5fd]" : "bg-hud-caution/18 text-hud-caution"}`}>
+          <view.Icon aria-hidden className={`size-14 hud-sm:size-16 ${state === "connecting" ? "animate-spin motion-reduce:animate-none" : ""}`} strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
-          <h1 className="m-0 text-[clamp(44px,6.2vw,80px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{view.title}</h1>
-          <p className={`m-0 mt-3 text-[clamp(20px,2.4vw,30px)] font-medium ${deviceSide ? "text-[#bfd8fb]" : "text-[#fcd34d]"}`}>{view.lead}</p>
+          <h1 className="m-0 text-[clamp(44px,6.2cqw,80px)] hud-tall:text-[60px] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{view.title}</h1>
+          <p className={`m-0 mt-3 text-[clamp(20px,2.4cqw,30px)] font-medium ${deviceSide ? "text-[#bfd8fb]" : "text-[#fcd34d]"}`}>{view.lead}</p>
         </div>
       </div>
       <div className="flex flex-col gap-3">
-        <div className={`grid grid-cols-1 gap-3 ${view.tiles.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+        <div className={`grid grid-cols-1 gap-3 ${view.tiles.length >= 3 ? "hud-sm:grid-cols-3 hud-tall:grid-cols-1" : "hud-sm:grid-cols-2"}`}>
           {view.tiles.map((t) => (
             <IncidentTile key={t.label + t.value} {...t} />
           ))}
@@ -856,7 +861,7 @@ function BottomBar({
     // L3: no button; only how long the eyes have been closed.
     const closed = snap?.eyes_closed_s ?? 0;
     return (
-      <footer className="flex justify-center px-4 pb-6 sm:px-8">
+      <footer className="flex justify-center px-4 pb-6 hud-sm:px-8">
         {closed > 0 && (
           <span className="dg-num inline-flex items-center gap-3 rounded-[14px] border border-solid border-white/20 bg-black/28 px-6 py-3.5 text-[26px] font-semibold">
             <EyeOff aria-hidden className="size-[26px]" />
@@ -867,15 +872,15 @@ function BottomBar({
     );
   }
   const left = target && snap ? (
-    <FalseAlarmButton target={target} level={level} now={now} windowS={snap.feedback_window_s ?? 120} onPress={onFalseAlarm} />
+    <FalseAlarmButton target={target} level={level} now={now} windowS={snap.feedback_window_s ?? HUD_DEFAULTS.feedback_window_s} onPress={onFalseAlarm} />
   ) : (
-    <span className="flex min-w-0 items-center gap-3 text-lg text-hud-ink-2">
+    <span className="flex min-w-0 items-center gap-3 text-lg text-hud-ink-2 hud-tall:col-span-2">
       <Flag aria-hidden className="size-[18px] shrink-0" />
       <span className="min-w-0">{note ?? (snap ? noteFor(snap) : "Đang chờ dữ liệu từ thiết bị")}</span>
     </span>
   );
   return (
-    <footer className={`grid items-center gap-3.5 px-4 pt-3.5 pb-5 sm:grid-cols-[minmax(0,1fr)_250px_290px] sm:px-8 ${className}`}>
+    <footer className={`grid items-center gap-3.5 px-4 pt-3.5 pb-5 hud-sm:grid-cols-[minmax(0,1fr)_250px_290px] hud-sm:px-8 hud-tall:grid-cols-2 ${className}`}>
       {left}
       {onAskDriver ? (
         <button type="button" onClick={onAskDriver} className="dg-btn dg-btn-lg whitespace-nowrap">
@@ -886,7 +891,7 @@ function BottomBar({
           <ChevronRight aria-hidden className="size-6 text-hud-ink-3" />
         </button>
       ) : (
-        <span className="hidden sm:block" />
+        <span className="hidden hud-sm:block" />
       )}
       {onAskEnd ? (
         <button type="button" onClick={onAskEnd} disabled={ending} className="dg-btn dg-btn-lg whitespace-nowrap">
@@ -897,7 +902,7 @@ function BottomBar({
           <ChevronRight aria-hidden className="size-6 text-hud-ink-3" />
         </button>
       ) : (
-        <span className="hidden sm:block" />
+        <span className="hidden hud-sm:block" />
       )}
     </footer>
   );
@@ -924,7 +929,7 @@ function FalseAlarmButton({ target, level, now, windowS, onPress }: { target: Hu
   const left = Math.max(0, Math.round(target.at + windowS - now));
   const ring = target.level >= 2 || level === 2 ? "ring-hud-warning/80" : "ring-hud-caution/70";
   return (
-    <button type="button" onClick={onPress} className={`dg-btn dg-btn-lg justify-self-start !justify-start gap-4 ring-2 ${ring}`}>
+    <button type="button" onClick={onPress} className={`dg-btn dg-btn-lg justify-self-start !justify-start gap-4 ring-2 hud-tall:col-span-2 hud-tall:justify-self-stretch ${ring}`}>
       <Flag aria-hidden className="size-7 shrink-0" />
       <span className="flex flex-col gap-0.5">
         <span className="text-xl font-semibold">Cảnh báo này sai?</span>
@@ -960,7 +965,7 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
           <ScanFace aria-hidden className="size-11" strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
-          <p className="m-0 text-[clamp(32px,4vw,48px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
+          <p className="m-0 text-[clamp(32px,4cqw,48px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
             {ENROLL_CONSENT.headline}
           </p>
           <p className="m-0 mt-2.5 max-w-[52ch] text-[17px] leading-normal text-[#b8c2d0]">{ENROLL_CONSENT.lead}</p>
@@ -975,7 +980,7 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
         ))}
       </ul>
       {onAnswer && (
-        <div className="mt-auto grid gap-3 sm:grid-cols-[2fr_1fr]">
+        <div className="mt-auto grid gap-3 hud-sm:grid-cols-[2fr_1fr]">
           <button
             type="button"
             onClick={() => onAnswer("enroll_start")}
@@ -1008,7 +1013,7 @@ function EnrollPanel({ enrollment, camera }: { enrollment: HudEnrollment; camera
     <section
       aria-live="polite"
       aria-atomic="true"
-      className="dg-alert sys grid min-h-0 gap-9 px-6 py-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_380px]"
+      className="dg-alert sys grid min-h-0 gap-9 px-6 py-6 hud-sm:px-8 hud-lg:grid-cols-[minmax(0,1fr)_380px]"
     >
       <div className="flex min-w-0 flex-col justify-between gap-7">
         <span className="dg-card-title">
@@ -1021,7 +1026,7 @@ function EnrollPanel({ enrollment, camera }: { enrollment: HudEnrollment; camera
               <li
                 key={s}
                 aria-current={i === index ? "step" : undefined}
-                className={`h-2 w-12 rounded-full sm:w-[76px] ${i < index ? "bg-hud-safe" : i === index ? "bg-hud-system" : "bg-white/12"}`}
+                className={`h-2 w-12 rounded-full hud-sm:w-[76px] ${i < index ? "bg-hud-safe" : i === index ? "bg-hud-system" : "bg-white/12"}`}
               >
                 <span className="sr-only">
                   Bước {i + 1}: {ENROLL_STEPS[s].title}
@@ -1035,8 +1040,8 @@ function EnrollPanel({ enrollment, camera }: { enrollment: HudEnrollment; camera
         </div>
         {/* Re-mounted per step, so each new instruction animates in once. */}
         <div key={step} className="flex animate-hud-in-fast flex-col gap-3.5 motion-reduce:animate-none">
-          <h1 className="m-0 text-[clamp(44px,6vw,76px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{text.title}</h1>
-          <p className="m-0 text-[clamp(20px,2.2vw,26px)] text-[#b8c2d0]">{text.detail}</p>
+          <h1 className="m-0 text-[clamp(44px,6cqw,76px)] hud-tall:text-[60px] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">{text.title}</h1>
+          <p className="m-0 text-[clamp(20px,2.2cqw,26px)] text-[#b8c2d0]">{text.detail}</p>
         </div>
         <div className="flex flex-col gap-3.5">
           {hint && (
@@ -1142,7 +1147,7 @@ function PresencePanel({
   // M59: the whole card is one 72 px+ target; amber while asking (the driver must act), red once nobody
   // answered (the manager was told). Big words, a countdown, no other button on the screen.
   return (
-    <main className="grid min-h-0 px-4 sm:px-8">
+    <main className="grid min-h-0 px-4 hud-sm:px-8">
       <button
         type="button"
         role="alert"
@@ -1152,17 +1157,17 @@ function PresencePanel({
         <span className="flex flex-col items-center gap-6">
           <span
             aria-hidden
-            className={`grid size-28 place-items-center rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.35)] sm:size-[140px] ${
+            className={`grid size-28 place-items-center rounded-full shadow-[0_10px_40px_rgba(0,0,0,0.35)] hud-sm:size-[140px] ${
               unanswered ? "bg-[#f87171] text-[#2a0606]" : "bg-hud-caution text-hud-on-warning"
             }`}
           >
-            <Hand className="size-16 sm:size-20" strokeWidth={2} />
+            <Hand className="size-16 hud-sm:size-20" strokeWidth={2} />
           </span>
-          <span className="block text-[clamp(44px,7vw,92px)] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">
+          <span className="block text-[clamp(44px,7cqw,92px)] hud-tall:text-[64px] leading-[1.02] font-semibold tracking-[-0.035em] text-balance">
             {PRESENCE_TEXT.title}
           </span>
-          <span className="block text-[clamp(26px,3.4vw,40px)] font-semibold">{PRESENCE_TEXT.tap}</span>
-          <span className={`block text-[clamp(18px,2vw,24px)] ${unanswered ? "text-[#f3c4c4]" : "text-[#f3dfae]"}`}>
+          <span className="block text-[clamp(26px,3.4cqw,40px)] font-semibold">{PRESENCE_TEXT.tap}</span>
+          <span className={`block text-[clamp(18px,2cqw,24px)] ${unanswered ? "text-[#f3c4c4]" : "text-[#f3dfae]"}`}>
             {unanswered ? PRESENCE_TEXT.unanswered : PRESENCE_TEXT.detail}
           </span>
           {!unanswered && remainingS != null && remainingS > 0 && (

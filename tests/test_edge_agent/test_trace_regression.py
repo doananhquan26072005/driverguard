@@ -1,4 +1,6 @@
-"""M34: blocks 5, 7-12 replayed on the fixture traces must give the pinned results.
+"""M34, M86: blocks 5, 7-12 replayed on the fixture traces must give the pinned results, on the device
+path and on the two eye paths of the page (web, web_ir), with the phone flag and frame quality where
+the trace has them.
 
 A red test here means the decision chain changed what it does on real recordings (numbers only, no
 image: tests/fixtures/regression/). If the change is intended, pin the new results in the same commit:
@@ -24,7 +26,7 @@ HOW_TO_UPDATE = (
 
 @pytest.fixture(scope="module")
 def traces():
-    return rt.load_traces()
+    return rt.load_fixture()
 
 
 def test_decision_chain_matches_the_pinned_results():
@@ -42,10 +44,48 @@ def test_a_changed_threshold_is_caught(assignment):
     assert rt.check(th), f"{assignment} changed nothing on the fixture: it does not cover that rule"
 
 
+@pytest.mark.parametrize(
+    ("assignment", "paths", "datasets"),
+    [
+        # the page's eye score: only the web paths read it, the device path must not move
+        ("drowsiness.eye.blendshape_closed=0.8", {"web", "web_ir"}, None),
+        ("drowsiness.eye.blendshape_open=0.2", {"web", "web_ir"}, None),
+        # frame quality and the phone flag exist only in the 3MDAD traces
+        ("quality.dark_face_brightness=0", set(rt.PATHS), {"3mdad"}),
+        ("quality.blur_sharpness=40", set(rt.PATHS), {"3mdad"}),
+        ("risk.distraction.phone_ratio=0.95", set(rt.PATHS), {"3mdad"}),
+    ],
+)
+def test_a_changed_web_quality_or_phone_threshold_is_caught_where_it_applies(assignment, paths, datasets):
+    th = copy.deepcopy(load_thresholds())
+    set_threshold(th, assignment)
+    diffs = rt.check(th)
+    assert {d.split("]")[0][1:] for d in diffs} == paths, f"{assignment}: {diffs[:3]}"
+    if datasets is not None:
+        assert {d.split("] ")[1].split("/")[0] for d in diffs} == datasets
+
+
+def test_the_three_paths_are_pinned_and_really_differ():
+    pinned = rt.pinned()
+    assert set(pinned) == set(rt.PATHS)
+    assert all(set(pinned[p]) == set(pinned["device"]) for p in rt.PATHS)
+    differs = lambda a, b: sum(bool(rt.differences(pinned[a][k], pinned[b][k])) for k in pinned[a])  # noqa: E731
+    assert differs("device", "web") >= 5 and differs("web", "web_ir") >= 5  # else a path pins nothing new
+
+
+def test_the_phone_and_quality_videos_show_what_they_are_there_for():
+    extra = {k: v for k, v in rt.pinned()["device"].items() if k.startswith("3mdad/")}
+    assert len(extra) == sum(rt.EXTRA_PER_DATASET.values())
+    reasons = {r for v in extra.values() for _, _, rs in v["alerts"] for r in rs}
+    paused = {r for v in extra.values() for r in v["paused"]}
+    assert {"phone", "off_road"} <= reasons
+    assert {"low_light", "bad_angle", "no_face"} <= paused  # quality gate, face partly out, face lost
+
+
 def test_fixture_covers_every_level_and_the_main_events(traces):
     expected = json.loads(rt.EXPECTED.read_text(encoding="utf-8"))["videos"]
     assert set(expected) == set(traces) and len(traces) >= 30
-    assert {name.split("/")[0] for name in traces} == set(rt.SOURCES)
+    assert {name.split("/")[0] for name in traces} == set(rt.SOURCES) | set(rt.EXTRA_SOURCES)
     levels = {level for v in expected.values() for _, level, _ in v["alerts"]}
     events = {ev for v in expected.values() for ev in v["events"]}
     assert levels == {1, 2, 3}
@@ -60,6 +100,12 @@ def test_fixture_holds_numbers_only_and_stays_small():
         for c in rt.INPUT_COLUMNS:  # one number per frame and column: no room for an image
             assert z[f"col_{c}"].dtype == np.float32 and z[f"col_{c}"].shape == (total,)
     assert rt.TRACES.stat().st_size < 1_000_000
+    with np.load(rt.EXTRA_TRACES) as z:
+        assert set(z.files) == {"names", "lengths", "fps"} | {f"col_{c}" for c in rt.EXTRA_COLUMNS}
+        total = int(z["lengths"].sum())
+        for c in rt.EXTRA_COLUMNS:
+            assert z[f"col_{c}"].dtype == np.float32 and z[f"col_{c}"].shape == (total,)
+    assert rt.EXTRA_TRACES.stat().st_size < 1_000_000
 
 
 def test_every_update_of_the_pinned_results_has_a_reason():
@@ -70,14 +116,33 @@ def test_every_update_of_the_pinned_results_has_a_reason():
 # ---------------------------------------------------------------- pure helpers, fake data
 
 
-def summary(frames=100, events=None, alerts=None, scores=(0.0, 0.0, 0.0, 0.0)):
+def summary(frames=100, events=None, alerts=None, scores=(0.0, 0.0, 0.0, 0.0), paused=None):
     return {
         "frames": frames,
         "events": events or {},
         "alerts": alerts or [],
         "max_level": max((a[1] for a in alerts or []), default=0),
         "drowsy_score": list(scores),
+        "paused": paused or {},
     }
+
+
+def test_select_also_wants_a_video_of_each_reason_monitoring_paused():
+    videos = {"a": summary(100), "b": summary(200), "dark": summary(900, paused={"low_light": 30})}
+    assert rt.select(videos, 2) == ["a", "dark"]
+    changed = rt.differences(videos["dark"], {**videos["dark"], "paused": {"low_light": 31}})
+    assert [d.split(":")[0] for d in changed] == ["paused"]
+
+
+def test_web_ir_takes_every_frame_for_infrared_and_only_the_web_paths_change_the_eye_source():
+    th = load_thresholds()
+    tr = {"n": 3, "cols": {"is_ir": np.zeros(3), "ear": np.ones(3)}}
+    assert rt.path_trace("device", tr) is tr and rt.path_trace("web", tr) is tr
+    assert rt.path_trace("web_ir", tr)["cols"]["is_ir"].tolist() == [1.0, 1.0, 1.0]
+    assert tr["cols"]["is_ir"].tolist() == [0.0, 0.0, 0.0]  # the fixture trace itself is untouched
+    assert rt.path_thresholds("device", th) is th
+    for path in ("web", "web_ir"):
+        assert rt.path_thresholds(path, th)["eye_state"]["source"] == th["eye_state"]["web_source"]
 
 
 def test_select_takes_one_video_per_kind_of_behaviour_then_the_shortest():

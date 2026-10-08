@@ -1,8 +1,9 @@
-"""Block 13 - HUD (minimal, M4).
+"""Block 13 - the device build's preview-window banner and terminal lines.
 
 Draws the active alert level as a coloured banner on the preview frame and formats
-terminal lines for new alerts. The full driver HUD / dashboard is milestone M6.
-Display only - frames are never written to disk.
+terminal lines for new alerts, enrollment and the trip summary. The driver HUD itself is the
+web page (frontend/src/hud), fed by edge_agent/hud/server.py on the device and by
+edge_agent/web/bridge.py on #/live. Display only - frames are never written to disk.
 """
 
 from __future__ import annotations

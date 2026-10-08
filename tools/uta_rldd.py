@@ -14,6 +14,7 @@ test subjects are scored once for a chosen configuration.
     python tools/uta_rldd.py compare --split test --set risk.drowsy.l1=45          # current vs the --set values
     python tools/uta_rldd.py personal --out eval/results/personalization_uta_rldd.md
     python tools/uta_rldd.py fps --out eval/results/fps_low_uta_rldd.md             # dev only, frames left out
+    python tools/uta_rldd.py clock --root <dataset folder> --out eval/results/video_clock_uta_rldd.md
 
 The functions that score (summarize, metrics, the reports) are pure: they take traces / rows.
 """
@@ -47,11 +48,11 @@ from edge_agent.config import PROJECT_ROOT  # noqa: E402
 UTA_DIR = PROJECT_ROOT / "data/eval_traces/uta_rldd"
 SPLIT_DIR = PROJECT_ROOT / "eval/splits"
 TEST_LOG = SPLIT_DIR / "uta_rldd_test_reads.tsv"  # one line per run that reads the held-out subjects
+RUN_DIR = PROJECT_ROOT / "eval/provenance/uta_rldd"  # what the Kaggle sessions ran with (numbers only)
 VIDEO_EXT = {".mov", ".mp4", ".m4v", ".avi", ".mkv"}
 LABELS = (0, 5, 10)
 TERMS = ("perclos", "microsleep", "yawn", "nod", "slow_blink", "brow")  # RiskAssessment.drowsy_terms order
 EVENTS = ("blink", "microsleep", "yawn", "nod", "bow", "perclos_high", "brow_raise")
-PERCLOS_RATIOS = (0.48, 0.55, 0.65, 0.75)  # 0.48 ~ P80 with the closed EAR at 0.35 x baseline; 0.65 = current
 
 
 # --------------------------------------------------------------------------- dataset index
@@ -139,13 +140,33 @@ def save_trace(path: Path, tr: dict) -> None:
     tmp.replace(path)  # a killed session never leaves a half-written trace
 
 
-def load_trace(path: str | Path) -> dict:
-    if not hasattr(np, "_core"):  # traces pickled with numpy 2 (Kaggle) read with numpy 1
-        import numpy.core as core
+NUMPY2_PICKLE_MODULES = ("numeric", "multiarray", "_multiarray_umath")
 
-        sys.modules.setdefault("numpy._core", core)
-        for name in ("numeric", "multiarray", "_multiarray_umath"):
-            sys.modules.setdefault(f"numpy._core.{name}", getattr(core, name))
+
+def numpy2_pickle_shim() -> None:
+    """Let numpy 1 read arrays pickled by numpy 2 (the Kaggle traces), which name numpy._core.<module>.
+
+    numpy 1.26 ships a partial numpy._core of its own (no `numeric`), and whether it is already imported
+    depends on what ran before, so each module is checked by name; the ones numpy 1 lacks point at
+    numpy.core. Nothing to do on numpy 2."""
+    if int(np.__version__.split(".")[0]) >= 2:
+        return
+    import importlib
+
+    import numpy.core as core
+
+    for name in NUMPY2_PICKLE_MODULES:
+        full = f"numpy._core.{name}"
+        if full in sys.modules:
+            continue
+        try:
+            importlib.import_module(full)
+        except ImportError:
+            sys.modules[full] = getattr(core, name)
+
+
+def load_trace(path: str | Path) -> dict:
+    numpy2_pickle_shim()
     with gzip.open(path, "rb") as f:
         return pickle.load(f)
 
@@ -167,7 +188,7 @@ def _trace_job(args: tuple[str, str, str, dict[str, Any], float]) -> dict[str, A
     t0 = time.time()
     info: dict[str, Any] = {"key": key}
     try:
-        from tools.seq_eval import trace_video
+        from tools.seq_eval import trace_seconds, trace_video
 
         tr = trace_video(Path(path), thresholds, speed, use_phone=False)
         if tr["n"] == 0:
@@ -177,7 +198,10 @@ def _trace_job(args: tuple[str, str, str, dict[str, Any], float]) -> dict[str, A
         info |= {
             "frames": tr["n"],
             "fps": round(tr["fps"], 3),
-            "minutes": round(tr["n"] / tr["fps"] / 60, 2),
+            "minutes": round(trace_seconds(tr) / 60, 2),
+            "clock": tr["clock"]["source"],
+            "clock_drift_s": tr["clock"]["drift_s"],
+            "clock_offset_max_s": tr["clock"]["offset_max_s"],
             "face": round(float(np.mean(c["face"])), 4),
             "reliable": round(float(np.mean(c["reliable"])), 4),
             "alerts": len(tr["alerts"]),
@@ -196,7 +220,7 @@ def run_traces(
     resume_dirs: list[str | Path] = (),
     workers: int = 4,
     deadline: float | None = None,
-    speed_kmh: float = 60.0,
+    speed_kmh: float | None = None,
 ) -> list[dict[str, Any]]:
     """Trace the videos not traced yet (blocks 2-12, no phone model), one file per video.
 
@@ -357,10 +381,11 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
     """One row of numbers for one (replayed) trace. Scores, levels and windows leave out the start-up
     stretch (eval.warmup_s); alerts are counted apart for the start-up and for the rest."""
     from tools.metrics import DISTRACTION_REASONS, DROWSY_REASONS, EvalConfig, per_second_max, window_scores
+    from tools.seq_eval import trace_seconds
 
     c, n, fps = tr["cols"], tr["n"], tr["fps"]
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
-    dur = n / fps if n else 0.0
+    dur = trace_seconds(tr)  # the video's own clock when the trace has one, else frames / fps
     m = c["t"] >= cfg.warmup_s
     s: dict[str, Any] = {
         "frames": n,
@@ -441,7 +466,7 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
             s[f"term_{k}"] = _mean(c[f"term_{k}"][m])
         ok = m & (c["reliable"] == 1) & np.isfinite(c["ear"]) & (c["ear_base"] > 0)
         ratio = c["ear"][ok] / c["ear_base"][ok]
-        for r in PERCLOS_RATIOS:
+        for r in cfg.perclos_ratios:
             s[f"closed_r{int(r * 100)}"] = float(np.mean(ratio < r)) if len(ratio) else float("nan")
         s["ear_base"] = _mean(c["ear_base"][m])
         s["ear_ratio_mean"] = _mean(ratio)
@@ -449,10 +474,16 @@ def summarize(tr: dict, thresholds: dict[str, Any]) -> dict[str, Any]:
         blink = c.get("blink", np.full(n, np.nan))[m]
         s["bs_blink_mean"] = _mean(blink)
         s["bs_closed_frac"] = (
-            float(np.mean(blink[np.isfinite(blink)] >= 0.5)) if np.isfinite(blink).any() else float("nan")
+            float(np.mean(blink[np.isfinite(blink)] >= float(thresholds["enrollment"]["eye_blink_shut"])))
+            if np.isfinite(blink).any()
+            else float("nan")
         )
         s["cnn_closed_frac"] = (
-            float(np.mean(c["p_cnn"][m][np.isfinite(c["p_cnn"][m])] >= 0.6))
+            float(
+                np.mean(
+                    c["p_cnn"][m][np.isfinite(c["p_cnn"][m])] >= float(thresholds["drowsiness"]["eye"]["cnn_closed"])
+                )
+            )
             if np.isfinite(c["p_cnn"][m]).any()
             else float("nan")
         )
@@ -756,7 +787,7 @@ def baseline_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], titl
             f"{sum(r['score_s'] for r in rs) / 3600:.2f} | {_p(avg('face'))} | {_p(avg('reliable'))} | "
             f"{_p(avg('eye_known'))} | {_p(avg('cnn_used'))} | {np.median(fps):g} ({min(fps):g}–{max(fps):g}) |"
         )
-    low = sorted((r["reliable"], r["key"]) for r in rows if r["reliable"] < 0.8)
+    low = sorted((r["reliable"], r["key"]) for r in rows if r["reliable"] < cfg.low_reliable_frac)
     if low:
         lines += [
             "",
@@ -1132,9 +1163,9 @@ SIGNALS = {
     "closed_r55": "frames with EAR < 0.55 x baseline",
     "closed_r65": "frames with EAR < 0.65 x baseline (current perclos_close_ratio)",
     "closed_r75": "frames with EAR < 0.75 x baseline",
-    "bs_closed_frac": "frames with MediaPipe eyeBlink ≥ 0.5 (no baseline needed)",
+    "bs_closed_frac": "frames with MediaPipe eyeBlink ≥ enrollment.eye_blink_shut (no baseline needed)",
     "bs_blink_mean": "MediaPipe eyeBlink, mean",
-    "cnn_closed_frac": "frames with eye CNN p_closed ≥ 0.6",
+    "cnn_closed_frac": "frames with eye CNN p_closed ≥ drowsiness.eye.cnn_closed",
     "ear_ratio_mean": "EAR / baseline, mean (lower = more closed)",
     "ear_ratio_p10": "EAR / baseline, p10 (lower = more closed)",
     "ear_base": "open-eye EAR baseline learnt by block 7",
@@ -1529,6 +1560,91 @@ def load_items(split: str = "dev", root: Path = UTA_DIR, split_dir: Path = SPLIT
     return items
 
 
+def traced_with(run_dir: Path = RUN_DIR) -> str:
+    """What the Kaggle sessions that made the traces ran with (their run_info.json, kept in the repo).
+    The traces themselves carry it from M86 on (`meta`); the ones made before do not."""
+    from tools.metrics import environment_text
+
+    runs = []
+    for p in sorted(run_dir.glob("session*_run_info.json")):
+        try:
+            runs.append(json.loads(p.read_text(encoding="utf-8")))
+        except ValueError:
+            continue
+    return environment_text(runs, unit="tracing sessions") if runs else "Traced with: no run record found."
+
+
+# --------------------------------------------------------------------------- frame times of the video files
+
+
+def _clock_job(args: tuple[str, str, dict[str, Any]]) -> dict[str, Any]:
+    key, path, thresholds = args
+    from tools.seq_eval import video_clock
+
+    try:
+        return {"key": key, **video_clock(Path(path), thresholds), "error": ""}
+    except Exception as e:  # one unreadable file must not stop the run
+        return {"key": key, "frames": 0, "error": f"{type(e).__name__}: {e}"}
+
+
+def clock_rows(videos: list[Video], thresholds: dict[str, Any], pool: Any = None) -> list[dict[str, Any]]:
+    """Frame-time statistics of every video file (seq_eval.gap_stats). Only the container's timestamps
+    are read: no model runs, nothing is scored, so this is not a read of the held-out subjects."""
+    jobs = [(v.key, v.path, thresholds) for v in videos]
+    return sorted(pool.map(_clock_job, jobs) if pool is not None else map(_clock_job, jobs), key=lambda r: r["key"])
+
+
+def clock_report(rows: list[dict[str, Any]], thresholds: dict[str, Any], title: str, note: str = "") -> str:
+    """Markdown: how far frame index / fps is from the videos' own clock (numbers only)."""
+    from tools.metrics import EvalConfig
+
+    cfg = EvalConfig.from_dict(thresholds.get("eval"))
+    ok = [r for r in rows if not r["error"] and r["frames"] > 1]
+    lines = [f"# {title}", ""]
+    if note:
+        lines += [note, ""]
+    lines += [
+        "`By index` is frames / container FPS, the time every trace made before M86 was scored on. `Clock` is the "
+        "container's timestamp of the last frame plus one nominal frame, what traces are made on from M86. "
+        "`Drift` is the difference between the two at the end of the video, `Largest offset` the biggest "
+        "difference at any frame: the container FPS is an average, so a stretch without frames moves every "
+        "frame time around it without changing the total. "
+        f"A long gap is a wait of at least {cfg.clock_long_gap_frames:g} nominal frames between two frames "
+        "(`eval.clock_long_gap_frames`). Unit: one video file.",
+        "",
+    ]
+    if not ok:
+        return "\n".join(lines + ["No video could be read."]) + "\n"
+    drift = np.array([abs(r["drift_s"]) for r in ok])
+    offset = np.array([r["offset_max_s"] for r in ok])
+    low = [r for r in ok if r["fps"] < cfg.min_video_fps]
+    lines += [
+        f"- Videos read: {len(ok)} of {len(rows)} ({sum(r['frames'] for r in ok)} frames).",
+        f"- Timestamps the container did not give, replaced by one nominal frame: "
+        f"{sum(r['patched'] for r in ok)} frames in {sum(r['patched'] > 0 for r in ok)} videos.",
+        f"- Videos with at least one long gap: {sum(r['long_gaps'] > 0 for r in ok)}; "
+        f"long gaps in all: {sum(r['long_gaps'] for r in ok)}.",
+        f"- |clock − by index| at the end of the video: median {np.median(drift):.2f} s, largest {drift.max():.2f} s.",
+        f"- Largest offset at any frame: median {np.median(offset):.2f} s, largest {offset.max():.2f} s; "
+        f"videos where it reaches 1 s: {int(np.sum(offset >= 1.0))}.",
+        f"- Videos below {cfg.min_video_fps:g} FPS (`eval.min_video_fps`): {len(low)}"
+        + (f", largest offset {max(r['offset_max_s'] for r in low):.2f} s." if low else "."),
+        "",
+        "| Video | Frames | FPS | By index (s) | Clock (s) | Drift (s) | Largest offset (s) | Gap p50 (ms) | Gap p95 (ms) | Gap max (ms) | Long gaps | Patched |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for r in sorted(ok, key=lambda r: (-r["offset_max_s"], r["key"])):
+        lines.append(
+            f"| {r['key']} | {r['frames']} | {r['fps']:.3f} | {r['index_s']:.2f} | {r['clock_s']:.2f} | "
+            f"{r['drift_s']:+.2f} | {r['offset_max_s']:.2f} | {r['gap_p50_ms']:.1f} | {r['gap_p95_ms']:.1f} | "
+            f"{r['gap_max_ms']:.1f} | {r['long_gaps']} | {r['patched']} |"
+        )
+    bad = [r for r in rows if r["error"]]
+    if bad:
+        lines += ["", "Not read: " + "; ".join(f"{r['key']} ({r['error']})" for r in bad)]
+    return "\n".join(lines) + "\n"
+
+
 # --------------------------------------------------------------------------- per-driver baseline (fake enrollment)
 
 PERSONAL_SETTINGS = (
@@ -1576,8 +1692,10 @@ def personal_study(
     }
 
 
-def personal_report(runs: dict[str, list[dict[str, Any]]], splits: dict[str, set[str] | None], title: str) -> str:
-    """Markdown: metrics() of each setting on each split (None = every subject)."""
+def personal_report(
+    runs: dict[str, list[dict[str, Any]]], splits: dict[str, set[str] | None], title: str, cfg: Any = None
+) -> str:
+    """Markdown: metrics() of each setting on each split (None = every subject). cfg: EvalConfig (eval.*)."""
     lines = [
         f"# {title}",
         "",
@@ -1603,7 +1721,7 @@ def personal_report(runs: dict[str, list[dict[str, Any]]], splits: dict[str, set
             rows = [r for r in runs[name] if subjects is None or r["subject"] in subjects]
             if not rows:
                 continue
-            m = metrics(rows)
+            m = metrics(rows, cfg)
             lines.append(
                 f"| {split} ({m['subjects']}) | {name} | "
                 + " | ".join(fmt(m.get(k)) for k, _, fmt in GRID_COLUMNS)
@@ -1667,7 +1785,8 @@ def main(argv: list[str] | None = None) -> int:
     from edge_agent.config import load_thresholds
 
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("study", choices=("report", "signals", "grid", "compare", "personal", "tradeoff", "fps"))
+    p.add_argument("study", choices=("report", "signals", "grid", "compare", "personal", "tradeoff", "fps", "clock"))
+    p.add_argument("--root", default=None, help="clock: folder of the UTA-RLDD video files")
     p.add_argument("--split", choices=("dev", "test", "all"), default="dev")
     p.add_argument("--set", action="append", default=[], help="what-if threshold, e.g. risk.drowsy.l1=45")
     p.add_argument("--out", default=None)
@@ -1689,7 +1808,24 @@ def main(argv: list[str] | None = None) -> int:
     what += "; block 5 as traced" if args.eye == "trace" else "; block 5 decided again from the traced inputs"
     pool = replay_pool(args.workers)
     try:
-        if args.study == "grid":  # the search never sees the held-out subjects
+        if args.study == "clock":  # timestamps of the video files only: nothing is scored
+            if not args.root:
+                p.error("clock needs --root <folder of the video files>")
+            from tools.metrics import provenance
+
+            videos, _ = discover(args.root)
+            index = UTA_DIR / "index.csv"
+            traced = sum(1 for _ in open(index, encoding="utf-8")) - 1 if index.exists() else None
+            found = f"{len(videos)} video files below the folder given" + (
+                f" ({traced} videos are traced)." if traced is not None else "."
+            )
+            text = clock_report(
+                clock_rows(videos, th, pool),
+                th,
+                "DriverGuard - UTA-RLDD, frame times of the video files",
+                f"{found} {provenance()}",
+            )
+        elif args.study == "grid":  # the search never sees the held-out subjects
             results = run_configs(default_grid(), load_items("dev"), th, pool, eye=args.eye)
             text = grid_report(results, "DriverGuard - UTA-RLDD, threshold search and ablation (dev)", f"From {what}.")
         elif args.study == "compare":
@@ -1732,7 +1868,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.study == "personal":
             runs = personal_study(load_items("all"), th, pool, args.eye)
             splits = {"all": None, "dev": split_subjects("dev"), "test": split_subjects("test")}
-            text = personal_report(runs, splits, f"DriverGuard - does a per-driver baseline help? (UTA-RLDD, {what})")
+            from tools.metrics import EvalConfig
+
+            title = f"DriverGuard - does a per-driver baseline help? (UTA-RLDD, {what})"
+            text = personal_report(runs, splits, title, EvalConfig.from_dict(th.get("eval")))
         else:
             rows = replay_rows(load_items(args.split), th, pool, extras=True, eye=args.eye)
             if args.study == "signals":
@@ -1744,7 +1883,7 @@ def main(argv: list[str] | None = None) -> int:
                     rows,
                     th,
                     f"DriverGuard - UTA-RLDD ({args.split})",
-                    f"Thresholds: {what}. {provenance([UTA_DIR / 'index.csv'])}",
+                    f"Thresholds: {what}. {provenance([UTA_DIR / 'index.csv'])} {traced_with()}",
                 )
     finally:
         if pool is not None:

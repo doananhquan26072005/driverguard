@@ -3,7 +3,9 @@
 // a camera that ended was never opened again. The loop asks this on a timer:
 //   - no frame for capture.frame_timeout_s while the camera is live: pull frames with a timer;
 //   - pulling brings none either, the track is muted that long, or it ended: the camera is lost, and
-//     is asked for again every capture.reconnect_interval_s (as block 1 does on the device).
+//     is asked for again every capture.reconnect_interval_s (as block 1 does on the device);
+//   - frames arrive but show the same image for capture.frame_timeout_s (M83, frozen.ts): lost too,
+//     until an image that differs arrives.
 // Pure logic on the times it is given: tested without a browser.
 
 export type CameraTrack = "live" | "muted" | "ended";
@@ -18,6 +20,8 @@ export class LoopWatchdog {
   private lastFrameMs: number;
   private pullSince: number | null = null;
   private lost = false;
+  private frozen = false; // M83: frames arrive, the image in them does not change
+  private lastChangeMs: number;
   private attempts = 0;
   private nextReopenMs = -Infinity;
 
@@ -27,15 +31,34 @@ export class LoopWatchdog {
     private reconnectMs: number,
     startMs: number,
   ) {
-    this.lastFrameMs = startMs;
+    this.lastFrameMs = this.lastChangeMs = startMs;
   }
 
   /** A camera frame not seen before reached the loop. pulled: by the timer, not the browser's callback. */
   frame(nowMs: number, pulled: boolean) {
     this.lastFrameMs = nowMs;
     if (!pulled) this.pullSince = null;
+    if (this.frozen) return; // only an image that differs brings the camera back
     this.lost = false;
     this.attempts = 0;
+  }
+
+  /** What the frame showed. changed false: the same image as the frame before. Returns false while the
+   *  camera stands still (the same image for the frame timeout): that frame is not a view of the driver. */
+  image(nowMs: number, changed: boolean): boolean {
+    if (changed) {
+      this.lastChangeMs = nowMs;
+      if (this.frozen) {
+        this.frozen = this.lost = false;
+        this.attempts = 0;
+      }
+    } else if (nowMs - this.lastChangeMs >= this.timeoutMs) this.frozen = this.lost = true;
+    return !this.frozen;
+  }
+
+  /** The camera repeats one image (see `image`). */
+  get still(): boolean {
+    return this.frozen;
   }
 
   /** The camera was opened again: it gets the frame timeout to deliver before the next attempt. */

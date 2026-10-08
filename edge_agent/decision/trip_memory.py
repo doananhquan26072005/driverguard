@@ -10,10 +10,22 @@ current frame:
 A rest (the vehicle parked, block 10) is not part of the fatigue timeline: its frames are
 not binned (`observed=False`), and `forget_since` drops the bins and microsleeps from the
 start of the stop once driving resumes. Timeline samples already sent stay on the backend.
+
+A drowsy_score that is not finite is not binned (M77): one NaN frame made its minute, and with it
+trend_15min and the timeline sample sent to the backend, NaN. Block 9 no longer outputs one.
+
+The trend is fitted when its points change (a minute closes, `forget_since`), not on every frame:
+between two of those the answer is the same. It is fitted against the minutes' own numbers, so a
+minute that was skipped (a rest, a stalled camera) stays a minute on the time axis; before, the
+points on each side of it counted as one minute apart and the slope read steeper than it was.
+
+Only the newest microsleep is read, and `forget_since` takes the newest ones away again, so the
+last `microsleep_history` are kept, not every one of the trip.
 """
 
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Any
@@ -27,6 +39,7 @@ from edge_agent.config import config_from_dict
 class TripMemoryConfig:
     bin_s: float = 60.0
     trend_window_bins: int = 15
+    microsleep_history: int = 32  # newest microsleep times kept (see module doc)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> TripMemoryConfig:
@@ -44,11 +57,14 @@ class TripState:
     bins_completed: int = 0  # grows by one each time a minute closes (fatigue timeline samples)
 
 
-def linear_slope(values: list[float] | tuple[float, ...]) -> float | None:
-    """Least-squares slope per step; None for fewer than 2 values."""
+def linear_slope(
+    values: list[float] | tuple[float, ...], steps: list[int] | tuple[int, ...] | None = None
+) -> float | None:
+    """Least-squares slope per step; None for fewer than 2 values. steps: where each value sits on
+    the axis (increasing), when they are not one step apart."""
     if len(values) < 2:
         return None
-    x = np.arange(len(values), dtype=float)
+    x = np.arange(len(values), dtype=float) if steps is None else np.asarray(steps, dtype=float) - steps[0]
     slope, _ = np.polyfit(x, np.asarray(values, dtype=float), 1)
     return float(slope)
 
@@ -61,9 +77,13 @@ class TripMemory:
         self._bin_sum = 0.0
         self._bin_count = 0
         self._scores: deque[tuple[int, float]] = deque(maxlen=self.config.trend_window_bins)  # (bin, mean)
-        self._microsleeps: list[float] = []
+        self._microsleeps: deque[float] = deque(maxlen=max(self.config.microsleep_history, 1))
         self._alerts = [0, 0, 0, 0]
         self._bins_completed = 0
+        self._trend: float | None = None  # slope of _scores, refitted when they change
+
+    def _refit(self) -> None:
+        self._trend = linear_slope([s for _, s in self._scores], [i for i, _ in self._scores])
 
     def record_alert(self, level: int) -> None:
         self._alerts[level] += 1
@@ -78,6 +98,7 @@ class TripMemory:
             self._bin_sum, self._bin_count = 0.0, 0
         while self._microsleeps and self._microsleeps[-1] >= t0:
             self._microsleeps.pop()
+        self._refit()
 
     def update(self, t: float, drowsy_score: float, events: tuple[str, ...] = (), observed: bool = True) -> TripState:
         """observed=False: the frame is not binned and its events are ignored (a rest)."""
@@ -88,11 +109,13 @@ class TripMemory:
             if self._bin_count:
                 self._scores.append((self._bin_index, self._bin_sum / self._bin_count))
                 self._bins_completed += 1
+                self._refit()
             # Bins with no frames at all (camera stalled, a rest) are skipped, not filled with zeros.
             self._bin_index, self._bin_sum, self._bin_count = index, 0.0, 0
         if observed:
-            self._bin_sum += drowsy_score
-            self._bin_count += 1
+            if math.isfinite(drowsy_score):
+                self._bin_sum += drowsy_score
+                self._bin_count += 1
             if "microsleep" in events:
                 self._microsleeps.append(t)
         scores = tuple(s for _, s in self._scores)
@@ -100,7 +123,7 @@ class TripMemory:
             t=t,
             elapsed_s=t - self._start_t,
             minute_scores=scores,
-            trend_15min=linear_slope(scores),
+            trend_15min=self._trend,
             last_microsleep_t=self._microsleeps[-1] if self._microsleeps else None,
             alerts_by_level=tuple(self._alerts),  # type: ignore[arg-type]
             bins_completed=self._bins_completed,

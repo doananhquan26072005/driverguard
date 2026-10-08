@@ -105,16 +105,18 @@ def test_remote_thresholds_come_with_their_version(monkeypatch):
 
     reply = {"version": 12, "values": {"risk.drowsy.l1": 45}}
     monkeypatch.setattr(remote_config.urllib.request, "urlopen", lambda req, timeout: Response(reply))
-    assert remote_config.fetch_remote("http://x", "key") == (12, {"risk.drowsy.l1": 45.0})
-    assert remote_config.fetch_thresholds("http://x", "key") == {"risk.drowsy.l1": 45.0}  # the old call still works
+    assert remote_config.fetch_remote("http://x", "key", 5.0) == (12, {"risk.drowsy.l1": 45.0})
+    assert remote_config.fetch_thresholds("http://x", "key", 5.0) == {
+        "risk.drowsy.l1": 45.0
+    }  # the old call still works
     reply = {"version": 0, "values": {}}
-    assert remote_config.fetch_remote("http://x", "key") == (0, {})
+    assert remote_config.fetch_remote("http://x", "key", 5.0) == (0, {})
 
     def down(req, timeout):
         raise OSError("unreachable")
 
     monkeypatch.setattr(remote_config.urllib.request, "urlopen", down)
-    assert remote_config.fetch_remote("http://x", "key") is None
+    assert remote_config.fetch_remote("http://x", "key", 5.0) is None
 
 
 def test_web_agent_reports_the_thresholds_version_it_applied():

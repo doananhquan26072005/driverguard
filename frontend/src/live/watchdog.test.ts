@@ -95,4 +95,43 @@ describe("LoopWatchdog", () => {
     const w = new LoopWatchdog(TIMEOUT, 0, 0);
     expect(looks(w, 0, 20_000, "ended").every((v) => v.lost && v.reopen === 0)).toBe(true);
   });
+  // M83: frames arrive, the image in them does not change
+  /** Frames every 33 ms that all show the same image. */
+  function stills(w: LoopWatchdog, fromMs: number, untilMs: number) {
+    const shown = [];
+    for (let t = fromMs; t <= untilMs; t += 33) {
+      w.frame(t, false);
+      shown.push(w.image(t, false));
+    }
+    return shown;
+  }
+
+  it("calls a camera that repeats one image lost after the frame timeout, and asks for it again", () => {
+    const w = new LoopWatchdog(TIMEOUT, RECONNECT, 0);
+    for (let t = 0; t <= 5000; t += 33) {
+      w.frame(t, false);
+      expect(w.image(t, true)).toBe(true);
+    }
+    expect(stills(w, 5033, 7900).every(Boolean)).toBe(true); // under 3 s of the same image: a still scene
+    expect(w.check(7900, "live", true)).toEqual({ pull: false, lost: false, reopen: 0 });
+    expect(stills(w, 7933, 9000).at(-1)).toBe(false); // not a view of the driver: the frame is not used
+    expect(w.still).toBe(true);
+    expect(w.check(9000, "live", true)).toEqual({ pull: false, lost: true, reopen: 1 });
+    stills(w, 9033, 11_000); // frames go on arriving: still lost, the attempts are not forgotten
+    expect(w.check(11_000, "live", true)).toEqual({ pull: false, lost: true, reopen: 2 });
+  });
+
+  it("takes the camera back only on an image that differs", () => {
+    const w = new LoopWatchdog(TIMEOUT, RECONNECT, 0);
+    stills(w, 0, 4000);
+    expect(w.check(4000, "live", true).lost).toBe(true);
+    w.reopened(4100); // the reopened camera hands over the same image
+    stills(w, 4133, 5000);
+    expect(w.check(5000, "live", true).lost).toBe(true);
+    w.frame(5033, false);
+    expect(w.image(5033, true)).toBe(true);
+    expect(w.still).toBe(false);
+    expect(w.check(5100, "live", true)).toEqual({ pull: false, lost: false, reopen: 0 });
+    expect(stills(w, 5133, 8000).every(Boolean)).toBe(true); // the 3 s start again from the last change
+  });
 });

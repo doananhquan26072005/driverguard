@@ -2,6 +2,7 @@
 // alert appears once, so each alert sound (chime.ts) can be heard (sound is always on); from
 // UNAVAILABLE_FROM to UNAVAILABLE_TO the face is lost (monitoring unavailable, no alert).
 import type { HudAlert, HudSnapshot, HudTrip, Level, Reason, TripSummary } from "../lib/types";
+import { DEFAULTS, HUD_DEFAULTS } from "../lib/defaults";
 
 export const DEMO_CYCLE_S = 90;
 const [UNAVAILABLE_FROM, UNAVAILABLE_TO] = [46, 52];
@@ -51,6 +52,7 @@ export function demoSnapshot(elapsed: number, flagged: ReadonlySet<string>, nowE
     speed_kmh: 68 + 6 * Math.sin(elapsed / 9),
     clock_hour: 2.5 + elapsed / 3600,
     night: true,
+    dim: true,
     eyes_closed_s: active?.level === 3 ? Math.min(t - active.start + 1.5, 4) : 0,
     perclos_60s: 0.08,
     fps: 30,
@@ -73,13 +75,15 @@ export function demoAlertMetrics(reasons: readonly Reason[]): NonNullable<HudAle
 /** The agent's view of the running trip (M65): `driveS` of continuous driving, 15 minutes of fatigue
  *  rising gently; `lastScore` replaces the running minute (an alert in the demo). */
 export function demoTrip(driveS: number, lastScore: number | null = null): HudTrip {
-  const recent = Array.from({ length: 15 }, (_, i) => ({
+  const recent = Array.from({ length: DEFAULTS.hud.trend_minutes }, (_, i) => ({
     minute: 57 + i,
     drowsy_score: Math.round(11 + i * 1.6 + (i % 3) * 2),
     max_level: 0 as Level,
   }));
-  if (lastScore != null) recent[14] = { ...recent[14], drowsy_score: lastScore, max_level: 1 };
-  return { drive_run_s: driveS, driving_s: driveS, score_l1: 40, score_l2: 70, window_min: 15, recent_minutes: recent };
+  const last = recent.length - 1;
+  if (lastScore != null) recent[last] = { ...recent[last], drowsy_score: lastScore, max_level: 1 };
+  const { score_l1, score_l2, trend_minutes } = DEFAULTS.hud;
+  return { drive_run_s: driveS, driving_s: driveS, score_l1, score_l2, window_min: trend_minutes, recent_minutes: recent };
 }
 
 /** A 2 h 10 min trip for the summary screen preview (#/hud-preview?s=trip): tired from minute 95. */
@@ -119,8 +123,8 @@ export function demoTripSummary(): TripSummary {
     drowsy_p90: 49,
     drowsy_max: 59,
     first_tired_min: 95,
-    score_l1: 40,
-    score_l2: 70,
+    score_l1: HUD_DEFAULTS.score_l1,
+    score_l2: HUD_DEFAULTS.score_l2,
     rating: "attention",
     rating_reasons: ["tired_minutes"],
     suggestions: [{ code: "rest_after", minutes: 85 }, { code: "eyes_on_road" }],

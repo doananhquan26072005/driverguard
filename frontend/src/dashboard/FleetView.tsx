@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { alertSound, play } from "../hud/chime";
 import { getFleet } from "../lib/api";
 import { ago, dayKey, formatDateTime, formatNumber } from "../lib/format";
-import { FLEET_STATUS, fleetStateText, fleetVersionText, modelsText, perfDetail, perfText, reasonText } from "../lib/labels";
+import { clockSkewText, FLEET_STATUS, fleetStateText, fleetVersionText, modelsText, perfDetail, perfText, reasonText } from "../lib/labels";
 import type { FleetDevice, FleetStatus, Session } from "../lib/types";
 import { LevelBadge } from "./EventLog";
 
@@ -153,7 +153,19 @@ export default function FleetView({ session, refreshKey }: { session: Session; r
                     <td className="nowrap" title={d.last_seen ? formatDateTime(d.last_seen) : undefined}>
                       {d.last_seen ? ago((now - Date.parse(d.last_seen)) / 1000) : "–"}
                     </td>
-                    <td>{fleetStateText(d)}</td>
+                    <td>
+                      {fleetStateText(d)}
+                      {clockSkewText(d) ? (
+                        <div>
+                          <span
+                            className="badge level-2"
+                            title="Giờ của cảnh báo và mã chuyến do thiết bị ghi, có thể sai. Thứ tự, mục cần chú ý ngay và thời hạn lưu tính theo giờ máy chủ."
+                          >
+                            {clockSkewText(d)}
+                          </span>
+                        </div>
+                      ) : null}
+                    </td>
                     <td>{d.trip_id ?? "–"}</td>
                     <td title={modelsText(d.versions)}>
                       {d.thresholds_current === false ? (

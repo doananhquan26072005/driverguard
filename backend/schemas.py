@@ -2,7 +2,8 @@
 
 Privacy rule: the backend only ever receives metadata. Every event payload is checked
 in two layers and rejected (HTTP 422) if it could carry an image:
-1. `find_image_data()` scans the raw JSON before any field parsing: forbidden key names
+1. `find_image_data()` (edge_agent/io/metadata_guard.py, the same rules the device applies
+   before sending) scans the raw JSON before any field parsing: forbidden key names
    (image, frame, photo, ...), data URIs, image file signatures in base64 (JPEG /9j/,
    PNG iVBORw0KGgo, ...) and any long base64-looking run.
 2. Strict models: unknown fields are forbidden, every string is an enum or a short
@@ -18,6 +19,9 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+# One list of forbidden words and one scanner for the device, the page and this backend (M84).
+from edge_agent.io.metadata_guard import find_image_data
 
 Role = Literal["admin", "engineer", "manager", "driver"]
 Reason = Literal[
@@ -48,64 +52,13 @@ Reason = Literal[
     "fps_restored",
     "phone_detection_lost",  # system events (M50): the phone detector gives no fresh results / again
     "phone_detection_restored",
+    "road_pose_recalibrated",  # system event (M80): block 8 took a pose held off road for long as the road pose
 ]
 EventType = Literal["drowsiness", "distraction", "system"]
-# Ids stay shorter than BASE64_RUN so a legitimate id can never look like base64.
+# Ids stay shorter than metadata_guard.BASE64_RUN so a legitimate id can never look like base64.
 Identifier = Field(pattern=r"^[A-Za-z0-9_.-]{1,48}$")
 
 MAX_EVENTS_PER_BATCH = 100
-
-FORBIDDEN_KEY_PARTS = (
-    "image",
-    "img",
-    "frame",
-    "photo",
-    "picture",
-    "snapshot",
-    "thumbnail",
-    "jpeg",
-    "jpg",
-    "png",
-    "face_crop",
-    "crop",
-    "base64",
-    "b64",
-    "video",
-    "blob",
-)
-DATA_URI = re.compile(r"data:[a-z]+/[a-z0-9.+-]+;base64,", re.IGNORECASE)
-IMAGE_SIGNATURES = ("/9j/", "iVBORw0KGgo", "R0lGOD", "UklGR", "Qk0", "SUkq", "TU0AK")  # jpeg png gif webp bmp tiff
-BASE64_RUN = re.compile(r"[A-Za-z0-9+/_-]{64,}={0,2}")
-
-
-def find_image_data(obj: Any, path: str = "$") -> str | None:
-    """Return a description of the first image-like content found in a JSON value, else None."""
-    if isinstance(obj, (bytes, bytearray, memoryview)):
-        return f"{path}: binary data"
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            k = str(key).lower()
-            if any(part in k for part in FORBIDDEN_KEY_PARTS):
-                return f"{path}.{key}: forbidden field name"
-            found = find_image_data(value, f"{path}.{key}")
-            if found:
-                return found
-        return None
-    if isinstance(obj, (list, tuple)):
-        for i, value in enumerate(obj):
-            found = find_image_data(value, f"{path}[{i}]")
-            if found:
-                return found
-        return None
-    if isinstance(obj, str):
-        if DATA_URI.search(obj):
-            return f"{path}: data URI"
-        stripped = obj.strip()
-        if len(stripped) >= 16 and stripped.startswith(IMAGE_SIGNATURES):
-            return f"{path}: image signature"
-        if BASE64_RUN.search(obj):
-            return f"{path}: base64-like data"
-    return None
 
 
 class StrictModel(BaseModel):
@@ -329,6 +282,7 @@ class EventBatch(StrictModel):
 class BatchResult(BaseModel):
     accepted: int
     duplicates: int
+    conflicts: int = 0  # events whose event_id another device already used: not stored
     feedback_applied: int = 0
     samples_accepted: int = 0
     summaries_accepted: int = 0
@@ -428,6 +382,11 @@ class FleetDeviceOut(BaseModel):
     thresholds_latest: int = 0
     # M49: the loop timings of its last heartbeat that carried any (PerfIn); None: never sent.
     perf: dict[str, Any] | None = None
+    # M82: server time minus the `ts` of its last heartbeat, seconds (positive: the device's clock is
+    # behind), and whether that is past DG_CLOCK_SKEW_WARN_S: the times this device reports (`ts` of
+    # events, the trip id) are then not to be trusted. None: no heartbeat yet.
+    clock_skew_s: float | None = None
+    clock_wrong: bool | None = None
 
 
 class PolicyOut(BaseModel):

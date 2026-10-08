@@ -648,7 +648,9 @@ def main(argv: list[str] | None = None) -> int:
     rec.add_argument("--name", required=True, help="name of this recording inside the file")
     rec.add_argument("--source", default="0", help="camera index, or a video file (with --script)")
     rec.add_argument("--tag", action="append", default=[], help="condition, e.g. mask=medical (repeatable)")
-    rec.add_argument("--speed", type=float, default=60.0, help="simulated vehicle speed, km/h")
+    rec.add_argument(
+        "--speed", type=float, default=None, help="simulated vehicle speed, km/h (default: eval.replay_speed_kmh)"
+    )
     rec.add_argument("--no-phone", action="store_true", help="skip YOLO")
     rec.add_argument("--no-window", action="store_true", help="no preview window (no key labels either)")
     rec.add_argument("--script", default=None, help='labels for a video file: "eyes_closed@5-8,yawn@12-15"')

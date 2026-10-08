@@ -189,10 +189,13 @@ def test_highest_rule_wins_and_all_hits_kept():
 def test_blink_rate_is_a_note_by_default():
     trip = TripMemory().update(0.0, 0.0)
     trip = replace(trip, elapsed_s=120.0)
-    r = assess(d=replace(D0, blink_rate=40.0), trip=trip)
+    fast = replace(D0, blink_rate=40.0, blink_observed_s=60.0)
+    r = assess(d=fast, trip=trip)
     assert r.level == 0 and any(h.reason == "blink_rate" for h in r.hits)
     strict = RiskEngine(RiskConfig(blink_level=1))
-    assert assess(d=replace(D0, blink_rate=40.0), trip=trip, engine=strict).level == 1
+    assert assess(d=fast, trip=trip, engine=strict).level == 1
+    # Two minutes into the trip, but the eyes were read for 10 s of the last minute: no rate to judge.
+    assert assess(d=replace(fast, blink_observed_s=10.0), trip=trip, engine=strict).hits == ()
 
 
 def test_rising_trend_is_early_warning():
@@ -203,8 +206,10 @@ def test_rising_trend_is_early_warning():
             trip = mem.update(minute * 60 + s, minute * 5.0)
     trip = mem.update(8 * 60, 35.0)
     assert trip.trend_15min == pytest.approx(5.0)
-    r = assess(d=replace(D0, timestamp=480.0), trip=trip)
+    early = RiskEngine(RiskConfig(trend_level=1))  # thresholds.yaml: 0 = note only (M53)
+    r = assess(d=replace(D0, timestamp=480.0), trip=trip, engine=early)
     assert r.level == 1 and r.reasons == ("trend",)
+    assert assess(d=replace(D0, timestamp=480.0), trip=trip).level == 0  # ... and by default it is a note
 
 
 # ---------------------------------------------------------------- trip memory

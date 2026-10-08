@@ -13,6 +13,7 @@ eyes.py, mouth.py, head.py, slow_blink.py, brow.py.
 - Driver enrollment (block 6 stage, `set_profile`): the eye baseline, yawn thresholds, head
   pose, blink aperture and resting brow use the driver's own values from then on. Without
   enrollment (skipped, evaluation clips) everything is self-learnt.
+- The usual head pose only learns while the vehicle is moving (`update(moving=...)`, M80, head.py).
 - After a rest (the vehicle parked, block 10), `forget_since` drops what was gathered
   since the vehicle stopped: eyes closed to rest and waking-up yawns say nothing about the
   next drive. Events from before the stop stay.
@@ -29,7 +30,7 @@ from edge_agent.analysis.drowsiness.brow import BrowRaise
 from edge_agent.analysis.drowsiness.config import DrowsinessConfig, DrowsinessState
 from edge_agent.analysis.drowsiness.eyes import EyeBaseline, EyeClosure, Perclos, deep_blink_vote, ear_deep
 from edge_agent.analysis.drowsiness.head import HeadPose, NodDetector
-from edge_agent.analysis.drowsiness.mouth import MouthMask, YawnCounter
+from edge_agent.analysis.drowsiness.mouth import MouthMask, YawnCounter, frontal_mar
 from edge_agent.analysis.drowsiness.slow_blink import SlowBlinks
 from edge_agent.perception.features import FrameFeatures
 
@@ -39,7 +40,6 @@ class DrowsinessAnalyzer:
         self.config = config or DrowsinessConfig()
         cfg = self.config
         self._mar_open, self._mar_close = cfg.yawn_mar_open, cfg.yawn_mar_close  # enrolled: driver's own
-        self._start_t: float | None = None
         self._last_t: float | None = None
         self._baseline = EyeBaseline(cfg)
         self._blink_vote = deep_blink_vote(cfg, None)  # enrolled: from the driver's own shut eyes
@@ -99,11 +99,11 @@ class DrowsinessAnalyzer:
         self._brow.gap()
 
     # ------------------------------------------------------------------ main update
-    def update(self, f: FrameFeatures) -> DrowsinessState:
+    def update(self, f: FrameFeatures, moving: bool = True) -> DrowsinessState:
+        """moving: block 10's `moving`; the usual head pose only learns then (head.py). Default True:
+        evaluation clips and tools without a vehicle context."""
         cfg = self.config
         t = f.timestamp
-        if self._start_t is None:
-            self._start_t = t
         if self._last_t is not None and t - self._last_t > cfg.max_gap_s:
             self._break_episodes()
         dt = 0.0 if self._last_t is None else min(max(0.0, t - self._last_t), cfg.max_gap_s)
@@ -111,6 +111,7 @@ class DrowsinessAnalyzer:
         events: list[str] = []
         face_ok = f.face_found and f.face_reliable  # partial face: landmarks are extrapolated
         mar = f.mar if face_ok else None
+        yawn_mar = frontal_mar(mar, f.yaw) if cfg.yawn_yaw_correct else mar  # yawns only, not the mask (mouth.py)
 
         # Raw eye reading, before pose is known. Block 5 (eye-state CNN) decides when it ran:
         # EAR was judged unreliable on this frame.
@@ -129,7 +130,7 @@ class DrowsinessAnalyzer:
             ear_low = None if f.ear is None or not face_ok else f.ear < close_thr
 
         # Head pose relative to the driver's usual pose (rolling median of eyes-open frames).
-        yaw_off, pitch_off, pitch_ref = self._pose.update(t, f, face_ok, ear_low)
+        yaw_off, pitch_off, pitch_ref = self._pose.update(t, f, face_ok, ear_low, learn=moving)
 
         # Eye state with a per-driver threshold.
         pose_ok = (
@@ -191,11 +192,14 @@ class DrowsinessAnalyzer:
         # where EAR decided (a CNN probability is not an aperture), no yawn / talking mask, blinks kept.
         p80_eye = None if aperture is None else aperture < cfg.perclos_p80_aperture
         perclos_p80, coverage_p80 = self._perclos_p80.update(t, dt, p80_eye, events)
-        blink_rate = self._closure.blink_rate(t, self._start_t)
+        blink_rate, blink_observed = self._closure.blink_rate(t, dt, eye_known)
         blink_frac, reopen_s, reopen_ratio = self._slow.stats(t, coverage)
         slow_blink = self._slow.score(coverage, blink_frac, reopen_ratio)
-        yawning = self._yawn.update(t, mar, self._mar_open, self._mar_close, events)
-        self._nod.update(t, dt, pitch_off, ear_low, self._pose.last_t, events)
+        yawning = self._yawn.update(t, yawn_mar, self._mar_open, self._mar_close, events)
+        nod_shut = ear_low  # raw, ignores pose: the eyes cannot be judged with the head that far down
+        if nod_shut and cfg.nod_eyes_deep:  # a look down lowers the lids too (head.py)
+            nod_shut = f.p_closed >= p_deep_thr if use_cnn else ear_deep(cfg, f, baseline, bowed, self._blink_vote)
+        self._nod.update(t, dt, pitch_off, nod_shut, self._pose.last_t, events)
         self._brow.update(t, f, face_ok and eye_closed is False and not use_cnn, masked, baseline, events)
 
         return DrowsinessState(
@@ -226,6 +230,7 @@ class DrowsinessAnalyzer:
             brow_raise_count_5min=self._brow.count(t),
             perclos_p80_60s=perclos_p80,
             perclos_p80_coverage_s=coverage_p80,
+            blink_observed_s=blink_observed,
         )
 
 

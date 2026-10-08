@@ -40,6 +40,14 @@ Anti false-positive rules:
   glance down is shorter than the minimum and is not carried. Only a deep closure is
   carried (`microsleep_deep_min_frac` of the episode's eye frames firmly shut): lids lowered
   while slowly bowing to the phone / dashboard used to start the carry and raise L3.
+  The carry needs something to go on: after `head_drop_carry_max_lost_s` with neither the eyes nor a
+  lowered head in view (the face is gone) it ends. Nothing says the eyes are still shut then, and
+  only a face coming back could end it: the L3 stayed up for as long as the camera was covered, and
+  "monitoring unavailable" with its "Bạn còn ở đó không?" (blocks 9, 12) never ran. They do now.
+- Blink rate is blinks per minute of eye data: the blinks of the last `blink_window_s` over the
+  seconds the eyes were read in it (at least `blink_rate_min_span_s`). Over clock time, as before, a
+  driver seen half the time read half the rate (15 blinks a minute as 8), and so did the first
+  minute after the scores were dropped (rest, enrollment).
 - Looking down: the upper lids follow the gaze, so EAR drops to about half the open-eye value
   and MediaPipe's eyeBlink rises too (real microsleeps on FL3D: eyeBlink p50 0.63, so the
   blendshape vote cannot tell them apart). With the head bowed at least
@@ -73,7 +81,7 @@ class EyeBaseline:
 
     def __init__(self, config: DrowsinessConfig) -> None:
         self.config = config
-        self._window = RollingWindow(config.eye_baseline_window_s)
+        self._window = RollingWindow(config.eye_baseline_window_s, config.baseline_recompute_s)
         self.enrolled: float | None = None  # open-eye EAR from driver enrollment
         self.enrolled_closed: float | None = None  # closed-eye EAR from driver enrollment
 
@@ -141,7 +149,10 @@ class EyeClosure:
         self._episode_eye = 0
         self._run_since: float | None = None  # first frame of the running stretch of firmly shut frames
         self._run_last = 0.0  # its latest firmly shut frame
+        self._carry_seen_t = 0.0  # head-drop carry: last frame that showed the head down
         self._blinks: deque[float] = deque()
+        self._seen: deque[tuple[float, float]] = deque()  # (t, dt) of the frames with the eyes read
+        self._seen_s = 0.0
 
     def judge(self, closing: bool, opening: bool) -> bool:
         """Eye state with hysteresis: closes on `closing`, reopens only on `opening`."""
@@ -169,8 +180,12 @@ class EyeClosure:
             if self.closed_since is None or self._last_eye_t is None:
                 return
             if self.head_drop:
-                # Carried closure: goes on while the head stays down or the face is lost.
-                if not (head_down or face_lost):
+                # Carried closure: goes on while the head stays down or the face is lost, the latter
+                # for `head_drop_carry_max_lost_s` at most.
+                if head_down:
+                    self._carry_seen_t = t
+                lost_s = cfg.head_drop_carry_max_lost_s
+                if not (head_down or face_lost) or (lost_s > 0 and t - self._carry_seen_t > lost_s):
                     self.end()
                 return
             # From the start of the closure, not of its counted part: eyes shut during a
@@ -184,6 +199,7 @@ class EyeClosure:
                 and (self._episode_is_deep() or self._run_s(self._last_eye_t) >= cfg.head_drop_carry_min_closed_s)
             ):
                 self.head_drop = True  # eyes shut, then the head dropped: keep counting
+                self._carry_seen_t = t
                 return
             # Unknown: keep a running episode through short dropouts only.
             if t - self._last_eye_t > cfg.max_gap_s:
@@ -242,16 +258,26 @@ class EyeClosure:
             events.append("microsleep")
         return duration
 
-    def blink_rate(self, t: float, start_t: float) -> float:
-        """Blinks per minute over `blink_window_s` (or since start_t, at least `blink_rate_min_span_s`)."""
+    def blink_rate(self, t: float, dt: float, eye_known: bool) -> tuple[float, float]:
+        """(blinks per minute of eye data over `blink_window_s`, seconds of eye data in that window).
+        dt: seconds this frame adds; eye_known: the eyes were read on it."""
         cfg = self.config
         expire(self._blinks, t, cfg.blink_window_s)
-        observed = min(t - start_t, cfg.blink_window_s)
-        return len(self._blinks) / max(observed, cfg.blink_rate_min_span_s) * 60.0
+        if eye_known and dt > 0:
+            self._seen.append((t, dt))
+            self._seen_s += dt
+        while self._seen and t - self._seen[0][0] > cfg.blink_window_s:
+            self._seen_s -= self._seen.popleft()[1]
+        if not self._seen:  # no rounding residue in the running sum
+            self._seen_s = 0.0
+        observed = min(max(self._seen_s, 0.0), cfg.blink_window_s)
+        return len(self._blinks) / max(observed, cfg.blink_rate_min_span_s) * 60.0, observed
 
     def forget_since(self, t0: float) -> None:
         self.end()
         drop_since(self._blinks, t0)
+        while self._seen and self._seen[-1][0] >= t0:
+            self._seen_s -= self._seen.pop()[1]
 
 
 class Perclos:

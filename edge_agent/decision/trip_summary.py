@@ -33,6 +33,8 @@ import numpy as np
 from edge_agent.config import config_from_dict
 
 DROWSY_EVENTS = ("microsleep", "yawn", "nod", "brow_raise")
+MINUTE_S = 60.0  # units
+HOUR_S = 3600.0
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ class TripSummaryConfig:
     min_monitored_frac: float = 0.6  # less of the driving time with a face seen: low coverage
     rest_margin_min: float = 10.0  # suggest a rest this many minutes before fatigue first showed
     min_rest_suggestion_min: float = 15.0
+    max_minutes: int = 1440  # minutes kept for the summary; the backend takes no later one (MAX_TRIP_MINUTES)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> TripSummaryConfig:
@@ -115,11 +118,15 @@ class TripCollector:
         tired_score: float = 40.0,
         long_drive_s: float = 7200.0,
         score_l2: float = 70.0,
+        bin_s: float = 60.0,
     ) -> None:
         """tired_score: a minute at or above this drowsy_score is "tired" (risk.drowsy.l1);
-        long_drive_s: a continuous drive this long gets a "regular breaks" suggestion (context.long_drive_s)."""
+        long_drive_s: a continuous drive this long gets a "regular breaks" suggestion (context.long_drive_s);
+        bin_s: length of one "minute" of the summary and of the HUD chart (trip_memory.bin_s: the same
+        bins as block 11's trend, so the two cannot disagree)."""
         self.config = config or TripSummaryConfig()
         self.tired_score, self.long_drive_s, self.score_l2 = tired_score, long_drive_s, score_l2
+        self.bin_s = bin_s
         self._t0: float | None = None
         self._last_t: float | None = None
         self.duration = self.driving = self.stopped = 0.0
@@ -203,7 +210,9 @@ class TripCollector:
         self.enrolled = self.enrolled or r.enrollment.enrolled
         if not observed:  # no minute score from it either (its drowsy_score reads the eyes closed on purpose)
             return
-        m = int((t - self._t0) // 60)
+        m = int((t - self._t0) // self.bin_s)
+        if m > cfg.max_minutes:  # an agent left running for days: the summary does not grow with it
+            return
         acc = self._minutes.setdefault(m, [0.0, 0, 0, 0])
         acc[0] += r.risk.drowsy_score
         acc[1] += 1
@@ -231,7 +240,7 @@ class TripCollector:
         eyes-closed step of enrollment, a stall) is None: the HUD draws it as a gap, not as 0."""
         recent: list[dict[str, Any] | None] = []
         if self._t0 is not None and self._last_t is not None and window_min > 0:
-            now = int((self._last_t - self._t0) // 60)
+            now = int((self._last_t - self._t0) // self.bin_s)
             for m in range(max(0, now - window_min + 1), now + 1):
                 a = self._minutes.get(m)
                 recent.append(
@@ -265,7 +274,7 @@ class TripCollector:
         driving_min = 0
         for p in minutes:
             if p.drowsy_score >= self.tired_score:
-                first_tired = driving_min
+                first_tired = int(driving_min * self.bin_s // MINUTE_S)
                 break
             driving_min += p.moving
         monitored = self.monitored / self.driving if self.driving > 0 else None
@@ -325,7 +334,7 @@ def assess(s: TripSummary, cfg: TripSummaryConfig, tired_score: float) -> tuple[
     if risk:
         reasons.append("microsleep")
     serious = s.alerts_by_level.get("2", 0) + s.alerts_by_level.get("3", 0)
-    hours = s.driving_s / 3600.0
+    hours = s.driving_s / HOUR_S
     if serious >= max(cfg.attention_min_alerts, 1) and hours > 0 and serious / hours >= cfg.attention_alerts_per_hour:
         reasons.append("frequent_alerts")
     tired_minutes = sum(1 for p in s.minutes if p.drowsy_score >= tired_score)
@@ -349,7 +358,7 @@ def suggest(s: TripSummary, cfg: TripSummaryConfig, long_drive_s: float) -> list
             }
         )
     if s.longest_drive_s >= long_drive_s:
-        out.append({"code": "regular_breaks", "minutes": int(long_drive_s // 60)})
+        out.append({"code": "regular_breaks", "minutes": int(long_drive_s // MINUTE_S)})
     if s.alerts_by_reason.get("phone", 0):
         out.append({"code": "phone_away"})
     if s.alerts_by_reason.get("off_road", 0):

@@ -11,6 +11,11 @@ When several faces are visible (e.g. a passenger), `DriverSelector` picks the dr
   when the head turns) and position match the enrolled driver best. A driver turning to a
   mirror shrinks in 2D and a passenger leaning in grows, so "largest" alone swaps people.
 Only numbers are kept (ratios, a centre, a size), never an image.
+After enrollment the best face is still nobody's when it is further than `driver_max_distance` from
+where the driver was last seen (M83): with the driver hidden or out of view, a passenger alone in the
+frame used to be read as the driver. No face is then reported, so the "face lost" path of blocks 8
+and 9 runs. The limit is on the position alone: measured on 14 people (DROZY), the shape signature
+of a stranger is as close to the driver's as the driver's own on another day, so it cannot tell.
 
 With `blendshapes` on, the same model also outputs its 52 blendshape scores; the driver's
 eyeBlinkLeft / eyeBlinkRight (0 = open, 1 = shut) are kept. They are pretrained, need no
@@ -20,6 +25,11 @@ per-driver baseline and cost no measurable time (NITYMED: AUC 0.986 for closed e
 (Vural et al. 2007), a drowsiness sign of block 7.
 The gaze and mouth scores of TRACE_BLENDSHAPES (eyeLook*, jawOpen, mouthClose) are kept as numbers
 for the recording tools (tools/record_trace.py, tools/seq_eval.py); no block reads them yet.
+
+Only finite numbers leave this block (M77): a face with a NaN / inf landmark is not a face
+(`finite_faces`), and a blendshape score that is not finite is a missing one. MediaPipe has not
+been seen to output either, but one NaN eyelid point made EAR NaN, and one NaN EAR kept block 7's
+open-eye baseline NaN, so the eyes read as open, for as long as that frame stayed in its window.
 """
 
 from __future__ import annotations
@@ -43,6 +53,9 @@ class LandmarkConfig:
     # + centre distance / (driver_position_tol x enrolled face size); lowest wins.
     driver_shape_tol: float = 0.08
     driver_position_tol: float = 2.0
+    # Enrolled only: a face further than this from where the driver was last seen is not the driver
+    # (in enrolled inter-ocular distances, the unit of driver_position_tol); 0 = off.
+    driver_max_distance: float = 4.0
     min_face_detection_confidence: float = 0.5
     min_face_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
@@ -151,22 +164,29 @@ class DriverSelector:
         """Index of the driver's face, -1 when there is none."""
         if not faces:
             return -1
-        if self.anchor is None or len(faces) == 1:
-            k = max(range(len(faces)), key=lambda i: bbox_area(faces[i]))
-        else:
-            k = min(range(len(faces)), key=lambda i: self._score(faces[i], width))
-        if self.anchor is not None:
-            self._last_center = face_center_size(faces[k], width)[0]
+        if self.anchor is None:
+            return max(range(len(faces)), key=lambda i: bbox_area(faces[i]))
+        k = min(range(len(faces)), key=lambda i: self._score(faces[i], width))
+        limit = self.config.driver_max_distance
+        if limit > 0 and self._distance(faces[k], width) > limit:
+            return -1  # someone else; the driver's last position is kept for when they are back
+        self._last_center = face_center_size(faces[k], width)[0]
         return k
+
+    def _distance(self, points: np.ndarray, width: int) -> float:
+        """From where the driver was last seen to this face's centre, in enrolled inter-ocular distances."""
+        anchor = self.anchor
+        assert anchor is not None
+        center, _ = face_center_size(points, width)
+        ref = self._last_center or anchor.center
+        return float(np.hypot(center[0] - ref[0], center[1] - ref[1])) / max(anchor.size, 1e-6)
 
     def _score(self, points: np.ndarray, width: int) -> float:
         cfg, anchor = self.config, self.anchor
         assert anchor is not None
-        center, _ = face_center_size(points, width)
-        ref = self._last_center or anchor.center
-        moved = float(np.hypot(center[0] - ref[0], center[1] - ref[1]))
-        return shape_distance(face_shape(points), anchor.shape) / cfg.driver_shape_tol + moved / (
-            cfg.driver_position_tol * max(anchor.size, 1e-6)
+        return (
+            shape_distance(face_shape(points), anchor.shape) / cfg.driver_shape_tol
+            + self._distance(points, width) / cfg.driver_position_tol
         )
 
 
@@ -180,6 +200,17 @@ def in_frame_ratio(points: np.ndarray, width: int, height: int) -> float:
     x, y = points[:, 0], points[:, 1]
     inside = (x >= 0) & (x < width) & (y >= 0) & (y < height)
     return float(inside.mean())
+
+
+def finite_faces(faces: list[np.ndarray]) -> list[int]:
+    """Indices of the faces whose landmarks are all finite; the others are not faces (module doc)."""
+    return [i for i, points in enumerate(faces) if np.isfinite(points).all()]
+
+
+def finite_scores(*scores: float) -> tuple[float, ...] | None:
+    """Blendshape scores as floats, None when one of them is NaN / inf (the same as not output)."""
+    values = tuple(float(s) for s in scores)
+    return values if np.isfinite(values).all() else None
 
 
 class FaceLandmarkDetector:
@@ -239,22 +270,31 @@ class FaceLandmarkDetector:
             np.array([(lm.x * w, lm.y * h, lm.z * w) for lm in face], dtype=np.float32)
             for face in result.face_landmarks
         ]
-        k = self.selector.choose(faces, w)
+        usable = finite_faces(faces)
+        if not usable:
+            return None
+        chosen = self.selector.choose([faces[i] for i in usable], w)
+        if chosen < 0:
+            return None
+        k = usable[chosen]  # index in MediaPipe's own order
         driver = faces[k]
         eye_blink = brow_up = traced = None
         if result.face_blendshapes and k < len(result.face_blendshapes):
             scores = {c.category_name: c.score for c in result.face_blendshapes[k]}
-            traced = {name: float(scores[name]) for name in TRACE_BLENDSHAPES if name in scores}
+            traced = {
+                name: float(scores[name]) for name in TRACE_BLENDSHAPES if name in scores and np.isfinite(scores[name])
+            }
             if "eyeBlinkLeft" in scores and "eyeBlinkRight" in scores:
-                eye_blink = (float(scores["eyeBlinkLeft"]), float(scores["eyeBlinkRight"]))
+                eye_blink = finite_scores(scores["eyeBlinkLeft"], scores["eyeBlinkRight"])
             if "browOuterUpLeft" in scores and "browOuterUpRight" in scores:
-                brow_up = (float(scores["browOuterUpLeft"]) + float(scores["browOuterUpRight"])) / 2.0
+                brows = finite_scores(scores["browOuterUpLeft"], scores["browOuterUpRight"])
+                brow_up = None if brows is None else (brows[0] + brows[1]) / 2.0
         return FaceLandmarks(
             points=driver,
             image_width=w,
             image_height=h,
             face_conf=in_frame_ratio(driver, w, h),
-            num_faces=len(faces),
+            num_faces=len(usable),
             frame_id=frame.frame_id,
             timestamp=frame.timestamp,
             eye_blink=eye_blink,

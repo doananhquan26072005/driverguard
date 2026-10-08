@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HudAlert, HudSnapshot, VehicleAction } from "../lib/types";
-import { ALARM_REPEAT_S, PRESENCE_REPEAT_S, armAudio, play, playAlert, speak, systemSound, unlock, type VoiceKey } from "./chime";
+import { HUD_DEFAULTS } from "../lib/defaults";
+import { armAudio, play, playAlert, setGain, speak, systemSound, unlock, type VoiceKey } from "./chime";
 import { demoSnapshot } from "./demo";
 import { edgeSource, type HudSource, type TripEnd } from "./edge";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
 import { alertVoiceKey, enrollCue, enrollVoiceKeys, type HudLink, hudCanLeave, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
-
-// The spoken line follows the chime, not over it.
-const CHIME_TO_VOICE_MS = 700;
-const afterChime = (f: () => void) => void setTimeout(f, CHIME_TO_VOICE_MS);
-
-const POLL_MS = 300;
-const STALE_S = 3; // no update from the camera loop for this long = frozen
 
 type Mode = "live" | "demo";
 
@@ -44,6 +38,15 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const reasonsRef = useRef<HudSnapshot["reasons"]>([]); // the alert being repeated with the L3 siren
   const demoStart = useRef(Date.now());
   const demoFlags = useRef<Set<string>>(new Set());
+  // The screen's own numbers (thresholds.yaml hud.*, M85): the agent's with every state, the build's
+  // (lib/defaults) until the first one arrives. No number is kept here.
+  const display = mode === "live" ? (snap?.display ?? HUD_DEFAULTS) : HUD_DEFAULTS;
+  const displayRef = useRef(display);
+  displayRef.current = display;
+  // The spoken line follows the chime, not over it.
+  const afterChime = useRef((f: () => void) => void setTimeout(f, displayRef.current.chime_to_voice_s * 1000)).current;
+  const [g0, g1, g2, g3] = display.gain;
+  useEffect(() => setGain([g0, g1, g2, g3]), [g0, g1, g2, g3]);
 
   // Sound on from the start; the first touch anywhere lifts the browser's block (chime.ts).
   useEffect(() => armAudio(setSound), []);
@@ -58,7 +61,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
         setLink("ok");
       }
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 1000);
+      const timer = setTimeout(() => ctrl.abort(), displayRef.current.state_timeout_s * 1000);
       try {
         const s = await source.state(ctrl.signal);
         if (cancelled) return;
@@ -74,13 +77,13 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
       } catch {
         if (cancelled || mode === "demo") return;
         failures.current += 1;
-        if (failures.current >= 3) setLink("down");
+        if (failures.current >= displayRef.current.link_down_failures) setLink("down");
       } finally {
         clearTimeout(timer);
       }
     };
     void tick();
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(tick, display.poll_s * 1000);
     // M50: a source that can push (#/live) hands over a new alert in the frame it is raised; the poll
     // goes on for the display and for noticing a loop that stopped.
     const unsubscribe =
@@ -98,7 +101,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
       clearInterval(id);
       unsubscribe?.();
     };
-  }, [mode, source]);
+  }, [mode, source, display.poll_s]);
 
   // Sound for alerts not heard yet: its own sound per kind of alert (chime.ts).
   useEffect(() => {
@@ -139,7 +142,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
     );
   }, [target, mode, source]);
 
-  const stale = mode === "live" && snap?.updated_at != null && now - snap.updated_at > STALE_S;
+  const stale = mode === "live" && snap?.updated_at != null && now - snap.updated_at > display.stale_s;
   const level = snap?.connected ? snap.level : 0;
   reasonsRef.current = snap?.reasons ?? [];
   const cameraLost = mode === "live" && link === "ok" && snap?.camera_lost === true;
@@ -153,9 +156,9 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
     const id = setInterval(() => {
       playAlert(3, []);
       afterChime(() => speak(alertVoiceKey(reasonsRef.current) as VoiceKey)); // the order again with the siren
-    }, ALARM_REPEAT_S * 1000);
+    }, display.alarm_repeat_s * 1000);
     return () => clearInterval(id);
-  }, [alarmOn]);
+  }, [alarmOn, display.alarm_repeat_s]);
 
   // Camera lost / back: its own sound, the driver is not monitored meanwhile.
   const wasCameraLost = useRef(false);
@@ -192,11 +195,11 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
       } else playAlert(3, []);
     };
     ring();
-    const id = setInterval(ring, PRESENCE_REPEAT_S * 1000);
+    const id = setInterval(ring, display.presence_repeat_s * 1000);
     return () => clearInterval(id);
-  }, [presence, sound]);
+  }, [presence, sound, display.presence_repeat_s]);
 
-  // The HUD lost the loop (M28): no data for STALE_S, no link to the device, or frames failing. Each
+  // The HUD lost the loop (M28): no data for hud.stale_s, no link to the device, or frames failing. Each
   // start is loud (the driver is not watched), its end the usual "restored" tone. Not after the trip ended.
   const stopped = mode === "live" && !tripEnd && !snap?.trip_ended && monitoringStopped(systemState(link, snap, stale, cameraLost));
   const wasStopped = useRef(false);

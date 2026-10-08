@@ -11,8 +11,10 @@ Turns the per-frame risk level into stable alerts:
   When the active level drops, a reason of the lower level that was alerted at that level within
   its cooldown does not raise a new alert.
 - Cooldown: per (level, reason). An alert is held back only when every one of its
-  reasons was already emitted at that level within cooldown_s[level]. A higher level
-  is always emitted (escalation). L3 has no cooldown by default: after fall_hold_s of open
+  reasons was already emitted at that level within cooldown_s[level]. The cooldown of a lower
+  level never holds a higher one back (escalation), but the higher level's own does: L2 off_road
+  again within cooldown_s[2] of the last L2 off_road is held, also when it comes up from L1.
+  L3 has no cooldown by default: after fall_hold_s of open
   eyes, a new closure is a new microsleep and gets its own siren and event.
 - Reminder (M74, `remind`): the cooldown holds an alert back, it does not swallow it. A reason
   that is still a hit at the active level once cooldown_s[level] has passed since its last alert
@@ -72,6 +74,7 @@ class AlertConfig:
     cooldown_s: dict[int, float] = field(default_factory=lambda: {1: 120.0, 2: 30.0, 3: 0.0})
     l1_repeat_count: int = 3  # this many L1 alerts of one reason within the window -> L2; 0 = off
     l1_repeat_window_s: float = 600.0
+    l1_repeat_level: int = 2  # the level that alert goes out at
     l3_repeat_count: int = 3  # this many L3 alerts within the window: the reason repeated_l3; 0 = off
     l3_repeat_window_s: float = 600.0
     max_gap_s: float = 0.5  # frames further apart than this restart a running confirmation
@@ -88,6 +91,7 @@ class AlertConfig:
             cooldown_s=_levels(d.get("cooldown_s"), default.cooldown_s),
             l1_repeat_count=int(d.get("l1_repeat_count", default.l1_repeat_count)),
             l1_repeat_window_s=float(d.get("l1_repeat_window_s", default.l1_repeat_window_s)),
+            l1_repeat_level=int(d.get("l1_repeat_level", default.l1_repeat_level)),
             l3_repeat_count=int(d.get("l3_repeat_count", default.l3_repeat_count)),
             l3_repeat_window_s=float(d.get("l3_repeat_window_s", default.l3_repeat_window_s)),
             max_gap_s=float(d.get("max_gap_s", default.max_gap_s)),
@@ -177,7 +181,10 @@ class AlertManager:
         for k in keys:
             self._last_emit[(level, k)] = t
         if level == 1 and self._repeated(t, reasons):
-            level, reasons = 2, (*reasons, REPEATED_L1)  # original reasons first: they set the event kind
+            level, reasons = (
+                self.config.l1_repeat_level,
+                (*reasons, REPEATED_L1),
+            )  # original reasons first: they set the event kind
             self.active_level, self._active_reasons = level, reasons
             self._alerted.add(REPEATED_L1)
             for k in keys:  # the same cause turning into a real L2 right after is not a second sound

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ALARM_REPEAT_S, alertSound, armAudio, play, systemSound } from "../hud/chime";
+import { alertSound, armAudio, play, setGain, systemSound } from "../hud/chime";
+import { HUD_DEFAULTS } from "./defaults";
 import { DEMO_CYCLE_S, demoSnapshot, DEMO_SCRIPT } from "../hud/demo";
 import { ago, changedValues, clockText, dayKey, dayRange, formatPercent, query, rangeStart } from "./format";
 import {
@@ -8,6 +9,7 @@ import {
   ENROLL_CONSENT,
   EVENT_TAGS,
   fleetStateText,
+  clockSkewText,
   fleetVersionText,
   modelsText,
   perfDetail,
@@ -138,7 +140,20 @@ describe("HUD alert sounds", () => {
     const s = alertSound(3, ["microsleep", "drowsy_score"])!;
     expect(s.kind).toBe("alarm");
     const end = Math.max(...s.notes.map((n) => n.at + n.dur));
-    expect(end).toBeLessThan(ALARM_REPEAT_S); // one siren ends before the next repeat
+    expect(end).toBeLessThan(HUD_DEFAULTS.alarm_repeat_s); // one siren ends before the next repeat
+  });
+
+  it("takes its loudness from the agent's hud.gain, not from a number of its own (M85)", () => {
+    expect([1, 2, 3].map((l) => alertSound(l as 1 | 2 | 3, ["drowsy_score"])!.gain)).toEqual(HUD_DEFAULTS.gain.slice(1));
+    setGain([0, 0.5, 0.6, 0.7]);
+    try {
+      expect(alertSound(1, ["drowsy_score"])!.gain).toBe(0.5);
+      expect(alertSound(3, ["microsleep"])!.gain).toBe(0.7);
+      expect(systemSound("camera_lost").gain).toBe(0.6); // loud system sounds use level 2's
+      expect(systemSound("camera_restored").gain).toBe(0.5);
+    } finally {
+      setGain(HUD_DEFAULTS.gain);
+    }
   });
 
   it("has a loud, distinct sound when monitoring stops (M28)", () => {
@@ -362,6 +377,23 @@ describe("loop timings (M49)", () => {
     expect(recoveryText({ pulls: 2, reopens: 0 })).toBe("Vòng lặp đứng 2 lần, đã tự chạy lại");
     expect(recoveryText({ pulls: 0, reopens: 3 })).toBe("Mở lại camera 3 lần");
     expect(recoveryText({ pulls: 1, reopens: 1 })).toBe("Vòng lặp đứng 1 lần, đã tự chạy lại · mở lại camera 1 lần");
+    expect(recoveryText({ pulls: 0, reopens: 0, yoloRestarts: 0 })).toBe("");
+    expect(recoveryText({ pulls: 0, reopens: 0, yoloRestarts: 2 })).toBe("Khởi động lại model điện thoại 2 lần");
+  });
+});
+
+describe("device clock (M82)", () => {
+  it("says nothing while the backend finds the clock fine", () => {
+    expect(clockSkewText({})).toBeNull();
+    expect(clockSkewText({ clock_skew_s: 40, clock_wrong: false })).toBeNull();
+    expect(clockSkewText({ clock_skew_s: null, clock_wrong: null })).toBeNull();
+  });
+
+  it("says which way the clock is off and by how much", () => {
+    expect(clockSkewText({ clock_skew_s: 600, clock_wrong: true })).toBe("Đồng hồ thiết bị chậm 10 phút");
+    expect(clockSkewText({ clock_skew_s: -86400, clock_wrong: true })).toBe("Đồng hồ thiết bị nhanh 24 giờ");
+    expect(clockSkewText({ clock_skew_s: 90, clock_wrong: true })).toBe("Đồng hồ thiết bị chậm 90 giây");
+    expect(clockSkewText({ clock_skew_s: 56 * 365 * 86400, clock_wrong: true })).toBe("Đồng hồ thiết bị chậm 20440 ngày");
   });
 });
 

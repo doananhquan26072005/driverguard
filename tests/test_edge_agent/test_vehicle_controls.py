@@ -92,7 +92,7 @@ def test_signal_link_reads_the_simulator_and_survives_it_missing():
     server = SimServer(sim, "keyboard", 0, threading.Lock()).start()
     v = ExternalVehicle()
     try:
-        link = SignalLink(v, f"http://127.0.0.1:{server.port}/can")
+        link = SignalLink(v, f"http://127.0.0.1:{server.port}/can", period_s=0.2)
         assert link.poll_once()
         s = v.sample(0.0)
         assert s.speed_kmh == 40.0 and s.turn_signal == "right"

@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from edge_agent.analysis.drowsiness import DrowsinessAnalyzer
-from edge_agent.decision.risk_engine import RiskEngine
+from edge_agent.decision.risk_engine import RiskConfig, RiskEngine
 from edge_agent.perception.features import FrameFeatures
 from tests.test_edge_agent.test_decision import C0, D0, X0
 
@@ -166,11 +166,13 @@ def test_no_blendshapes_no_brow_signal():
 
 
 def test_new_terms_enter_drowsy_score():
-    engine = RiskEngine()
+    engine = RiskEngine(
+        RiskConfig(drowsy_weight_slow_blink=10.0, drowsy_weight_brow=10.0)
+    )  # 0 in thresholds.yaml (M53)
     d = replace(D0, slow_blink_score=1.0, brow_raise_count_5min=3)
     score, terms = engine.drowsy_score(d, C0, None)
     assert terms[4:] == (1.0, 1.0)
-    assert score == pytest.approx(20.0)  # weight_slow_blink 10 + weight_brow 10 (temporary)
+    assert score == pytest.approx(20.0)  # weight_slow_blink 10 + weight_brow 10
     assert engine.assess(d, X0, C0).level == 0  # alone they stay under L1 (40)
 
 

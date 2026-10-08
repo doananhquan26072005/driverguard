@@ -26,13 +26,14 @@ export function meanLuma(px: Uint8ClampedArray, width: number, height: number, b
   return sum / ((x2 - x1) * (y2 - y1));
 }
 
-/** Block 2's infrared test value: mean |B - G| and |G - R| on every 4th pixel (0 = grayscale / IR camera). */
-export function channelDiff(px: Uint8ClampedArray, width: number, height: number): number {
+/** Block 2's infrared test value: mean |B - G| and |G - R| on every stride-th pixel (0 = grayscale /
+ *  IR camera). stride: thresholds.yaml preprocess.sample_stride, as the device. */
+export function channelDiff(px: Uint8ClampedArray, width: number, height: number, stride: number): number {
   let bg = 0;
   let gr = 0;
   let n = 0;
-  for (let y = 0; y < height; y += 4) {
-    for (let x = 0; x < width; x += 4) {
+  for (let y = 0; y < height; y += stride) {
+    for (let x = 0; x < width; x += stride) {
       const i = (y * width + x) * 4;
       bg += Math.abs(px[i + 2] - px[i + 1]);
       gr += Math.abs(px[i + 1] - px[i]);
@@ -42,14 +43,14 @@ export function channelDiff(px: Uint8ClampedArray, width: number, height: number
   return n ? (bg / n + gr / n) / 2 : 0;
 }
 
-/** Block 6 quality stage: mean and spread (std) of the whole frame's luminance on every 4th pixel
- *  (edge_agent/perception/quality.py SCENE_STRIDE). A covered lens gives a dark or flat image. */
-export function lumaSpread(px: Uint8ClampedArray, width: number, height: number): { mean: number; std: number } {
+/** Block 6 quality stage: mean and spread (std) of the whole frame's luminance on every stride-th
+ *  pixel (edge_agent/perception/quality.py measure, the same stride). A covered lens gives a dark or flat image. */
+export function lumaSpread(px: Uint8ClampedArray, width: number, height: number, stride: number): { mean: number; std: number } {
   let sum = 0;
   let sq = 0;
   let n = 0;
-  for (let y = 0; y < height; y += 4) {
-    for (let x = 0; x < width; x += 4) {
+  for (let y = 0; y < height; y += stride) {
+    for (let x = 0; x < width; x += stride) {
       const v = luma(px, (y * width + x) * 4);
       sum += v;
       sq += v * v;
@@ -147,16 +148,4 @@ export function concatFaces(faces: Float32Array[]): Float32Array {
     at += f.length;
   }
   return out;
-}
-
-/** The largest face (closest to the camera). Python picks the driver; this is for brightness. */
-export function largestFace(faces: Float32Array[]): number {
-  let best = -1;
-  let area = -1;
-  faces.forEach((f, i) => {
-    const [x1, y1, x2, y2] = bbox(f);
-    const a = (x2 - x1) * (y2 - y1);
-    if (a > area) [best, area] = [i, a];
-  });
-  return best;
 }

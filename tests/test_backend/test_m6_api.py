@@ -293,7 +293,8 @@ def test_loop_health_events_are_system_events(client, engineer):
         build_system_event("fps_restored", trip, 50.0, metrics={"fps": 29.5}),
         build_system_event("phone_detection_lost", trip, 50.0, metrics={"phone_unknown_ratio": 0.93}),  # M50
         build_system_event("phone_detection_restored", trip, 50.0, metrics={"phone_unknown_ratio": 0.48}),
+        build_system_event("road_pose_recalibrated", trip, 50.0),  # M80
     ]
     assert batch(client, events=records).status_code == 200
     events = client.get("/api/v1/events", headers=engineer).json()
-    assert len(events) == 6 and client.get("/api/v1/stats", headers=engineer).json()["total"] == 0
+    assert len(events) == 7 and client.get("/api/v1/stats", headers=engineer).json()["total"] == 0

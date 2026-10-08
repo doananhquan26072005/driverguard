@@ -23,6 +23,7 @@ from edge_agent.cv import cv2
 class PreprocessConfig:
     target_width: int = 640
     ir_channel_diff_max: float = 2.0
+    sample_stride: int = 4  # the whole-image numbers are taken on every n-th pixel (also block 6's)
     clahe_enabled: bool = True
     clahe_clip_limit: float = 2.0
     clahe_tile_grid: int = 8
@@ -33,6 +34,7 @@ class PreprocessConfig:
         return cls(
             target_width=int(c.target_width),
             ir_channel_diff_max=float(c.ir_channel_diff_max),
+            sample_stride=max(int(c.sample_stride), 1),
             clahe_enabled=bool(c.clahe_enabled),
             clahe_clip_limit=float(c.clahe_clip_limit),
             clahe_tile_grid=int(c.clahe_tile_grid),
@@ -63,7 +65,8 @@ class Preprocessor:
         if image.ndim == 2 or image.shape[2] == 1:
             return True
         # Subsample for speed: channel similarity is a global property.
-        s = image[::4, ::4].astype(np.int16)
+        step = self.config.sample_stride
+        s = image[::step, ::step].astype(np.int16)
         diff = (np.abs(s[..., 0] - s[..., 1]).mean() + np.abs(s[..., 1] - s[..., 2]).mean()) / 2.0
         return float(diff) <= self.config.ir_channel_diff_max
 

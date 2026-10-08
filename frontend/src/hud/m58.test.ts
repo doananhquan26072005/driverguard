@@ -103,12 +103,44 @@ describe("M58 trip summary screen", () => {
 
 describe("M58 HUD stage", () => {
   it("scales the 1280 x 800 design on landscape screens and keeps phones fluid", async () => {
-    const { stageScale } = await import("./HudStage");
-    expect(stageScale(1280, 800)).toBe(1);
-    expect(stageScale(2000, 1350)).toBeCloseTo(1.5625); // width-bound: letterboxed top and bottom
-    expect(stageScale(1440, 720)).toBe(0.9); // short screen: height-bound, nothing overflows
-    expect(stageScale(390, 844)).toBeNull(); // phone
-    expect(stageScale(1024, 1366)).toBeNull(); // portrait tablet
+    const { stageLayout } = await import("./HudStage");
+    const scale = (w: number, h: number) => stageLayout(w, h)?.scale ?? null;
+    expect(stageLayout(1280, 800)).toEqual({ shape: "landscape", width: 1280, height: 800, scale: 1 });
+    expect(scale(2000, 1350)).toBeCloseTo(1.5625); // width-bound: letterboxed top and bottom
+    expect(scale(1440, 720)).toBe(0.9); // short screen: height-bound, nothing overflows
+    expect(stageLayout(390, 844)).toBeNull(); // phone
+    expect(stageLayout(1000, 1000)).toBeNull(); // near-square window: neither design fits
+  });
+});
+
+describe("M89 upright stage and the screen's own dark hours", () => {
+  it("draws the 800 x 1280 design on upright screens of tablet size", async () => {
+    const { stageLayout } = await import("./HudStage");
+    // A 10 inch upright screen, whatever its pixel count: one design, scaled.
+    expect(stageLayout(800, 1280)).toEqual({ shape: "portrait", width: 800, height: 1280, scale: 1 });
+    expect(stageLayout(1200, 1920)).toEqual({ shape: "portrait", width: 800, height: 1280, scale: 1.5 });
+    // Before M89 these two fell to the phone's layout, the second with the landscape's two columns.
+    expect(stageLayout(1024, 1366)?.shape).toBe("portrait");
+    expect(stageLayout(1024, 1366)?.scale).toBeCloseTo(1366 / 1280); // height-bound: nothing below the fold
+    expect(stageLayout(768, 1024)?.scale).toBeCloseTo(0.8); // 1024 / 1280
+    expect(stageLayout(640, 960)?.shape).toBe("portrait");
+    expect(stageLayout(600, 960)).toBeNull(); // narrower than the tablet's breakpoint: the phone's layout
+    expect(stageLayout(1280, 800)?.shape).toBe("landscape"); // turning the screen picks the other design
+  });
+
+  it("dims by the screen's window, not by the score's night", async () => {
+    const { hudDimmed } = await import("./hudModel");
+    const snap = (patch: Partial<HudSnapshot>) => ({ connected: true, level: 0, reasons: [], alerts: [], ...patch }) as HudSnapshot;
+    const evening = snap({ clock_hour: 20, night: false, dim: true }); // dark outside, no night factor yet
+    expect(hudDimmed(evening, 0, null)).toBe(true);
+    expect(hudDimmed(evening, 1, null)).toBe(true);
+    expect(hudDimmed(evening, 2, null)).toBe(false); // alerts at full brightness
+    expect(hudDimmed(evening, 3, null)).toBe(false);
+    expect(hudDimmed(evening, 0, "unavailable")).toBe(false); // so is "not monitored"
+    // The score's window alone no longer dims: a dim window moved to daytime-free hours stays bright.
+    expect(hudDimmed(snap({ clock_hour: 2, night: true, dim: false }), 0, null)).toBe(false);
+    expect(hudDimmed(snap({ clock_hour: 2, night: true }), 0, null)).toBe(false);
+    expect(hudDimmed(null, 0, null)).toBe(false);
   });
 });
 
@@ -122,9 +154,12 @@ describe("M58 review: numbers in plain words", () => {
     expect(attentionWord([], 0)).toEqual({ word: "Tập trung", tone: "ok" });
     expect(attentionWord(["phone", "off_road"], 2)).toEqual({ word: "Cầm điện thoại", tone: "danger" });
     expect(attentionWord(["off_road"], 2).word).toBe("Nhìn lệch");
-    expect(eyesWord(0.2, n)).toEqual({ word: "Đang mở", tone: "ok" }); // a blink
-    expect(eyesWord(0.8, n)).toEqual({ word: "Nhắm 0,8 giây", tone: "caution" });
-    expect(eyesWord(2.4, n).tone).toBe("danger");
+    const limits = { blink_max_s: 0.5, microsleep_l3_s: 1.5 };
+    expect(eyesWord(0.2, n, limits)).toEqual({ word: "Đang mở", tone: "ok" }); // a blink
+    expect(eyesWord(0.8, n, limits)).toEqual({ word: "Nhắm 0,8 giây", tone: "caution" });
+    expect(eyesWord(2.4, n, limits).tone).toBe("danger");
+    // M85: the tile follows the agent's rule, not a number of its own (L3 tuned to 3 s on the dashboard)
+    expect(eyesWord(2.4, n, { blink_max_s: 0.5, microsleep_l3_s: 3 }).tone).toBe("caution");
   });
 });
 
