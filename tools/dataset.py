@@ -254,6 +254,11 @@ def report(preset: Preset, samples: list[Sample], signals: list[Signal], face_fo
         "",
         f"{len(samples)} images: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())) + ".",
     ]
+    n_pos = sum(truth)
+    lines.append(
+        f"Unit: one image. Positive (`{preset.positive}`): {n_pos} of {len(samples)} ({n_pos / len(samples):.1%}). "
+        "Images are not grouped by person here: the same person can be on both sides of any split."
+    )
     if face_found is not None:
         per_label = Counter(s.label for s, ok in zip(samples, face_found, strict=True) if ok)
         lines.append(

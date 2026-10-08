@@ -298,6 +298,11 @@ def test_per_person_table_shows_who_gets_the_false_alerts():
     text = ev.report(ev.score(eps, preds, durations), durations, 1.0, None, None, rows)
     assert "## Per person" in text and "3 people. False alerts: 2 in all, from 1 of them" in text
     assert "| an | 2 | 0.33 | 2 | 2 | 6.0 (" in text
+    assert "with the people as the sample" not in text  # no config given: no resampling
+    with_cfg = ev.report(
+        ev.score(eps, preds, durations), durations, 1.0, None, EvalConfig(bootstrap_resamples=100), rows
+    )
+    assert "with the people as the sample" in with_cfg and "resampled by person (3 people, 100 draws" in with_cfg
 
 
 def test_per_person_windows_use_that_persons_videos_only():

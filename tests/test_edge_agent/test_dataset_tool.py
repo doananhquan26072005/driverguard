@@ -152,6 +152,7 @@ def test_report_shows_per_group_rates():
     text = ds.report(pr, samples, sigs, [True, True, False])
     assert "| c6 | no_phone | 1 | 0.0% | 100.0% |" in text  # a hard negative the zone rule filters out
     assert "Best threshold" in text and "Face found" in text
+    assert "Unit: one image. Positive (`phone`): 1 of 3 (33.3%)." in text
 
 
 # ---------------------------------------------------------------- video presets

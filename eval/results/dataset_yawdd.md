@@ -2,6 +2,8 @@ Dataset: enider/yawdd-dataset (yawdd), clip-level labels, scored from traces (to
 
 Blocks 5, 7-12 replayed from the traces with config/thresholds.yaml.
 
+Source: commit 9a9c14e (uncommitted changes); thresholds.yaml sha256 6048dd7f4bb4; yawdd_v2.pkl (modified 2026-09-26).
+
 # DriverGuard - accuracy evaluation
 
 319 videos, 124.0 min of driving, match tolerance ±0 s.
@@ -20,6 +22,8 @@ Blocks 5, 7-12 replayed from the traces with config/thresholds.yaml.
 | **all alerts L1** | 114 | 0 | 0 | 0 | 0 | – | – | – | 1.45 | 0.0 (0.00–2.5) | – s |
 | **all alerts L2** | 114 | 10 | 1 | 9 | 0 | 10.0% | – | – | 1.45 | 6.2 (2.84–11.8) | 12.0 s |
 | **all alerts L3** | 114 | 1 | 0 | 1 | 0 | 0.0% | – | – | 1.45 | 0.7 (0.02–3.8) | – s |
+
+Units: recall counts labelled episodes (114 of them, 114 at most per behaviour), precision counts predictions, FP / hour counts hours of video (319 videos; the positive share of the time is the part inside the episodes). Videos are not grouped by person unless the *Per person* section below says so.
 
 TP / FP / Dup: matched episodes / predictions outside every episode / extra predictions in an already matched episode. Delay: prediction time minus episode start (negative = inside the tolerance before the labelled start). *all alerts*: every emitted alert (L1-L3; then per level) scored against every labelled episode, whatever its behaviour; recall is not meaningful there. Hours: where a false positive of the row can happen (video time minus the row's episodes ± tolerance). FP / hour with an exact Poisson 95 % CI: a few false positives on little time say little, so no PRD verdict (≤ 1.0 / h) can be drawn from a CI that still spans it.
 
@@ -42,12 +46,14 @@ The first 30 s of every video (`eval.warmup_s`: baselines and the PERCLOS window
 
 ## FAR / MAR on windows
 
-| Scored | Awake windows | FAR (95% CI) | Drowsy windows | MAR (95% CI) | Skipped |
-|---|---:|---:|---:|---:|---:|
-| Drowsiness, level ≥ L1 | 12 | 0.0% (0.0%–24.2%) | 1 | 100.0% (20.7%–100.0%) | 0 |
-| Drowsiness, level ≥ L2 | 12 | 0.0% (0.0%–24.2%) | 1 | 100.0% (20.7%–100.0%) | 0 |
-| Distraction, level ≥ L1 | 13 | 0.0% (0.0%–22.8%) | 0 | – | 0 |
-| Distraction, level ≥ L2 | 13 | 0.0% (0.0%–22.8%) | 0 | – | 0 |
+| Scored | Awake windows | FAR (95% CI) | Drowsy windows | Positive share | MAR (95% CI) | Skipped |
+|---|---:|---:|---:|---:|---:|---:|
+| Drowsiness, level ≥ L1 | 12 | 0.0% (0.0%–24.2%) | 1 | 1 / 13 (7.7%) | 100.0% (20.7%–100.0%) | 0 |
+| Drowsiness, level ≥ L2 | 12 | 0.0% (0.0%–24.2%) | 1 | 1 / 13 (7.7%) | 100.0% (20.7%–100.0%) | 0 |
+| Distraction, level ≥ L1 | 13 | 0.0% (0.0%–22.8%) | 0 | 0 / 13 (0.0%) | – | 0 |
+| Distraction, level ≥ L2 | 13 | 0.0% (0.0%–22.8%) | 0 | 0 / 13 (0.0%) | – | 0 |
+
+Unit: one window of 10 s. Positive share: drowsy windows among the scored ones (awake + drowsy).
 
 Windows of 10 s, not overlapping, from 30 s after each clip start (the start-up stretch is left out). Drowsy window: ≥ 50% inside a labelled episode; awake window: ≥ 50% known-awake and not touching an episode; others skipped. Predicted: the branch's risk level reaches the stated level in the window. Wilson CI; windows of one clip are correlated, so the CI is optimistic.
 
@@ -55,6 +61,8 @@ Windows of 10 s, not overlapping, from 30 s after each clip start (the start-up 
 
 106 people. False alerts: 10 in all, from 10 of them (9.4%); the 10 with the most have 10 (100.0%).
 False alerts per hour across people: median 0.0, p90 0.0, highest 119.3. One person has minutes of video, so a single person's rate has a very wide CI: compare groups, not individuals.
+
+All false alerts per hour with the people as the sample: Poisson 6.9 (3.31–12.7); resampled by person (106 people, 10000 draws, seed 0) 6.9 (3.34–11.2). 10 of 106 people have at least one; per person min / median / max 0.0 / 0.0 / 119.3 per hour.
 
 The 5 people with the highest false-alert rate:
 

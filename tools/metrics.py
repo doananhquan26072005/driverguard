@@ -25,9 +25,13 @@ Window rules (config/thresholds.yaml, section `eval`):
 
 from __future__ import annotations
 
+import hashlib
 import math
+import subprocess
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from edge_agent.config import config_from_dict
@@ -58,6 +62,24 @@ class EvalConfig:
     # tools/benchmark.py --duration: what a long run has to keep up.
     soak_min_fps: float = 15.0
     soak_rss_growth_mb_per_h: float = 20.0
+    # Resampling by person (person_rate_ci): how many draws, and the seed that makes a report repeatable.
+    bootstrap_resamples: int = 10000
+    bootstrap_seed: int = 0
+    # tools/uta_rldd.py tradeoff: the values of risk.drowsy.l1 swept on dev for the trade-off curve.
+    tradeoff_l1: tuple[float, ...] = (30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0)
+    # tools/uta_rldd.py report, "what a drowsy_score band means": width of the score bands (0-100).
+    score_band_width: float = 20.0
+    # tools/uta_rldd.py report: videos below this frame rate are reported apart (never dropped).
+    min_video_fps: float = 15.0
+    # Replays and traces: local hour at the first frame, and continuous driving already done by then.
+    replay_clock_hour: float = 12.0
+    replay_drive_time_s: float = 0.0
+    # tools/uta_rldd.py fps: loop rates the videos are replayed at with frames left out, how uneven the
+    # waits of the "uneven" runs are, runs per rate, and the slowest recording that is slowed down.
+    fps_study_rates: tuple[float, ...] = (15.0, 12.0, 10.0)
+    fps_study_jitter_cv: float = 0.3
+    fps_study_repeats: int = 3
+    fps_study_min_source_fps: float = 25.0
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EvalConfig:
@@ -105,6 +127,71 @@ def rate_ci(k: int, hours: float, conf: float = 0.95) -> tuple[float | None, flo
         return None, None, None
     lo, hi = poisson_ci(k, conf)
     return k / hours, lo / hours, hi / hours
+
+
+def person_rate_ci(
+    counts: Sequence[int],
+    hours: Sequence[float],
+    resamples: int = 10000,
+    seed: int = 0,
+    conf: float = 0.95,
+) -> tuple[float | None, float | None, float | None]:
+    """(rate, low, high) per hour with the people as the sample: draw `len(counts)` people with
+    replacement `resamples` times, each draw = total false alarms / total hours of the drawn people,
+    take the percentile interval. Poisson treats every false alarm as independent; when they pile up
+    on a few people the number of people is the real sample size and this interval is wider.
+    Zero false alarms give (0, 0, 0): the draws cannot invent one, so use the Poisson bound there.
+    None without exposure."""
+    import numpy as np
+
+    n = len(counts)
+    c = np.asarray(counts, dtype=float)
+    h = np.asarray(hours, dtype=float)
+    if n == 0 or h.sum() <= 0:
+        return None, None, None
+    idx = np.random.default_rng(seed).integers(0, n, size=(resamples, n))
+    drawn_h = h[idx].sum(axis=1)
+    ok = drawn_h > 0
+    rates = c[idx].sum(axis=1)[ok] / drawn_h[ok]
+    a = (1.0 - conf) / 2 * 100
+    lo, hi = np.percentile(rates, [a, 100 - a])
+    return float(c.sum() / h.sum()), float(lo), float(hi)
+
+
+def person_spread(counts: Sequence[int], hours: Sequence[float]) -> dict[str, float | int | None]:
+    """How the false alarms are spread over people: how many have at least one, and the smallest /
+    median / largest rate per hour among the people with exposure."""
+    import numpy as np
+
+    rates = [c / h for c, h in zip(counts, hours, strict=True) if h > 0]
+    return {
+        "people": len(counts),
+        "with_alarm": sum(1 for c in counts if c > 0),
+        "min": min(rates, default=None),
+        "median": float(np.median(rates)) if rates else None,
+        "max": max(rates, default=None),
+    }
+
+
+def person_text(counts: Sequence[int], hours: Sequence[float], cfg: EvalConfig) -> str:
+    """One line for a report: the Poisson interval beside the by-person one, and the spread."""
+    n = len(counts)
+    poisson = rate_ci(int(sum(counts)), float(sum(hours)))
+    by_person = person_rate_ci(counts, hours, cfg.bootstrap_resamples, cfg.bootstrap_seed)
+    sp = person_spread(counts, hours)
+    if by_person[0] is None:
+        return "no exposure"
+    fmt = lambda v: "–" if v is None else f"{v:.1f}"  # noqa: E731
+    note = (
+        " (0 false alarms: the by-person interval cannot be wider than 0, read the Poisson bound)"
+        if not sum(counts)
+        else ""
+    )
+    return (
+        f"Poisson {ci_text(poisson)}; resampled by person ({n} people, {cfg.bootstrap_resamples} draws, seed "
+        f"{cfg.bootstrap_seed}) {ci_text(by_person)}{note}. {sp['with_alarm']} of {n} people have at least one; "
+        f"per person min / median / max {fmt(sp['min'])} / {fmt(sp['median'])} / {fmt(sp['max'])} per hour"
+    )
 
 
 def wilson_ci(k: int, n: int, z: float = 1.959964) -> tuple[float | None, float | None, float | None]:
@@ -234,17 +321,26 @@ def ci_text(est: tuple[float | None, float | None, float | None], percent: bool 
     return f"{v:.1f} ({lo:.2f}–{hi:.1f})"
 
 
+def positive_share(positive: int, negative: int) -> str:
+    """'12 / 480 (2.5%)': the positive samples among the scored ones, for the unit line under a table."""
+    total = positive + negative
+    return "–" if total == 0 else f"{positive} / {total} ({positive / total * 100:.1f}%)"
+
+
 def window_table(rows: Sequence[tuple[str, WindowCounts]], cfg: EvalConfig) -> list[str]:
     """Markdown table of FAR / MAR per row, with the conventions written under it."""
     lines = [
-        "| Scored | Awake windows | FAR (95% CI) | Drowsy windows | MAR (95% CI) | Skipped |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| Scored | Awake windows | FAR (95% CI) | Drowsy windows | Positive share | MAR (95% CI) | Skipped |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name, c in rows:
         lines.append(
-            f"| {name} | {c.awake} | {ci_text(c.far, True)} | {c.drowsy} | {ci_text(c.mar, True)} | {c.skipped} |"
+            f"| {name} | {c.awake} | {ci_text(c.far, True)} | {c.drowsy} | {positive_share(c.drowsy, c.awake)} | "
+            f"{ci_text(c.mar, True)} | {c.skipped} |"
         )
     lines += [
+        "",
+        f"Unit: one window of {cfg.window_s:g} s. Positive share: drowsy windows among the scored ones (awake + drowsy).",
         "",
         f"Windows of {cfg.window_s:g} s, not overlapping, from {cfg.warmup_s:g} s after each clip start (the "
         "start-up stretch is left out). Drowsy window: ≥ "
@@ -253,3 +349,40 @@ def window_table(rows: Sequence[tuple[str, WindowCounts]], cfg: EvalConfig) -> l
         "the window. Wilson CI; windows of one clip are correlated, so the CI is optimistic.",
     ]
     return lines
+
+
+# --------------------------------------------------------------------------- where a report comes from
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _git(*args: str) -> str | None:
+    try:
+        out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=10, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip()
+
+
+def file_hash(path: str | Path) -> str:
+    """First 12 hex digits of the sha256 of a file ('missing' when it is not there)."""
+    p = Path(path)
+    return hashlib.sha256(p.read_bytes()).hexdigest()[:12] if p.is_file() else "missing"
+
+
+def provenance(inputs: Iterable[str | Path] = (), thresholds: str | Path | None = None) -> str:
+    """One line a generated report starts with, so that a later reader can tell how old its numbers are:
+    the commit (and whether the working tree had uncommitted changes), the hash of thresholds.yaml, the
+    input files with their last-modified date. Reports are not regenerated by CI, so this is the only
+    way to see that one was made before a threshold changed."""
+    commit = _git("rev-parse", "--short", "HEAD") or "unknown"
+    dirty = _git("status", "--porcelain", "--untracked-files=no")
+    state = "unknown state" if dirty is None else "uncommitted changes" if dirty else "clean"
+    th = Path(thresholds) if thresholds else ROOT / "config" / "thresholds.yaml"
+    parts = [f"commit {commit} ({state})", f"{th.name} sha256 {file_hash(th)}"]
+    for f in inputs:
+        p = Path(f)
+        if p.is_file():
+            day = datetime.fromtimestamp(p.stat().st_mtime, tz=UTC).strftime("%Y-%m-%d")
+            parts.append(f"{p.name} (modified {day})")
+    return "Source: " + "; ".join(parts) + "."
