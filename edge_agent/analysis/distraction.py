@@ -3,7 +3,8 @@
 Per frame, from head pose + phone flag + whether the vehicle is moving, computes:
 - off_road_duration: seconds the head has been continuously turned away from the road.
 - phone_ratio_2s: fraction of recent samples (window `phone_window_s`) with a phone
-  in the driver zone.
+  in the driver zone; 0 until the window holds `phone_min_coverage_s` of detector results (one
+  detection among frames without a fresh result used to be a ratio of 1.0).
 - no_face_duration: seconds without any face while the vehicle is not standing still (driver
   slumped out of view, camera covered). The risk engine turns a long one into "monitoring
   unavailable". It is the only number that runs on in a crawl below context.min_speed_kmh
@@ -25,6 +26,17 @@ Anti false-positive rules:
 - Driver enrollment (block 6 stage) gives the driver's own road pose (`set_road_pose`):
   it replaces the start-up calibration, also when it comes mid-trip at a stop.
   Adaptation then stays within +-`baseline_max_deg` of it.
+- Recalibration (M80): the baseline above can be wrong by more than the off-road limit (the driver
+  looked aside while pulling out during the start-up calibration; the camera or the seat moved
+  mid-trip, enrolled or not). Then every look at the road is "off road", so the baseline never gets
+  an on-road sample again and L2 stays up for the trip. When the head has been outside the off-road
+  band for `baseline_recalibrate_s` of driving without one confirmed look back into it, and it kept
+  still meanwhile (10th-90th percentile range of yaw and of pitch within
+  `baseline_recalibrate_spread_deg`), that pose is the road pose: the baseline and its centre move
+  to its median, the off-road state ends, and `recalibrated` is set on that frame (a system event
+  for the backend). Driving time only: a stop pauses the count, it does not clear it. Frames block 7
+  calls `gaze_down` (lids lowered, head bowed: a phone on the lap) are no evidence either way, so a
+  long look down does not become the road pose.
 - Returning to the road must last `on_road_confirm_s` before the off-road timer resets,
   so a quick glance back does not hide a long distraction; a single noisy frame
   cannot reset it either.
@@ -99,13 +111,16 @@ class DistractionConfig:
     max_gap_s: float = 0.5  # a longer gap between two frames ends the running timers
     pose_hold_s: float = 3.0  # "off road" held this long after the last reliable pose; 0 = no limit
     phone_window_s: float = 2.0
+    phone_min_coverage_s: float = 0.5  # less detector data than this in the window: ratio 0
     baseline_adapt: bool = True
     baseline_tau_s: float = 30.0
     baseline_max_deg: float = 20.0
     baseline_yaw_deg: float = 0.0
     baseline_pitch_deg: float = 0.0
-    baseline_calibrate_s: float = 0.0  # 0 = no start-up calibration
+    baseline_calibrate_s: float = 5.0  # 0 = no start-up calibration
     baseline_calibrate_max_deg: float = 45.0
+    baseline_recalibrate_s: float = 60.0  # 0 = never recalibrated
+    baseline_recalibrate_spread_deg: float = 10.0
     turn_signal_extra_yaw_deg: float = 30.0
     left_yaw_sign: float = 1.0  # sign of yaw when the driver turns to their own left
     glance_window_s: float = 30.0  # off_road_ratio / glance_count window
@@ -142,6 +157,10 @@ class DistractionState:
     turned_away: bool = False  # face lost right after a large head turn: still judged, not unavailable
     gaze_down_deg: float | None = None  # head pitch + iris, below the road pose (measured only, no alert)
     gaze_down_duration: float = 0.0  # seconds it has stayed at or above distraction.gaze.down_deg
+    recalibrated: bool = False  # this frame moved the baseline to a pose held off road for long (M80)
+
+
+RECAL_CHECK_S = 1.0  # the spread of the recalibration window is recomputed at most this often (cost only)
 
 
 class DistractionAnalyzer:
@@ -155,6 +174,7 @@ class DistractionAnalyzer:
         self._calib: list[tuple[float, float, float]] = []  # (t, yaw, pitch)
         self.baseline_iris: float | None = None  # the driver's usual iris_y (kept like the pose baseline)
         self._iris_calib: list[tuple[float, float]] = []  # (t, iris_y)
+        self._clear_recal()
         self.reset()
 
     def reset(self) -> None:
@@ -163,13 +183,14 @@ class DistractionAnalyzer:
         self._off_road_since: float | None = None
         self._on_road_since: float | None = None
         self._no_face_since: float | None = None
-        self._phone: deque[tuple[float, bool, str | None]] = deque()
+        self._phone: deque[tuple[float, bool, str | None, float]] = deque()  # (t, phone, kind, dt)
         self._last_t: float | None = None
         self._pose_t: float | None = None  # last frame with a reliable head pose
         self._turned_pose_t: float | None = None  # last reliable pose, when it was a large head turn
         self._turned_since: float | None = None  # face lost right after such a pose
         self._gaze_since: float | None = None  # start of the current look down
         self._gaze_last: float | None = None  # last frame the gaze was seen down
+        self._recal_on_since = None  # the recalibration window itself is kept: a stop only pauses it
         self.clear_glances()
 
     def _break_episodes(self) -> None:
@@ -180,6 +201,47 @@ class DistractionAnalyzer:
         self._pose_t = None
         self._turned_pose_t = self._turned_since = None
         self._gaze_since = self._gaze_last = None
+        self._recal_on_since = None
+
+    def _clear_recal(self) -> None:
+        """Empty the recalibration window: the driver looked back into the band, or the baseline was set."""
+        self._recal: deque[tuple[float, float, float]] = deque()  # (yaw, pitch, seconds) held off road
+        self._recal_s = 0.0  # driving time in it
+        self._recal_on_since: float | None = None  # start of the current look inside the band
+        self._recal_check_t: float | None = None  # last time its spread was computed
+
+    def _recalibrate(self, t: float, dt: float, yaw: float, pitch: float, away: bool, gaze_down: bool) -> bool:
+        """True when this frame moved the baseline to the pose held outside the band (see module doc)."""
+        cfg = self.config
+        need_s = cfg.baseline_recalibrate_s
+        if need_s <= 0 or gaze_down:
+            return False
+        if not away:
+            if self._recal_on_since is None or dt > cfg.max_gap_s:
+                self._recal_on_since = t
+            if t - self._recal_on_since >= cfg.on_road_confirm_s:
+                self._clear_recal()
+            return False
+        self._recal_on_since = None
+        d = min(dt, cfg.max_gap_s)
+        self._recal.append((yaw, pitch, d))
+        self._recal_s += d
+        while self._recal_s - self._recal[0][2] >= need_s:  # keep the last need_s of driving
+            self._recal_s -= self._recal.popleft()[2]
+        if self._recal_s < need_s:
+            return False
+        if self._recal_check_t is not None and 0 <= t - self._recal_check_t < RECAL_CHECK_S:
+            return False
+        self._recal_check_t = t
+        yaws, pitches = [y for y, _, _ in self._recal], [p for _, p, _ in self._recal]
+        (y10, y50, y90), (p10, p50, p90) = np.percentile(yaws, [10, 50, 90]), np.percentile(pitches, [10, 50, 90])
+        if max(y90 - y10, p90 - p10) > cfg.baseline_recalibrate_spread_deg:
+            return False  # the head moves about: a driver looking around, not a wrong baseline
+        lim = cfg.baseline_calibrate_max_deg
+        self.baseline_yaw = self._center_yaw = min(max(float(y50), -lim), lim)
+        self.baseline_pitch = self._center_pitch = min(max(float(p50), -lim), lim)
+        self._clear_recal()
+        return True
 
     def clear_glances(self) -> None:
         """Empty the glance window (also called by the pipeline when monitoring becomes unavailable)."""
@@ -266,6 +328,7 @@ class DistractionAnalyzer:
         self.baseline_pitch = self._center_pitch = min(max(pitch_med, -lim), lim)
         self.calibrated = True
         self._calib = []
+        self._clear_recal()
 
     def set_road_pose(self, yaw: float, pitch: float, iris_y: float | None = None) -> None:
         """The enrolled "looking at the road" pose: the baseline and its centre from now on.
@@ -275,6 +338,7 @@ class DistractionAnalyzer:
         self.baseline_pitch = self._center_pitch = min(max(pitch, -lim), lim)
         self.calibrated = True
         self._calib = []
+        self._clear_recal()
         if iris_y is not None:
             self.baseline_iris = iris_y
             self._iris_calib = []
@@ -305,18 +369,20 @@ class DistractionAnalyzer:
             self._gaze_since = self._gaze_last = None  # looked back, or not seen for too long
         return angle, (self._gaze_last - self._gaze_since if self._gaze_since is not None else 0.0)
 
-    def _phone_ratio(self, t: float, phone_near_face: bool | None, kind: str | None = None) -> float:
+    def _phone_ratio(self, t: float, dt: float, phone_near_face: bool | None, kind: str | None = None) -> float:
+        """Share of the window's detector results with a phone; 0 until they cover `phone_min_coverage_s`."""
+        cfg = self.config
         if phone_near_face is not None:  # None = no fresh detector result: not counted
-            self._phone.append((t, phone_near_face, kind if phone_near_face else None))
-        while self._phone and t - self._phone[0][0] > self.config.phone_window_s:
+            self._phone.append((t, phone_near_face, kind if phone_near_face else None, min(dt, cfg.max_gap_s)))
+        while self._phone and t - self._phone[0][0] > cfg.phone_window_s:
             self._phone.popleft()
-        if not self._phone:
+        if not self._phone or sum(seen for *_, seen in self._phone) < cfg.phone_min_coverage_s:
             return 0.0
-        return sum(1 for _, p, _ in self._phone if p) / len(self._phone)
+        return sum(1 for _, p, *_ in self._phone if p) / len(self._phone)
 
     def _phone_kind(self) -> str | None:
         """Most frequent kind among the window's phone samples; a tie, or no kind given, is "unknown"."""
-        kinds = [k or "unknown" for _, p, k in self._phone if p]
+        kinds = [k or "unknown" for _, p, k, _ in self._phone if p]
         if not kinds:
             return None
         counts = {k: kinds.count(k) for k in set(kinds)}
@@ -359,6 +425,7 @@ class DistractionAnalyzer:
             )
 
         yaw_off = pitch_off = None
+        recalibrated = False
         has_pose = (
             features.face_found and features.face_reliable and features.yaw is not None and features.pitch is not None
         )
@@ -372,8 +439,16 @@ class DistractionAnalyzer:
         elif has_pose:
             yaw_off = features.yaw - self.baseline_yaw
             pitch_off = features.pitch - self.baseline_pitch
+            away = self._head_off_road(yaw_off, pitch_off)  # the band without the turn-signal widening
+            if self._recalibrate(t, dt, features.yaw, features.pitch, away, gaze_down):
+                recalibrated = True
+                yaw_off = features.yaw - self.baseline_yaw
+                pitch_off = features.pitch - self.baseline_pitch
+                away = self._head_off_road(yaw_off, pitch_off)
+                self._off_road = False  # it was the road all along: the look away ends here
+                self._off_road_since = self._on_road_since = None
             head_off = self._head_off_road(yaw_off, pitch_off, turn_side) or gaze_down
-            if not (self._head_off_road(yaw_off, pitch_off) or gaze_down):  # not widened band, not looking down
+            if not (away or gaze_down):  # not widened band, not looking down
                 self._adapt_baseline(features.yaw, features.pitch, dt)
             turned = cfg.turned_away_yaw_deg > 0 and head_off and abs(yaw_off) > cfg.turned_away_yaw_deg
             self._turned_pose_t = t if turned else None
@@ -410,7 +485,7 @@ class DistractionAnalyzer:
         duration = t - self._off_road_since if self._off_road and self._off_road_since is not None else 0.0
         gaze_deg, gaze_s = self._gaze(t, dt, features, None if calibrating else pitch_off, head_off, eyes_shut)
         ratio, glances = self._glances(t, dt, was_off_road, known=not calibrating)
-        phone_ratio = self._phone_ratio(t, phone_near_face, phone_kind)
+        phone_ratio = self._phone_ratio(t, dt, phone_near_face, phone_kind)
         return DistractionState(
             timestamp=t,
             active=True,
@@ -429,4 +504,5 @@ class DistractionAnalyzer:
             turned_away=self._turned_away(t, features.face_found),
             gaze_down_deg=gaze_deg,
             gaze_down_duration=gaze_s,
+            recalibrated=recalibrated,
         )

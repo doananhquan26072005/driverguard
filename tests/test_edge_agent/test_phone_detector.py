@@ -1,3 +1,4 @@
+import threading
 import time
 
 import numpy as np
@@ -113,19 +114,23 @@ class FakeModel:
 
 
 def test_async_detector_runs_at_target_fps_on_latest_frame():
+    # The real thread, as a smoke test: it runs, and not once per frame. The schedule itself (when it
+    # runs, on which frame) is asserted exactly on a fake clock in test_m88_missing_tests.py; a lower
+    # bound on the runs of a real second ("6 to 12") only measured how busy the machine was.
     model = FakeModel()
     cfg = PhoneDetectorConfig(target_fps=10.0, max_result_age_s=10.0)
     with AsyncPhoneDetector(cfg, model=model) as detector:
-        t_end = time.monotonic() + 1.0
+        t0 = time.monotonic()
         i = 0
-        while time.monotonic() < t_end:  # main loop at ~100 FPS
+        while time.monotonic() < t0 + 0.5 or detector.runs < 2:  # main loop at ~100 FPS
             detector.submit(make_frame(i, time.monotonic()))
             i += 1
             time.sleep(0.01)
+            assert time.monotonic() < t0 + 10.0, "the detector thread never ran"
+        elapsed = time.monotonic() - t0
         result = detector.latest()
-    assert 6 <= model.calls <= 12  # ~10 runs in 1 s, not one per frame
+    assert model.calls <= elapsed * cfg.target_fps + 2  # one run per period at most, not one per frame
     assert result is not None and result.detections
-    assert result.frame_id >= i - 15  # ran on a recent frame, not a queued old one
 
 
 def test_async_detector_result_goes_stale():
@@ -142,11 +147,24 @@ def test_async_detector_result_goes_stale():
 
 
 def test_slow_model_does_not_block_submit():
-    with AsyncPhoneDetector(PhoneDetectorConfig(target_fps=100.0), model=FakeModel(delay=0.3)) as detector:
-        t0 = time.perf_counter()
-        for i in range(50):
-            detector.submit(make_frame(i, 0.0))
-        assert time.perf_counter() - t0 < 0.1
+    """No stopwatch: the model is held inside one run, and every submit has to return meanwhile."""
+    entered, release, finished = threading.Event(), threading.Event(), []
+
+    def held(image):
+        entered.set()
+        release.wait(10.0)  # a submit that waited for the model would sit here until this gives up
+        finished.append(1)
+        return (det(10, 10),)
+
+    with AsyncPhoneDetector(PhoneDetectorConfig(target_fps=100.0), model=held) as detector:
+        try:
+            detector.submit(make_frame(0, 0.0))
+            assert entered.wait(5.0)
+            for i in range(1, 50):
+                detector.submit(make_frame(i, 0.0))
+            assert not finished
+        finally:
+            release.set()
 
 
 def test_too_slow_model_is_counted_and_warned_once(capsys):
@@ -195,3 +213,80 @@ def test_yolo_session_does_not_spin(monkeypatch):
     monkeypatch.setattr(PhoneDetectorConfig, "resolved_model_path", lambda self: __import__("pathlib").Path(__file__))
     YoloPhoneModel(PhoneDetectorConfig())
     assert seen["spin"] == "0"
+
+
+# --------------------------------------------------------------------------- a run that raises (A1 M1)
+
+
+class FlakyModel:
+    """Raises on the calls numbered in `bad` (1-based), answers on the others."""
+
+    def __init__(self, bad):
+        self.bad = bad
+        self.calls = 0
+
+    def __call__(self, image):
+        self.calls += 1
+        if self.calls in self.bad:
+            raise RuntimeError(f"boom {self.calls}")
+        return (det(10, 10),)
+
+
+def feed_until(detector, done, seconds=3.0):
+    """Offer frames like the main loop until done() or the deadline; True when done() came."""
+    deadline = time.monotonic() + seconds
+    i = 0
+    while time.monotonic() < deadline:
+        if done():
+            return True
+        detector.submit(make_frame(i, time.monotonic()))
+        i += 1
+        time.sleep(0.005)
+    return done()
+
+
+def test_thread_survives_a_run_that_raises(capsys):
+    model = FlakyModel(bad={2})
+    cfg = PhoneDetectorConfig(target_fps=200.0, max_result_age_s=10.0)
+    with AsyncPhoneDetector(cfg, model=model) as detector:
+        assert feed_until(detector, lambda: detector.runs >= 3)
+        assert detector._thread.is_alive()
+        assert detector.errors == 1 and model.calls >= 4
+        assert detector.latest() is not None
+    out = capsys.readouterr().out
+    assert out.count("run failed") == 1 and "RuntimeError: boom 2" in out
+
+
+def test_failing_streak_is_warned_once_and_counted(capsys):
+    model = FlakyModel(bad={2, 3, 4, 6})  # two streaks: 2-4 and 6
+    cfg = PhoneDetectorConfig(target_fps=200.0, max_result_age_s=10.0)
+    with AsyncPhoneDetector(cfg, model=model) as detector:
+        assert feed_until(detector, lambda: detector.runs >= 4)
+        assert detector.errors == 4
+    assert capsys.readouterr().out.count("run failed") == 2
+
+
+def test_result_ages_out_while_every_run_raises(capsys):
+    # The answer of the last good run is not kept alive by failing ones: it goes "unknown" after
+    # max_result_age_s, which is what PhoneHealth counts.
+    model = FlakyModel(bad=set(range(2, 10_000)))
+    cfg = PhoneDetectorConfig(target_fps=200.0, max_result_age_s=0.5)
+    with AsyncPhoneDetector(cfg, model=model) as detector:
+        detector.submit(make_frame(0, 100.0))
+        for _ in range(300):  # the one good run takes this frame before any other is offered
+            if detector.runs:
+                break
+            time.sleep(0.01)
+        assert feed_until(detector, lambda: detector.errors >= 5)
+        assert detector._thread.is_alive() and detector.runs == 1
+        assert detector.latest(now=100.2) is not None and detector.latest(now=100.7) is None
+    assert capsys.readouterr().out.count("run failed") == 1
+
+
+def test_model_that_never_works_keeps_the_thread_and_gives_no_result():
+    def broken(image):
+        raise ValueError("no session")
+
+    with AsyncPhoneDetector(PhoneDetectorConfig(target_fps=200.0), model=broken) as detector:
+        assert feed_until(detector, lambda: detector.errors >= 3)
+        assert detector._thread.is_alive() and detector.runs == 0 and detector.latest() is None

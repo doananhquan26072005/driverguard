@@ -17,8 +17,8 @@ blocks 6-12, keeps the HUD state and builds the block 14 records; this file is t
     (frontend #/hud) with the "false alarm" button.
 14: alerts, false-alarm feedback and one fatigue sample per minute go to the backend (batched,
     offline queue), and the trip summary when the trip ends. Thresholds tuned by engineers are fetched from the
-    backend at startup and again every publisher.config_poll_s; a changed version is applied only while the
-    vehicle is parked (M47).
+    backend at startup and again every publisher.config_poll_s; a changed version is applied only during
+    a rest (parked for context.rest_after_s, M47 / M79).
 End of trip: the driver presses "Kết thúc chuyến" on the HUD (POST /end-trip), or the agent
 stops (q, end of video, Ctrl+C). Block 11 then builds the trip summary (alerts, fatigue per
 minute, coverage, assessment, suggestions): it goes to the backend for the driver and the
@@ -52,7 +52,6 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -84,7 +83,7 @@ from edge_agent.perception.phone_detector import (
     phone_kind,
     phone_near_face,
 )
-from edge_agent.runtime import TripRuntime
+from edge_agent.runtime import TripRuntime, new_trip_id
 from edge_agent.version import model_fingerprints, version_info
 
 WINDOW = "DriverGuard"
@@ -112,7 +111,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--hud-origin",
         action="append",
         default=[],
-        help="extra web origin allowed to read the HUD server, e.g. https://driveguard-production-6b83.up.railway.app",
+        help="extra web origin allowed to read and command the HUD server, e.g. https://<service>.up.railway.app",
     )
     return p.parse_args(argv)
 
@@ -120,11 +119,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     th = load_thresholds(args.config)
+    if not args.hud_port and th.get("enrollment", {}).get("require_consent", True):
+        # No HUD: nobody can read the consent screen or answer it, so the steps start as before.
+        th["enrollment"] = {**th.get("enrollment", {}), "require_consent": False}
+        print("[enroll] no HUD: enrollment starts without the consent screen")
     base_th = th  # the device's own YAML: reloaded overrides are applied on top of it (M47)
     device_key = args.device_key or os.environ.get("DG_DEVICE_KEY", "")
     thresholds_version, thresholds_ignored = 0, False  # reported back to the backend (edge_agent/version.py)
+    backend_timeout_s = PublisherConfig.from_dict(th.get("publisher")).timeout_s
     if args.backend and device_key:  # engineers' tuned thresholds override the local YAML
-        remote = fetch_remote(args.backend, device_key)
+        remote = fetch_remote(args.backend, device_key, backend_timeout_s)
         if remote is None:
             print("[config] backend unreachable: using local thresholds.yaml")
         elif remote[1]:
@@ -135,10 +139,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"[config] {len(values)} tuned thresholds (version {version})"
                 + (f" IGNORED: {problems}" if problems else " applied")
             )
-    if not args.hud_port and th.get("enrollment", {}).get("require_consent", True):
-        # No HUD: nobody can read the consent screen or answer it, so the steps start as before.
-        th["enrollment"] = {**th.get("enrollment", {}), "require_consent": False}
-        print("[enroll] no HUD: enrollment starts without the consent screen")
 
     source = FrameSource(args.source, CaptureConfig.from_dict(th.get("capture")), loop=args.loop)
     preprocessor = Preprocessor(PreprocessConfig.from_dict(th.get("preprocess")))
@@ -162,14 +162,14 @@ def main(argv: list[str] | None = None) -> int:
         external = ExternalVehicle(
             stale_s=ctx_cfg.vehicle_signal_stale_s, moving_kmh=moving_kmh, stationary_kmh=ctx_cfg.stationary_kmh
         )
-        link = SignalLink(external, args.sim_url).start()
+        link = SignalLink(external, args.sim_url, ctx_cfg.vehicle_poll_s).start()
         can, scenario_name = external, SIM
     else:
         scenario = load_scenario(args.scenario)
         can = CanSimulator(scenario, moving_kmh=moving_kmh)
         scenario_name = scenario.name
 
-    trip_id = datetime.now().strftime("trip-%Y%m%d-%H%M%S")
+    trip_id = new_trip_id()
     publisher = None
     if args.backend:
         if not device_key:
@@ -203,16 +203,16 @@ def main(argv: list[str] | None = None) -> int:
     hud_state = runtime.hud
 
     # Tuned thresholds changed on the dashboard during the trip (M47): asked for on a timer, applied by
-    # the loop below only while the vehicle is parked.
+    # the loop below only during a rest (runtime.parked).
     reloader = ThresholdReloader(base_th, thresholds_version)
     poll_stop = threading.Event()
     poll_s = PublisherConfig.from_dict(th.get("publisher")).config_poll_s
 
     def poll_thresholds() -> None:
         while not poll_stop.wait(poll_s):
-            remote = fetch_remote(args.backend, device_key)
+            remote = fetch_remote(args.backend, device_key, backend_timeout_s)
             if remote is not None and reloader.offer(*remote):
-                print(f"[config] thresholds version {remote[0]} waiting: applied when the vehicle is parked")
+                print(f"[config] thresholds version {remote[0]} waiting: applied at the next rest")
 
     if args.backend and device_key and poll_s > 0:
         threading.Thread(target=poll_thresholds, name="thresholds-poll", daemon=True).start()
@@ -239,7 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         phone.start()
 
     last_status = 0.0
-    face_memory = FaceBoxMemory(phone_cfg.face_memory_s)  # driver zone survives a phone hiding the face
+    # The driver zone survives a phone hiding the face, and a YOLO result is held against the face of its own frame.
+    face_memory = FaceBoxMemory(phone_cfg.face_memory_s, history_s=phone_cfg.max_result_age_s)
     camera_lost = False
 
     try:
@@ -252,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                 if source.lost != camera_lost:  # 1: camera unplugged / back
                     camera_lost = not camera_lost
                     state = "LOST: driver not monitored, reconnecting" if camera_lost else "back"
-                    print(f"[camera] {state} ({source.reconnects} reconnects)")
+                    print(f"[camera] {state} ({source.reconnects} reconnects, {source.freezes} frozen)")
                     runtime.camera(camera_lost)
                 if camera_lost:  # 13: "Lần thử N" on the HUD (M65)
                     runtime.hud.set_incident_attempts(source.reopen_attempts)
@@ -270,15 +271,18 @@ def main(argv: list[str] | None = None) -> int:
                     pre = preprocessor(frame)  # 2
                     lm = landmarks.detect(pre)  # 3
                     phone_flag = held = None
-                    face = face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
+                    face_memory.update(face_bbox(lm.points) if lm is not None else None, pre.timestamp)
                     if phone is not None:  # 4, own thread; reuse the latest result
                         phone.submit(pre)
                         result = phone.latest()
                         if result is not None:
+                            face = face_memory.at(result.timestamp)  # where the face was on YOLO's frame
                             phone_flag = phone_near_face(result.detections, face, phone_cfg)
                             held = phone_kind(result.detections, face, phone_cfg)
                     features = extractor(lm, pre.frame_id, pre.timestamp)  # 6
-                    features = dataclasses.replace(features, **quality.measure(pre, lm))  # 6: is it usable
+                    features = dataclasses.replace(
+                        features, **quality.measure(pre, lm, preprocessor.config.sample_stride)
+                    )  # 6: is it usable
                     if eye_state is not None:  # 5, only when EAR is not reliable
                         features = eye_state(pre, lm, features)
                     for action in hud_state.take_actions():  # 13: HUD buttons
@@ -291,12 +295,15 @@ def main(argv: list[str] | None = None) -> int:
                             agree = action == "enroll_start"
                             if runtime.enrollment_answer(agree):
                                 print(f"[main] enrollment: driver {'agreed' if agree else 'said later'}")
-                    reload = reloader.take(runtime.parked)  # 14: tuned thresholds, only while parked
+                    reload = reloader.take(runtime.parked)  # 14: tuned thresholds, only during a rest
                     if reload is not None:
+                        problems = list(reload.problems) or [
+                            f"{s}.* needs a restart" for s in runtime.needs_restart(reload.thresholds)
+                        ]
                         runtime.apply_thresholds(reload.thresholds, reload.version, refused=not reload.applied)
                         print(
                             f"[config] thresholds version {reload.version} "
-                            + ("applied" if reload.applied else f"REFUSED: {list(reload.problems)}")
+                            + (f"REFUSED: {problems}" if problems else "applied")
                         )
                     now = time.monotonic()
                     step = runtime.step(
@@ -326,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
                         )
                     if phone is not None and phone.stale_results:  # phone detection too slow to count
                         net += f" | phone stale {phone.stale_results}/{phone.runs}"
+                    if phone is not None and phone.errors:  # runs that raised; the thread went on
+                        net += f" | phone errors {phone.errors}"
                     print(f"t={signals.t:7.1f}s  {status_line(r, fps)}{net}")
                 if not args.no_window:
                     cv2.imshow(WINDOW, draw_hud(pre.image, r, fps))
@@ -341,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[trip] {trip_summary_line(summary)}")
             hud_state.set_summary(summary)
             if hud_state.end_requested and hud_server is not None:
-                hud_state.wait_delivered(3.0)  # let the HUD get it before the server stops
+                hud_state.wait_delivered(hud_state.config.summary_wait_s)  # let the HUD get it before the server stops
         if hud_server is not None:
             hud_server.stop()
         if link is not None:

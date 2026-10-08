@@ -121,7 +121,9 @@ def test_bad_angle_is_timed_against_low_quality_s():
 
 
 def analyzer(**over):
-    return DistractionAnalyzer(DistractionConfig(baseline_adapt=False, **over))
+    return DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False, **over)
+    )
 
 
 def test_off_road_is_held_for_pose_hold_s_then_ends():

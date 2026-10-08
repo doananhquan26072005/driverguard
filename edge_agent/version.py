@@ -7,8 +7,9 @@ it was raised (PRD NFR-6). Numbers and short hex strings only.
 - app: APP_VERSION below, bumped by hand with a release.
 - thresholds_version: the version of the engineers' overrides fetched from the backend
   (edge_agent/io/remote_config.py); 0 = none applied, the local config/thresholds.yaml alone.
-- thresholds_ignored: overrides were fetched but refused as inconsistent, so the device runs on
-  its local YAML although a tuned version exists.
+- thresholds_ignored: overrides were fetched but refused (inconsistent, or during the trip a version
+  changing a section that needs a restart), so the device runs on other thresholds than the tuned
+  version it was given.
 - models: the first FINGERPRINT_CHARS hex characters of the SHA-256 of each model file, by the
   thresholds section that uses it (landmarks, eye_state, phone). The device hashes its files at
   start-up; the browser cannot read its model files from Python, so tools/build_web_py.py writes

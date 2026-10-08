@@ -11,6 +11,7 @@ from edge_agent.config import config_from_dict
 @dataclass(frozen=True)
 class DrowsinessConfig:
     max_gap_s: float = 0.5
+    baseline_recompute_s: float = 1.0  # the rolling baselines recompute their percentile this often
     # Eye state
     eye_baseline_init: float = 0.28
     eye_baseline_percentile: float = 90.0
@@ -32,10 +33,12 @@ class DrowsinessConfig:
     eye_blendshape_open: float = 0.3
     # Keep counting a closure through a head drop (eyes closed at least this long before it)
     head_drop_carry_min_closed_s: float = 0.5
+    # ... and for at most this long with neither the eyes nor a lowered head in view (0 = no limit)
+    head_drop_carry_max_lost_s: float = 30.0
     # Closure episodes
     blink_max_s: float = 0.5
     blink_window_s: float = 60.0
-    blink_rate_min_span_s: float = 10.0  # blink rate divides by at least this (first seconds of a trip)
+    blink_rate_min_span_s: float = 10.0  # blink rate divides by at least this much eye data
     microsleep_min_s: float = 1.0
     # Only a deep closure counts toward closed_duration (see eyes.py)
     microsleep_deep_ear_ratio: float = 0.5
@@ -73,6 +76,7 @@ class DrowsinessConfig:
     yawn_window_s: float = 600.0
     yawn_enrolled_open_above: float = 0.40  # enrolled: mar_open = closed-mouth MAR + this
     yawn_enrolled_close_above: float = 0.29  # enrolled: mar_close = closed-mouth MAR + this
+    yawn_yaw_correct: bool = True  # MAR x cos(yaw): a turned head narrows the mouth in the image (see mouth.py)
     # Slow blinks (see slow_blink.py)
     blink_closed_ref_ratio: float = 0.35  # not enrolled: closed-eye EAR ~ this x open-eye baseline
     blink_open_level: float = 0.8  # aperture (0 closed .. 1 open) where a blink starts / ends
@@ -92,8 +96,10 @@ class DrowsinessConfig:
     nod_max_rise_s: float = 0.0  # leaving the bottom -> back (0 = no limit)
     nod_rise_speed_ratio: float = 0.0  # rise at least this x faster than the drop (0 = off, see yaml)
     nod_min_rise_deg_s: float = 0.0  # 0 = off
+    nod_bottom_frac: float = 0.15  # "the bottom" of a dip = within this share of its depth
     nod_require_eyes_closed: bool = True
     nod_eyes_closed_min_frac: float = 0.3
+    nod_eyes_deep: bool = True  # "closed" in a dip = firmly shut, as the deep closure judges it (see head.py)
     nod_window_s: float = 300.0
     # Brow raise to keep the eyes open (see brow.py)
     brow_raise_above: float = 0.2  # browOuterUp above the resting brow
@@ -119,7 +125,7 @@ class DrowsinessState:
     microsleep: bool  # current closure is at least microsleep_min_s long
     perclos_60s: float
     perclos_coverage_s: float  # seconds of eye data inside the PERCLOS window
-    blink_rate: float  # blinks per minute
+    blink_rate: float  # blinks per minute of eye data (see eyes.py)
     yawning: bool
     yawn_count_10min: int
     nod_count_5min: int
@@ -141,3 +147,4 @@ class DrowsinessState:
     # PERCLOS by the P80 definition (lids more than 80 % closed), EAR frames only. Measured, not scored.
     perclos_p80_60s: float = 0.0
     perclos_p80_coverage_s: float = 0.0
+    blink_observed_s: float = 0.0  # seconds of eye data inside the blink window: what blink_rate divides by

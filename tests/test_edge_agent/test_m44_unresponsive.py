@@ -232,9 +232,9 @@ def test_publisher_wakes_for_an_urgent_event_only(tmp_path):
     pub = MetadataPublisher("cam-001", lambda body: 200, cfg)
     try:
         pub.publish_record("event", build_system_event("camera_lost", "trip-1"))
-        assert not pub._wake.is_set()
+        assert not pub._flush_now.is_set()  # the sender thread is only woken to write it to the outbox
         pub.publish_record("event", build_system_event("no_answer", "trip-1"))
-        assert pub._wake.is_set()
+        assert pub._flush_now.is_set()
     finally:
         pub.stop(final_flush=False)
 

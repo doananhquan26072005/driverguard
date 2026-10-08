@@ -22,7 +22,7 @@ from edge_agent.perception.features import FrameFeatures
 from edge_agent.perception.landmarks import FaceLandmarks
 from edge_agent.perception.preprocess import PreprocessedFrame
 
-CFG = EyeStateConfig()
+CFG = EyeStateConfig(low_light_brightness=60.0)  # the low-light trigger on (thresholds.yaml: 0 = off)
 
 
 def frame(brightness=120.0, is_ir=False, image=None, t=0.0):
@@ -110,10 +110,9 @@ def test_missing_model_falls_back_to_ear(tmp_path):
     assert make_estimator(EyeStateConfig(enabled=False)) is None
 
 
-def test_real_model_class_order():
+def test_real_model_class_order(need_model):
     """open_closed_eye.onnx: index 0 = closed (Intel's demo: out[0] < out[1] means open)."""
-    if not CFG.resolved_model_path().exists():
-        pytest.skip("models/open_closed_eye.onnx not downloaded")
+    need_model(CFG.resolved_model_path())
     clf = OnnxEyeClassifier(CFG)
     skin = np.full((64, 64, 3), (150, 170, 200), np.uint8)
     opened = skin.copy()

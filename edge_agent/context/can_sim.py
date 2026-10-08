@@ -234,7 +234,8 @@ class SignalLink:
     """Device side: polls tools/drive_sim.py (GET url -> {"speed_kmh", "turn_signal"}) on a thread
     and feeds an ExternalVehicle. Only numbers go through it."""
 
-    def __init__(self, vehicle: ExternalVehicle, url: str = DEFAULT_SIM_URL, period_s: float = 0.2) -> None:
+    def __init__(self, vehicle: ExternalVehicle, url: str, period_s: float) -> None:
+        """period_s: context.vehicle_poll_s."""
         import threading
 
         self.vehicle, self.url, self.period_s = vehicle, url, period_s

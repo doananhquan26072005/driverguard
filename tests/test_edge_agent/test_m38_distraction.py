@@ -28,7 +28,9 @@ def feats(t, yaw=0.0, pitch=0.0, face=True):
 
 
 def analyzer(**kw):
-    return DistractionAnalyzer(DistractionConfig(baseline_adapt=False, **kw))
+    return DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False, **kw)
+    )
 
 
 def run(a, t0, seconds, moving=True, phone=False, turn=None, kind=None, **pose):

@@ -62,6 +62,8 @@ SOURCES = ("blendshape", "cnn")
 class EyeStateConfig:
     enabled: bool = True
     source: str = "cnn"  # "blendshape" (MediaPipe eyeBlink, block 3) or "cnn" (model_path)
+    web_source: str = "blendshape"  # the page's source (edge_agent/web/bridge.py): it has no ONNX eye model
+    web_blink_missing: float = 0.05  # the page: eyeBlink of a face MediaPipe gave none for (open)
     model_path: str = "models/open_closed_eye.onnx"
     input_size: int = 32
     crop_scale: float = 1.8
@@ -70,7 +72,7 @@ class EyeStateConfig:
     closed_index: int = 0
     # When to call the CNN (EAR not reliable):
     run_on_ir: bool = True
-    low_light_brightness: float = 60.0  # mean face luminance (0-255, before CLAHE) below this = too dark
+    low_light_brightness: float = 0.0  # mean face luminance (0-255, before CLAHE) below this = too dark; 0 = off
     ear_asymmetry_max: float = 0.35  # |L - R| / max(L, R) above this = one eye unreliable
     ear_asymmetry_min_open: float = 0.18  # ... only while one eye still looks open (both closed agree)
     hold_s: float = 2.0  # keep the CNN on this long after an ir / low_light trigger clears (no flicker)
@@ -79,8 +81,9 @@ class EyeStateConfig:
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EyeStateConfig:
         cfg = config_from_dict(cls, d, "eye_state")
-        if cfg.source not in SOURCES:
-            raise ConfigError(f"thresholds: eye_state.source {cfg.source!r} must be one of {SOURCES}")
+        for key in ("source", "web_source"):
+            if getattr(cfg, key) not in SOURCES:
+                raise ConfigError(f"thresholds: eye_state.{key} {getattr(cfg, key)!r} must be one of {SOURCES}")
         return cfg
 
     def resolved_model_path(self) -> Path:

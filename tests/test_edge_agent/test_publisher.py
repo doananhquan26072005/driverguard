@@ -1,5 +1,6 @@
 """Block 14: batching, offline queue, retries, privacy guard, and end-to-end with the backend."""
 
+import threading
 import time
 import uuid
 
@@ -168,17 +169,26 @@ def test_background_thread_flushes(outbox_path):
 
 
 def test_publish_does_not_block_when_backend_hangs(outbox_path):
-    def slow(body):
-        time.sleep(1.0)
+    """No stopwatch: the backend is held inside one request, and every publish has to return meanwhile."""
+    entered, release, finished = threading.Event(), threading.Event(), []
+
+    def hung(body):
+        entered.set()
+        release.wait(10.0)  # a publish that waited for the backend would sit here until this gives up
+        finished.append(1)
         return 200
 
     config = PublisherConfig(outbox_path=outbox_path, batch_size=1, flush_interval_s=0.01)
-    pub = MetadataPublisher("cam-001", slow, config).start()
-    t0 = time.perf_counter()
-    for i in range(20):
-        pub.publish(event(i))
-    assert time.perf_counter() - t0 < 0.5
-    pub.stop(final_flush=False)
+    pub = MetadataPublisher("cam-001", hung, config).start()
+    try:
+        pub.publish(event(0))
+        assert entered.wait(5.0)
+        for i in range(1, 20):
+            pub.publish(event(i))
+        assert not finished
+    finally:
+        release.set()
+        pub.stop(final_flush=False)
 
 
 # ---------------------------------------------------------------- privacy guard (device side)

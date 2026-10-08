@@ -4,12 +4,14 @@ Rule table (docs/workflow/workflow_full_4.jpg):
 - closed_duration >= microsleep_l3_s                    -> L3 (microsleep)
 - closed_duration >= unresponsive_closed_s              -> L3 (unresponsive): the siren has been on
   for seconds and the eyes are still closed; a new reason, so block 12 sends a second event (M44)
-- drowsy_score = 40*perclos + 25*microsleep + 15*yawn + 20*nod + 10*slow_blink + 10*brow
-  (terms 0..1, capped at 100; slow_blink / brow are v2 and temporary)
-  >= l1 -> L1, >= l2 -> L2; multiplied by night / long-drive factors from context
+- drowsy_score = 40*perclos + 25*microsleep + 15*yawn + 20*nod (+ 0*slow_blink + 0*brow: both
+  are still measured and kept in drowsy_terms, their weights are 0 since M53)
+  (terms 0..1; multiplied by night / long-drive factors from context, then capped at 100)
+  >= l1 -> L1, >= l2 -> L2
 - off_road_duration >= off_road_s (off_road_high_speed_s at high speed) -> L2
 - phone_ratio_2s >= phone_ratio                          -> L2
-- trend_15min >= slope_per_min (enough history, score not trivial) -> trend.level (early warning)
+- trend_15min >= slope_per_min (enough history, score not trivial) -> trend.level (0 = note only
+  since M53; 1 = early warning)
 - blink_rate outside [normal_min, normal_max]            -> blink.level (0 = note only)
 The final level is the highest level among the rules that fire.
 
@@ -34,16 +36,33 @@ behind, the off-road rule goes on instead of "unavailable".
 Context: distraction rules only while moving; standing still (0 km/h) raises no alert at all (M30). The turn signal does not switch off-road off:
 block 8 only widens the yaw limit towards the signalled side (looking the other way, or
 further than the widened limit, still counts). Drowsiness rules while standing still (block 10) are capped at
-`drowsy.stationary_max_level`: a microsleep at a red light still gets a chime, a driver
-closing the eyes to rest after parking gets no strong alarm. Once the stop is a rest
+`drowsy.stationary_max_level`: 0 since M30, so a microsleep at a red light gets no chime either
+(with 1, as before M30, it gets one, and a driver closing the eyes to rest after parking gets no
+strong alarm). Once the stop is a rest
 (context.rest_after_s) they are off, and so they are while driver enrollment asks the driver
-to close the eyes (`drowsy_muted`: drowsy_score and its terms read 0 too). Stateless: same inputs -> same output.
+to close the eyes (`drowsy_muted`: drowsy_score and its terms read 0 too). During a rest the score
+and its terms read 0 as well: eyes closed in a parked vehicle are not drowsiness at the wheel, and
+the HUD used to show 65 points next to "level 0" there. Stateless: same inputs -> same output.
+
+The blink-rate rule waits for `blink_min_observed_s` of eye data in block 7's blink window
+(DrowsinessState.blink_observed_s), not for that long since the trip began: a driver whose eyes were
+read for ten seconds of the last minute has no blink rate to judge.
+
+A measurement of block 7 / 8 that is not finite (NaN, inf) reads as 0 here, so only its own term or
+rule is lost (M77). Before, a NaN perclos_60s made drowsy_score NaN, every comparison with it was
+False, and the level was 0 with yawns and nods at their maximum; the NaN score then went into trip
+memory and to the backend, which is not valid JSON. Blocks 7 and 8 are not known to output one:
+this is a guard, and the first time a field is replaced it is logged (the only thing kept between
+frames).
 """
 
 from __future__ import annotations
 
+import dataclasses
+import logging
+import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from edge_agent.analysis.distraction import DistractionState
 from edge_agent.analysis.drowsiness import DrowsinessState
@@ -52,19 +71,39 @@ from edge_agent.context.vehicle_context import VehicleContext
 from edge_agent.decision.trip_memory import TripState
 from edge_agent.perception.quality import NO_FACE_ISSUES, TIMED_ISSUES, QualityState
 
+log = logging.getLogger("driverguard.risk")
+
 UNRESPONSIVE = "unresponsive"  # L3 reason: eyes closed through the alarm (M44)
+MAX_LEVEL = 3  # the scale L0-L3
+MAX_SCORE = 100.0  # drowsy_score and distraction_score run 0-100
+
+# The numbers the rules read from blocks 7 and 8: each must be finite (M77).
+DROWSY_INPUTS = (
+    "closed_duration",
+    "perclos_60s",
+    "blink_rate",
+    "yawn_count_10min",
+    "nod_count_5min",
+    "brow_raise_count_5min",
+    "slow_blink_score",
+)
+DISTRACTION_INPUTS = ("off_road_duration", "phone_ratio_2s", "no_face_duration")
+
+_State = TypeVar("_State", DrowsinessState, DistractionState)
 
 
 @dataclass(frozen=True)
 class RiskConfig:
     microsleep_l3_s: float = 1.5
+    microsleep_level: int = 3  # level of each rule; 0 = note only
+    unresponsive_level: int = 3
     unresponsive_closed_s: float = 6.0  # eyes still closed this long: L3 reason unresponsive; 0 = off
     drowsy_weight_perclos: float = 40.0
     drowsy_weight_microsleep: float = 25.0
     drowsy_weight_yawn: float = 15.0
     drowsy_weight_nod: float = 20.0
-    drowsy_weight_slow_blink: float = 10.0
-    drowsy_weight_brow: float = 10.0
+    drowsy_weight_slow_blink: float = 0.0  # measured, not scored (M53)
+    drowsy_weight_brow: float = 0.0
     drowsy_perclos_low: float = 0.05
     drowsy_perclos_high: float = 0.20
     drowsy_yawn_full: float = 3.0
@@ -79,15 +118,17 @@ class RiskConfig:
     distraction_off_road_s: float = 2.0
     distraction_off_road_high_speed_s: float = 1.5
     distraction_phone_ratio: float = 0.6
+    distraction_off_road_level: int = 2
+    distraction_phone_level: int = 2
     unavailable_no_face_s: float = 3.0  # 0 = never unavailable
     unavailable_low_quality_s: float = 5.0  # face in view but unusable this long; 0 = off
-    trend_level: int = 1
+    trend_level: int = 0  # 0 = note only (M53)
     trend_min_points: int = 5
     trend_slope_per_min: float = 2.0
     trend_min_score: float = 20.0
     blink_normal_min: float = 10.0
     blink_normal_max: float = 30.0
-    blink_min_observed_s: float = 60.0
+    blink_min_observed_s: float = 30.0
     blink_level: int = 0
 
     @classmethod
@@ -128,6 +169,18 @@ def ramp(x: float, lo: float, hi: float) -> float:
 class RiskEngine:
     def __init__(self, config: RiskConfig | None = None) -> None:
         self.config = config or RiskConfig()
+        self._logged: set[str] = set()  # non-finite inputs already reported
+
+    def _finite(self, state: _State, names: tuple[str, ...]) -> tuple[_State, tuple[str, ...]]:
+        """`state` with its non-finite `names` set to 0, and which they were (none on a normal frame)."""
+        if math.isfinite(sum(getattr(state, n) for n in names)):  # one sum: a NaN / inf anywhere shows in it
+            return state, ()
+        bad = tuple(n for n in names if not math.isfinite(getattr(state, n)))
+        for n in bad:
+            if n not in self._logged:
+                self._logged.add(n)
+                log.warning("%s is %s: read as 0, its term / rule is off (logged once)", n, getattr(state, n))
+        return dataclasses.replace(state, **dict.fromkeys(bad, 0)), bad
 
     def drowsy_score(
         self, d: DrowsinessState, ctx: VehicleContext, trip: TripState | None
@@ -157,7 +210,7 @@ class RiskEngine:
             score *= cfg.drowsy_night_factor
         if ctx.long_drive:
             score *= cfg.drowsy_long_drive_factor
-        return min(score, 100.0), (perclos, microsleep, yawn, nod, d.slow_blink_score, brow)
+        return min(score, MAX_SCORE), (perclos, microsleep, yawn, nod, d.slow_blink_score, brow)
 
     def drowsy_level_cap(self, ctx: VehicleContext) -> int:
         """Highest level the drowsiness rules may raise: none during a rest, capped at a stop."""
@@ -165,7 +218,7 @@ class RiskEngine:
             return 0
         if ctx.stationary:
             return self.config.drowsy_stationary_max_level
-        return 3
+        return MAX_LEVEL
 
     def off_road_threshold(self, ctx: VehicleContext) -> float:
         cfg = self.config
@@ -182,17 +235,21 @@ class RiskEngine:
     ) -> RiskAssessment:
         cfg = self.config
         hits: list[RuleHit] = []
+        d, bad = self._finite(d, DROWSY_INPUTS)
+        x, _ = self._finite(x, DISTRACTION_INPUTS)
 
         # Drowsiness branch
         drowsy, terms = self.drowsy_score(d, ctx, trip)
-        if drowsy_muted:  # eyes closed on request: nothing to score
+        if drowsy_muted or ctx.resting:  # eyes closed on request, or parked for a rest: nothing to score
             drowsy, terms = 0.0, (0.0,) * len(terms)
         cap = 0 if drowsy_muted else self.drowsy_level_cap(ctx)
         if cap > 0:
             if d.closed_duration >= cfg.microsleep_l3_s:
-                hits.append(RuleHit(3, "microsleep", d.closed_duration))
+                hits.append(RuleHit(cfg.microsleep_level, "microsleep", d.closed_duration))
             if cfg.unresponsive_closed_s > 0 and d.closed_duration >= cfg.unresponsive_closed_s:
-                hits.append(RuleHit(3, UNRESPONSIVE, d.closed_duration))  # the alarm did not wake the driver
+                hits.append(
+                    RuleHit(cfg.unresponsive_level, UNRESPONSIVE, d.closed_duration)
+                )  # the alarm did not wake the driver
             if drowsy >= cfg.drowsy_l2:
                 hits.append(RuleHit(2, "drowsy_score", drowsy))
             elif drowsy >= cfg.drowsy_l1:
@@ -205,9 +262,10 @@ class RiskEngine:
                 and trip.minute_scores[-1] >= cfg.trend_min_score
             ):
                 hits.append(RuleHit(cfg.trend_level, "trend", trend))
-            observed = trip.elapsed_s if trip is not None else 0.0
-            if observed >= cfg.blink_min_observed_s and not (
-                cfg.blink_normal_min <= d.blink_rate <= cfg.blink_normal_max
+            if (
+                d.blink_observed_s >= cfg.blink_min_observed_s  # eye data in block 7's blink window
+                and "blink_rate" not in bad  # unknown is not "blinking too little"
+                and not (cfg.blink_normal_min <= d.blink_rate <= cfg.blink_normal_max)
             ):
                 hits.append(RuleHit(cfg.blink_level, "blink_rate", d.blink_rate))
             hits = [RuleHit(min(h.level, cap), h.reason, h.value) for h in hits]
@@ -217,11 +275,13 @@ class RiskEngine:
         off_road = x.off_road_duration  # turn signal: already widened towards that side in block 8
         distraction = 0.0
         if x.active and ctx.moving:
-            distraction = 100.0 * min(max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio), 1.0)
+            distraction = MAX_SCORE * min(
+                max(off_road / off_road_thr, x.phone_ratio_2s / cfg.distraction_phone_ratio), 1.0
+            )
             if off_road >= off_road_thr:
-                hits.append(RuleHit(2, "off_road", off_road))
+                hits.append(RuleHit(cfg.distraction_off_road_level, "off_road", off_road))
             if x.phone_ratio_2s >= cfg.distraction_phone_ratio:
-                hits.append(RuleHit(2, "phone", x.phone_ratio_2s))
+                hits.append(RuleHit(cfg.distraction_phone_level, "phone", x.phone_ratio_2s))
 
         issue = quality.issue if quality is not None else None
         no_face = (

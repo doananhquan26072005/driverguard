@@ -4,7 +4,8 @@
 
 # Block 1 - Frame camera
 capture:
-  # Requested camera settings (the driver may ignore them).
+  # Requested camera settings of the device build (the driver may ignore them). The page (#/live)
+  # has its own size below (web_camera_*) and shares camera_fps.
   camera_width: 1280
   camera_height: 720
   camera_fps: 30
@@ -19,6 +20,18 @@ capture:
   max_consecutive_failures: 30
   reconnect_interval_s: 2.0
   frame_timeout_s: 3.0
+  # Camera frozen (M83): every frozen_stride-th pixel (rows and columns) of a camera frame is compared
+  # with the previous frame's; equal for frame_timeout_s = lost as well, until an image that differs
+  # arrives. A live sensor has noise, so real frames differ; an image of one single value (covered
+  # lens) is left to quality.*. 0 = off. Device: 160 x 90 pixels of a 1280 x 720 frame; #/live: 80 x 45.
+  frozen_stride: 8
+  # The page (#/live, APK) asks the camera for this size (the driver may give another); camera_fps is
+  # shared. Smaller than the device's: MediaPipe and the canvas copy run on the page's one thread.
+  web_camera_width: 640
+  web_camera_height: 480
+  # The page stamps a frame with the camera's capture time; one further back than this is not
+  # believed (a stalled tab, another clock) and the frame gets the time it was read instead (M50).
+  web_max_frame_age_s: 1.0
 
 # Block 2 - Preprocessing
 preprocess:
@@ -27,6 +40,10 @@ preprocess:
   # A 3-channel frame counts as IR/grayscale when the mean absolute difference
   # between its channels is below this value (0-255 scale).
   ir_channel_diff_max: 2.0
+  # The whole-image numbers (the IR test above, quality.blocked_* of block 6) are taken on every
+  # sample_stride-th pixel, rows and columns. One value for the device and the page: both must
+  # measure the same image the same way, or the limits above mean different things.
+  sample_stride: 4
   clahe:
     enabled: true
     clip_limit: 2.0
@@ -42,6 +59,13 @@ landmarks:
   num_faces: 2
   driver_shape_tol: 0.08        # mean relative difference of the landmark-ratio signature
   driver_position_tol: 2.0      # in enrolled inter-ocular distances
+  # Enrolled only (M83): the best face is still not the driver when its centre is further than this
+  # from where the driver was last seen, in enrolled inter-ocular distances; no face is reported
+  # then (a passenger alone in view while the driver is hidden). 0 = off. PROVISIONAL: no recording
+  # with two people in a car. Fixed camera, 14 people, 5.6 h (DROZY): the driver is at most 3.0 from
+  # the enrolled centre and moves at most 1.8 across 2 s or more without a face. The shape
+  # signature is not used for this: a stranger's is as close as the driver's own on another day.
+  driver_max_distance: 4.0
   min_face_detection_confidence: 0.5
   min_face_presence_confidence: 0.5
   min_tracking_confidence: 0.5
@@ -53,6 +77,10 @@ landmarks:
 eye_state:
   enabled: true
   source: cnn                   # eye-state score when EAR is not reliable: blendshape (eyeBlink, block 3) | cnn
+  # The page (#/live, APK) has no ONNX eye model: its block 5 always reads web_source. A face whose
+  # eyeBlink MediaPipe did not output gets web_blink_missing (open).
+  web_source: blendshape
+  web_blink_missing: 0.05
   model_path: models/open_closed_eye.onnx   # python tools/download_models.py
   input_size: 32
   crop_scale: 1.8               # crop side = 1.8 x eye-corner distance (as in Intel's demo)
@@ -158,6 +186,15 @@ phone:
   web_gpu_target_fps: 10
   num_threads: 2           # onnxruntime threads, leave CPU for MediaPipe (#/live: only on a cross-origin isolated page, else 1)
   max_result_age_s: 0.6    # older results count as "unknown"
+  # The page's worker that does not answer a run (A1 M1 of the 08/10 audit): after web_run_timeout_s
+  # it is terminated and a new one is built (model from the HTTP cache, session, warm-up), which gets
+  # web_load_timeout_s for each of its two steps. At most web_restart_limit replacements in a row
+  # without a result between; then the detector stays off and PhoneHealth below reports it.
+  # web_run_timeout_s 0 = never replaced (as before). Well above a slow but working run (wasm, one
+  # thread, on the target box: about 1.2 s, an estimate). PROVISIONAL: no hang was ever recorded.
+  web_run_timeout_s: 5.0
+  web_load_timeout_s: 30.0
+  web_restart_limit: 3
   # Phone detection not working (M50): at least unknown_ratio of the last unknown_window_s of frames
   # had no fresh result (YOLO slower than max_result_age_s, model not loaded, worker dead). The HUD
   # shows it and the backend gets `phone_detection_lost`; back below unknown_clear_ratio:
@@ -189,6 +226,9 @@ drowsiness:
   # Face dropouts shorter than this do not break an episode. Two frames further apart than this (the
   # loop stood still, frames lost) end every running episode uncounted: nothing was seen in between.
   max_gap_s: 0.5
+  # The rolling baselines (open-eye EAR, usual head pose, resting brow) recompute their percentile
+  # at most this often; between two computations the last value is used.
+  baseline_recompute_s: 1.0
   eye:
     # Eye closed = EAR below close_ratio x the driver's own open-eye EAR
     # (percentile of recent EAR), reopened above open_ratio x (hysteresis).
@@ -223,9 +263,18 @@ drowsiness:
   # drop (a blink followed by a glance at the dashboard is not carried).
   head_drop:
     carry_min_closed_s: 0.5
+    # The carry ends after this long with neither the eyes nor a lowered head in view (face gone,
+    # camera covered): nothing says the eyes are still shut, and before only a face coming back
+    # ended it, so the L3 stayed up without limit and "monitoring unavailable" never took over
+    # (A2 L3 of the 08/10 audit). A head seen down keeps the carry for as long as it is seen.
+    # 0 = no limit. PROVISIONAL: no recording of a driver asleep out of view; the L3 siren and
+    # `unresponsive` (risk.unresponsive.closed_s) have long fired by then.
+    carry_max_lost_s: 30
   blink_max_s: 0.5             # closures up to this long are blinks
+  # blink_rate = blinks of the window per minute of eye data in it (not of clock time: a driver seen
+  # half the time read half the rate).
   blink_window_s: 60
-  blink_rate_min_span_s: 10     # blinks/min divides by at least this: 1 blink in the first 2 s is not 30/min
+  blink_rate_min_span_s: 10     # ... divides by at least this: 1 blink in the first 2 s is not 30/min
   microsleep_min_s: 1.0         # closure at least this long = microsleep event
   # Only a deep closure counts toward closed_duration (microsleep event + L3 rule): on at
   # least deep_min_frac of its eye frames EAR <= deep_ear_ratio x open-eye baseline (or CNN
@@ -343,6 +392,14 @@ drowsiness:
     # (lips that rest apart are not a yawn; a small mouth still reaches it).
     enrolled_open_above: 0.40
     enrolled_close_above: 0.29
+    # MAR is mouth opening / mouth width in the image; a head turned by yaw narrows the width by
+    # cos(yaw), so MAR grows by 1 / cos(yaw): 0.37 facing the camera reads 0.45 at 35 deg. true:
+    # yawns are counted on MAR x cos(yaw) (M81). Pitch is not corrected. 08/10 replay, false -> true:
+    # YawDD yawns hit 94 -> 91 of 114 (0 false both), FL3D 76 -> 75 of 99 runs (0 false both), SUST
+    # clips with a yawn: drowsy 0.9 % -> 0.8 %, not drowsy 0.1 % -> 0.0 %. The yawn / talking mask
+    # (microsleep_mask) keeps the MAR as measured: corrected too, it masked less and gave +2 false L2
+    # on FL3D, +1 false L3 on SUST, +1 false microsleep on YawDD.
+    yaw_correct: true
   # Nod vs bow (docs/research/2026-10-01-blink-nod-brow.md): a drowsy nod drops slowly (neck
   # letting go) and jerks back up; a deliberate bow (dashboard, phone) is controlled both ways.
   # Nod = rise at least rise_speed_ratio x faster than the drop and >= min_rise_deg_s, eyes
@@ -361,8 +418,18 @@ drowsiness:
     max_rise_s: 0               # leaving the bottom -> back; 0 = no limit
     rise_speed_ratio: 0         # e.g. 1.5: rise at least 1.5 x faster than the drop; 0 = off
     min_rise_deg_s: 0           # e.g. 40; 0 = off
+    # "The bottom" of a dip, for the two speeds above: within this share of its depth from the
+    # deepest point, so holding the head down counts for neither the drop nor the rise.
+    bottom_frac: 0.15
     require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
     eyes_closed_min_frac: 0.3
+    # true: a frame of the dip is "closed" only when firmly shut, by the deep-closure test for a bowed
+    # head (microsleep_deep: bowed_ear_ratio + the eyeBlink vote, or block 5's deep score). false: the
+    # plain close threshold (eye.close_ratio), which every look down meets: lids follow the gaze (M81).
+    # 08/10 replay, false -> true: FL3D nods hit / false 118 / 1 -> 83 / 0 (alerts: L1 hit 12 -> 11,
+    # L2 hit 29 -> 28, L3 unchanged, false alerts unchanged), YawDD false nods 5 -> 2, SUST clips with
+    # a nod: drowsy 1.4 % -> 0.8 %, not drowsy 1.4 % -> 0.9 % (precision 48 % -> 44 %).
+    eyes_deep: true
     window_s: 300
   # Slow blinks (Caffier 2003: reopening 162 -> 273 ms when drowsy; Schleicher 2008). Each blink
   # is timed on the eye aperture (0 = the driver's closed EAR .. 1 = open-eye baseline; enrolled
@@ -420,6 +487,11 @@ distraction:
   turn_signal_extra_yaw_deg: 30
   left_yaw_sign: 1                  # yaw sign of the driver's own left (unmirrored camera: +1)
   phone_window_s: 2.0               # window for phone_ratio_2s
+  # phone_ratio_2s reads 0 until the window holds this many seconds of detector results. Without it
+  # one detection among frames without a fresh result was a ratio of 1.0, and right after driving
+  # off (the window starts empty) the first results alone decided (A2 L2 of the 08/10 audit).
+  # PROVISIONAL: a quarter of the window; YOLO slower than phone.max_result_age_s gives no result at all.
+  phone_min_coverage_s: 0.5
   baseline:                         # "looking at the road" head pose, per camera mount
     adapt: true                     # learn slowly from on-road samples
     tau_s: 30
@@ -432,6 +504,18 @@ distraction:
     # Adaptation then stays within +-max_deg of the calibrated pose. 0 = off.
     calibrate_s: 5.0
     calibrate_max_deg: 45
+    # Recalibration (M80): a baseline wrong by more than the off-road limit never gets an on-road
+    # sample again (the driver looked aside for most of calibrate_s while pulling out; the camera or
+    # the seat moved mid-trip), so L2 "off road" stayed up for the whole trip. Head outside the
+    # off-road band for recalibrate_s of driving without one look back into it (on_road_confirm_s),
+    # and still meanwhile (10th-90th percentile range of yaw and of pitch <= recalibrate_spread_deg):
+    # that pose becomes the baseline, and a road_pose_recalibrated event goes to the backend. Much
+    # longer than risk.distraction.off_road_s on purpose: until then the driver hears the L2 alert and
+    # its reminders (alert.cooldown_s), and a real look away that long while driving is not expected.
+    # Frames with lowered lids and a bowed head (block 7 gaze_down) do not count. 0 = off.
+    # PROVISIONAL: no trip with a wrong calibration has been recorded, see docs/roadmap.md M80.
+    recalibrate_s: 60
+    recalibrate_spread_deg: 10
   # Many short glances (M38, measured only, no alert): off_road_ratio = share of the last window_s
   # spent off road, glance_count = times the driver looked away in it. 0 until min_coverage_s of
   # driving is in the window. PROVISIONAL window: no source read yet for a cumulative glance limit
@@ -469,8 +553,14 @@ context:
   assume_moving_when_speed_unknown: true   # no speed signal (CAN missing) = moving
   high_speed_kmh: 80            # off-road threshold tightens above this
   long_drive_s: 7200            # 2 h of driving since the last rest / driver change = long drive
+  # Hours of the night factor on the drowsy score (risk.drowsy.night_factor). Only that: the
+  # screen's dimming has its own window, hud.dim_hours (M89).
   night_hours: [[0, 5]]         # [start, end) local hours, may wrap midnight e.g. [22, 5]
   turn_signal_grace_s: 2.0      # looking to the signalled side stays widened this long after the blinker stops
+  # A signal on to one side for this long while driving is a forgotten blinker, not a turn: the
+  # widening ends until it goes off or changes side. Standing still (waiting to turn) is not counted.
+  # 0 = no limit. PROVISIONAL: no drive with a turn signal recorded.
+  turn_signal_max_s: 30
   # Standing still = speed below stationary_kmh (crawling in a jam at 2-4 km/h is not a stop).
   # Drowsiness while standing still is capped at risk.drowsy.stationary_max_level; standing
   # still for rest_after_s is a rest (parked): no drowsiness alerts, and what was gathered
@@ -490,18 +580,28 @@ context:
   # at 0 km/h; the last said driving = signal lost, speed unknown, monitored as moving (M26) and the
   # driver / backend are told (vehicle_signal_lost).
   vehicle_signal_stale_s: 1.0
+  # How often the agent (device and page) asks for the vehicle signals, and how often the web
+  # driving controls (#/drive) send them. Both must stay below vehicle_signal_stale_s, or a link
+  # that works reads as lost (checked at start-up).
+  vehicle_poll_s: 0.25
+  vehicle_send_s: 0.2
 
 # Block 9 - Risk engine (rule table: docs/workflow/workflow_full_4.jpg)
 risk:
   microsleep_l3_s: 1.5          # closed_duration >= this -> L3 at once
+  # Level each rule raises (as trend.level / blink.level below; 0 = note only, no alert). The
+  # drowsy_score rule is L1 at drowsy.l1 and L2 at drowsy.l2 by its definition.
+  microsleep_level: 3
   # Eyes still closed this long (the L3 siren has been on for seconds): L3 reason `unresponsive`,
   # a second event that goes to the backend at once (fleet view "needs attention now"). The system
   # only reads the vehicle, it never slows it down. 0 = off. PROVISIONAL: FL3D acted microsleeps
   # are 1.5-4 s, none this long.
   unresponsive:
     closed_s: 6.0
+    level: 3
   drowsy:
-    # drowsy_score = sum(weight x term), each term normalised to 0..1, total 0..100
+    # drowsy_score = sum(weight x term), each term normalised to 0..1: the weighted sum is 0..100.
+    # It is then multiplied by night_factor / long_drive_factor (both: x1.44, up to 144) and capped at 100.
     weight_perclos: 40
     weight_microsleep: 25
     weight_yawn: 15
@@ -533,6 +633,8 @@ risk:
     off_road_s: 2.0
     off_road_high_speed_s: 1.5
     phone_ratio: 0.6
+    off_road_level: 2
+    phone_level: 2
   # PRD FR-6: no face this long while the vehicle is not standing still (camera covered, driver out
   # of view, glare) -> monitoring unavailable: no alert while it lasts, the HUD and the backend are
   # told instead. "Not standing still" is from context.stationary_kmh (M72), not min_speed_kmh: a
@@ -558,7 +660,7 @@ risk:
   blink:
     normal_min: 10              # blinks / min outside [min, max] = early fatigue sign
     normal_max: 30
-    min_observed_s: 60
+    min_observed_s: 30          # seconds of eye data in drowsiness.blink_window_s before the rule reads the rate
     level: 0                    # 0 = note only (blink rate varies a lot between people)
 
 # Block 11 stage - Trip summary (edge_agent/decision/trip_summary.py), built when the trip ends
@@ -574,11 +676,13 @@ trip_summary:
   min_monitored_frac: 0.6       # face seen on less of the driving time: "low coverage" (numbers incomplete)
   rest_margin_min: 10           # suggest a rest this long before fatigue first showed
   min_rest_suggestion_min: 15
+  max_minutes: 1440             # minutes kept for the summary (a day; the backend's MAX_TRIP_MINUTES)
 
 # Block 11 - Trip memory
 trip_memory:
   bin_s: 60                     # one drowsy_score point per minute
   trend_window_bins: 15         # trend over the last 15 minutes
+  microsleep_history: 32        # newest microsleep times kept (only the last one is read)
 
 # Block 12 - Alert manager
 alert:
@@ -607,6 +711,7 @@ alert:
   # dataset has drives this long.
   l1_repeat_count: 3
   l1_repeat_window_s: 600
+  l1_repeat_level: 2            # the level that alert goes out at
   # Repeated L3 (M44): the l3_repeat_count-th L3 alert within l3_repeat_window_s carries the reason
   # repeated_l3 (the driver keeps falling asleep); sent at once, shown on the fleet view while it
   # happens. A rest or a driver change restarts the count. 0 = off. Provisional.
@@ -641,19 +746,54 @@ hud:
   # (docs/improvements.md, hardware task) comes with the hub.
   low_fps_below: 14.5
   low_fps_s: 5.0
+  # That FPS = fps_smoothing x the last value + (1 - fps_smoothing) x 1 / the time since the last
+  # frame (0 = the last frame alone decides). At 15 FPS, 0.9 follows a change in about 0.7 s.
+  fps_smoothing: 0.9
   # Fatigue chart of the HUD (M65): drowsy_score of each of the last trend_minutes minutes, kept by
   # the agent for the whole trip (block 11), so a HUD that reloads shows it again at once.
   trend_minutes: 15
+  recent_alerts: 10             # alerts the agent keeps for the HUD (newest first)
+  # "Kết thúc chuyến": the HUD's request waits this long for the main loop to build the summary;
+  # the loop then waits summary_wait_s for the HUD to fetch it before the server stops.
+  end_trip_wait_s: 10.0
+  summary_wait_s: 3.0
+  # The screen itself (frontend/src/hud). The agent sends these with every state (`display`), and
+  # frontend/src/lib/defaults.gen.json (tools/web_defaults.py) holds them for the time before the
+  # first state arrives: the page keeps no number of its own.
+  poll_s: 0.3                   # the screen asks for the state this often
+  state_timeout_s: 1.0          # one request given up after this long ...
+  link_down_failures: 3         # ... and this many in a row = "no link to the device"
+  # No new state for this long while the link answers: the loop is frozen, the driver is not
+  # watched ("Lỗi xử lý", loud). The agent's own watch on its camera is capture.frame_timeout_s.
+  stale_s: 3.0
+  chime_to_voice_s: 0.7         # the spoken line follows the chime, not over it
+  alarm_repeat_s: 1.5           # L3 siren again this often while the eyes are still closed
+  presence_repeat_s: 2.0        # "Bạn còn ở đó không?" again this often until answered (M44)
+  # Loudness of the sounds per level (Web Audio gain, 1 = full scale). PROVISIONAL: not measured in a
+  # cabin (docs/pilot-readiness.md C5).
+  gain: {1: 0.12, 2: 0.25, 3: 0.35}
+  # Hours in which the calm screens (L0, L1) are dimmed and the clock shows a moon; L2, L3 and the
+  # "not monitored" screens are always at full brightness. [start, end) local hours, may wrap
+  # midnight. The screen's own window, apart from context.night_hours (the score's night factor):
+  # until M89 the one window [0, 5) did both, so the screen stayed bright from dusk to midnight and
+  # widening it would have raised the score. The agent sends the result with every state (`dim`).
+  # PROVISIONAL: by the clock (dark from about 18:00 to 06:00 in Vietnam all year), no light sensor.
+  # [] = never dimmed.
+  dim_hours: [[18, 6]]
 
 # Block 14 - Metadata publisher (backend URL / device key come from the command line / env)
 publisher:
   batch_size: 20                # events per POST
+  # The page sends what gathered since its last flush in one POST, at most this many records of
+  # each kind (the backend refuses more: MAX_EVENTS_PER_BATCH); the rest goes with the next one.
+  web_batch_size: 100
   flush_interval_s: 5.0         # send at least this often while events are waiting
   timeout_s: 5.0
   outbox_path: data/outbox.db   # offline queue on the device: metadata JSON only
   max_queue: 10000              # oldest events dropped beyond this
   backoff_initial_s: 1.0        # retry delay after a failure, doubling up to backoff_max_s
   backoff_max_s: 60.0
+  backoff_jitter: 0.2           # each retry wait is longer by up to this share, at random (a fleet does not retry in step)
   # Heartbeat (M33): "still alive" to the backend this often, and at once when the monitoring state
   # changes. The backend calls a device offline after DG_DEVICE_OFFLINE_AFTER_S (90 s = 3 beats). 0 = off.
   heartbeat_interval_s: 30.0
@@ -711,6 +851,13 @@ eval:
   # measured at. A what-if: --set eval.replay_clock_hour=2 --set eval.replay_drive_time_s=7200.
   replay_clock_hour: 12
   replay_drive_time_s: 0
+  replay_speed_kmh: 60          # constant speed of a trace or replay (above context.min_speed_kmh: both branches on)
+  # tools/uta_rldd.py signals: share of frames with EAR below each of these x the open-eye baseline
+  # (0.48 ~ P80 with the closed EAR at 0.35 x baseline; 0.65 = drowsiness.perclos_close_ratio).
+  perclos_ratios: [0.48, 0.55, 0.65, 0.75]
+  # tools/uta_rldd.py report: videos whose share of frames with the face fully in view is below this
+  # are listed by name under "Measurability".
+  low_reliable_frac: 0.8
   # tools/uta_rldd.py fps (M75): the same videos replayed as a slower loop would have seen them. The
   # loop asks for a frame every 1 / rate seconds and gets the first recorded frame at or after that.
   # Rates below the 15 FPS of CLAUDE.md are what the target device is estimated to reach (11-14).
@@ -722,3 +869,9 @@ eval:
   fps_study_jitter_cv: 0.3
   fps_study_repeats: 3
   fps_study_min_source_fps: 25
+  # Video files (tools/seq_eval.py VideoClock): frame times come from the container's timestamps.
+  # fallback_video_fps: the rate assumed when the container gives none. clock_long_gap_frames: a wait
+  # between two frames of at least this many nominal frames is counted as a long one by
+  # `tools/uta_rldd.py clock` (2 = at least one frame missing).
+  fallback_video_fps: 30
+  clock_long_gap_frames: 2

@@ -23,7 +23,9 @@ def run(analyzer, t0, seconds, moving=True, phone=False, turn=None, **pose):
 
 
 def no_adapt(**kw):
-    return DistractionAnalyzer(DistractionConfig(baseline_adapt=False, **kw))
+    return DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False, **kw)
+    )
 
 
 def test_looking_forward_is_on_road():
@@ -111,7 +113,11 @@ def test_phone_unknown_samples_are_not_counted():
 
 def test_baseline_learns_camera_offset():
     # Camera mounted to the side: looking at the road reads as yaw = 20 deg.
-    a = DistractionAnalyzer(DistractionConfig(baseline_tau_s=5.0, yaw_off_road_deg=30.0))
+    a = DistractionAnalyzer(
+        DistractionConfig(
+            baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_tau_s=5.0, yaw_off_road_deg=30.0
+        )
+    )
     s, t = run(a, 0.0, 30.0, yaw=20.0)
     assert s.baseline_yaw == pytest.approx(20.0, abs=0.5)
     s, t = run(a, t, 1.0, yaw=45.0)  # only 25 deg from the road: on road
@@ -121,10 +127,22 @@ def test_baseline_learns_camera_offset():
 
 
 def test_baseline_ignores_off_road_samples_and_is_clamped():
-    a = DistractionAnalyzer(DistractionConfig(baseline_tau_s=1.0, baseline_max_deg=20.0))
+    a = DistractionAnalyzer(
+        DistractionConfig(
+            baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_tau_s=1.0, baseline_max_deg=20.0
+        )
+    )
     s, t = run(a, 0.0, 20.0, yaw=60.0)  # long distraction must not become the new "road"
     assert s.baseline_yaw == 0.0 and s.off_road
-    b = DistractionAnalyzer(DistractionConfig(baseline_tau_s=1.0, baseline_max_deg=20.0, yaw_off_road_deg=40.0))
+    b = DistractionAnalyzer(
+        DistractionConfig(
+            baseline_calibrate_s=0.0,
+            baseline_recalibrate_s=0.0,
+            baseline_tau_s=1.0,
+            baseline_max_deg=20.0,
+            yaw_off_road_deg=40.0,
+        )
+    )
     s, _ = run(b, 0.0, 20.0, yaw=35.0)
     assert s.baseline_yaw == pytest.approx(20.0)
 
@@ -148,7 +166,7 @@ def test_no_face_duration_while_moving():
 
 
 def calibrating(**kw):
-    return DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=5.0, **kw))
+    return DistractionAnalyzer(DistractionConfig(baseline_recalibrate_s=0.0, baseline_calibrate_s=5.0, **kw))
 
 
 def test_camera_mounted_far_to_the_side_is_calibrated():
@@ -243,7 +261,7 @@ def test_signal_off_back_to_normal_limit():
 
 
 def test_baseline_does_not_learn_from_the_widened_band():
-    a = DistractionAnalyzer(DistractionConfig(baseline_tau_s=1.0))
+    a = DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_tau_s=1.0))
     s, _ = run(a, 0.0, 5.0, turn="left", yaw=45.0)
     assert not s.off_road and s.baseline_yaw == 0.0
 
@@ -267,7 +285,7 @@ def test_pipeline_turn_signal_from_the_vehicle(turn, yaw, alert):
 
 
 def test_looking_down_from_block_7_counts_as_off_road_and_never_moves_the_baseline():
-    d = DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=0.0))
+    d = DistractionAnalyzer(DistractionConfig(baseline_recalibrate_s=0.0, baseline_calibrate_s=0.0))
     for i in range(30):  # 1 s on the road
         d.update(FrameFeatures(i, i / 30, True, 1.0, yaw=0.0, pitch=0.0), False, moving=True)
     s = None

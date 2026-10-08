@@ -1,6 +1,17 @@
 """Block 7, mouth: yawns, and the yawn / talking mask on closed-eye time.
 
 - A yawn needs the mouth wide open for `yawn_min_s` (talking / laughing are shorter).
+- MAR is a ratio of image distances: mouth opening / mouth width. Turning the head narrows the
+  width by cos(yaw) and leaves the opening, so the same mouth read 0.37 facing the camera and 0.45
+  (the yawn threshold) at 35 deg: talking with the head turned passed for a yawn. With
+  `yawn_yaw_correct`, yawns are counted on MAR x cos(yaw) (`frontal_mar`; yaw to the camera, not to
+  the usual pose). Pitch is left alone: a bowed head lowers MAR, and undoing that would raise it.
+  The mask below keeps the MAR as measured: a lower MAR masks less, and on the traces that let more
+  closed-eye time through (thresholds.yaml for the numbers).
+- A yawn is counted once, also when the face is lost in the middle of it (a hand over the mouth,
+  the head thrown back): the counted yawn is kept until the mouth is seen closed, or until
+  `microsleep_mask_max_open_s` after it opened (longer than that is not one yawn). An opening that
+  was not counted yet is still dropped after `max_gap_s` without the face.
 - Yawn mask: the eyes squeeze shut while yawning. While the mouth is wide open (MAR
   above `yawn_mar_open`, until it drops below `yawn_mar_close`) and for
   `microsleep_mask_hold_s` after, closed-eye time is not counted in closed_duration, so
@@ -25,10 +36,18 @@
 
 from __future__ import annotations
 
+import math
 from collections import deque
 
 from edge_agent.analysis.drowsiness.common import drop_since, expire
 from edge_agent.analysis.drowsiness.config import DrowsinessConfig
+
+
+def frontal_mar(mar: float | None, yaw: float | None) -> float | None:
+    """MAR as it would read facing the camera (see module doc); unchanged without a yaw."""
+    if mar is None or yaw is None:
+        return mar
+    return mar * max(math.cos(math.radians(min(abs(yaw), 90.0))), 0.0)
 
 
 class MouthMask:
@@ -98,8 +117,10 @@ class YawnCounter:
         cfg = self.config
         if mar is None:
             if self._open_since is not None and self._last_mar_t is not None and t - self._last_mar_t > cfg.max_gap_s:
-                self._open_since = None
-                self._fired = False
+                # A counted yawn goes on behind the hand (see module doc); anything else is dropped.
+                if not self._fired or t - self._open_since > cfg.microsleep_mask_max_open_s:
+                    self._open_since = None
+                    self._fired = False
             return self._fired
         self._last_mar_t = t
         if self._open_since is None:

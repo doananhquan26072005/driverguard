@@ -10,7 +10,7 @@ import numpy as np
 class RollingWindow:
     """(t, value) samples of the last `window_s` seconds; percentile cached for `recompute_s`."""
 
-    def __init__(self, window_s: float, recompute_s: float = 1.0) -> None:
+    def __init__(self, window_s: float, recompute_s: float) -> None:
         self.window_s = window_s
         self.recompute_s = recompute_s
         self._buf: deque[tuple[float, float]] = deque()

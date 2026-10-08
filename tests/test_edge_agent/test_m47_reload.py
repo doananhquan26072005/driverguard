@@ -1,4 +1,5 @@
-"""M47: thresholds tuned on the dashboard are reloaded during the trip and applied only while parked.
+"""M47: thresholds tuned on the dashboard are reloaded during the trip and applied only while parked
+(since M79: during a rest, see test_m79_reload_and_samples.py).
 Fake sequences of backend answers and of frames; no network, no video."""
 
 import json
@@ -76,20 +77,22 @@ def runtime(speeds, enroll=False):
     return TripRuntime(th, "trip-1", can, "t", FakeSelector(), emit=rec, versions=version_info(3, {})), rec, th
 
 
-def test_parked_follows_the_speed_and_a_trip_not_started_counts_as_parked():
-    rt, _, _ = runtime([(0, 0), (5, 60)])
+def test_parked_is_a_rest_and_a_trip_not_started_counts_as_parked():
+    rt, _, _ = runtime([(0, 0), (130, 0), (135, 60)])
     assert rt.parked  # no frame yet: start of the trip
     rt.step(face(1.0), False, 1.0)
+    assert not rt.parked  # standing still, but not for context.rest_after_s (M79)
+    rt.step(face(122.0), False, 122.0)
     assert rt.parked
-    rt.step(face(6.0), False, 6.0)
+    rt.step(face(140.0), False, 140.0)
     assert not rt.parked
 
 
 def test_applied_thresholds_change_the_rule_and_the_backend_is_told():
-    rt, rec, th = runtime([(0, 60), (28, 60), (30, 0), (38, 0), (40, 60)])
+    rt, rec, th = runtime([(0, 60), (28, 60), (30, 0), (160, 0), (162, 60)])
     reloader = ThresholdReloader(th, version=3)
     applied_at, levels = None, {}
-    for i in range(60 * FPS):
+    for i in range(185 * FPS):
         t = i / FPS
         if i == 5 * FPS:  # the backend's answer arrives while driving
             reloader.offer(4, {"risk.microsleep_l3_s": 3.0})
@@ -97,12 +100,12 @@ def test_applied_thresholds_change_the_rule_and_the_backend_is_told():
         if reload is not None:
             rt.apply_thresholds(reload.thresholds, reload.version, refused=not reload.applied)
             applied_at = t
-        closed = 10 <= t < 12.5 or 45 <= t < 47.5  # the same 2.5 s closure before and after
+        closed = 10 <= t < 12.5 or 175 <= t < 177.5  # the same 2.5 s closure before and after
         r = rt.step(face(t, SHUT if closed else OPEN), False, t).result
         levels[round(t)] = max(levels.get(round(t), 0), r.risk.level)
-    assert 29.0 <= applied_at <= 30.2  # as the vehicle comes to a stop (the speed ramps down), not before
+    assert 149.0 <= applied_at <= 150.2  # once the stop has lasted context.rest_after_s (120 s), not before
     assert max(levels[s] for s in range(10, 14)) == 3  # old rule: L3 after 1.5 s
-    assert max(levels[s] for s in range(45, 49)) < 3  # new rule: 3.0 s, a 2.5 s closure is not L3
+    assert max(levels[s] for s in range(175, 179)) < 3  # new rule: 3.0 s, a 2.5 s closure is not L3
     assert ["config_applied"] in rec.reasons()
     applied = next(d for k, d in rec.records if d.get("reasons") == ["config_applied"])
     assert applied["versions"]["thresholds_version"] == 4 and applied["versions"]["thresholds_ignored"] is False
@@ -148,6 +151,9 @@ def test_browser_takes_an_offer_while_parked_only():
     agent.vehicle_signal(0.0, None)
     agent.frame(0.2, 2, W, H, pts, 1, (0.05, 0.05), 12.0, 140.0)
     agent.frame(0.3, 3, W, H, pts, 1, (0.05, 0.05), 12.0, 140.0)
+    assert agent.runtime.decisions.risk.config.microsleep_l3_s == 1.5  # a stop, not a rest yet (M79)
+    agent.frame(121.0, 4, W, H, pts, 1, (0.05, 0.05), 12.0, 140.0)
+    agent.frame(121.1, 5, W, H, pts, 1, (0.05, 0.05), 12.0, 140.0)
     assert agent.runtime.decisions.risk.config.microsleep_l3_s == 3.0
     events = json.loads(agent.take_batch())["events"]
     assert [e["reasons"] for e in events if e["reasons"][0].startswith("config")] == [["config_applied"]]

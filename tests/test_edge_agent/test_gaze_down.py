@@ -30,7 +30,9 @@ def run(a, t0, seconds, shut=False, moving=True, **kw):
 
 
 def calibrated(**kw):
-    a = DistractionAnalyzer(DistractionConfig(baseline_adapt=False, **kw))
+    a = DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False, **kw)
+    )
     states, t = run(a, 0.0, 6.0)  # gaze_calibrate_s of looking at the road
     assert states[0].gaze_down_deg is None and states[-1].gaze_down_deg == pytest.approx(0.0, abs=1e-6)
     return a, t
@@ -69,7 +71,7 @@ def test_shut_eyes_are_not_a_look_down():
 
 
 def test_usual_iris_follows_the_road_but_not_a_look_down():
-    a = DistractionAnalyzer(DistractionConfig())
+    a = DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0))
     _, t = run(a, 0.0, 6.0)
     _, t = run(a, t, 60.0, iris=USUAL + 0.03)  # the driver settles a little lower: on road, learnt
     assert a.baseline_iris == pytest.approx(USUAL + 0.03, abs=0.01)
@@ -78,7 +80,7 @@ def test_usual_iris_follows_the_road_but_not_a_look_down():
 
 
 def test_off_and_missing_iris_measure_nothing():
-    a = DistractionAnalyzer(DistractionConfig(gaze_down_deg=0.0))
+    a = DistractionAnalyzer(DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, gaze_down_deg=0.0))
     states, _ = run(a, 0.0, 8.0, iris=USUAL + 0.3)
     assert all(s.gaze_down_deg is None and s.gaze_down_duration == 0.0 for s in states)
     b, t = calibrated()
@@ -115,10 +117,14 @@ def test_thresholds_file_has_the_gaze_keys_and_no_rule_reads_them():
 
 def test_enrolled_road_iris_replaces_the_start_up_calibration():
     # The first seconds of driving are spent looking down: learnt as "usual" without enrollment, not with it.
-    learnt = DistractionAnalyzer(DistractionConfig(baseline_adapt=False))
+    learnt = DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False)
+    )
     states, _ = run(learnt, 0.0, 8.0, iris=USUAL + 0.15)
     assert states[-1].gaze_down_deg == pytest.approx(0.0, abs=1e-6) and states[-1].gaze_down_duration == 0.0
-    enrolled = DistractionAnalyzer(DistractionConfig(baseline_adapt=False))
+    enrolled = DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False)
+    )
     enrolled.set_road_pose(0.0, 0.0, USUAL)
     states, _ = run(enrolled, 0.0, 3.0, iris=USUAL + 0.15)
     assert states[0].gaze_down_deg == pytest.approx(15.0, abs=0.01)  # known from the first frame
@@ -126,7 +132,9 @@ def test_enrolled_road_iris_replaces_the_start_up_calibration():
 
 
 def test_enrollment_without_iris_keeps_the_start_up_calibration():
-    a = DistractionAnalyzer(DistractionConfig(baseline_adapt=False))
+    a = DistractionAnalyzer(
+        DistractionConfig(baseline_calibrate_s=0.0, baseline_recalibrate_s=0.0, baseline_adapt=False)
+    )
     a.set_road_pose(0.0, 0.0)  # 468-point model: the profile has no road_iris_y
     states, _ = run(a, 0.0, 6.0)
     assert a.baseline_iris == pytest.approx(USUAL) and states[0].gaze_down_deg is None

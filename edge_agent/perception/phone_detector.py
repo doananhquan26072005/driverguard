@@ -9,6 +9,9 @@ A result is already `now - frame timestamp` old when inference finishes. On a CP
 YOLO takes longer than `max_result_age_s`, every result would be unknown and phone detection
 silently off: such results are counted (`stale_results`) and a warning is printed once.
 
+A run that raises (the model, the image) does not end the thread: it is counted (`errors`), the
+thread goes on with the next frame, and until a run succeeds again `latest()` ages out to "unknown".
+
 `phone_near_face()` decides whether a detected phone is in the driver's zone
 (around the face and down to the chest), so a passenger's phone does not count.
 A phone held in front of the face often hides it from MediaPipe, so `FaceBoxMemory`
@@ -54,6 +57,12 @@ class PhoneDetectorConfig:
     web_gpu_target_fps: float = 10.0  # the page's rate on WebGPU (frontend/src/live/pace.ts); on wasm: target_fps
     num_threads: int = 2
     max_result_age_s: float = 0.6
+    # The page only (frontend/src/live/yoloWatch.ts): a worker that has not answered a run for
+    # web_run_timeout_s is replaced, at most web_restart_limit times in a row without a result between;
+    # web_load_timeout_s bounds building the replacement.
+    web_run_timeout_s: float = 5.0
+    web_load_timeout_s: float = 30.0
+    web_restart_limit: int = 3
     zone_expand_x: float = 1.0
     zone_expand_up: float = 0.5
     zone_expand_down: float = 1.5
@@ -158,20 +167,39 @@ class FaceBoxMemory:
     """Last seen face box, reused for up to `max_age_s` after the face is lost.
 
     Call `update()` every frame with the current face box (None when no face).
+
+    With `history_s`, the boxes of the last seconds are kept so that a detector result can be held
+    against the face of the frame it ran on (`at`): a result is up to `max_result_age_s` old, and
+    against the box of the current frame the driver zone was off by however far the head moved since.
     """
 
-    def __init__(self, max_age_s: float) -> None:
+    def __init__(self, max_age_s: float, history_s: float = 0.0) -> None:
         self.max_age_s = max_age_s
+        self.history_s = history_s
         self._face: BBox | None = None
         self._seen_at: float | None = None
+        self._current: BBox | None = None
+        self._history: deque[tuple[float, BBox | None]] = deque()  # (t, the box update() returned)
 
     def update(self, face: BBox | None, t: float) -> BBox | None:
         if face is not None:
             self._face, self._seen_at = face, t
-            return face
-        if self._seen_at is not None and t - self._seen_at <= self.max_age_s:
-            return self._face
-        return None
+        elif self._seen_at is not None and t - self._seen_at <= self.max_age_s:
+            face = self._face
+        self._current = face
+        if self.history_s > 0:
+            self._history.append((t, face))
+            while t - self._history[0][0] > self.history_s:
+                self._history.popleft()
+        return face
+
+    def at(self, t: float) -> BBox | None:
+        """The box of the frame taken at t: the newest kept one that is not later than t. Without a
+        kept one that old (no history, or t older than it reaches): the oldest kept, else the current."""
+        for seen_at, face in reversed(self._history):
+            if seen_at <= t:
+                return face
+        return self._history[0][1] if self._history else self._current
 
 
 class PhoneHealth:
@@ -326,6 +354,8 @@ class AsyncPhoneDetector:
         self._thread: threading.Thread | None = None
         self.runs = 0
         self.stale_results = 0  # results already older than max_result_age_s when they arrived
+        self.errors = 0  # runs that raised; the thread went on
+        self._failing = False  # the last run raised: its warning is printed once per streak
 
     def start(self) -> AsyncPhoneDetector:
         if self._thread is None:
@@ -377,25 +407,38 @@ class AsyncPhoneDetector:
                 frame, self._pending = self._pending, None
             if frame is None:
                 break
-            t0 = time.perf_counter()
-            detections = self._model(frame.image)
-            infer_ms = (time.perf_counter() - t0) * 1000.0
-            self._result = PhoneResult(
-                detections=detections,
-                frame_id=frame.frame_id,
-                timestamp=frame.timestamp,
-                inference_ms=infer_ms,
-                finished_at=time.monotonic(),
-            )
-            self.runs += 1
-            age_s = self._result.finished_at - frame.timestamp
-            if age_s > self.config.max_result_age_s:
-                self.stale_results += 1
-                if self.stale_results == 1:
+            try:
+                self._infer(frame)
+                self._failing = False
+            except Exception as exc:  # one bad run must not end phone detection for the trip
+                self.errors += 1
+                if not self._failing:
                     print(
-                        f"[phone] WARNING: result arrived {age_s * 1000:.0f} ms after its frame "
-                        f"(inference {infer_ms:.0f} ms) > phone.max_result_age_s "
-                        f"({self.config.max_result_age_s * 1000:.0f} ms): it counts as unknown. If this "
-                        "keeps happening, phone detection is effectively off: use a smaller / INT8 model"
+                        f"[phone] WARNING: run failed ({type(exc).__name__}: {exc}); "
+                        "the detector goes on with the next frame"
                     )
+                self._failing = True
             next_run = max(next_run + period, time.monotonic())
+
+    def _infer(self, frame: PreprocessedFrame) -> None:
+        t0 = time.perf_counter()
+        detections = self._model(frame.image)
+        infer_ms = (time.perf_counter() - t0) * 1000.0
+        self._result = PhoneResult(
+            detections=detections,
+            frame_id=frame.frame_id,
+            timestamp=frame.timestamp,
+            inference_ms=infer_ms,
+            finished_at=time.monotonic(),
+        )
+        self.runs += 1
+        age_s = self._result.finished_at - frame.timestamp
+        if age_s > self.config.max_result_age_s:
+            self.stale_results += 1
+            if self.stale_results == 1:
+                print(
+                    f"[phone] WARNING: result arrived {age_s * 1000:.0f} ms after its frame "
+                    f"(inference {infer_ms:.0f} ms) > phone.max_result_age_s "
+                    f"({self.config.max_result_age_s * 1000:.0f} ms): it counts as unknown. If this "
+                    "keeps happening, phone detection is effectively off: use a smaller / INT8 model"
+                )
