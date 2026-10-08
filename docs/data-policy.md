@@ -110,6 +110,9 @@ Hai thời hạn nằm trong cấu hình máy chủ (`DG_RETENTION_EVENTS_DAYS`,
 đặt 0 là không tự xoá). Màn hình đồng ý của tài xế ghi đúng hai con số mặc định này, nên đổi cấu hình
 thì phải đổi cả câu chữ (`RETENTION_DAYS` trong `frontend/src/lib/labels.ts`; có test so hai nơi).
 
+Thời hạn tính từ lúc máy chủ nhận được bản ghi, không theo giờ thiết bị ghi trong bản ghi (M82): thiết bị có
+đồng hồ sai không làm số liệu bị xoá sớm hay được giữ quá hạn.
+
 **Vì sao 60 ngày và 365 ngày:**
 - Pháp luật Việt Nam không đặt con số cho loại dữ liệu này, chỉ yêu cầu lưu "trong khoảng thời gian phù
   hợp với mục đích xử lý" và xoá khi đã xong mục đích [L1, Điều 3, Điều 14].
@@ -141,7 +144,7 @@ thay được.
 - Mật khẩu băm bằng scrypt; phiên đăng nhập là token có hạn (mặc định 60 phút), chỉ nằm trong
   `sessionStorage` của trình duyệt.
 - Khoá thiết bị chỉ lưu dạng băm, hiện một lần lúc tạo.
-- Bản deploy chạy qua HTTPS. HUD trên thiết bị chỉ nghe ở `127.0.0.1`.
+- Bản deploy chạy qua HTTPS. HUD trên thiết bị chỉ nghe ở `127.0.0.1`, và từ M84 chỉ nhận lệnh từ trang HUD: yêu cầu mang `Host` hoặc `Origin` lạ bị từ chối.
 - Log chỉ ghi số lượng và tên lớp lỗi, không ghi nội dung.
 - Nhật ký truy cập chỉ ghi thêm (mục 4). Một test tĩnh trong CI quét mã nguồn của thiết bị, bản web, máy
   chủ và công cụ: không có lời gọi nào ghi, mã hoá hay quay lại ảnh camera.

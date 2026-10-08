@@ -219,9 +219,9 @@ flowchart LR
   (72,6 MB), không có `#/drive`. Chi tiết ở [`release-v2.md`](release-v2.md) mục 7.
 - **`#/drive`** (M31) gửi tốc độ / xi nhan lên backend theo mã ghép; `#/live` hỏi lại backend bằng mã đó.
   Backend chỉ giữ số mới nhất trong bộ nhớ (hết hạn sau 10 phút, không ghi database).
-- **Sản phẩm cuối (chốt 02/10):** app APK chạy trên hub gắn trên xe, bọc chính code web (Capacitor), mọi model
-  và Pyodide đóng gói sẵn trong app; bản web trên Railway chỉ để xem thử. Chưa làm
-  ([`improvements.md`](improvements.md)).
+- **Sản phẩm cuối (chốt 02/10, đổi 08/10):** thiết kế là app APK chạy trên hub gắn trên xe, bọc chính code web
+  (Capacitor), mọi model và Pyodide đóng gói sẵn trong app. Không có code APK nào; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](improvements.md#bo-hub)).
+  Đầu ra hiện tại là bản web mô phỏng trên Railway, và nó còn tải Pyodide và wasm của MediaPipe từ CDN lúc khởi động.
 
 ---
 
@@ -289,7 +289,7 @@ flowchart LR
 | Khối 1 Camera | OpenCV; mất camera thì mở lại mỗi 2 s | `edge_agent/capture/frame_source.py` | M0 |
 | Khối 2 Tiền xử lý | CLAHE trên kênh Y (YCrCb) | `edge_agent/perception/preprocess.py` | M0 |
 | Khối 3 Landmark | MediaPipe Face Landmarker (float16, 3,76 MB) | `edge_agent/perception/landmarks.py` | M1 |
-| Khối 4 Điện thoại | YOLOv8n ONNX (FP32 12,85 MB / INT8 3,61 MB) | `edge_agent/perception/phone_detector.py` | M3 |
+| Khối 4 Điện thoại | YOLOv8n ONNX FP32 12,85 MB (file INT8 3,61 MB hiện có không phát hiện được điện thoại nào, không dùng; M54) | `edge_agent/perception/phone_detector.py` | M3 |
 | Khối 5 Trạng thái mắt | `open-closed-eye-0001` (Intel OMZ, 0,05 MB) | `edge_agent/perception/eye_state.py` | M2 |
 | Khối 6 Đặc trưng | EAR, MAR, solvePnP | `edge_agent/perception/features.py` | M1 |
 | Khối 7 Buồn ngủ | PERCLOS 60 s, microsleep, ngáp, gật | `edge_agent/analysis/drowsiness/` | M2 |

@@ -8,8 +8,8 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 | | |
 |---|---|
 | **Phiên bản** | v2.2 (deploy 02/10/2026, các mốc M0–M31) |
-| **Live URL** | https://driveguard-v2-production.up.railway.app: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs` |
-| **Sản phẩm cuối** | App APK chạy trên hub gắn trên xe, bọc chính code web; bản web để xem thử |
+| **Live URL** | Ba service đang chạy song song trên Railway (kiểm 09/10/2026 bằng `/openapi.json`): v3 (deploy M66, 08/10) ở https://driveguard-production-5093.up.railway.app; v2.2 ở https://driveguard-v2-production.up.railway.app; v1.1 ở https://driveguard-production-6b83.up.railway.app. Các liên kết trong README này trỏ tới bản v2.2: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs` |
+| **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
 ## Mục lục
@@ -186,6 +186,7 @@ Backend đọc `.env` ở thư mục gốc (tiền tố `DG_`); frontend đọc 
 | `DG_CORS_ORIGINS` | backend | `http://localhost:3000,http://localhost:5173` | Origin được gọi API, cách nhau bằng dấu phẩy |
 | `DG_MAX_BODY_BYTES` | backend | `262144` | Giới hạn kích thước một request (byte) |
 | `DG_DEVICE_OFFLINE_AFTER_S` | backend | `90` | Thiết bị im lặng quá số giây này thì tab "Đội xe" hiện "Mất liên lạc" (nhịp "còn sống" mỗi 30 s) |
+| `DG_CLOCK_SKEW_WARN_S` | backend | `120` | Giờ của nhịp "còn sống" lệch giờ máy chủ quá số giây này thì tab "Đội xe" đánh dấu đồng hồ thiết bị sai. Thứ tự nhịp, mục "cần chú ý ngay" và thời hạn tự xoá luôn tính theo giờ máy chủ (M82) |
 | `DG_RETENTION_EVENTS_DAYS` | backend | `60` | Số ngày giữ cảnh báo, sự kiện và mẫu theo phút trước khi tự xoá (0 = không tự xoá). Xem [docs/data-policy.md](docs/data-policy.md) |
 | `DG_RETENTION_SUMMARIES_DAYS` | backend | `365` | Số ngày giữ bản tổng kết chuyến trước khi tự xoá (0 = không tự xoá) |
 | `DG_STATIC_DIR` | `deploy/railway_app.py` | `static` | Thư mục dashboard đã build, phục vụ cùng origin với API (Railway) |
@@ -332,7 +333,8 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 10 | Evaluation evidence | [eval/results/](eval/results/) | ✅ |
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
-(thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (từ 05/10, chưa deploy),
+(thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (M32–M69, từ 05/10), [docs/release-v4.md](docs/release-v4.md) (audit 08/10 và các việc
+làm theo nó, từ M70, chưa deploy),
 [docs/pilot-readiness.md](docs/pilot-readiness.md) (còn thiếu gì để chạy thử trên xe thật),
 [docs/data-policy.md](docs/data-policy.md) (thu dữ liệu gì, ai xem, giữ bao lâu), [docs/safety-fmea.md](docs/safety-fmea.md) (những lúc hệ thống
 không cảnh báo được), [docs/improvements.md](docs/improvements.md) (việc chưa làm),

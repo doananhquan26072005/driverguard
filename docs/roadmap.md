@@ -2,7 +2,8 @@
 
 Mỗi lần chỉ làm đúng một mốc được yêu cầu (CLAUDE.md). Làm xong thì cập nhật dòng của mốc đó ở
 **Tổng quan** và thêm phần **Chi tiết** bên dưới. Những gì đã thêm / sửa / bỏ ở v2 cũng ghi trong
-[release-v2.md](release-v2.md), từ M32 (05/10) ghi trong [release-v3.md](release-v3.md); việc chưa làm nằm ở
+[release-v2.md](release-v2.md), từ M32 (05/10) ghi trong [release-v3.md](release-v3.md), từ M70 (các việc theo audit 08/10)
+ghi trong [release-v4.md](release-v4.md); việc chưa làm nằm ở
 [improvements.md](improvements.md).
 
 ## Tổng quan
@@ -87,6 +88,10 @@ tính năng đang có mà thiết kế chưa vẽ thì giữ lại và vẽ theo
 mà backend / edge agent chưa gửi thì ẩn hoặc điều chỉnh cho hợp. Ngoại lệ duy nhất là M65 (07/10): edge agent gửi thêm
 cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh báo, không đổi backend / API).
 
+**Số mốc trong bảng này:** M57–M65 là thiết kế lại giao diện. Bảng đi thẳng từ M65 sang M67 vì **M66 (deploy Railway, làm
+trên `main` rồi gộp về) nằm ở mục [Vận hành](#m66) bên dưới**, không bị bỏ sót. M67–M69 là hiệu năng bản web, điểm sau
+đăng ký và cách đọc số UTA-RLDD, ghi tiếp ở đây theo thứ tự làm; từ M70 xem bảng [Release v4](#release-v4-các-việc-theo-audit-0810-m70m90) ngay dưới.
+
 | Mốc | Làm gì | Xong là thấy gì | Trạng thái |
 |---|---|---|---|
 | [M57](#m57) | Nền giao diện chung: màu, font Inter tự đóng gói (không dùng Google Fonts vì HUD có thể không có mạng), cỡ chữ, nút, thẻ "kính"; sửa các lỗi tương phản của bản thiết kế (nền trắng trong giao diện tối, chữ đen trong ô nhập, màu cam tối trên nền tối) | Một bộ token dùng chung cho HUD và web; `#/hud-preview` và dashboard đổi sang nền tối mới; số FPS của `#/live` trước / sau không giảm dưới 15 | ✅ Xong · 07/10 (blur chưa dùng ở HUD / `#/live`: đo lại ở M58) |
@@ -101,6 +106,15 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M67](#m67) | Tốc độ vòng lặp `#/live` trên trình duyệt máy tính: YOLO chạy bằng WebGPU khi có GPU thật, chạy đúng nhịp cấu hình và nhận frame trước MediaPipe; vòng lặp không chờ YOLO lúc khởi động; công cụ đo cả lần chạy và chạy dài; đo nhánh điện thoại trên 3MDAD (khối 4, `frontend/src/live/`, `frontend/bench/live.bench.mjs`, `tools/phone_study.py`) | `eval/results/benchmark_live.md` mục 4–5: có GPU thật YOLO 94 → 17 ms mỗi lần, tuổi kết quả p95 333 → 131 ms, CPU của trang 109 → 32 % một nhân; không có GPU 329 → 274 ms; khởi động với cache trống 2,66 → 2,08 s. "Chi tiết kỹ thuật" ghi "WebGPU" hoặc số luồng | 🟡 Xong phần code · 08/10 (đo trong Chromium không giao diện trên một máy Mac, camera giả; **chạy dài 10 phút: bản mới FAIL 2 lần đầu, đạt 2 lần chạy lại, nguyên nhân chưa xác định**; mục tiêu tuổi p95 < 250 ms chưa đạt khi không có GPU; số frame bị bỏ không đổi) |
 | [M68](#m68) | Đăng ký xong thì điểm buồn ngủ bắt đầu từ 0: điểm đọc 0 trong bước nhắm mắt, khối 7 bỏ mọi thứ đã gom trước đó, trip memory bỏ phần gom từ lúc xe dừng (khối 7, 9, 11, `edge_agent/decision/pipeline.py`) | Đăng ký khi đỗ: `drowsy_score` là 0 ở mọi frame (trước đó nhảy lên 25 trong bước nhắm mắt); nhắm mắt 1,5 s trước khi đăng ký không còn để lại PERCLOS hay 25 điểm trong 5 phút | ✅ Xong · 08/10 |
 | [M69](#m69) | Đọc số UTA-RLDD thêm ba cách, không đổi ngưỡng: khoảng tin cậy báo sai / giờ lấy mẫu lại theo người, một điểm làm việc cố định kèm đường đánh đổi theo `risk.drowsy.l1`, đơn vị + tỉ lệ dương ở mỗi bảng, bảng điểm → tỉ lệ phút buồn ngủ (công cụ eval: `tools/metrics.py`, `tools/uta_rldd.py`, `tools/eval.py`, `tools/dataset.py`) | `eval/results/dataset_uta_rldd.md` mục 8 và `uta_rldd_tradeoff.md`: ở ngưỡng hiện tại, 24 người giữ riêng có 0,98 báo sai / giờ (lấy mẫu lại theo người 0,00–3,02), 15 / 24 người buồn ngủ có cảnh báo, 12 / 24 đạt L3; cả 4 lần báo sai là của 1 người; mỗi bảng ghi đơn vị và tỉ lệ dương | ✅ Xong · 08/10 (không đổi ngưỡng, không đổi hành vi) |
+
+### Release v4: các việc theo audit 08/10 (M70–M90)
+
+Từ M70 mọi mốc làm theo [audit 08/10](audit-2026-10-08.md) và ghi trong [release-v4.md](release-v4.md) (tách khỏi
+`release-v3.md` ngày 09/10). "Version 4" ở tiêu đề phía trên là tên đợt thiết kế lại giao diện M57–M65; các mốc M57–M69
+thuộc `release-v3.md`. Lần sửa tài liệu theo audit ở mục [Tài liệu](#tai-lieu-audit) bên dưới cũng thuộc release v4.
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
 | [M70](#m70) | Số liệu đúng phạm vi (audit 08/10, mục 6.1 việc 1): báo sai nhánh buồn ngủ và mọi nhánh đếm cạnh nhau, nhóm theo FPS của video, luật chấm định trước và nhật ký đọc tập test, báo cáo FL3D / YawDD / SUST chạy lại, sửa `report.md`, `pilot-readiness.md` (công cụ eval: `tools/uta_rldd.py`, `tools/metrics.py`, `tools/seq_eval.py`; `eval/splits/`) | `dataset_uta_rldd.md` mục 9: cùng 24 người giữ riêng, 0,98 là báo sai **nhánh buồn ngủ**; mọi nhánh cả video là 1,2 / giờ (cận trên 2,7); 6 trong 9 lần báo sai nhánh buồn ngủ nằm ở 2 video dưới 15 FPS; `eval/splits/README.md` định luật chấm; báo cáo `dataset_fl3d.md`, `dataset_yawdd.md`, `dataset_sust_ddd.md` có dòng nguồn gốc và ngưỡng hôm nay | ✅ Xong · 08/10 (không đổi ngưỡng, không đổi hành vi) |
 | [M71](#m71) | Vòng lặp `#/live` tự hồi phục, và khoảng hở giữa hai frame không còn bị nối thành một đợt (audit 08/10, mục 6.1 việc 3): đồng hồ canh theo `capture.frame_timeout_s`, tự xin lại camera, lỗi frame phía trang đi vào `frame_failed`; khối 7, 8, 12 đếm lại từ đầu sau khoảng hở quá `max_gap_s` (khối 1, 7, 8, 12, `frontend/src/live/`, `edge_agent/web/bridge.py`) | Trên `#/live`: trình duyệt ngừng gọi vòng lặp thì sau 3 s nó tự chạy lại; camera kết thúc thì HUD hiện "Mất camera · Lần thử 1" rồi giám sát lại, không cần tải lại trang; chớp mắt ở hai đầu một lần đứng 2 s không còn là còi L3 | ✅ Xong · 08/10 (chạy 10 phút: 2 / 2 lượt đạt nhưng không lượt nào bị đứng, nên đường tự chạy lại mới được chứng minh bằng e2e; M67 vẫn 🟡; chưa thử webcam thật, Android WebView) |
 | [M72](#m72) | Đóng các trạng thái ngừng giám sát mà không ai được báo (audit 08/10, mục 6.1 việc 2): mặt lọt một phần khỏi khung (`bad_angle`) được tính giờ thành "tạm ngưng", "đang nhìn lệch" chỉ được giữ tối đa `distraction.pose_hold_s` khi không còn tư thế, "tạm ngưng" chạy cả ở 1–5 km/h, HUD không còn nút một chạm nào tắt hoặc che giám sát (khối 8, 9, 10, 13; `frontend/src/hud/`, `frontend/src/live/`) | Chuỗi số giả 60 km/h, mặt lọt một phần 60 s: sau 5 s HUD hiện "Tạm ngưng giám sát · camera lệch" (trước: mức 0, không báo gì). Ở 3 km/h mất mặt 3 s cũng "tạm ngưng". Trên `#/live` không còn nút "Chạy mô phỏng" và liên kết Dashboard; "Dừng camera" hỏi lại rồi kết thúc chuyến có tổng kết; rời trang giữa chuyến thì có tiếng báo và chuyến được kết thúc | ✅ Xong · 08/10 (thêm 1 khoá ngưỡng tạm `distraction.pose_hold_s` = 3 s; replay các trace hiện có không đổi số cảnh báo; chưa bấm thử trên giao diện bằng tay, chưa có dữ liệu camera đặt lệch) |
@@ -108,6 +122,26 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M74](#m74) | Khối 12 không còn để cooldown nuốt cảnh báo (audit 08/10, mục 6.1 việc 6): lý do còn đó khi hết cooldown thì được nhắc lại, lần nhắc được đếm vào leo thang `repeated_l1` và bộ đếm bắt đầu lại sau mỗi lần leo thang, lý do bắt đầu dưới một mức cao hơn có cảnh báo riêng khi mức hạ; "Bạn còn ở đó không?" không hỏi lặp khi mặt chập chờn (khối 12: `edge_agent/decision/alert_manager.py`, `presence.py`) | Chuỗi số giả: nhìn lệch 3 s, nhìn lại 5 s, nhìn lệch 40 s: có tiếng lần hai (trước: không); L1 đều 30 phút: L1, L1, L2, L1, L1, L2... mỗi ~2 phút (trước: 1 tiếng chuông); điểm cắt ngưỡng 18 lần trong 40 phút: 6 lần L2 (trước: 16); mặt hiện 1 frame mỗi 12 s: hỏi 1 lần (trước: 10) | ✅ Xong · 08/10 (thêm 3 khoá: `alert.remind`, `presence.back_s`, `presence.reask_after_s`, hai khoá sau là tạm; **báo sai tăng**: UTA-RLDD 24 người dùng để dò 5 → 7 lần nhánh buồn ngủ (1,29 → 1,81 / giờ), FL3D L2 sai 3 → 8; **chờ anh quyết: giữ `alert.remind: true` hay tắt, và có sinh lại `eval/results` không**; tập giữ riêng không được đọc) |
 | [M75](#m75) | Hành vi dưới 15 FPS, chỉ đo (audit 08/10, mục 6.1 việc 7): replay các video UTA-RLDD quay từ 25 FPS trở lên sau khi bỏ bớt frame xuống 15 / 12 / 10 FPS, khoảng cách đều và không đều; test chuỗi số giả cho khối 7, 8, 9, 12 với tám kiểu vòng lặp (công cụ eval: `tools/seq_eval.py` `resample_trace`, `tools/uta_rldd.py fps`; `tests/test_edge_agent/test_m75_low_fps.py`) | `eval/results/fps_low_uta_rldd.md`: 59 video của 21 người dùng để dò, báo sai nhánh buồn ngủ 5 lần khi giữ nguyên, 2–7 lần ở 10–15 FPS (mỗi dòng 3 lượt, dao động giữa các lượt lớn hơn chênh lệch giữa các tốc độ); người buồn ngủ có cảnh báo 12 / 19 → 12–14, đạt L3 10 → 9–11. Chuỗi số giả: không cảnh báo nào được tạo thêm ở vòng lặp chậm, sự kiện rõ ràng trễ tối đa hai khoảng frame; nhắm mắt 1,6 s (vượt mốc L3 0,1 s) bị bỏ sót ở 10 FPS không đều | ✅ Xong · 08/10 (chỉ đo: không đổi ngưỡng, không đổi hành vi; thêm 4 khoá `eval.fps_study_*`, độ không đều 0,3 là tạm; 7 ca ghi `xfail` là chỗ vòng lặp chậm làm mất độ nhạy; khối 2–5 trên máy chậm và nhánh điện thoại chưa đo; tập giữ riêng không được đọc) |
 | [M76](#m76) | Mắt díp rồi mới nhắm hẳn (audit 08/10, mục 6.1 việc 10): khi cả đợt nhắm chưa đạt tỉ lệ nhắm sâu, chuỗi frame nhắm sâu đang chạy được đếm từ frame đầu của chính nó; chuỗi đó cũng mở được phần đếm tiếp khi gục đầu (khối 7: `edge_agent/analysis/drowsiness/eyes.py`; khoá `drowsiness.microsleep_deep.run_gap_s`) | Chuỗi số giả: mí sụp 2 / 4 / 10 / 30 s rồi nhắm hẳn: còi L3 đúng 1,5 s sau khi nhắm (trước: 2,0 / 4,0 / 10,0 s, và không bao giờ với 30 s). UTA-RLDD 24 người dùng để dò: chuỗi nhắm sâu từ 1,5 s có L3 đúng lúc 45 → 47 / 50, báo sai trên video `0` không đổi; YawDD, FL3D, SUST, bản tự ghi không thêm cảnh báo sai nào | ✅ Xong · 08/10 |
+| [M77](#m77) | Chặn số không hữu hạn (audit 08/10, A1 M4 và A3 L1): mặt có landmark NaN / inf không còn là mặt, điểm blendshape NaN coi như không có (khối 3, cả `FaceLandmarkDetector.detect` và `WebAgent`); số đo NaN / inf từ khối 7, 8 được khối 9 đọc là 0 cho riêng số hạng đó và ghi log một lần; trip memory không gom điểm NaN (khối 11) | Chuỗi số giả: 30 s EAR 0,30 có một frame landmark NaN ở giây 15, rồi nhắm mắt: còi L3 `microsleep` (không có lớp chặn: mức 0, mốc mắt NaN). `perclos_60s` NaN cùng microsleep, ngáp, gục: 60 điểm, L1 (trước: điểm NaN, mức 0). Không đổi ngưỡng, không đổi số nào trên trace | ✅ Xong · 08/10 |
+| [M78](#m78) | Nhánh điện thoại tự hồi phục (audit 08/10, A1 M1): một lần chạy YOLO ném exception không còn làm chết luồng của bản thiết bị; worker YOLO của `#/live` không trả lời quá hạn thì bị thay bằng worker mới, có trần số lần thay liên tiếp (khối 4: `edge_agent/perception/phone_detector.py`, `frontend/src/live/yoloWatch.ts`, `agent.ts`) | Model giả ném lỗi ở lần chạy thứ hai: luồng còn sống, các lần sau có kết quả (trước: luồng dừng, `latest()` trả `None` tới hết chuyến). `#/live` trong Chromium, nuốt một lần chạy: sau khoảng 5 s worker được thay, YOLO chạy tiếp (trước: `yoloBusy` giữ `true` mãi); mọi lần chạy đều treo: thay 3 lần rồi thôi | ✅ Xong · 08/10 (thêm 3 khoá `phone.web_run_timeout_s`, `web_load_timeout_s`, `web_restart_limit`, đều là tạm: chưa từng ghi nhận lần treo thật nào) |
+| [M79](#m79) | Nạp lại ngưỡng giữa chuyến và mẫu mỗi phút (audit 08/10, A3 M1 và M5): mẫu mệt mỏi mỗi phút gửi tiếp sau "Đổi tài xế" và sau khi nạp ngưỡng; ngưỡng mới chỉ được nạp khi tài xế đang nghỉ (đỗ từ `context.rest_after_s`, 120 s), không nạp ở đèn đỏ, và trip memory đi tiếp qua lần nạp; phiên bản đổi một mục mà chuyến đang chạy không nhận được thì bị từ chối cả bộ thay vì báo `config_applied` (khối 11, 14: `edge_agent/runtime.py`, `edge_agent/decision/pipeline.py`) | Chuỗi số giả 60 phút, "Đổi tài xế" ở phút 25,2: 59 mẫu (trước: 34, trống 26 phút). Microsleep trên đường rồi dừng đèn đỏ 30 s khi có phiên bản đang chờ: ngưỡng chưa đổi, microsleep vẫn được nhớ (trước: nạp ngay, xoá). Phiên bản có `context.long_drive_s`: `config_refused`, số phiên bản báo về giữ nguyên | ✅ Xong · 08/10 (không thêm khoá, không đổi ngưỡng; xe không bao giờ đỗ đủ 120 s thì nhận ngưỡng mới ở lần mở app sau) |
+| [M80](#m80) | Hai mốc "nhìn đường" của tư thế đầu (audit 08/10, A2 M1 và M2): khối 8 hiệu chuẩn lại khi đầu ở ngoài vùng "nhìn đường" suốt `distraction.baseline.recalibrate_s` (60 s) lái xe mà gần như đứng yên, và gửi `road_pose_recalibrated`; mốc tư thế của khối 7 chỉ học khi xe đang chạy (khối 7, 8: `edge_agent/analysis/distraction.py`, `edge_agent/analysis/drowsiness/head.py`, `edge_agent/decision/pipeline.py`) | Chuỗi số giả 10 phút, nhìn sang bên 40° trong 6 s đầu rồi nhìn đường: L2 ở 9,7 % số frame và 2 cảnh báo, hết ở giây 66 (trước: 98,7 %, 20 cảnh báo, kẹt cả chuyến). Đã đăng ký, cúi nhìn màn hình 12° lúc dừng 8 s rồi chạy: mốc cúi của khối 7 giữ 0,0 (trước: 12,0 trong 19 s đầu sau khi chạy) | ✅ Xong · 08/10 (hai khoá mới đều **tạm**: chưa có chuyến thật nào bị hiệu chuẩn sai để chỉnh theo; 23 giờ trace: 0 lần hiệu chuẩn lại, cảnh báo không đổi; ca kẹt "mắt không đọc được" của A2 M2 chưa làm, chờ anh quyết định) |
+| [M81](#m81) | Gục đầu và ngáp (audit 08/10, A2 M3 và M4): frame "mắt nhắm" của một cú cúi phải là nhắm sâu theo phép thử đầu cúi, không còn là EAR dưới ngưỡng nhắm thường; một lần ngáp bị mất mặt giữa chừng chỉ đếm một; ngáp được đếm trên MAR đã quy về chính diện (MAR × cos(yaw)) (khối 7: `edge_agent/analysis/drowsiness/analyzer.py`, `head.py`, `mouth.py`) | `pytest tests/test_edge_agent/test_m81_nod_yawn.py`: 29 pass. Chuỗi số giả: cúi nhìn 20° trong 1 s với EAR 0,6 và 0,5 lần mốc ra `bow` (trước là `nod`); há miệng 2 s, mất mặt 0,6 s, há tiếp 2,4 s ra 1 `yawn` (trước 2); miệng hé MAR 0,37 khi quay đầu 35° không ra `yawn` (trước 1) | ✅ Xong · 08/10 (đánh đổi đã đo: FL3D mất 35 trong 118 `nod` đúng, YawDD mất 3 trong 94 lần ngáp đúng; hai khoá bật / tắt mới, anh quyết định giữ hay tắt) |
+| [M82](#m82) | Backend không dựa vào đồng hồ thiết bị (audit 08/10, A4 M2, L1; X7): nhịp nào tới sau thì là trạng thái hiện tại, mục "cần chú ý ngay" và thời hạn tự xoá tính theo giờ máy chủ, độ lệch đồng hồ của thiết bị được lưu và hiện ở tab "Đội xe"; `trip_id` có thêm phần ngẫu nhiên (backend: `backend/db.py`, `app.py`, `settings.py`; khối 14: `edge_agent/runtime.py` `new_trip_id`, `frontend/src/live/tripId.ts`) | `pytest tests/test_backend/test_m82_device_clock.py`: 28 pass. Ba ca của audit: nhịp `ended` với đồng hồ nhanh một ngày rồi chuyến mới với giờ đúng → tab "Đội xe" hiện "đang giám sát" (trước: "đã kết thúc"); đồng hồ chậm 10 phút, L3 `unresponsive` vừa nhận → có ở mục "cần chú ý ngay" (trước: không); sự kiện mang năm 1970 còn nguyên sau lần dọn (trước: bị xoá ngay). Xe có đồng hồ lệch quá 120 s có nhãn "Đồng hồ thiết bị chậm 10 phút" | ✅ Xong · 08/10 (giờ hiển thị của từng cảnh báo và việc lọc theo ngày vẫn là giờ thiết bị ghi; chưa thử trên Railway) |
+| [M83](#m83) | Hành khách đứng một mình không còn là tài xế; camera lặp lại một ảnh là mất camera (audit 08/10, A1 M5 và M3): sau đăng ký, mặt khớp nhất vẫn bị bỏ khi tâm của nó cách chỗ thấy tài xế lần cuối quá `landmarks.driver_max_distance` (4 lần khoảng cách hai mắt đã đăng ký), khối 3 trả "không có mặt"; ảnh camera giống hệt frame trước suốt `capture.frame_timeout_s` (so mỗi điểm ảnh thứ `capture.frozen_stride`) thì là mất camera và được mở lại (khối 1, 3: `edge_agent/perception/landmarks.py`, `edge_agent/capture/frame_source.py`, `frontend/src/live/frozen.ts`, `watchdog.ts`, `agent.ts`) | `pytest tests/test_edge_agent/test_m83_passenger_and_frozen_camera.py`: 21 pass. Chuỗi số giả: tài xế bị che, hành khách ngủ ở ghế bên: "tạm ngưng giám sát" (trước: còi L3 `microsleep` sai). `#/live` trong Chromium, video chiếu một canvas vẽ lại cùng điểm ảnh: sau 3 s là `camera_lost`, xin lại camera, hết khi luồng mới có ảnh đổi (trước: không có gì) | ✅ Xong · 08/10 (đo trên DROZY: chữ ký hình dạng mặt **không** phân biệt được người, nên ngưỡng đặt trên vị trí chứ không trên điểm tổng như audit đề xuất; giá trị 4 là **tạm**, chưa có bản ghi hai người trong xe) |
+| [M84](#m84) | Một lớp chặn ảnh cho thiết bị, bản web và backend; server HUD kiểm ai gọi (audit 08/10, A4 M8, M6, L6): danh sách từ cấm và hàm quét nằm ở một chỗ (`edge_agent/io/metadata_guard.py`), `WebAgent._queue` quét mọi bản ghi trước khi giao cho trang; server HUD từ chối `Host` không phải máy này, `POST` có `Origin` lạ, và `POST` có thân mà không phải `application/json` (khối 13, 14: `edge_agent/hud/server.py`, `edge_agent/io/publisher.py`, `edge_agent/web/bridge.py`, `backend/schemas.py`) | `pytest tests/test_edge_agent/test_m84_metadata_guard_and_hud_callers.py`: 39 pass. Bản ghi có `snapshot_jpg` đưa vào `WebAgent`: không vào lô nào, frame vẫn trả trạng thái HUD. `POST /end-trip` với `Origin: http://evil.example`: 403, chuyến đi tiếp | Xong (08/10) |
+| [M85](#m85) | Ngưỡng về hết `thresholds.yaml` (audit 08/10, A1 L1, A2 L5, A3 L4, A4 M7, A5 M6; X5, X8): 31 khoá mới mang đúng giá trị code đang dùng; 6 mặc định trong dataclass lệch YAML được sửa cho bằng YAML; trang web không giữ số riêng (agent gửi `display` kèm mỗi state và `settings()`, trước state đầu tiên dùng `frontend/src/lib/defaults.gen.json` sinh từ YAML); bản tổng kết cắt phút theo `trip_memory.bin_s`; test quét AST của `edge_agent/` và hằng số của `frontend/src/` (cả 14 khối, `tools/`, `frontend/src/hud`, `frontend/src/live`) | `pytest tests/test_edge_agent/test_m85_no_hardcode.py`: 76 pass. Thêm `if x > 1.5:` vào `edge_agent/` hoặc `const STALE_S = 3;` vào `frontend/src/`: test đỏ, in file:dòng. Xoá một dòng khỏi `thresholds.yaml`: test đỏ | Xong (08/10) |
+| [M86](#m86) | Vệ sinh eval (audit 08/10, A5 M1, M2, H1 đã hạ; A1 L3; mục "Mới trong phiên này"): thời gian của video lấy từ dấu thời gian của container thay cho số thứ tự frame / FPS; bốn thư viện quyết định số đo và ba model được ghim (phiên bản, sha256), trace ghi lại môi trường tạo ra nó; `load_trace` đọc được trace numpy 2 sau khi `edge_agent` đã nạp; báo cáo cá nhân hoá chấm bằng `eval.*`; fixture hồi quy ghim thêm đường web (`eyeBlink`), cổng chất lượng và nhánh điện thoại (công cụ eval: `tools/seq_eval.py`, `uta_rldd.py`, `metrics.py`, `regression_traces.py`, `download_models.py`; `requirements.txt`) | `pytest tests/test_edge_agent/test_m86_eval_hygiene.py tests/test_edge_agent/test_trace_regression.py`: 39 pass. Đổi `drowsiness.eye.blendshape_closed`, `quality.dark_face_brightness` hoặc `risk.distraction.phone_ratio`: test hồi quy đỏ (trước: không test nào đỏ). `python tools/download_models.py --verify` in `[ok]` cho ba model. `python tools/uta_rldd.py clock --root <thư mục video>` in bảng lệch giờ từng video | Xong (09/10) (trace cũ không đổi một số nào; 127 / 145 video UTA-RLDD không có ở máy nên chưa đo được độ lệch giờ, trong đó có hai video 12 FPS mang 6 / 9 lần báo sai) |
+| [M87](#m87) | CI chạy trên nhánh làm việc, có model thật và đo FPS; bốn test phụ thuộc đồng hồ thật được viết lại (audit 08/10, A5 M5 và M8): `ci.yml` chạy khi push lên `DAQuan`; job mới `models` tải ba model có kiểm sha256, chạy khối 3–6 trên model thật với một khuôn mặt vẽ bằng hình học (`tools/drawn_face.py`, không phải ảnh người), rồi đo vòng lặp chính 90 s và đỏ khi dưới `eval.soak_min_fps` (`tools/benchmark.py --condition drawn_face --check`); test không còn so với đồng hồ bấm giờ (`.github/workflows/ci.yml`, `tools/`, `tests/`) | `DG_REQUIRE_MODELS=1 pytest tests/test_edge_agent/test_m87_ci_real_models.py`: 10 pass, không test nào bị bỏ qua; xoá một file trong `models/`: đỏ (không có biến đó: bỏ qua như trước). Lệnh đo của CI trên Mac: 138,6 FPS, mặt vẽ được tìm thấy ở 12 472 / 12 472 frame, phút thấp nhất 137,2 FPS, mã thoát 0; dưới 15 FPS thì mã thoát 1. Bốn test của A5 M8 chạy 3 lần liền: 88 / 88 pass | 🟡 Code xong · 09/10; chưa push nên job `models` chưa chạy lần nào trên GitHub (FPS của máy chạy CI chưa biết) |
+| [M88](#m88) | Bù test còn thiếu (audit 08/10, A1 L4, A3 L5, A4 M10), chỉ thêm test, không đổi dòng code nào đang chạy: `agent.ts` thật trên jsdom với Python, camera, backend và đồng hồ giả (gửi lô, đọc tốc độ, dừng, camera rớt, frame lỗi), các hiệu ứng âm thanh của `HudScreen.tsx`, worker YOLO lùi từ WebGPU về wasm; lịch chạy của khối 1 và khối 4 trên đồng hồ giả thay cho `sleep`; khối 2 (`resize`, ảnh màu tối); một fixture so số đo của trang với số đo của thiết bị trên cùng điểm ảnh; khối 12 với ngưỡng của YAML và frame không đều; hệ số đêm / lái lâu trên trace thật | `npm test`: 267 pass (94 mới) và 1 ca cố ý đánh dấu chưa đạt; `pytest tests/test_edge_agent/test_m88_missing_tests.py`: 69 pass, 3 xfail. Làm hỏng code ở 20 chỗ (bản sao), chỗ nào cũng có test đỏ | ✅ Xong · 09/10 (4 chỗ test nêu ra việc chưa sửa: `stop()` chờ backend, lô bị bỏ cả khi 4xx, 401 kẹt hàng đợi, ảnh màu tối = hồng ngoại) |
+| [M89](#m89) | Khung giờ của màn hình tách khỏi khung giờ của điểm, và bố cục cho màn hình dọc (audit 08/10, X6 và A4 M9): `hud.dim_hours` (18–6 giờ, tạm) quyết định lúc làm mờ HUD, agent gửi cờ `dim` riêng; `context.night_hours` (0–5 giờ) chỉ còn nhân điểm buồn ngủ, không đổi. Màn hình dọc từ 640 px được vẽ trên một stage 800 × 1280 co theo màn hình; điểm ngắt và cỡ chữ của HUD theo bề rộng stage thay cho bề rộng màn hình (khối 10, 13: `edge_agent/hud/server.py`, `frontend/src/hud/HudStage.tsx`, `HudView.tsx`, `index.css`) | 20:00: HUD mờ đi và hiện mặt trăng, điểm buồn ngủ bằng đúng lúc 12:00; 02:00: mờ và điểm nhân 1,2 như trước. `#/hud-preview` ở 800 × 1280 và 1 200 × 1 920: cùng một bố cục, không phải cuộn, "Kết thúc chuyến" luôn trong khung (trước đó tràn 64–140 px, hoặc dùng bố cục ngang hai cột kéo dài) | ✅ Xong · 09/10 (ô tự xem của `#/live` còn che nút, chờ anh quyết) |
+| [M90](#m90) | Các phát hiện Low còn lại của audit (audit 08/10, A2 L1–L3; A3 L2, L3, L6; A4 L2–L5; A1 L5): `blink_rate` chia cho số giây đọc được mắt, `phone_ratio_2s` cần số mẫu tối thiểu, trần cho các cấu trúc, `drowsy_score` 0 khi nghỉ, xi nhan có trần thời gian, outbox ghi trên luồng gửi, hàng đợi web có trần, backend trả `conflicts` (khối 1, 4, 7–11, 14, backend) | `pytest tests/test_edge_agent/test_m90_small_findings.py tests/test_backend/test_m90_event_id_conflict.py`: 32 pass; test hồi quy trace không đổi kết quả nào | ✅ Xong · 09/10 (ba giá trị tạm và việc dựng lại bảng `events` chờ anh quyết) |
+
+### Tài liệu (không đánh số)
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [Sửa tài liệu theo audit 08/10](#tai-lieu-audit) | Sửa các chỗ tài liệu lệch code (audit 08/10: A1 mục 3.6, A2 L7, A3 mục 3.7, A4 mục 3.5; 33 chỗ), bảy chỗ mâu thuẫn thứ tự của mục 6.2 trong `improvements.md`, giai đoạn 2–4 của `pilot-readiness.md`, và chỗ roadmap nhảy qua M66. Không đổi logic, không đổi ngưỡng | `docs/risk_engine_spec.md` khớp `risk_engine.py` (chữ ký `assess`, luật `unresponsive`, trọng số 0, `trend` chỉ ghi nhận, đứng yên là mức 0); tốc độ từ GPS là việc 4 của `improvements.md` với đúng chiều hỏng; không liên kết nào vào `improvements.md` còn gãy | Xong (09/10) (23 chỗ sửa trong phiên này, 10 chỗ đã được M70–M86 sửa; **chưa có số mốc**: lúc làm có phiên khác đang dùng M87, chờ anh đặt số) |
 
 ### Vận hành (M66–)
 
@@ -1041,6 +1075,9 @@ Chỉ đổi giao diện (`frontend/`): backend, edge agent và API giữ nguyê
 bản thiết kế chưa vẽ thì vẽ theo phong cách mới, không bỏ. Quyết định ngày 07/10: font Inter, nút HUD 56 px như các màn
 hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
+Phần chi tiết đi từ M65 sang M67: M66 (deploy Railway) nằm ở mục [Vận hành](#m66) cuối file. Từ M67 là hiệu năng bản web
+và các mốc theo audit 08/10.
+
 <a id="m57"></a>
 
 #### M57: Nền giao diện chung (frontend)
@@ -1336,6 +1373,8 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
 
 ---
 
+<a id="m72"></a>
+
 #### M72: Đóng các trạng thái ngừng giám sát mà không ai được báo (khối 8, 9, 10, 13)
 
 **Xong là thấy gì:** chuỗi số giả ở 60 km/h, mặt lọt một phần khỏi khung 60 s (trong đó nhắm mắt 40 s): từ giây thứ 5 là "tạm ngưng giám sát" với lý do `bad_angle` ("camera lệch"), có tiếng báo và sự kiện `monitoring_unavailable` lên backend. Ở 3 km/h, mất mặt 3 s cũng "tạm ngưng" và sau đó hỏi "Bạn còn ở đó không?". Mở `#/live`: thanh trên không có nút "Chạy mô phỏng" và liên kết Dashboard; bấm "Dừng camera" hiện hộp "Kết thúc chuyến đi?", chọn "Tiếp tục lái" thì mọi thứ chạy tiếp, chọn "Kết thúc" thì ra bản tổng kết
@@ -1392,6 +1431,8 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
   - Chưa bấm thử bằng tay trên trình duyệt có giao diện; đường tự về thiết bị thật từ chế độ mô phỏng của `#/hud` chưa có test (chỉ đọc code)
 - Test: 1041 Python pass (19 test mới bằng chuỗi số giả: 18 ở `test_m72_silent_states.py`, 1 ở `test_decision.py`), 151 frontend (2 mới), 6 e2e (1 mới, 1 mở rộng); ruff / format sạch ở phần đã đổi, typecheck, build sạch
 
+<a id="m73"></a>
+
 #### M73: Ngữ cảnh quanh điểm buồn ngủ: "lái lâu" tắt được, dừng đèn đỏ không mang sang, replay chọn giờ (khối 9, 10, 11)
 
 **Xong là thấy gì:** chuỗi số giả, đã lái 2 giờ: `long_drive` bật; đỗ 2 phút (nghỉ) thì nó tắt và HUD "Lái liên tục" về 0 ở cùng frame; bấm "Đổi tài xế" cũng vậy. Chạy 50 km/h, dừng 60 s, nhắm mắt 25 s trong lúc dừng, chạy lại: không cảnh báo nào, `drowsy_score` về 0. Chạy `tools/uta_rldd.py compare --split dev --set eval.replay_clock_hour=2 --set eval.replay_drive_time_s=7200` ra một dòng "what-if" ở 02:00 sau 2 giờ lái
@@ -1434,7 +1475,7 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
   - Bản tổng kết chuyến vẫn đếm lần nhắm mắt ở đèn đỏ là một microsleep (cố ý từ M27); mốc này không đụng tới
   - Trong lúc dừng, điểm vẫn hiện trên HUD (65 ở chuỗi đầu) rồi về 0 khi lăn bánh; phút đó của biểu đồ 15 phút vẫn được tính
   - Bảng ×1,2 / ×1,44 chỉ nói về phía báo sai, trên video 10 phút của người ngồi trước laptop; không nói được hệ số có tăng độ nhạy đúng lúc cần không
-  - Khung giờ đêm [0, 5) dùng chung cho điểm và độ sáng HUD (audit X6): chưa đụng
+  - Khung giờ đêm [0, 5) dùng chung cho điểm và độ sáng HUD (audit X6): tách ở [M89](#m89)
 - Test: 1052 Python pass (11 test mới ở `test_m73_context.py`, 1 test của M65 sửa số mong đợi vì HUD nay cộng `initial_drive_time_s`); ruff / format sạch; `frontend/public/py/edge_agent.zip` đóng gói lại. Không đổi code frontend, nên test frontend và e2e không chạy lại
 
 <a id="m74"></a>
@@ -1604,6 +1645,637 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
   - Số trong `eval/results` là của hành vi trước M74; mốc này chỉ làm lệch thêm một dòng (sự kiện microsleep của FL3D 145 → 146) và các dòng của F2_S18. Sinh lại vẫn cần anh cho phép
   - Lỗi nhỏ của audit ở `tools/uta_rldd.py` `load_trace` (numpy 2) gặp lại khi viết script đo, chưa sửa: ngoài phạm vi mốc
 - Test: 1180 Python pass, 7 xfail (19 test mới ở `test_m76_droop_then_shut.py`, không test cũ nào phải sửa); ruff / format sạch; `frontend/public/py/edge_agent.zip` đóng gói lại. Không đổi code frontend, nên test frontend và e2e không chạy lại
+
+<a id="m77"></a>
+
+#### M77: Chặn số không hữu hạn ở khối 3 và khối 9 (khối 3, 9, 11)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m77_non_finite.py`: 29 pass. Bản web, chuỗi số giả: 30 s EAR 0,30 với một frame có landmark mí mắt NaN ở giây 15, rồi nhắm mắt 2,5 s: còi L3 `microsleep`
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-2026-10-08.md](audit-2026-10-08.md) mục 4.3 chuỗi 4 (A1 M4, A3 L1). Không thêm khoá nào trong `thresholds.yaml`, không đổi ngưỡng. Đây là lớp phòng thủ: chưa trace nào có NaN, và chưa ai thấy MediaPipe trả NaN
+
+- **Trước:** một điểm NaN ở mí mắt đi qua khối 3 (`face_conf` vẫn 0,99), EAR của frame đó là NaN, và một EAR NaN làm mốc mắt mở của khối 7 thành NaN chừng nào frame đó còn trong cửa sổ: mọi phép so với mốc đều sai nên mắt đọc là mở. Ở khối 9, một số đo NaN làm `drowsy_score` NaN, mọi phép so với ngưỡng là False nên mức 0 dù ngáp và gục đã đầy; điểm NaN đi tiếp vào phút của trip memory, `trend_15min` và bản ghi gửi backend (không phải JSON hợp lệ, backend trả 422, bản web bỏ cả lô)
+- **Khối 3** (`edge_agent/perception/landmarks.py`: `finite_faces`, `finite_scores`): mặt có bất kỳ toạ độ nào NaN / inf bị bỏ trước khi chọn tài xế; không còn mặt nào thì frame là "không có mặt", đi đúng đường mất mặt đã có (khối 7 không đọc, khối 8 tính giờ mất mặt, quá `risk.unavailable.no_face_s` lúc xe lăn bánh thì "tạm ngưng"). Dùng chung cho bản thiết bị (`FaceLandmarkDetector.detect`) và bản web (`WebAgent._frame`). Chỉ số của mặt được giữ theo thứ tự của MediaPipe nên `eyeBlink` / `browOuterUp` vẫn là của đúng mặt được chọn. Điểm `eyeBlink`, `browOuterUp` NaN / inf thành `None` (như khi model không xuất), các blendshape chỉ để ghi trace thì bỏ riêng điểm hỏng. `num_faces` chỉ đếm mặt dùng được
+- **Khối 9** (`risk_engine.py`: `RiskEngine._finite`, `DROWSY_INPUTS`, `DISTRACTION_INPUTS`): bảy số đọc từ khối 7 (`closed_duration`, `perclos_60s`, `blink_rate`, `yawn_count_10min`, `nod_count_5min`, `brow_raise_count_5min`, `slow_blink_score`) và ba số từ khối 8 (`off_road_duration`, `phone_ratio_2s`, `no_face_duration`) mà NaN / inf thì đọc là 0: chỉ số hạng hoặc luật của chính nó mất, phần còn lại vẫn chạy. `blink_rate` không rõ thì luật `blink_rate` không bật (0 lần / phút sẽ bị hiểu là "chớp quá ít"). Lần đầu một trường bị thay, ghi một dòng cảnh báo vào log `driverguard.risk` (mỗi trường một lần cho cả chuyến). Frame bình thường không bị chép lại: một phép cộng và một `math.isfinite` cho mỗi nhánh
+- **Khối 11** (`trip_memory.py`): điểm không hữu hạn không được gom vào phút; phút chỉ có điểm như vậy bị bỏ qua như phút không có frame. Sự kiện `microsleep` của frame đó vẫn được nhớ
+- **Số trước / sau** (chuỗi số giả, ngưỡng trong YAML):
+
+| Ca | Trước | Sau |
+|---|---|---|
+| Bản web: 30 s EAR 0,30, một frame landmark mí mắt NaN ở giây 15, rồi nhắm 2,5 s | Mức 0, không cảnh báo | L3 `microsleep` |
+| Riêng khối 7, cùng chuỗi (EAR NaN đưa thẳng vào) | Mốc mắt NaN từ giây 15 tới hết 34 s, `closed_duration` 0 | Chưa đổi: mốc này chỉ chặn nguồn ở khối 3 |
+| Khối 9: `perclos_60s` NaN, vừa có microsleep, ngáp 3, gục 2 | Điểm NaN, mức 0 | 60 điểm, L1 `drowsy_score` |
+| Khối 9: ca của audit (`perclos_60s` NaN, ngáp và gục đầy; đúng ra 75 điểm, L2) | Điểm NaN, mức 0 | 35 điểm, mức 0: số hạng PERCLOS vẫn mất, nhưng điểm là số và có dòng log |
+| Khối 9: `off_road_duration` NaN, điện thoại 100 % | `distraction_score` NaN, L2 `phone` | 100 điểm, L2 `phone` |
+| Khối 11: một frame điểm NaN trong phút 2 của ba phút 10 / 20 / 30 điểm | Phút 2 và `trend_15min` NaN | 10 / 20 / 30, độ dốc 10 |
+
+- **Tốc độ** (Mac, đo bằng `timeit`): `finite_faces` trên một mặt 478 điểm khoảng 1 µs mỗi frame; hai lần kiểm của khối 9 khoảng 0,8 µs (cả `assess` khoảng 4 µs). Không đo trong Pyodide
+- **Cổng chất lượng:** test hồi quy trace (36 video) pass mà không phải chốt lại; không số nào trên trace đổi vì trace không có NaN. 1 test đối chứng tắt lớp chặn của khối 3 và thấy đúng lỗi của audit (mức 0)
+- **Chưa làm / còn hở:**
+  - Khối 7 vẫn nhận EAR NaN nếu khối 6 tính ra NaN từ landmark hữu hạn (A2 L6): chưa kiểm khối 6 có ca đó không, và mốc mắt chưa tự bỏ giá trị NaN
+  - Khối 9 chỉ làm sạch số nó dùng để chấm. `DecisionResult.drowsiness` / `.distraction` vẫn mang số gốc, và khối 14 gửi `perclos_60s`, `closed_duration`, `off_road_duration` trong bản ghi (`publisher.py:137-143`): nếu khối 7 / 8 sinh NaN thì bản ghi đó vẫn không phải JSON hợp lệ. Ngoài phạm vi mốc (khối 14)
+  - Mặt tài xế NaN mà mặt hành khách hữu hạn: hành khách được đo trong frame đó, cùng lỗ hổng với A1 M5 (một mặt đứng một mình luôn là tài xế)
+  - Số chất lượng do trang đo (`brightness`, `channel_diff`, `sharpness`) không được kiểm trong mốc này
+  - Dòng log chỉ ở máy (terminal / console trình duyệt); HUD và backend không được báo khi một trường bị thay
+- Test: 1209 Python pass, 7 xfail (29 test mới, không test cũ nào phải sửa); ruff / format sạch trên `edge_agent/` và `tests/` (8 lỗi ruff có sẵn trong `scripts/`, không thuộc mốc); `frontend/public/py/edge_agent.zip` đóng gói lại. Không đổi code frontend, nên test frontend và e2e không chạy lại
+
+<a id="m78"></a>
+
+#### M78: Nhánh điện thoại tự hồi phục: luồng YOLO sống qua exception, worker web có hạn chờ (khối 4)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_phone_detector.py`: 4 test mới pass. `#/live` trong Chromium với một lần chạy YOLO bị nuốt có chủ ý: dòng "Chi tiết kỹ thuật" hiện "Khởi động lại model điện thoại 1 lần" sau khoảng 5 s và số lần chạy YOLO tăng tiếp
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-1-perception.md](audit-1-perception.md) mục 3.3 M1 (dòng "A1 M1" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md), chuỗi 5 của mục 4.3). Không đổi ngưỡng cảnh báo nào, không đổi số nào trên trace (replay không chạy YOLO)
+
+- **Trước, bản thiết bị:** `AsyncPhoneDetector._run` gọi model không có `try`. Một exception (ONNX Runtime, ảnh hỏng) kết thúc luồng; `latest()` trả `None` tới hết chuyến. `PhoneHealth` báo sau khoảng 10 s (M50) nhưng không có gì chạy lại
+- **Trước, bản web:** worker trả lời lỗi thì được xử lý, nhưng worker **không trả lời** thì `yoloBusy` giữ `true` mãi: vòng lặp không đưa frame nào nữa, không lỗi, không kết quả
+- **Bản thiết bị** (`phone_detector.py`: `_run`, `_infer`): một lần chạy ném `Exception` được đếm vào `errors`, luồng đi tiếp với frame sau theo đúng nhịp `phone.target_fps` (không chạy dồn). In một dòng cảnh báo cho mỗi **chuỗi** lỗi liên tiếp, không phải mỗi lần. Kết quả của lần chạy tốt cuối cùng không được giữ lại: nó cũ quá `max_result_age_s` thì thành "không rõ" như trước, nên `PhoneHealth` vẫn báo khi lỗi kéo dài và báo "đã có lại" khi model chạy được. Dòng trạng thái của `edge_agent.main` thêm `phone errors N` khi có
+- **Bản web** (`yoloWatch.ts`: `YoloWatch`, logic thuần trên số thời gian; `agent.ts`: `checkYolo`, `askYolo`): lúc đưa một frame cho worker thì ghi giờ; đồng hồ canh sẵn có của M71 (mỗi `capture.frame_timeout_s` / 3) hỏi thêm một câu. Quá `phone.web_run_timeout_s` chưa có trả lời thì worker bị `terminate()` (cách duy nhất dừng một lần chạy) và một worker mới được dựng bên cạnh vòng lặp đang chạy: tải model (từ cache HTTP), tạo session, chạy làm nóng. Mỗi bước của lần dựng lại có hạn `phone.web_load_timeout_s`; bước tạo session lúc khởi động cũng có hạn này
+- **Trần số lần thay:** tối đa `phone.web_restart_limit` lần liên tiếp mà không có kết quả nào ở giữa; một kết quả thật đặt bộ đếm về 0, một trả lời lỗi thì không. Hết trần thì worker bị bỏ, "Điện thoại: tắt", và Python báo như một model không tải được (M50). Lý do có trần: máy mà worker nào cũng treo không nên dựng session vài giây một lần suốt chuyến, tranh CPU với vòng lặp chính
+- **Tài xế thấy gì:** không có gì mới trên HUD. Trong lúc thay, frame không có câu trả lời về điện thoại (như các frame đầu chuyến); nếu quá 80 % của 10 s thì chip "Không phát hiện được điện thoại" của M50 hiện rồi tự tắt. Số lần thay hiện ở "Chi tiết kỹ thuật" và trong `data-perf` (`recovery.yoloRestarts`)
+- **Số đo** (Chromium headless, camera giả, wasm, bản build production, 08/10):
+
+| Ca | Trước | Sau |
+|---|---|---|
+| Thiết bị, model giả ném lỗi ở lần chạy thứ 2 | Luồng dừng, `latest()` là `None` mãi | Luồng sống, `errors` 1, các lần sau có kết quả, 1 dòng cảnh báo |
+| Thiết bị, model lỗi ở lần 2–4 và 6 | Như trên | `errors` 4, 2 dòng cảnh báo (hai chuỗi) |
+| Thiết bị, model không bao giờ chạy được | Luồng dừng ở lần đầu | Luồng sống, `runs` 0, `latest()` là `None` |
+| Web, lần chạy thứ 20 không tới worker | Số lần chạy đứng ở 19 tới hết phiên | Đứng khoảng 5–6 s, thay 1 lần, rồi chạy lại đúng nhịp: 75 lần chạy trong 15 s kế tiếp |
+| Web, mọi lần chạy từ lần 20 không tới worker | Như trên | Thay 3 lần trong khoảng 20 s đầu (mẫu đọc 2,5 s một lần) rồi bỏ, 1 dòng "given up" trên console; vòng lặp giữ 20 FPS của camera giả suốt lúc đó |
+
+- **Khoá mới** (`config/thresholds.yaml`, đều **tạm**): `phone.web_run_timeout_s` 5,0 (0 = không bao giờ thay, như trước), `phone.web_load_timeout_s` 30,0, `phone.web_restart_limit` 3. 5 s được chọn để cao hơn hẳn một lần chạy chậm mà vẫn sống (ước lượng 1,2 s trên thiết bị đích, phụ lục J của `improvements.md`); chưa có lần treo thật nào được ghi lại để chỉnh theo
+- **Cổng chất lượng:** hai ca web ở trên là chạy tay bằng một script tạm (ghi đè `Worker.prototype.postMessage`), không nằm trong repo; phần được giữ lại là 7 test của `YoloWatch` bằng số giả
+- **Chưa làm / còn hở:**
+  - Bản thiết bị không dựng lại session ONNX: nếu session hỏng hẳn thì mọi lần chạy đều lỗi, luồng sống nhưng không có kết quả (vẫn được `PhoneHealth` báo). Một lần gọi model **treo** (không ném lỗi) ở bản thiết bị vẫn không có hạn chờ
+  - Bước tải model lúc khởi động `#/live` chưa có hạn chờ: nó chạy trước khi biết ngưỡng. Treo ở đó thì model không bao giờ gắn vào, và M50 báo sau 10 s như trước
+  - Hết trần thì nhánh điện thoại tắt tới hết chuyến; không có lần thử lại muộn hơn
+  - Lần chạy chậm thật sự hơn 5 s (máy rất yếu) bị coi là treo. Kết quả như vậy vốn đã quá hạn 0,6 s nên không mất gì, nhưng máy tốn công dựng lại 3 lần
+  - `worker.onerror` vẫn chỉ nhả `yoloBusy`, không thay worker
+  - Chưa thử trên WebGPU (script chạy tay ép wasm) và chưa có test e2e cho đường thay worker (bản build e2e không chạy YOLO)
+- Test: 1213 Python pass, 7 xfail (4 test mới, 1 test `settings` sửa theo 3 trường mới); 158 test frontend pass (7 mới của `YoloWatch`, `recoveryText` thêm 2 dòng); e2e 6 / 6; `tsc`, ruff / format sạch; `frontend/public/py/edge_agent.zip` đóng gói lại
+
+
+<a id="m79"></a>
+
+#### M79: Nạp lại ngưỡng chỉ khi nghỉ, `config_applied` nói đúng, mẫu mỗi phút không đứt (khối 11, 14)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m79_reload_and_samples.py`: 12 pass. Chuỗi số giả 60 phút ở 60 km/h, bấm "Đổi tài xế" ở phút 25,2: 59 mẫu `sample`, mẫu đầu của tài xế mới đến ở phút 26,2
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-3-risk-alert.md](audit-3-risk-alert.md) mục 3.3 M1 và M5 (dòng "A3 M1", "A3 M5" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md)). Không thêm khoá nào trong `thresholds.yaml`, không đổi ngưỡng cảnh báo, không đổi số nào trên trace (replay không nạp ngưỡng, không đổi tài xế)
+
+- **Trước, mẫu mỗi phút (A3 M1):** `TripRuntime` gửi mẫu khi bộ đếm phút của trip memory vượt số đã gửi. "Đổi tài xế" và nạp ngưỡng dựng trip memory mới (đếm lại từ 0) còn số đã gửi giữ nguyên, nên không mẫu nào được gửi cho tới khi bộ đếm mới vượt số cũ: timeline trên dashboard trống đúng bằng số phút chuyến đã chạy
+- **Trước, lúc nạp (A3 M5):** "đỗ" là tốc độ dưới 1 km/h, tức mọi lần dừng đèn đỏ. Lần nạp dựng lại khối 7, 8, 11, 12: mất mốc mắt tự học, PERCLOS, microsleep nhớ 5 phút, xu hướng 15 phút, bộ đếm leo thang, ngay trước khi tài xế chạy tiếp
+- **Trước, báo về (A3 M5):** lần nạp chỉ đọc sáu mục (`drowsiness`, `distraction`, `trip_memory`, `alert`, `presence`, `risk`) nhưng luôn gửi `config_applied` kèm số phiên bản mới; khoá ở mục khác (`context.*`, `quality.*`, ...) không có hiệu lực tới khi mở lại app
+- **Mẫu mỗi phút** (`runtime.py`, `step`): bộ đếm phút của trip memory tụt xuống dưới số đã gửi nghĩa là trip memory vừa bắt đầu lại, số đã gửi theo về cùng giá trị. Mức cao nhất và tỉ lệ nhìn lệch cao nhất "của phút đang chạy" cũng bắt đầu lại, nên mẫu đầu của tài xế mới không mang mức cảnh báo của tài xế trước
+- **Lúc nạp** (`runtime.py`, `parked`): là `resting` của khối 10 ở frame gần nhất (đứng yên từ `context.rest_after_s`), hoặc chuyến chưa có frame nào. Dừng đèn đỏ thì phiên bản mới chờ tiếp. Bản thiết bị và bản web dùng chung thuộc tính này, không đổi cách gọi
+- **Trip memory đi tiếp qua lần nạp** (`pipeline.py`, `reconfigure`): chỉ dựng lại khi chính mục `trip_memory` đổi. Microsleep và xu hướng từ trước lần nghỉ vẫn được tính, bộ đếm phút không về 0. Khối 7, 8, 12 vẫn dựng lại để chạy số mới; trong lần nghỉ, phần chúng gom từ lúc xe dừng vốn bị bỏ khi xe chạy lại
+- **Báo đúng** (`runtime.py`: `needs_restart`, `apply_thresholds`; `pipeline.py`: `RELOADABLE`): phiên bản khác bộ đang dùng ở bất kỳ mục nào ngoài sáu mục trên thì bị từ chối **cả bộ**: gửi `config_refused`, số phiên bản báo về giữ nguyên, `thresholds_ignored` bật. Không áp một nửa, để số phiên bản trong nhịp và sự kiện luôn nghĩa là "đúng bộ này đang chạy". Phiên bản đó được áp đủ ở lần mở app sau (đường khởi động đọc mọi mục). Bản thiết bị in tên mục trong dòng `[config] ... REFUSED`
+- **Dashboard có gửi được `context.*` không** (chỗ audit ghi "Không chắc"): không. `backend/schemas.py` `THRESHOLD_SPECS` chỉ cho sửa 16 khoá, đều thuộc `risk`, `drowsiness`, `distraction`, `alert`; một test giữ danh sách đó nằm trong sáu mục nạp được. Đường từ chối chỉ chạy khi có khoá khác được ghi thẳng vào database, hoặc khi danh sách được mở rộng sau này
+- **Số trước / sau** (chuỗi số giả, ngưỡng trong YAML; số "trước" của hai dòng đầu là của audit):
+
+| Ca | Trước | Sau |
+|---|---|---|
+| 60 phút lái, "Đổi tài xế" ở phút 25,2 | 34 mẫu, không mẫu nào từ phút 25 tới 51,2 | 59 mẫu, không phút nào trống |
+| 60 phút lái, nạp ngưỡng ở phút 25,2 | Như trên | Không còn xảy ra khi đang lái; nạp trong lần nghỉ thì bộ đếm đi tiếp |
+| Nạp trong lần nghỉ, mục `trip_memory` đổi | Không mẫu nào tới khi bộ đếm mới vượt số cũ (12) | 6 mẫu trong 6 phút lái kế tiếp |
+| Microsleep ở giây 20, đèn đỏ 30 s, có phiên bản đang chờ | Nạp khi xe vừa dừng, microsleep bị xoá | Chưa nạp, `last_microsleep_t` còn, `drowsy_score` > 0 |
+| Microsleep ở giây 200, nghỉ 140 s, có phiên bản đang chờ | Nạp ở giây 240, microsleep bị xoá | Nạp ở giây 360, trip memory là cùng một đối tượng, microsleep còn |
+| Phiên bản có `context.long_drive_s` (hoặc `quality.*`, `hud.*`, `enrollment.*`) kèm `risk.drowsy.l1` | `config_applied`, phiên bản mới; chỉ `l1` có hiệu lực | `config_refused`, phiên bản cũ, `l1` cũng không đổi |
+
+- **Sửa kèm** (`edge_agent/main.py`): khi chạy không có HUD, `enrollment.require_consent` được tắt **trước** khi lấy bộ gốc cho lần nạp lại. Trước đó, nếu lúc khởi động có ngưỡng từ backend thì bộ đang dùng và bộ gốc lệch nhau ở mục `enrollment`; với luật mới mọi lần nạp sẽ bị từ chối
+- **Nhãn** (`frontend/src/lib/labels.ts`): `config_refused` trong nhật ký sự kiện đọc là "Từ chối bộ ngưỡng mới (không nhất quán, hoặc cần mở lại ứng dụng)"
+- **Chưa làm / còn hở:**
+  - Xe không bao giờ đỗ đủ 120 s trong chuyến thì chạy bộ ngưỡng cũ tới hết chuyến. Dashboard thấy điều đó (số phiên bản trong nhịp), nhưng không có gì giục
+  - Lần nạp trong lúc nghỉ vẫn dựng lại khối 7, 8, 12: tài xế chưa đăng ký mất mốc mắt và mốc hướng đường tự học (học lại, có ca kẹt ở tư thế sai của A2 M1), mất số ngáp 10 phút / gục 5 phút từ trước lần nghỉ. Giữ được hết thì phải đổi cấu hình tại chỗ trong từng khối: chưa làm
+  - Sự kiện `config_refused` không nói lý do (không nhất quán hay cần mở lại app): `metrics` của backend không có trường cho việc đó. Lý do chỉ có ở terminal của bản thiết bị; bản web không in
+  - Sáu mục "nạp được" vẫn có ba khoá không tới được bước đăng ký đang giữ lại (`drowsiness.eye_baseline_min` / `max`, `distraction.baseline_calibrate_max_deg`): không khoá nào trong danh sách dashboard được sửa
+  - Phần phút lẻ của tài xế trước lúc "Đổi tài xế" (dưới một phút) không thành mẫu
+  - Chưa thử trên backend thật và `#/live` thật: chỉ chuỗi số giả
+- Test: 1225 Python pass, 7 xfail (12 test mới; 3 test của M47 đổi cho đúng "nghỉ" thay vì "dừng"); ruff / format sạch trên `edge_agent/` và `tests/`; 158 test frontend pass (chỉ đổi một chuỗi nhãn); e2e không chạy lại; `frontend/public/py/edge_agent.zip` đóng gói lại
+
+<a id="m80"></a>
+
+#### M80: Hiệu chuẩn lại mốc "nhìn đường" của khối 8; mốc tư thế khối 7 chỉ học khi xe chạy (khối 7, 8)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m80_pose_baselines.py`: 21 pass. Chuỗi số giả 10 phút ở 60 km/h, chưa đăng ký, nhìn sang bên 40° trong 6 s đầu rồi nhìn đường: L2 `off_road` hết ở giây 66, `baseline_yaw` về 0,0, một sự kiện `road_pose_recalibrated`. Đã đăng ký với `road_pitch` 0, cúi nhìn màn hình 12° trong lúc dừng 8 s rồi chạy: `pitch_baseline` của khối 7 là 0,0 ở mọi thời điểm
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-2-features.md](audit-2-features.md) mục 4.3 M1 và M2 (dòng "A2 M1", "A2 M2" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md), dòng "Cúi so với đường" ở mục 4.2). Thêm hai khoá ngưỡng, đều **tạm**; không đổi ngưỡng nào đang dùng; không đổi số nào trên trace
+
+- **Trước, khối 8 (A2 M1):** chưa đăng ký thì mốc "nhìn đường" là trung vị tư thế của 5 s đầu xe chạy; sau đó mốc chỉ học từ frame "đang nhìn đường" và bị kẹp ±20° quanh tư thế đã hiệu chuẩn. Trung vị sai quá 30° (tài xế nhìn sang bên lúc ra khỏi chỗ đỗ) thì mọi frame nhìn đường đều là "lệch", mốc không bao giờ có mẫu để học lại. Camera hoặc ghế xê dịch hơn 30° giữa chuyến cũng kẹt như vậy, kể cả đã đăng ký. Chỉ "Đổi tài xế" hoặc đăng ký lại mới gỡ được
+- **Trước, khối 7 (A2 M2):** mốc tư thế là trung vị trượt 60 s của mọi frame mắt mở, không phân biệt xe chạy hay dừng; tư thế đã đăng ký chỉ được dùng khi cửa sổ có dưới 5 s dữ liệu. Tài xế nhìn màn hình lúc dừng thì mốc đi theo, và sau khi xe chạy cần hơn 30 s để về. Từ M73, lần dừng từ `context.short_stop_forget_s` (10 s) đã được xoá khi xe chạy lại, nên phần còn hở khi bắt đầu mốc này là: lần dừng dưới 10 s, lúc xe bò 1–5 km/h, và chính khoảng thời gian đang dừng
+- **Khối 8, hiệu chuẩn lại** (`distraction.py`: `_recalibrate`): mỗi frame có tư thế tin được, khi xe đang chạy, mà đầu ở **ngoài** vùng "nhìn đường" (vùng gốc, không tính phần nới theo xi nhan) được đưa vào một cửa sổ. Khi cửa sổ đủ `baseline.recalibrate_s` (60 s) **thời gian lái** và khoảng từ bách phân vị 10 tới 90 của cả yaw lẫn pitch không quá `baseline.recalibrate_spread_deg` (10°), trung vị của cửa sổ thành mốc mới và thành tâm của phần kẹp ±20°; trạng thái "đang lệch" kết thúc ngay ở frame đó; `DistractionState.recalibrated` bật một frame
+  - Một lần nhìn lại **vào trong** vùng kéo dài `on_road_confirm_s` (0,3 s) xoá cửa sổ: người nhìn lệch thật rồi nhìn lại đường không bao giờ bị học thành mốc, dù tổng thời gian lệch dài bao nhiêu. Một frame nhiễu lọt vào vùng thì không xoá
+  - Xe dừng thì cửa sổ **tạm dừng**, không xoá (40 s lái + đèn đỏ 60 s + 20 s lái = đủ 60 s). Mất mặt, khoảng hở frame cũng không xoá; mỗi frame góp tối đa `max_gap_s` (0,5 s), nên vòng lặp 1 frame mỗi 2 s cần 240 s đồng hồ
+  - Frame mà khối 7 gọi là `gaze_down` (đầu cúi, mí hạ: kiểu nhìn điện thoại trên đùi) không được tính và cũng không xoá gì: cúi nhìn xuống đứng yên nhiều phút không thành mốc
+  - Đầu ở ngoài vùng nhưng **không** đứng yên (35° ↔ 60° mỗi 2 s) thì không hiệu chuẩn lại: đó là người đang nhìn quanh
+  - `recalibrate_s: 0` là tắt, hành vi như trước
+- **Sự kiện** (`runtime.py`): `road_pose_recalibrated`, loại `system`, không có số đo. Backend (`schemas.py` `Reason`) và dashboard (`labels.ts`: "Hiệu chuẩn lại hướng nhìn đường") nhận lý do mới. Tài xế không thấy gì mới trên HUD: cảnh báo L2 tự hết
+- **Khối 7, chỉ học khi xe chạy** (`head.py`: `HeadPose.update(learn=...)`; `analyzer.py`: `update(f, moving=True)`; `pipeline.py` truyền `ctx.moving` của khối 10, cùng cờ với khối 8): frame lúc xe dừng hoặc bò dưới `context.min_speed_kmh` không còn được đưa vào trung vị. Tài xế chưa đăng ký vẫn được lấy 5 s mẫu khởi động dù xe đứng yên (không có mốc nào thì không đọc được mắt), và 5 s đó bị 5 s lái đầu tiên lấn át (trước: 30 s). Công cụ gọi khối 7 một mình (không có ngữ cảnh xe) dùng mặc định `moving=True`, như trước. Tư thế đã đăng ký vẫn chỉ là điểm xuất phát, không phải giới hạn: camera lệch 8° thì sau một phút lái mốc là 8,0
+- **Số trước / sau** (chuỗi số giả 30 FPS, 60 km/h, ngưỡng trong YAML; "trước" là code ngay trước mốc này, chạy lại trong phiên):
+
+| Ca | Trước | Sau |
+|---|---|---|
+| Chưa đăng ký, nhìn sang 40° trong 6 s đầu rồi nhìn đường 10 phút | `baseline_yaw` 40,0; L2 ở 98,7 % số frame; 20 cảnh báo L2 (một lần mỗi 30,5 s từ M74); `off_road_duration` tới 594 s | `baseline_yaw` 0,0; L2 ở 9,7 %; 2 cảnh báo (giây 8,5 và 39,0); hết ở giây 66 |
+| Như trên, 25° | Tự hồi, 0 cảnh báo | Như trước |
+| Camera xê dịch 35° ở giây 120 (đã đăng ký cũng vậy) | L2 ở 79,7 % số frame, 16 cảnh báo, không hết | 2 cảnh báo (giây 122,5 và 153,0), hết ở giây 180, `baseline_yaw` 35,0 |
+| Sau ca đầu, nhìn sang bên kia thật 10 s ở giây 200 | Không có cảnh báo nào gắn với lần nhìn đó: mức không đổi, chỉ có lần nhắc 30,5 s một lần | L2 `off_road` ở giây 202,5 |
+| Đã đăng ký pitch 0, nhìn màn hình 12° lúc dừng 8 s, rồi chạy | Mốc cúi 12,0 từ giây 6 tới 19 s sau khi chạy (gục đầu phải tới 27° mới tính) | 0,0 suốt |
+| Như trên, dừng 30 s | 12,0 trong lúc dừng; 0,0 từ khi chạy (M73) | 0,0 suốt |
+
+- **Hai khoá mới** (`config/thresholds.yaml`, `distraction.baseline`):
+  - `recalibrate_s: 60`. Audit yêu cầu "dài hơn nhiều so với `off_road_s`" (2 s): đây là 30 lần. Trong lúc chờ, tài xế nghe cảnh báo L2 và một lần nhắc (cooldown 30 s), tức ca kẹt còn **2 cảnh báo sai** thay vì kéo dài cả chuyến. Ngắn hơn thì ít cảnh báo sai hơn nhưng dễ học nhầm một lần nhìn lệch thật; chưa có dữ liệu để chọn giữa hai phía
+  - `recalibrate_spread_deg: 10`. Đo khoảng p10–p90 của yaw / pitch trên mọi cửa sổ 60 s có tư thế của trace hiện có (số lớn hơn trong hai góc): UTA-RLDD dev trung vị 5,0°, 83 % cửa sổ ≤ 10°; bản tự ghi 6,6°, 73 %; 3MDAD ban ngày (tài xế làm động tác mất tập trung) trung vị 28,7°, 0 % ≤ 10°. Các trace đó là người ngồi trước laptop hoặc clip ngắn: mức lắc đầu khi lái thật chưa đo
+- **Cổng chất lượng:**
+  - Replay mọi trace hiện có hai lần, bật và tắt `recalibrate_s`, in ra ngoài repo (FL3D v2, YawDD v2, SUST v2, 3MDAD ban ngày, bản tự ghi `quan_v2`, UTA-RLDD dev; 2571 trace, khoảng 23 giờ): **0 lần hiệu chuẩn lại**, danh sách cảnh báo của từng trace giống hệt. Replay chạy 60 km/h nên phần của khối 7 không đổi gì. Tập giữ riêng của UTA-RLDD không được đọc. Test hồi quy trace (M34) không đổi
+  - 14 trong 21 test mới đỏ khi tắt hai thay đổi; 7 test còn lại giữ hành vi cũ (tắt bằng 0, nhìn lại đường, nhìn quanh, `gaze_down`, học khi lái, không có ngữ cảnh xe, khoảng cách giữa hai ngưỡng)
+  - Chi phí: khối 8 thêm trung bình 7 µs mỗi frame ở ca xấu nhất (đầu ở ngoài vùng liên tục, cửa sổ đầy 1800 mẫu); phép tính bách phân vị chạy nhiều nhất một lần mỗi giây, lần chậm nhất 0,42 ms (Mac, Python thường; chưa đo trong Pyodide)
+- **Cố ý, cần anh biết:**
+  - Ca kẹt vẫn cho 2 cảnh báo L2 sai trước khi tự hết, và các cảnh báo đó vẫn nằm trong nhật ký; sự kiện `road_pose_recalibrated` ngay sau là dấu để đọc lại
+  - Tài xế nhìn về phía mốc sai (ví dụ gương bên đó) từ 0,3 s thì bộ đếm 60 s bắt đầu lại, nên ca kẹt có thể kéo dài hơn 60 s
+  - Rủi ro còn lại, đúng như audit nêu: một tư thế lệch thật giữ yên 60 s lái xe liên tục, không một lần nhìn lại đường 0,3 s, mí không hạ, sẽ bị học thành mốc. Khi đó tài xế đã nghe 2 cảnh báo L2
+- **Chưa làm / còn hở:**
+  - **Ca kẹt "mắt không đọc được" của A2 M2** (audit ghi "Không chắc"): tư thế đổi hơn 25° theo chiều cúi **và** EAR ở tư thế mới dưới 0,65 lần mốc cũ thì mốc tư thế của khối 7 không học (chỉ học khi mắt "mở") còn mốc mắt cũng không học (chỉ học khi tư thế "được"). Em không sửa trong mốc này: cách sửa rẻ nhất (cho khối 7 nhận tư thế mới khi khối 8 hiệu chuẩn lại) sẽ làm mắt được đọc lại bằng mốc EAR cũ, và với tài xế đã đăng ký (mốc mắt chỉ được tụt 10 %) EAR 0,6 lần mốc sẽ đọc là "nhắm" kéo dài, tức đổi một trạng thái im lặng lấy báo sai buồn ngủ. Cần EAR thật của một người khi camera lệch 30° theo chiều dọc trước khi quyết định
+  - Khối 7 và khối 8 vẫn giữ hai mốc riêng cho "cúi so với đường" (mục 4.2 của audit): mốc này chỉ làm chúng học trong cùng điều kiện (xe đang chạy), không gộp
+  - Khối 7 không có đường hiệu chuẩn lại riêng; nó tự theo camera bằng trung vị 60 s (không kẹp quanh tư thế đăng ký), trừ ca kẹt ở trên
+  - Chưa có chuyến thật nào bị hiệu chuẩn sai: hai khoá mới chỉ dựa trên chuỗi số giả và phép đo độ đứng yên ở trên. Audit đề nghị ghi `baseline_yaw` sau hiệu chuẩn ở mỗi chuyến để biết tần suất; sự kiện mới cho biết số lần hiệu chuẩn lại, chưa có gì ghi góc
+  - Backend cũ (trước mốc này) từ chối lô có `road_pose_recalibrated` (422), như mọi lý do mới trước đây; cần deploy backend cùng lúc
+  - Chưa thử trên `#/live` thật và backend thật: chỉ chuỗi số giả
+- Test: 1246 Python pass, 7 xfail (21 test mới; `test_loop_health_events_are_system_events` thêm một sự kiện); 158 test frontend pass (thêm hai dòng nhãn); `tsc`, ruff / format sạch; e2e không chạy lại; `frontend/public/py/edge_agent.zip` đóng gói lại
+
+<a id="m81"></a>
+
+#### M81: Gục đầu không còn dùng EAR thô; một lần ngáp đếm một; MAR quy về chính diện (khối 7)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m81_nod_yawn.py`: 29 pass. Ba ca của audit bằng chuỗi số giả 30 FPS: cúi nhìn 20° trong 1 s với EAR 0,9 / 0,7 / 0,6 / 0,5 lần mốc cho `bow` cả bốn; há miệng 2 s, mất mặt 0,6 s, há tiếp 2,4 s cho 1 `yawn`; miệng hé MAR 0,37 giữ 4 s khi đầu quay 35° không cho `yawn`
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-2-features.md](audit-2-features.md) mục 4.3 M3 và M4 (dòng "A2 M3", "A2 M4" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md)). Hai khoá mới trong `thresholds.yaml`, đều là công tắc và đều bật; không đổi ngưỡng nào đang có. `eval/results` không được sinh lại
+
+- **Trước, gục đầu (A2 M3):** frame "mắt nhắm" của một cú cúi là EAR dưới ngưỡng nhắm thường (0,65 lần mốc), không xét tư thế. Khi cúi, mí trên đi theo hướng nhìn nên EAR còn khoảng nửa mốc: điều kiện "mắt nhắm ít nhất 30 % cú cúi" gần như luôn đạt, một lần cúi nhìn bảng đồng hồ dưới 2 s là một `nod`, hai lần trong 5 phút là đủ số hạng gục đầu (20 điểm)
+- **Trước, ngáp đếm đôi (A2 M4):** mất MAR quá 0,5 s (tay che miệng, ngửa đầu) thì khối 7 quên cả lần há miệng lẫn việc nó đã được đếm; mặt hiện lại, miệng còn há 1,5 s là một `yawn` thứ hai. Hai lần ngáp thật đã vượt `yawn_full` (3)
+- **Trước, MAR và góc quay (A2 M4):** MAR là độ mở miệng chia bề ngang miệng, đo trên ảnh. Quay đầu làm bề ngang co lại theo cos(yaw) nên MAR tăng theo 1 / cos(yaw): 0,37 ở chính diện đọc thành 0,452 ở 35° (ngưỡng ngáp 0,45)
+- **Gục đầu** (`analyzer.py`, `head.py`; khoá `drowsiness.nod.eyes_deep: true`): frame của cú cúi chỉ là "nhắm" khi nhắm sâu theo đúng phép thử mà `closed_duration` dùng cho đầu cúi: EAR ≤ `microsleep_deep.bowed_ear_ratio` (0,35) lần mốc và `eyeBlink` đồng ý khi có; frame do khối 5 quyết định thì cần điểm nhắm sâu (`microsleep_deep.cnn` 0,8, `blendshape` 0,55). Tỉ lệ 30 % và mọi ngưỡng góc, thời gian của cú cúi giữ nguyên
+- **Ngáp đếm một** (`mouth.py`, `YawnCounter`): lần ngáp đã đếm được giữ qua lúc mất mặt cho tới khi thấy miệng khép, hoặc tới `microsleep_mask.max_open_s` (8 s) sau lúc miệng mở (lâu hơn thế không còn là một lần ngáp; không thêm khoá, dùng lại mốc này). Lần há miệng **chưa** đủ 1,5 s vẫn bị bỏ khi mất mặt quá 0,5 s, như trước
+- **MAR quy về chính diện** (`mouth.py`, `frontal_mar`; khoá `drowsiness.yawn.yaw_correct: true`): bộ đếm ngáp dùng MAR × cos(yaw), với yaw là góc so với camera (không phải so với tư thế quen: camera đặt lệch thì miệng bị co suốt chuyến). Không sửa theo pitch: cúi làm MAR giảm, sửa thì MAR tăng, tức thêm ngáp chứ không bớt
+- **Mặt nạ ngáp / nói giữ MAR gốc.** Bản đầu tiên sửa MAR cho cả mặt nạ `microsleep_mask`; MAR thấp hơn thì mặt nạ che ít hơn, và trên trace điều đó cho thêm báo sai: FL3D L2 sai 8 → 10, SUST L3 sai ở clip tỉnh 2 → 3, YawDD `microsleep` sai 4 → 5. Nên chỉ bộ đếm ngáp dùng MAR đã sửa. Hai chiều đều nghiêng về ít báo sai: mặt nạ rộng hơn, ngáp khó đếm hơn
+- **Số trước / sau, chuỗi số giả** (ngưỡng trong YAML):
+
+| Ca | Trước | Sau |
+|---|---|---|
+| Cúi 20° trong 1 s, mắt mở, EAR 0,9 / 0,7 / 0,6 / 0,5 lần mốc | `bow`, `bow`, `nod`, `nod` | `bow` cả bốn |
+| Hai lần cúi nhìn như trên (EAR 0,5 lần mốc) cách nhau 20 s | `nod_count_5min` 2 | 0 |
+| Cúi 20° trong 1 s, mắt nhắm hẳn (EAR 0,27 lần mốc) | `nod` | `nod` |
+| Cúi 20° trong 1 s, EAR 0,33 / 0,40 lần mốc | `nod`, `nod` | `nod`, `bow` |
+| Frame của CNN mắt, điểm nhắm 0,7 / 0,9 trong cú cúi | `nod`, `nod` | `bow`, `nod` |
+| Há miệng 2 s, mất mặt 0,6 s, há tiếp 2,4 s | 2 `yawn` | 1 |
+| Há miệng 2 s, mất mặt 7 s, há tiếp 4 s (miệng mở 13 s) | 2 `yawn` | 2 (quá 8 s thì là lần mới) |
+| Miệng hé MAR 0,37 (đo được 0,452) giữ 4 s, đầu quay 35° | 1 `yawn` | 0 |
+| Ngáp thật MAR 0,8 khi đầu quay 0° / 20° / 35° | 1 | 1 |
+
+- **Số trước / sau, trace có sẵn** (replay khối 5, 7–12 với ngưỡng hôm nay, in ra ngoài repo; "trước" là hai khoá mới tắt):
+
+| Tập | Số đo | Trước | Sau |
+|---|---|---:|---:|
+| FL3D (44 video, 26 phút nhãn tỉnh) | `nod` đúng / sai / khác | 118 / 1 / 2 | 83 / 0 / 2 |
+| FL3D | Cảnh báo L1 đúng / sai | 12 / 3 | 11 / 3 |
+| FL3D | Cảnh báo L2 đúng / sai | 29 / 8 | 28 / 8 |
+| FL3D | Cảnh báo L3 đúng / sai | 83 / 1 | 83 / 1 |
+| FL3D | Đoạn có nhãn ngáp được đếm | 76 / 99 | 75 / 99 |
+| YawDD | `nod` (clip không ai gục, đều là sai) | 5 | 2 |
+| YawDD | Lần ngáp có nhãn được đếm; `yawn` sai | 94 / 114; 0 | 91 / 114; 0 |
+| SUST | Clip có `nod`: buồn ngủ / tỉnh | 1,4 % / 1,4 % | 0,8 % / 0,9 % |
+| SUST | Clip có `yawn`: buồn ngủ / tỉnh | 0,9 % / 0,1 % | 0,8 % / 0,0 % |
+| UTA-RLDD dev (24 người, 3,87 giờ tỉnh) | Báo sai nhánh buồn ngủ; người buồn ngủ có cảnh báo; AUC | 7 (1,81 / giờ); 14 / 24; 0,859 | 7 (1,81 / giờ); 14 / 24; 0,863 |
+
+- **Đọc bảng trên thế nào:**
+  - Gục đầu: bớt `nod` sai (FL3D 1 → 0, YawDD 5 → 2) nhưng mất 35 trong 118 `nod` đúng của FL3D (30 %), đúng chiều audit đã báo trước ("có thể mất `nod` thật mà mắt chỉ khép hờ"). Ở mức cảnh báo, FL3D mất 1 L1 đúng và 1 L2 đúng, không mất L3 nào, không bớt cảnh báo sai nào. Trên SUST cả hai lớp cùng giảm, độ chính xác của `nod` không khá hơn (48 % → 44 %)
+  - MAR theo góc quay: bớt 1 clip tỉnh có `yawn` trên SUST; mất 3 lần ngáp đúng trên YawDD và 1 trên FL3D. Ngưỡng `mar_open` 0,45 từng được chỉnh trên YawDD với MAR chưa sửa; chưa chỉnh lại
+  - Ngáp đếm một: không đổi số nào trên ba tập (FL3D 75, YawDD 109, SUST 8 sự kiện `yawn` với cả luật cũ và mới). Không tập nào có nhãn ngáp che tay, nên lợi ích chỉ được chứng minh bằng chuỗi số giả
+  - UTA-RLDD: chỉ tập dev; 24 người giữ riêng không được đọc
+- **Test hồi quy trace** chốt lại (`tools/regression_traces.py update`): `fl3d/P1042762` `nod` 9 → 6 (`bow` 4 → 7), cảnh báo L1 đầu tiên trễ từ frame 232 sang 769; `sust/drowsiness/d_781.mp4` mất 1 `yawn`
+- **Chưa làm / còn hở:**
+  - Hai khoá mới bật theo yêu cầu của mốc; với số liệu trên, mỗi khoá đổi một ít độ nhạy lấy một ít báo sai và không tập nào cho thấy cảnh báo sai giảm. Tắt bằng `drowsiness.nod.eyes_deep: false`, `drowsiness.yawn.yaw_correct: false`: chờ anh quyết định
+  - Không có ngưỡng EAR riêng cho gục đầu: dùng lại 0,35 của `closed_duration`. Một ngưỡng nằm giữa (0,35–0,5) có thể giữ lại một phần `nod` thật; chưa dò, vì ca cần tách (cúi nhìn, mí hạ) chỉ có trong bản tự ghi của một người
+  - MAR vẫn giảm khi cúi (audit: 0,37 còn 0,32 ở 30°): ngáp khi cúi dễ sót, không sửa
+  - Đầu quay quá xa thì khoé miệng bên kia do MediaPipe ngoại suy; không đặt góc trần cho MAR. Ở góc lớn hệ số cos nhỏ nên MAR đã sửa thấp, tức nghiêng về sót ngáp
+  - Mặt nạ ngáp / nói vẫn dùng MAR gốc, nên quay đầu 35° vẫn nới mặt nạ (che thời gian nhắm mắt). `MouthMask` không có luật riêng cho lúc mất mặt
+  - Lần ngáp đã đếm mà khoảng hở giữa hai frame kéo dài (M71, `gap`) vẫn được giữ không giới hạn thời gian; chỉ đường mất mặt có mốc 8 s
+  - Chưa thử trên `#/live` thật: chỉ chuỗi số giả và replay trace
+- Test: 1275 Python pass, 7 xfail (29 test mới); 158 test frontend pass (không đổi code frontend); ruff / format sạch; e2e không chạy lại; `frontend/public/py/edge_agent.zip` đóng gói lại
+
+<a id="m82"></a>
+
+#### M82: Backend không dựa vào đồng hồ thiết bị; `trip_id` có phần ngẫu nhiên (backend, khối 14)
+
+**Xong là thấy gì:** `pytest tests/test_backend/test_m82_device_clock.py`: 28 pass. Ba ca của audit, bằng chuỗi nhịp và sự kiện giả từ một thiết bị có đồng hồ nhanh, chậm hoặc ở năm 1970: (1) nhịp `ended` với đồng hồ nhanh một ngày, rồi đồng hồ đúng lại và chuyến mới bắt đầu → tab "Đội xe" hiện xe đang giám sát chuyến mới; (2) đồng hồ chậm 10 phút, L3 `unresponsive` vừa nhận → có ở mục "cần chú ý ngay"; (3) sự kiện mang năm 1970 không bị xoá ở lần dọn đầu tiên, sự kiện mang năm 2036 vẫn hết hạn sau 60 ngày
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-4-output-platform.md](audit-4-output-platform.md) mục M2 và L1 (dòng X7 ở mục 4.1 của [audit-2026-10-08.md](audit-2026-10-08.md)). Không đổi `thresholds.yaml`, không đổi giao thức gửi (thiết bị cũ vẫn gửi được), không đổi hành vi cảnh báo trên xe
+
+- **Trước (A4 M2):** ba việc của backend so `ts` do thiết bị ghi với giờ máy chủ hoặc với nhau:
+  - Nhịp chỉ được nhận khi `ts` không cũ hơn nhịp đã lưu (`apply_heartbeat`). Một nhịp `ended` mang giờ tương lai chặn mọi nhịp sau đó cho tới khi giờ thật đuổi kịp
+  - Mục "cần chú ý ngay" lọc `ts >= giờ máy chủ − 300 s`. Đồng hồ chậm hơn 5 phút thì không L3 nào lên được mục này; đồng hồ nhanh thì L3 nằm đó mãi
+  - Tự xoá theo `ts` (cảnh báo, mẫu theo phút) và `started_at` (bản tổng kết). Đồng hồ ở 1970 thì bị xoá ngay lần dọn đầu tiên, đồng hồ ở tương lai thì quá hạn lưu vẫn còn
+- **Trước (A4 L1):** `trip_id` là giờ địa phương tới giây (`trip-20261008-070509`), bản tổng kết có khoá `(device_id, trip_id)`: đồng hồ lùi, đổi múi giờ hoặc hai chuyến bắt đầu cùng một giây thì bản sau ghi đè bản trước
+- **Thứ tự nhịp** (`db.apply_heartbeat`): nhịp nào tới sau thì là trạng thái hiện tại. Cả bản thiết bị và bản web chỉ giữ một nhịp mới nhất chưa gửi và gửi lần lượt (không bao giờ vào hàng đợi), nên thứ tự tới nơi là thứ tự thật. `state_ts` nay là giờ máy chủ
+- **Độ lệch đồng hồ** (`device_status.clock_skew_s`): giờ máy chủ trừ `ts` của nhịp gần nhất, tính bằng giây (dương là đồng hồ thiết bị chậm). Vì nhịp không nằm trong hàng đợi, số này là sai số đồng hồ cộng tối đa khoảng một chu kỳ nhịp (30 s) khi mạng chập. `GET /api/v1/fleet` trả thêm `clock_skew_s` và `clock_wrong` (lệch quá `DG_CLOCK_SKEW_WARN_S`, mặc định 120 s; `None` khi chưa có nhịp nào). Tab "Đội xe" hiện nhãn "Đồng hồ thiết bị chậm / nhanh N phút" ở cột trạng thái giám sát, kèm chú thích giờ nào là của thiết bị
+- **"Cần chú ý ngay"** (`db.urgent_event`): xét theo giờ nhận (`received_at`) trong `DG_FLEET_URGENT_WINDOW_S`, sự kiện tới sau cùng đứng đầu. Để L3 cũ nằm trong hàng đợi offline của thiết bị không thành "ngay bây giờ" lúc có mạng lại (hành vi M44 đang có), mỗi sự kiện được lưu thêm `delay_s` = (giờ nhận − `ts`) − độ lệch đồng hồ của thiết bị lúc nhận, tức thời gian nó nằm chờ trên thiết bị; quá cửa sổ thì không khẩn. Chưa có nhịp nào (chưa biết gì về đồng hồ) thì `delay_s` để trống và chỉ giờ nhận quyết định: thà hiện còn hơn giấu
+- **Tự xoá** (`db.purge_expired`): thời hạn 60 / 365 ngày tính từ lúc backend nhận. `fatigue_samples` có thêm cột `received_at`; `trip_summaries` dùng cột `received_at` đã có (gửi lại không đổi nó)
+- **Database cũ** (`db.migrate`): thêm ba cột; mẫu theo phút đã lưu nhận `received_at` = `ts` của chính nó, nhưng không bao giờ ở tương lai. Sự kiện cũ có `delay_s` trống
+- **Giữ nguyên:** `ts` của sự kiện, mẫu, bản tổng kết được lưu đúng như thiết bị gửi và dùng để hiển thị, sắp xếp danh sách, lọc theo ngày. Backend không từ chối lô nào vì `ts` lệch (từ chối là mất sự kiện an toàn), chỉ đánh dấu thiết bị
+- **`trip_id`** (`edge_agent/runtime.py` `new_trip_id`, `frontend/src/live/tripId.ts`): `trip-20261008-070509-a1b2c3`, thêm 6 ký tự hex ngẫu nhiên (`secrets.token_hex`, `crypto.getRandomValues`). Phần ngày giờ địa phương giữ lại để người đọc nhận ra chuyến; phần ngẫu nhiên mới là phần làm mã duy nhất. Dài 27 ký tự, vẫn khớp `Identifier` của backend (tối đa 48)
+- **Chưa làm / còn hở:**
+  - Danh sách cảnh báo, timeline, "sự kiện gần nhất", số cảnh báo trong ngày và danh sách chuyến vẫn sắp xếp và lọc theo `ts` của thiết bị: xe có đồng hồ sai thì cảnh báo của nó rơi vào sai ngày trên dashboard (đã có nhãn ở tab "Đội xe", chưa có nhãn ở từng cảnh báo). Sửa hẳn là viết `ts` đã hiệu chỉnh lúc nhận và giữ `ts` gốc ở cột riêng: chờ anh quyết định
+  - `delay_s` dùng độ lệch của nhịp gần nhất. Đồng hồ được chỉnh giữa chuyến trong lúc sự kiện còn nằm trong hàng đợi thì `delay_s` của sự kiện đó sai bằng đúng lượng chỉnh
+  - Giờ trong ngày của khối 10 (hệ số đêm, HUD mờ) và `started_at` / `ended_at` của bản tổng kết vẫn lấy từ đồng hồ thiết bị; mốc này chỉ sửa phía backend
+  - Một tài khoản mở `#/live` trên hai máy vẫn là cùng một `web-<tên>` (phần sau của A4 L1): nhịp của hai máy thay nhau ghi trạng thái. Hai chuyến nay có `trip_id` khác nhau nên bản tổng kết không còn đè nhau
+  - Thứ tự theo lúc tới giả định thiết bị gửi nhịp lần lượt. Hai request chạy song song từ cùng một thiết bị (không có ở hai bản hiện tại) có thể tới ngược thứ tự
+  - Chưa thử trên Railway; database đang chạy ở đó sẽ được thêm cột lúc khởi động bản mới
+- Test: 1324 Python pass, 7 xfail (28 test mới, 1 test của M33 và phần gieo dữ liệu của test M37 viết lại theo hành vi mới); 170 test frontend pass (5 test mới); `tsc` sạch; ruff / format sạch; e2e không chạy lại; `frontend/public/py/edge_agent.zip` đóng gói lại
+
+<a id="m83"></a>
+
+#### M83: Hành khách đứng một mình không phải tài xế; camera lặp lại một ảnh là mất camera (khối 1, 3)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m83_passenger_and_frozen_camera.py`: 21 pass. Chuỗi số giả 30 FPS, đã đăng ký, xe chạy: tài xế bị che, hành khách nhắm mắt ở ghế bên 4 s cho "tạm ngưng giám sát", mức 0 (cùng chuỗi đó với `driver_max_distance: 0` cho L3 `microsleep`). Camera giả trả cùng một ảnh: `lost` bật sau `frame_timeout_s`, không frame nào được giao tiếp, camera được mở lại. `npm run e2e`: 7 / 7, trong đó test mới chiếu lên video một canvas vẽ lại cùng điểm ảnh
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-1-perception.md](audit-1-perception.md) mục M5 và M3 (dòng "A1 M5", "A1 M3" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md), chuỗi 3 ở mục 4.3). Hai khoá mới trong `thresholds.yaml`; không đổi ngưỡng nào đang có; không đổi số nào trên trace (trace không có landmark và không đi qua khối 1)
+
+- **Trước, khối 3 (A1 M5):** đã đăng ký mà khung chỉ có một mặt thì mặt đó là tài xế, không tính điểm; có hai mặt thì mặt điểm thấp nhất thắng, không có ngưỡng loại. Tài xế bị che (điện thoại giơ trước mặt, tấm chắn nắng) hoặc ra khỏi khung mà còn thấy hành khách: mắt và tư thế của hành khách thành tín hiệu của tài xế, và đường "mất mặt → tạm ngưng → hỏi tài xế" không chạy
+- **Trước, khối 1 (A1 M3):** bản thiết bị chỉ xét đọc lỗi và hết giờ; bản web chỉ xét `currentTime` đổi. Driver camera giao lại frame cuối thì hệ thống thấy một khuôn mặt mắt mở đứng yên: im lặng không giới hạn
+- **Đo trước khi đặt ngưỡng** (script ngoài repo, chỉ giữ số; DROZY: 36 video hồng ngoại, 14 người, 5,6 giờ, camera cố định, 2 mẫu mỗi giây, 21 820 mẫu; mốc = trung vị 40 mẫu đầu của video, như bước đăng ký):
+
+| Số hạng hình dạng (khoảng cách chữ ký / `driver_shape_tol`) | p50 | p99 | Lớn nhất / nhỏ nhất |
+|---|---:|---:|---|
+| Chính người đó, cùng video | 0,43 | 1,82 | lớn nhất 4,06 |
+| Chính người đó, video ngày khác | 0,57 | 1,87 | lớn nhất 4,13 |
+| Người khác (13 người còn lại) | 0,62 | | p1 0,20, nhỏ nhất 0,04 |
+
+  - **Chữ ký hình dạng không phân biệt được người**: người lạ gần mốc ngang với chính tài xế ở ngày khác. Ngưỡng trên điểm tổng như audit đề xuất không tách được: đặt 4 thì 99,99 % frame của người lạ vẫn qua; đặt 2 thì vẫn qua 99,06 % trong khi tài xế đã bị loại ở 0,9 % số frame. Con số "mặt lạ 17,0" của audit là lưới điểm ngẫu nhiên của test, không phải mặt thật
+  - SUST (299 clip trong xe, điện thoại tự quay): số hạng hình dạng so với trung vị của chính clip lên tới 3,52 khi quay đầu; giữa trung vị của hai clip bất kỳ là 0,65 (p50). Cùng kết luận
+  - Vị trí thì tách được. Tâm mặt tài xế so với lúc đăng ký, tính bằng khoảng cách hai mắt đã đăng ký (IOD): p99 0,46, p99,9 0,79, lớn nhất 2,97. Qua một khoảng từ 2 s không thấy mặt (939 lần): lớn nhất 1,83. Giữa hai mẫu cách 0,5 s: lớn nhất 0,93
+- **Khối 3, luật mới** (`landmarks.py`: `DriverSelector.choose`, `_distance`): đã đăng ký thì vẫn chọn mặt điểm thấp nhất như cũ, rồi mặt đó bị bỏ khi tâm của nó cách **chỗ thấy tài xế lần cuối** quá `driver_max_distance` IOD đã đăng ký. `choose` trả −1, `FaceLandmarkDetector.detect` và `WebAgent._frame` trả "không có mặt" (trước M83 hai chỗ này không xử lý −1). Từ đó mọi thứ đi theo đường có sẵn: khối 8 đếm `no_face_duration`, khối 9 "tạm ngưng" sau `risk.unavailable.no_face_s` khi xe chạy, khối 12 hỏi tài xế
+  - Chỗ thấy tài xế lần cuối đi theo tài xế từng frame, nên tài xế dịch dần bao xa cũng không bị loại (test: 6 IOD qua 8 frame). Mặt bị loại **không** dời mốc này: hành khách đứng một mình 10 s vẫn bị loại ở frame cuối, tài xế quay lại gần chỗ cũ thì được nhận ngay
+  - Chưa đăng ký, hoặc sau "Đổi tài xế": không loại ai (mặt lớn nhất, như cũ). `driver_max_distance: 0` là tắt
+  - Điểm chọn giữa hai mặt (hình dạng + vị trí) không đổi; phép đo cho thấy trong điểm đó chỉ số hạng vị trí có nghĩa
+- **Khoá `landmarks.driver_max_distance: 4.0` (tạm):** gấp hơn 2 lần lần dịch lớn nhất sau khi mất mặt trên DROZY (1,83) và trên mức xa nhất so với lúc đăng ký (2,97). Mặt tài xế trên DROZY rộng 0,08–0,10 chiều ngang ảnh (IOD), nên 4 IOD là 0,32–0,40 chiều ngang ảnh. Chưa có bản ghi hai người trong xe nào để biết ghế phụ cách bao nhiêu IOD ở góc lắp thật
+- **Khối 1, bản thiết bị** (`frame_source.py`: `_repeats`): mỗi frame camera, lấy mỗi điểm ảnh thứ `frozen_stride` theo hàng và cột (160 × 90 điểm của ảnh 1280 × 720) so với frame trước. Giống hệt liên tục quá `frame_timeout_s` (3 s): `lost` bật, frame không được giao cho vòng lặp, camera được thả và mở lại mỗi `reconnect_interval_s` như khi đọc lỗi. Chỉ một ảnh **khác** mới đưa camera về: camera mở lại mà vẫn trả đúng ảnh cũ thì vẫn là mất (không nhấp nháy `camera_lost` / `camera_restored`). `FrameSource.freezes` đếm số lần, dòng log `[camera]` in ra
+  - Dưới 3 s thì không đổi gì: frame lặp vẫn được giao (camera chậm hơn vòng lặp giao mỗi ảnh vài lần)
+  - Ảnh chỉ một giá trị (ống kính bị che kín, cháy sáng) không bao giờ là "lặp": trong đó không có gì để đổi, và bước chất lượng của khối 6 đã gọi tên ca đó (`low_light`, `glare`). Không có ngoại lệ này thì che ống kính sẽ thành "mất camera" và camera bị mở lại 2 s một lần
+  - Chỉ áp cho camera, không áp cho file video (video có cảnh đứng yên). `frozen_stride: 0` là tắt
+  - Chi phí: 0,10 ms mỗi frame trên Mac (1280 × 720), chạy ở luồng đọc camera, không nằm trong vòng lặp chính
+- **Khối 1, bản web** (`frozen.ts`: `RepeatCheck`; `watchdog.ts`: `LoopWatchdog.image`, `still`; `agent.ts`): cùng phép so trên ảnh đã thu nhỏ (80 × 45 điểm). Ảnh giống hệt quá `frame_timeout_s` thì `py.camera(true)`, frame đó không vào Python, và ở lần nhìn kế tiếp của đồng hồ canh (tối đa 1 s sau) trang xin lại camera, HUD hiện "Lần thử N". `settings()` của bridge đưa `frozen_stride` cho trang
+- **Cổng chất lượng:**
+  - 21 test Python mới: 9 cho luật chọn mặt, 3 cho khối 3 trên thiết bị và bản web (một test là bản đối chứng tắt ngưỡng: cùng chuỗi cho L3 sai), 8 cho khối 1 (5 phép so thuần, 3 chạy luồng đọc với camera giả), 1 cho khoá gửi sang trang. 7 test vitest mới (`frozen.test.ts` 5, `watchdog.test.ts` 2). 1 test e2e mới
+  - E2e chạy lại cả bộ: 7 / 7. Camera giả của Chromium (ảnh chuyển động) chạy 5 s không bị coi là lặp; canvas vẽ lại cùng điểm ảnh giao hơn 10 frame trong 2 s (frame vẫn tới, nội dung đứng yên) rồi thành `camera_lost`
+  - `test_a_single_face_is_always_taken` của M9 đổi tên và nội dung: mặt đơn cách 3 IOD vẫn được nhận
+- **Cố ý, cần anh biết:**
+  - Em **không** làm đúng câu chữ của audit ("ngưỡng điểm tối đa"), vì phép đo cho thấy điểm tổng không loại được ai. Ngưỡng đặt trên vị trí
+  - Mặt bị loại là "không có mặt": tài xế và backend thấy "tạm ngưng: không thấy mặt", không có chữ riêng "có người khác trong khung"
+  - `camera_lost` không nói lý do (đứng hình hay mất hẳn); chỉ log của bản thiết bị có số lần đứng hình
+- **Chưa làm / còn hở:**
+  - Người khác ngồi **vào chỗ** tài xế, hoặc hành khách trong vòng 4 IOD (ghế giữa hàng sau, người chồm sang) vẫn được đọc là tài xế. Muốn chặn cần chữ ký mặt phân biệt được người, tức model nhận mặt (bước D trong `improvements.md`, đang hoãn); phép đo ở trên là bằng chứng chữ ký hiện tại không đủ
+  - Ca kẹt: camera bị xoay hoặc tài xế đổi chỗ ngồi hơn 4 IOD **trong lúc không thấy mặt** thì mặt tài xế bị loại cho tới khi quay về gần chỗ cũ hoặc bấm "Đổi tài xế". Trong lúc đó hệ thống báo "tạm ngưng" và hỏi tài xế, không im lặng. Xoay camera khi mặt vẫn trong khung thì mốc đi theo, không kẹt
+  - DROZY là người ngồi trước màn hình, camera hồng ngoại cố định: mức xê dịch khi lái thật và khoảng cách tới ghế phụ ở góc lắp trên màn hình VF e34 chưa đo. Cần một phiên tự ghi hai người
+  - Chưa từng thấy camera thật nào lặp frame (audit ghi "Không chắc"); test dùng camera giả và canvas. Camera ảo chiếu ảnh tĩnh, hoặc camera khử nhiễu mạnh tới mức hai frame của cảnh đứng yên giống hệt nhau trên cả 14 400 điểm so, sẽ bị coi là mất camera
+  - Camera đứng hình ở một ảnh một màu thì không vào đường này; bước chất lượng báo "quá tối" khi xe chạy
+  - Chưa thử trên camera thật và backend thật
+- Test: 1324 Python pass, 7 xfail (cây làm việc đang có cả M81, M82 chưa commit; 21 test mới của mốc này); 170 test frontend pass (7 mới); e2e 7 / 7 (1 mới); `tsc`, ruff / format sạch; `frontend/public/py/edge_agent.zip` được `tools/e2e_setup.py` đóng gói lại khi chạy e2e
+
+<a id="m84"></a>
+
+#### M84: Một lớp chặn ảnh cho thiết bị, bản web và backend; server HUD kiểm ai gọi (khối 13, 14)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m84_metadata_guard_and_hud_callers.py`: 39 pass. Bản ghi có trường `snapshot_jpg` (hoặc mảng numpy, data URI) đưa vào `WebAgent._queue`: `take_batch()` trả `None`, `refused_records` tăng, frame vẫn trả trạng thái HUD. `POST /end-trip`, `/vehicle`, `/feedback` với `Origin: http://evil.example`: 403, chuyến đi tiếp, không lệnh nào vào hàng đợi. `GET /state` với `Host: evil.example`: 403
+
+**Trạng thái:** Xong (08/10). Làm theo [audit-4-output-platform.md](audit-4-output-platform.md) mục M8, M6, L6 (dòng "A4 M6", "A4 M8", "L1–L6" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md), dòng "Chặn ảnh trước khi gửi" ở mục 4.2). Không khoá mới trong `thresholds.yaml`, không đổi ngưỡng, không đổi code frontend
+
+- **Trước, khối 14 (A4 M8):** `check_metadata_only` chỉ chạy trong `MetadataPublisher` của bản thiết bị. Bản web đưa bản ghi thẳng vào danh sách rồi trang gửi đi; backend vẫn từ chối (422) nhưng payload sai đã rời máy. Danh sách từ cấm của thiết bị thiếu `jpg`, `base64`, `b64`, `video`, `blob`, `face_crop` so với backend, và thiếu phép nhận chữ ký file ảnh (`/9j/`, `iVBORw0KGgo`, ...)
+- **Trước, khối 13 (A4 M6, L6):** server HUD chỉ thêm header CORS cho origin được phép, không từ chối origin lạ. `POST /end-trip` không cần thân, `POST /vehicle` không kiểm `Content-Type`: cả hai là "yêu cầu đơn giản", trình duyệt gửi đi không hỏi trước. Một trang web bất kỳ mở trên cùng máy kết thúc được chuyến, đổi tài xế (mất hồ sơ đăng ký), trả lời hộ "Bạn còn ở đó không?". `Host` không được kiểm nên DNS rebinding đọc được `/state`
+- **Một danh sách, một hàm quét** (`edge_agent/io/metadata_guard.py`, mới, chỉ dùng thư viện chuẩn): `FORBIDDEN_KEY_PARTS` (16 từ, là danh sách của backend), `DATA_URI`, `IMAGE_SIGNATURES`, `BASE64_RUN`, `find_image_data`. Luật là **hợp** của hai bên: mọi thứ backend từng từ chối, cộng hai luật chỉ thiết bị có (đối tượng có `__array__` như mảng numpy; chuỗi chứa `;base64,` dù không có tiền tố `data:`)
+  - `backend/schemas.py` nhập `find_image_data` từ đó, không còn danh sách riêng (backend vốn đã nhập `edge_agent.config`, `edge_agent.io.remote_config`)
+  - `publisher.check_metadata_only` gọi `find_image_data` rồi ném `ValueError`; không còn danh sách riêng
+- **Bản web** (`bridge.py`: `WebAgent._queue`): mọi bản ghi, kể cả nhịp "còn sống", đi qua `check_metadata_only` trước khi vào danh sách chờ gửi. Bản ghi bị từ chối thì **bỏ**, đếm vào `WebAgent.refused_records` và in một dòng ra console của trình duyệt
+- **Server HUD** (`server.py`):
+  - `Host` phải là `127.0.0.1` hoặc `localhost` (bỏ cổng, không phân biệt hoa thường), cho cả `GET`, `POST`, `OPTIONS`; không thì 403. Trang tới `127.0.0.1` dưới tên miền khác (DNS rebinding) mang tên miền của nó trong `Host`
+  - `POST` có header `Origin` mà không thuộc danh sách cho phép (`DEFAULT_ORIGINS` + `--hud-origin`): 403, trước khi chạm trạng thái. `Origin: null` và `Origin` rỗng cũng bị từ chối. Không có `Origin` (curl, công cụ trên máy, test) thì qua như cũ
+  - `POST /feedback` và `/vehicle` phải có `Content-Type: application/json` (có `; charset=...` vẫn nhận); không thì 415. Ba kiểu thân mà trang lạ gửi được không cần preflight (`text/plain`, form, multipart) đều rơi vào đây
+- **Cổng chất lượng:** 39 test mới: 13 cho lớp chặn (cùng một hàm ở ba nơi; 6 từ trước đây chỉ backend biết; chữ ký ảnh, data URI, bytes, mảng), 6 cho bản web (một chuyến thật có L3, mất camera, tổng kết: 0 bản ghi bị từ chối; bản ghi xấu không vào lô và không làm hỏng frame), 20 cho server HUD (4 origin lạ × 5 lệnh; trang HUD và công cụ không có `Origin` vẫn qua; origin thêm bằng `--hud-origin` gửi lệnh được; 4 kiểu `Content-Type`; 5 `Host` lạ; 3 tên của máy này)
+  - Test cũ không phải sửa: `test_hud_and_remote.py`, `test_vehicle_controls.py`, `test_trip_summary.py` vốn gửi `application/json` hoặc không có `Origin`
+- **Cố ý, cần anh biết:**
+  - Bản web **bỏ** bản ghi bị từ chối, bản thiết bị **ném lỗi** như cũ (frame đó thành frame lỗi). Em chọn bỏ cho bản web vì một bản ghi dựng sai không nên làm tài xế mất một frame giám sát; đổi lại lỗi chỉ hiện ở console và ở `refused_records`, chưa có sự kiện nào báo về backend
+  - `POST /end-trip` **không** đòi `Content-Type` (nó không có thân, và trang HUD đang gọi không kèm header này): chỉ `Origin` và `Host` chặn nó. Trình duyệt gửi `Origin` với mọi `POST` khác origin
+  - `GET /state` với `Origin` lạ vẫn trả 200 như cũ, không có header CORS nên trang lạ không đọc được nội dung; chỉ `Host` lạ mới bị 403
+  - Lớp chặn của thiết bị chặt hơn trước: tên trường mới chứa `jpg`, `b64`, `base64`, `video`, `blob` sẽ bị từ chối ngay trên máy (trước đó backend trả 422)
+- **Chưa làm / còn hở:**
+  - Chương trình chạy trên cùng máy (không phải trình duyệt) vẫn gọi được server HUD: không có `Origin`, tự đặt được `Host`. Chặn ca đó cần khoá chia sẻ giữa agent và trang HUD, ngoài phạm vi A4 M6
+  - `--hud-origin` nay cũng cho quyền gửi lệnh, không chỉ đọc (câu trợ giúp của cờ đã sửa)
+  - Chưa thử trên trình duyệt thật: trang HUD ở `localhost:5173` gọi server HUD sau thay đổi, và một trang lạ thử gọi. E2e không chạy qua server HUD (nó chạy `#/live`)
+  - `frontend/public/py/edge_agent.zip` chưa đóng gói lại (`npm run prepare-live` hoặc e2e sẽ làm); file mới `metadata_guard.py` nằm trong `edge_agent/` nên tự vào gói
+- Test: 39 test mới pass; `ruff check` / `ruff format --check` sạch trên `edge_agent/`, `backend/`, `tools/`, `tests/`. **Cả bộ chưa chạy lại được tới xanh**: trong lúc làm, `config/thresholds.yaml` và vài file `edge_agent/` đang được một phiên khác sửa dở (khoá mới như `publisher.web_batch_size`, `alert.l1_repeat_level` chưa có code đọc), nên mọi test nạp ngưỡng đỏ vì `ConfigError`, không liên quan mốc này. Không chạy test frontend và e2e (không đổi code frontend)
+
+<a id="m85"></a>
+
+#### M85: Ngưỡng về hết `thresholds.yaml`; trang web không giữ số riêng; test chặn hardcode (cả 14 khối, công cụ eval)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m85_no_hardcode.py`: 76 pass. Thêm một dòng `if x > 1.5:` vào bất kỳ file nào của `edge_agent/`, hoặc `const STALE_S = 3;` / `?? 70` vào `frontend/src/`: test đỏ và in ra file:dòng. Xoá một dòng bất kỳ khỏi `thresholds.yaml`: test đỏ (trước: chạy tiếp bằng mặc định trong code). Đổi `risk.microsleep_l3_s` trên dashboard thành 2,5: `display.microsleep_l3_s` trong state của HUD là 2,5, ô "Mắt" đổi màu đỏ ở đó (trước: luôn 1,5 s)
+
+**Trạng thái:** Xong (08/10). Làm theo mục L1 của [audit-1-perception.md](audit-1-perception.md), L5 của [audit-2-features.md](audit-2-features.md), L4 của [audit-3-risk-alert.md](audit-3-risk-alert.md), M7 của [audit-4-output-platform.md](audit-4-output-platform.md), M6 của [audit-5-eval-tests.md](audit-5-eval-tests.md), và dòng X5, X8 ở mục 4.1 của [audit-2026-10-08.md](audit-2026-10-08.md). 31 khoá mới trong `thresholds.yaml`, mỗi khoá mang đúng giá trị code đang dùng. Một giá trị đổi: bản thiết bị hỏi tín hiệu xe 0,25 s một lần (trước 0,2 s). Không đổi số nào trên trace (`tests/fixtures/regression/expected.json` giữ nguyên)
+
+- **Mặc định trong dataclass lệch YAML: 6 trường ở 4 lớp config, đã sửa cho bằng YAML.** Audit nêu 4 chỗ; dựng từng config không tham số rồi so với config dựng từ YAML thì ra 6 trường (`recalibrate_s` sinh ra ở M80, sau audit)
+
+| Trường | Mặc định cũ | YAML | Hậu quả khi một dòng YAML bị xoá |
+|---|---:|---:|---|
+| `eye_state.low_light_brightness` | 60 | 0 | Khối 5 lại quyết định thay EAR ở ánh sáng yếu (hành vi trước M54: 8 L3 sai trong 5,5 phút của bản tự ghi) |
+| `distraction.baseline.calibrate_s` | 0 | 5 | Tắt hiệu chuẩn lúc khởi động: camera lắp lệch báo "nhìn lệch" suốt chuyến |
+| `distraction.baseline.recalibrate_s` | 0 | 60 | Tắt hiệu chuẩn lại của M80 |
+| `risk.drowsy.weight_slow_blink`, `weight_brow` | 10, 10 | 0, 0 | Hai tín hiệu M53 đã loại quay lại điểm buồn ngủ |
+| `risk.trend.level` | 1 | 0 | Cảnh báo "mệt mỏi tăng dần" quay lại (5 / 9 cảnh báo sai trên dev của UTA-RLDD) |
+
+  - 39 test dựa vào mặc định cũ nay ghi rõ giá trị chúng cần (`baseline_calibrate_s=0.0`, `low_light_brightness=60.0`, `trend_level=1`, ...); không test nào đổi điều nó kiểm
+- **Khoá mới, phía Python** (giá trị = số đang nằm trong code):
+  - Khối 2, 6: `preprocess.sample_stride` 4. Ba chỗ lấy mẫu "mỗi điểm ảnh thứ 4" (`preprocess.py`, `quality.py`, `measure.ts`) nay đọc cùng một khoá; `quality.measure` nhận `stride` làm tham số
+  - Khối 5: `eye_state.web_source` blendshape (trước: `bridge.py` ép cứng), `eye_state.web_blink_missing` 0,05
+  - Khối 7: `drowsiness.baseline_recompute_s` 1,0 (phân vị của ba mốc trượt), `drowsiness.nod.bottom_frac` 0,15
+  - Khối 9: `risk.microsleep_level` 3, `risk.unresponsive.level` 3, `risk.distraction.off_road_level` 2, `risk.distraction.phone_level` 2 (0 = chỉ ghi chú, như `trend.level` và `blink.level` vốn có). Luật `drowsy_score` giữ L1 / L2 trong code: mức nằm ngay trong tên khoá `l1`, `l2`
+  - Khối 10: `context.vehicle_poll_s` 0,25 (một khoá cho bản thiết bị và bản web; bản thiết bị trước là 0,2), `context.vehicle_send_s` 0,2 (`#/drive`)
+  - Khối 11 (X8): `TripCollector` cắt "phút" theo `trip_memory.bin_s` thay cho số 60 cố định, nên bản tổng kết, biểu đồ HUD và `trend` của trip memory dùng cùng một ô thời gian
+  - Khối 12: `alert.l1_repeat_level` 2
+  - Khối 13: `hud.fps_smoothing` 0,9 (FPS mà cảnh báo "máy chậm" xét), `hud.recent_alerts` 10, `hud.end_trip_wait_s` 10, `hud.summary_wait_s` 3, và các số của màn hình: `hud.poll_s` 0,3, `state_timeout_s` 1,0, `link_down_failures` 3, `stale_s` 3,0, `chime_to_voice_s` 0,7, `alarm_repeat_s` 1,5, `presence_repeat_s` 2,0, `gain` {1: 0,12, 2: 0,25, 3: 0,35}
+  - Khối 1, 14, bản web: `capture.web_camera_width` 640, `web_camera_height` 480, `web_max_frame_age_s` 1,0, `publisher.web_batch_size` 100. `fetch_remote` nhận hạn chờ từ `publisher.timeout_s` (trước: 5,0 viết trong chữ ký hàm)
+  - Công cụ eval (A5 M6): `eval.replay_speed_kmh` 60, `eval.perclos_ratios`, `eval.low_reliable_frac` 0,8; `tools/uta_rldd.py` đọc ngưỡng `eyeBlink` và CNN từ `enrollment.eye_blink_shut`, `drowsiness.eye.cnn_closed`; `personal_report` truyền `cfg` cho `metrics` (trước: dùng mặc định của dataclass thay cho `eval.*` trong YAML)
+- **Luật nhất quán mới** (`edge_agent/config.py`, phần "Thêm" của A3 L4): `context.vehicle_poll_s` và `vehicle_send_s` phải nhỏ hơn `vehicle_signal_stale_s`; `hud.poll_s` nhỏ hơn `hud.stale_s`; `(l1_repeat_count − 1) × cooldown_s[1]` phải nhỏ hơn `l1_repeat_window_s` (không thì `repeated_l1` không bao giờ chạy mà không ai biết); `trip_memory.bin_s` > 0, `trend_window_bins` ≥ 1. Sai thì agent dừng lúc khởi động và backend từ chối phiên bản ngưỡng đó, như các luật có sẵn
+- **Bản web đọc từ YAML, hai đường (X5):**
+  - Lúc chuyến đang chạy: agent gửi số của chính nó. `HudState.to_json()` có thêm `display` (13 số: `hud.*` của màn hình, `drowsiness.blink_max_s`, `risk.microsleep_l3_s`, `risk.drowsy.l1` / `l2`), dựng bởi `hud_display(thresholds)` và dựng lại khi ngưỡng được nạp lại lúc nghỉ (M47), nên ngưỡng chỉnh trên dashboard tới được màn hình. `WebAgent.settings()` có thêm `sample_stride`, `eye_blink_missing`, `vehicle`, `capture.max_frame_age_s`
+  - Trước state đầu tiên, ở chế độ mô phỏng, trên dashboard và `#/drive`: `frontend/src/lib/defaults.gen.json`, sinh từ YAML bởi `tools/web_defaults.py` (mới) và commit cùng code. Test đỏ khi file lệch YAML (`python tools/web_defaults.py` để sinh lại; `--check` để kiểm)
+  - Gỡ khỏi JS: `STALE_S`, `POLL_MS`, `CHIME_TO_VOICE_MS`, `LEAVE_VOICE_MS`, hạn chờ 1000 ms và 3 lần lỗi của `HudScreen.tsx`, `ALARM_REPEAT_S`, `PRESENCE_REPEAT_S`, `GAIN` (`chime.ts`), `EYES_SHOWN_CLOSED_S` và mốc 1,5 s (`hudModel.ts`), `SIM_POLL_MS`, `REMOTE_FRESH_S`, camera 640 × 480 × 30, `eyeBlink` thiếu = 0,05 (`agent.ts`), `MAX_FRAME_AGE_MS` (`frameTime.ts`), bước 4 điểm ảnh (`measure.ts`), `SEND_MS` (`DriveScreen.tsx`), `DEFAULT_L1` / `DEFAULT_L2` (`Dashboard.tsx`), các `?? 40`, `?? 70`, `?? 120` (`HudView.tsx`), 40 / 70 / 15 của `demo.ts`. Phép quét của test tìm ra một `?? 70` mà lần sửa tay đã sót
+- **Test chặn hardcode** (`tests/test_edge_agent/test_m85_no_hardcode.py`, 76 test), bốn lớp:
+  1. Config dựng không tham số bằng config dựng từ YAML, cho cả 19 mục
+  2. Mọi trường của mọi config có một dòng trong YAML (khoá thiếu không còn lấy mặc định trong im lặng)
+  3. Quét AST toàn bộ `edge_agent/`: mọi số nguyên / số thực ngoài phần khai báo trường của các lớp `*Config`, trừ 0, 1, 2, −1, phải nằm trong danh sách `ALLOWED` kèm lý do. Danh sách có 24 file; ba file được miễn cả file vì là định nghĩa (`features.py`: chỉ số landmark và model 3D; `geometry.py`: bộ giải tư thế, có test giữ khớp OpenCV; `hud/hud.py`: vẽ cửa sổ debug). Mục đã hết dùng trong `ALLOWED` cũng làm đỏ test
+  4. Quét `frontend/src/` (trừ file test): hằng số `SCREAMING_CASE` bằng một số, và mọi `?? số` khác 0 / 1, phải nằm trong `JS_ALLOWED` (12 file: nhịp làm mới dashboard, kích thước bố cục, độ dài danh sách cục bộ)
+  - Mỗi phép quét có test đối chứng: đưa cho nó đoạn code có ngưỡng viết tay, nó phải thấy
+  - Tham số mặc định của hàm dựng lặp lại giá trị YAML (`TripCollector`, `DriverEnrollment`, `CanSimulator`, `ExternalVehicle`: 11 tham số) được so trực tiếp với YAML
+- **Cố ý, cần anh biết:**
+  - Em **không** đưa vào YAML những số là định nghĩa hay phần chờ / đệm của hạ tầng, và ghi từng số kèm lý do trong `ALLOWED`: thang điểm 100, thang mức 3, phân vị 10 / 50 / 90 của "độ trải" và trung vị, phân vị 90 của `drowsy_p90`, màu đệm 114 của YOLO, mã HTTP, 1 024 byte thân request, hạn chờ 0,5 s / 0,01 s của các vòng chờ (`main.py`, `frame_source.py`, `phone_detector.py`), `DELIVERED_KEEP` 64. Audit tự ghi các dòng này là "định nghĩa" hoặc "tham số vận hành". "Khoảng 30 hằng số" của audit vì thế thành 31 khoá mới; phần còn lại nằm trong danh sách có lý do
+  - Bản thiết bị hỏi tín hiệu xe chậm đi 0,05 s (0,2 → 0,25 s) để dùng chung một khoá với bản web; vẫn 4 lần trong 1 s của `vehicle_signal_stale_s`
+  - Các khoá mức (`risk.*_level`, `alert.l1_repeat_level`) cho phép cấu hình vô nghĩa (ví dụ `microsleep_level: 0` tắt còi L3). Chúng không nằm trong danh sách chỉnh được trên dashboard; chỉ sửa được bằng file YAML của thiết bị
+- **Chưa làm / còn hở:**
+  - Phép quét phía web chỉ thấy hằng số đặt tên in hoa và `?? số`. Một số viết thẳng trong biểu thức (`setTimeout(f, 3500)` của thông báo nổi, `Math.max(step.progress, 0.05)`) không bị bắt. Phía Python thì bắt mọi số
+  - 0, 1, 2 không bị quét, nên một ngưỡng mới có giá trị đúng bằng 1 hoặc 2 (ví dụ `> 1.0` giây) lọt qua
+  - `trip_memory.bin_s` khác 60 thì trường `minute` của bản tổng kết và nhãn "phút" trên HUD thực ra là số ô, không còn là phút; `first_tired_min` vẫn quy về phút. Chưa ai cần giá trị khác 60
+  - `tools/`: chỉ sửa các số A5 M6 nêu; `tools/` không nằm trong phép quét AST. Đề xuất "in mã băm của YAML trong báo cáo" của A5 M6 thuộc A5 M1, chưa làm
+  - `backend/` không nằm trong phép quét (hằng số của backend đi qua `DG_*` trong `settings.py`)
+  - Camera 640 × 480 của trang lấy từ bản build, không từ ngưỡng chỉnh trên dashboard: camera mở trước khi Python nạp xong
+  - Chưa mở `#/live` bằng tay để nghe âm lượng và nhìn ô "Mắt"; e2e chỉ chạy qua các đường này
+  - Số mốc: lúc bắt đầu roadmap dừng ở M83; M84 được một phiên khác ghi vào trong lúc làm, nên mốc này là M85
+- Test: 1439 Python pass, 7 xfail (76 test mới; cây làm việc đang có cả M81–M84 chưa commit, 39 test của M84 chạy xanh cùng cả bộ); 171 test frontend pass (1 mới, 3 sửa); e2e 7 / 7; `tsc`, ruff / format sạch
+
+<a id="m86"></a>
+
+#### M86: Vệ sinh eval: giờ của video, ghim thư viện và model, `load_trace`, fixture cho đường web / chất lượng / điện thoại (công cụ eval)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m86_eval_hygiene.py tests/test_edge_agent/test_trace_regression.py`: 39 pass. Đổi `drowsiness.eye.blendshape_closed=0.8`, `quality.dark_face_brightness=0` hoặc `risk.distraction.phone_ratio=0.95`: test hồi quy đỏ và chỉ đỏ ở đúng đường / bộ video liên quan. `python tools/download_models.py --verify`: `[ok]` cho ba model. `python tools/uta_rldd.py clock --root <thư mục video>`: bảng lệch giờ từng video ([eval/results/video_clock_uta_rldd.md](../eval/results/video_clock_uta_rldd.md)). Sau `import edge_agent`, `uta_rldd.load_trace` đọc được cả 145 trace.
+
+**Trạng thái:** Xong (09/10). Làm theo [audit-5-eval-tests.md](audit-5-eval-tests.md) mục M1, M2, H1 (đã hạ xuống Medium ở mục 5 của [audit-2026-10-08.md](audit-2026-10-08.md)), [audit-1-perception.md](audit-1-perception.md) mục L3 (phần checksum), và mục "Mới trong phiên này" của audit tổng hợp. Không đổi `edge_agent/`, không đổi ngưỡng nào của hệ thống; hai khoá mới trong `eval.*`. Không đọc tập giữ riêng của UTA-RLDD
+
+- **Giờ của video (A5 M2)** (`tools/seq_eval.py`: `VideoClock`, `trace_seconds`, `frame_seconds`, `gap_stats`, `video_clock`):
+  - Trước: `trace_video` cho frame thứ i thời điểm `i / FPS của container`. FPS đó là số trung bình, nên một đoạn không có frame bị dàn đều ra cả video: mọi luật theo thời gian (nhắm 1,5 s, PERCLOS 60 s, khoảng hở `max_gap_s` của M71) nhìn thấy một video đều đặn không có thật
+  - Nay: thời điểm là dấu thời gian của frame trong container (`CAP_PROP_POS_MSEC` đọc sau mỗi frame), trừ đi dấu của frame đầu. Dấu thiếu, NaN hoặc không tăng thì thay bằng "một frame danh nghĩa sau frame trước" và được đếm (`patched_frames`). Container không cho dấu nào thì kết quả đúng bằng `i / FPS` và trace ghi `clock.source: index`
+  - Trace mới mang `clock` (nguồn giờ, số frame vá, độ lệch cuối video, độ lệch lớn nhất tại một frame) và `duration_s`. Số giờ, cửa sổ FAR / MAR, giờ của cảnh báo trong `seq_eval.py` và `uta_rldd.py` đọc đồng hồ đó; `tools/light_study.py` dùng cùng đồng hồ để video làm tối so được với video gốc
+  - **Trace cũ không đổi một số nào:** không có `duration_s` thì độ dài vẫn là `n / fps`. Đã kiểm trên cả 145 trace UTA-RLDD và 2437 trace FL3D / YawDD / SUST: `trace_seconds` và `frame_seconds` cho đúng từng bit giá trị cũ
+  - Chưa đổi: nhãn FL3D là dải frame, độ dài nhãn và độ trễ phát hiện vẫn tính bằng frame / 25 FPS (NITYMED quay đều); `gaze_study.py` (3MDAD là chuỗi ảnh, không có container); `record_trace.py --video`
+- **Đo trên 18 video UTA-RLDD có ở máy** (fold 1, người 01–06, đều là tập dev; `uta_rldd.py clock`, chỉ đọc dấu thời gian, không chạy model, không chấm):
+  - Không frame nào thiếu dấu thời gian. Lệch ở cuối video: lớn nhất 0,07 s
+  - 2 video có khoảng hở dài: `F1_S06_10` có một đoạn **2,63 s không có frame** ở giây 186 (lệch lớn nhất tại một frame 1,54 s, trong khi tổng thời lượng khớp), `F1_S03_5` có hai khoảng 0,1 s
+  - Replay hai video đó bằng giờ thật thay cho `i / FPS`: **không cảnh báo nào đổi**, `closed_duration` lớn nhất không đổi (0,25 s và 1,03 s)
+  - **Chưa trả lời được câu hỏi của audit:** `F4_S44` và `F2_S24` (12 và 15 FPS, mang 6 / 9 lần báo sai) không có ở máy; 127 / 145 video chưa đo
+- **Ghim thư viện (A5 M1)** (`requirements.txt`): `opencv-python`, `numpy`, `mediapipe`, `onnxruntime` ghim `==`. Python ≤ 3.12 (máy dev, CI): 4.11.0.86 / 1.26.4 / 0.10.21 / 1.30.0, là bộ đã tạo trace FL3D, YawDD, SUST và bản tự ghi. Python 3.13 (Kaggle): 4.14.0.94 / 2.1.3 / 1.0.1 / 1.30.0, là bộ đã tạo trace UTA-RLDD. Trước: `>=`, và PyPI nay đã có `opencv-python` 5.0 nên máy mới sẽ cài bản khác hẳn. Đã thử `pip install --dry-run` cho Linux x86_64 và macOS arm64 ở cả hai Python: có đủ wheel. Notebook Kaggle ghim `mediapipe==1.0.1`, `onnxruntime==1.30.0`
+- **Checksum model (A5 M1, A1 L3)** (`tools/download_models.py`): `face_landmarker.task` tải từ kênh phiên bản `1` thay cho `latest` (đã tải thử: cùng sha256 với file đang dùng và với file Kaggle đã dùng); cả hai model tải về có sha256 đầy đủ, sai thì bỏ file; `yolov8n.onnx` (tự xuất, không tái lập được từng byte) có sha256 của bản đã đo, khác thì cảnh báo, `--strict` thì từ chối. `--verify` kiểm các file đang có. Job `deploy` của CI chạy `--verify` sau khi tải model từ release
+- **Trace ghi lại môi trường** (`tools/metrics.py`: `environment`, `environment_text`): mỗi trace mới có `meta` (commit, cây sạch hay chưa, mã băm `thresholds.yaml`, Python, phiên bản bốn thư viện, sha256 từng model). Báo cáo `seq_eval.py` và `uta_rldd.py report` / `fps` in dòng "Traced with: ...". Trace UTA-RLDD cũ không có `meta`: báo cáo đọc `eval/provenance/uta_rldd/session*_run_info.json`, nay nằm trong repo cùng `index.csv` và hai `trace_log.csv` (chỉ số và tên file, không ảnh)
+- **`load_trace` với numpy 2** (`tools/uta_rldd.py`: `numpy2_pickle_shim`): trước, lớp đọc bị bỏ qua khi `numpy._core` đã được nạp (numpy 1.26 có sẵn một `numpy._core` thiếu `numeric`, và `import edge_agent` nạp nó), ra `ModuleNotFoundError: numpy._core.numeric`. Nay kiểm từng module theo tên, thiếu cái nào thì trỏ về `numpy.core`
+- **`uta_rldd.py` thiếu `cfg` (A5 M6):** dòng audit nêu (`metrics(rows)` trong `personal_report`) đã được sửa thành `metrics(rows, cfg)` ở cây làm việc trước mốc này; mốc này thêm test giữ nó
+- **Fixture hồi quy (A5 H1 đã hạ)** (`tools/regression_traces.py`, `tests/fixtures/regression/`):
+  - Mỗi video nay được replay trên **ba đường**: `device` (như cũ), `web` (khối 5 đọc `eyeBlink`, đúng hàm `web_thresholds` của trang), `web_ir` (như `web`, mọi frame coi là hồng ngoại, cũng là thứ khối 2 thấy ở ảnh màu tối: `eyeBlink` quyết định mọi frame). `web` khác `device` ở 21 / 44 video, `web_ir` khác `web` ở 24 / 44
+  - File thứ hai `traces_phone_quality.npz` (539 KB, 8 video 3MDAD, 14 377 frame, chỉ số): là trace duy nhất có cờ điện thoại và số đo chất lượng frame. Có cảnh báo `phone`, `off_road`, và "tạm ngưng" vì `low_light`, `bad_angle`, `no_face`
+  - Mỗi kết quả ghim thêm `paused`: số frame không giám sát theo từng lý do
+  - 36 video cũ trên đường `device`: không kết quả nào đổi (đã kiểm trước khi ghim lại)
+  - Ngưỡng nay làm đỏ test: `blendshape_closed`, `blendshape_open` (chỉ hai đường web), `quality.dark_face_brightness`, `quality.blur_sharpness`, `risk.distraction.phone_ratio` (chỉ video 3MDAD)
+- **Khoá mới:** `eval.fallback_video_fps` (30, FPS giả định khi container không cho; trước là số 30.0 viết trong code), `eval.clock_long_gap_frames` (2)
+- **Phát hiện kèm, cần anh quyết định:** `yolov8n.onnx` trên GitHub Release `models-v1` (bản deploy dùng) có sha256 `e4fa2781...`, file ở máy (bản đã đo nhánh điện thoại) là `26f5b8d6...`; cùng kích thước 12 851 104 byte. Hai lần xuất khác nhau, chưa biết trọng số có giống không. CI hiện chỉ cảnh báo; khi release mang đúng file đã đo thì thêm `--strict`
+- **Chưa làm / còn hở:**
+  - Chưa trace lại video nào bằng đồng hồ mới (UTA-RLDD: 97 GB, khoảng 16 giờ Kaggle; bộ code trên Kaggle còn ở commit cũ). Mọi số đã công bố vẫn là số theo `i / FPS`
+  - Chưa chạy `clock` trên cả 145 video; chạy được trên Kaggle trong vài phút vì không chạy model
+  - Fixture không ghim MediaPipe JS và bộ giải góc đầu bằng numpy của trang: nó replay số đo của MediaPipe Python
+  - Phần còn lại của A1 L3 không làm: model hỏng làm agent dừng với traceback, thiếu CNN mắt không báo lên HUD, câu khuyên dùng INT8
+  - `tools/dataset.py` tải dataset Kaggle không ghim phiên bản; `ultralytics` dùng để xuất YOLO không ghim; thư viện backend và `Dockerfile.edge` vẫn `>=` (A4 M5)
+  - CI chưa chạy với `requirements.txt` mới; job `deploy` có bước `--verify` chưa chạy thật
+- Test: **1467 Python pass, 7 xfail** (19 test mới ở `test_m86_eval_hygiene.py`, 9 test mới và 4 test sửa ở `test_trace_regression.py`); `ruff check` / `ruff format --check` sạch trên `tools/`, `tests/`. Frontend không đổi, không chạy lại
+
+
+<a id="m87"></a>
+
+#### M87: CI chạy trên nhánh `DAQuan`, có model thật và đo FPS; test không còn so với đồng hồ bấm giờ (CI, công cụ, test)
+
+**Xong là thấy gì:** push lên `DAQuan` thì CI chạy (trước: chỉ khi mở PR vào `main`). Job `models` in bảng FPS vào trang tóm tắt của lần chạy và đỏ khi phút nào dưới 15 FPS, hoặc khi một model không tải được / sai sha256. `DG_REQUIRE_MODELS=1 pytest tests/test_edge_agent/test_m87_ci_real_models.py`: 10 pass, 0 bỏ qua
+
+**Trạng thái:** Code xong (09/10), chưa chạy trên GitHub vì chưa push. Làm theo [audit-5-eval-tests.md](audit-5-eval-tests.md) mục M5 và M8. Không đổi `edge_agent/`, không đổi ngưỡng, không thêm khoá YAML (cổng FPS đọc `eval.soak_min_fps` có sẵn)
+
+- **CI chạy khi nào** (`.github/workflows/ci.yml`): thêm `DAQuan` vào `on.push.branches`. Thêm `concurrency`: lần push mới lên cùng nhánh / PR huỷ lần chạy cũ còn dở; lần chạy trên `main` không bao giờ bị huỷ (mỗi lần có thể deploy). Một PR từ `DAQuan` đang mở thì mỗi lần push chạy hai lần (push và PR); đây là repo riêng tư nên tốn phút gấp đôi cho tới khi PR đóng
+- **Job `models`** (mới, chạy song song với `python`, `frontend`, `e2e`):
+  - Tải model: `yolov8n.onnx` từ release `models-v1` (như job `deploy`); `face_landmarker.task` và `open_closed_eye.onnx` bằng `tools/download_models.py` (sha256 đã ghim ở M86, sai thì dừng). Ba file được cache theo mã băm của `download_models.py`
+  - `DG_REQUIRE_MODELS=1`: fixture `need_model` (`tests/conftest.py`) làm test model thật **đỏ** khi thiếu file, thay vì tự bỏ qua. Không có biến đó (job `python`, máy chưa tải model) thì bỏ qua như trước
+  - Chạy `test_m87_ci_real_models.py` và `test_eye_state.py`, rồi lệnh đo FPS; báo cáo ghi vào trang tóm tắt và lưu thành artifact `benchmark-ci` 14 ngày
+- **Khuôn mặt vẽ** (`tools/drawn_face.py`): elip màu da, hai mắt, mày, mũi, miệng, tóc, vai, dựng trong RAM. Không phải ảnh người nên không chạm ràng buộc "không lưu ảnh khuôn mặt". Đã thử trên Mac với MediaPipe 0.10.21: tìm thấy 40 / 40 frame ở cả 640×480 và 1280×720
+- **Test trên model thật** (trước: một test duy nhất, tự bỏ qua trong CI):
+
+  | Khối | Kiểm gì | Số đo được trên Mac |
+  |---|---|---|
+  | 3, 6 | Mặt vẽ: 478 landmark hữu hạn ở cả 10 frame, `face_conf` 1,0; EAR mắt mở lớn hơn mắt nhắm ít nhất 0,2; góc đầu dưới 15°; `eyeBlink` mở < 0,2, nhắm > 0,3 | EAR 0,41 / 0,02; `eyeBlink` 0,001 / 0,60 |
+  | 3 | Frame xám đều và frame nhiễu: không có mặt | – |
+  | 5 | Đường của một frame có trigger: landmark → cắt mắt → CNN → `p_closed` trong 0–1, mở < 0,05 < nhắm | 0,00 / 0,09–0,18 |
+  | 4 | YOLO thật chạy trên ba cỡ frame, không thấy điện thoại; qua luồng riêng thì trả kết quả đúng frame đã đưa | `()` |
+
+- **Đo FPS** (`tools/benchmark.py`): `--condition drawn_face` (không cần `--source`; cỡ frame lấy từ `capture.camera_width` / `camera_height`) và `--check` (mã thoát 1 khi một tiêu chí được chấm không đạt, hoặc khi FPS không chấm được vì chạy dưới 30 s). Lệnh của CI: `--duration 90s --pace-fps 0 --condition drawn_face --check`. Trên Mac: 138,6 FPS, p95 8,4 ms, YOLO 5,0 lần / s
+- **Bốn test của A5 M8:**
+
+  | Test | Trước | Nay |
+  |---|---|---|
+  | `test_enrollment.py::test_backend_gets_the_status_not_the_profile` | Tìm chuỗi `"1.5"` trong JSON có dấu thời gian thật (`…:51.5…` là đỏ) | Truyền `now` cố định; bỏ `event_id` ngẫu nhiên khỏi chuỗi được quét |
+  | `test_phone_detector.py::test_slow_model_does_not_block_submit` | 50 lần `submit` phải xong dưới 0,1 s | Model bị giữ trong một lần chạy; 49 lần `submit` phải trả về trong lúc đó. Không còn ngưỡng thời gian |
+  | `test_publisher.py::test_publish_does_not_block_when_backend_hangs` | 20 lần `publish` phải xong dưới 0,5 s | Như trên, backend bị giữ trong một request |
+  | `test_frame_source.py` (ba test mất camera) | `sleep` 0,3 s / 0,2 s rồi kiểm; hạn chờ 3 s; `frame_timeout_s` 0,1 s | Hỏi lại tới khi điều kiện đạt (hạn 10 s); `frame_timeout_s` 0,5 s |
+
+- **Giới hạn, cần đọc đúng:**
+  - FPS của CI là FPS của máy chạy GitHub trên mặt vẽ: bắt được việc thêm model hoặc bước chậm vào vòng lặp chính, **không** phải FPS của màn hình xe (ước lượng 11–14, phụ lục J của `improvements.md`) và không đo bản web
+  - Mặt vẽ không nói gì về độ chính xác trên mặt thật. YOLO không thấy điện thoại nào trong đó, nên khối 4 chỉ được kiểm "chạy được, không báo bừa", chưa kiểm "thấy điện thoại"
+  - `yolov8n.onnx` của CI là file trên release, khác sha256 với file đã đo ở máy (phát hiện của M86, vẫn chờ anh quyết định)
+  - MediaPipe trên Linux x86 của máy CI chưa được thử với mặt vẽ (máy này không có Docker): lần chạy đầu trên GitHub sẽ trả lời
+- **Chưa làm, để anh quyết định:**
+  - Job `deploy` chưa `needs: models`: một lần FPS thấp trên máy dùng chung sẽ chặn deploy. Nếu anh muốn model thật là điều kiện deploy thì thêm một dòng
+  - Phần còn lại của A5 M5: test "số trong `report.md` = số công cụ in", đo độ phủ, lint `scripts/`
+  - `test_phone_detector.py::test_async_detector_runs_at_target_fps_on_latest_frame` (6–12 lần chạy trong 1 s thật) và các test khác dùng luồng thật (A1 L4) vẫn phụ thuộc đồng hồ; audit A5 M8 không nêu nên chưa đụng
+- Test: 10 test mới ở `test_m87_ci_real_models.py`; `ruff check` / `ruff format --check` sạch trên `edge_agent/ backend/ tools/ tests/`. Cả bộ Python lúc 06:15: 1480 pass, 8 đỏ ở `test_decision.py`, `test_m44_unresponsive.py`, `test_m77_non_finite.py`, `test_m85_no_hardcode.py`, đều do file các phiên khác đang sửa dở (`risk_engine.py`, `thresholds.yaml`, `publisher.py`), không file nào thuộc mốc này
+
+<a id="m88"></a>
+
+#### M88: Bù test còn thiếu: `agent.ts`, âm thanh `HudScreen.tsx`, worker YOLO, lịch chạy khối 1 và 4, khối 2, 12 (test, một công cụ sinh fixture)
+
+**Xong là thấy gì:** `cd frontend && npm test`: 267 pass, 1 "expected fail", trong đó 94 test mới (trước mốc này `agent.ts`, `HudScreen.tsx`, `yolo.worker.ts` chưa có test nào). `pytest tests/test_edge_agent/test_m88_missing_tests.py`: 69 pass, 3 xfail, chạy trong 3 s, không `sleep` thật. Xoá dòng `this.frameError(err)` trong `agent.ts`, hoặc dòng `if (s.connected) setMode("live")` trong `HudScreen.tsx`, hoặc đổi `next_run = max(next_run + period, ...)` trong `phone_detector.py`: mỗi chỗ có đúng test đỏ nói ra điều bị mất
+
+**Trạng thái:** Xong (09/10). Làm theo [audit-4-output-platform.md](audit-4-output-platform.md) mục M10, [audit-1-perception.md](audit-1-perception.md) mục L4, [audit-3-risk-alert.md](audit-3-risk-alert.md) mục L5 (dòng "A4 M10", "A1 L4", "A3 L5" ở mục 7 của [audit-2026-10-08.md](audit-2026-10-08.md)). **Chỉ thêm test**: không đổi dòng nào của `edge_agent/`, `backend/`, `frontend/src/` ngoài file test, không đổi ngưỡng. Thêm một devDependency (`jsdom`) và một công cụ (`tools/measure_fixture.py`)
+
+- **Phần đã có sẵn, không viết lại.** Rà từng ca của A1 L4 và A3 L5 với test hôm nay: dừng ngắn rồi chạy lại, `long_drive` sau nghỉ / đổi tài xế (M73); L1 kéo dài, đợt bắt đầu trong cooldown, lý do dưới mức cao hơn, mặt chập chờn (M74); số mẫu sau `change_driver` / `reconfigure` (M79); 1–5 km/h (M72); số không hữu hạn (M77); hai frame quanh một khoảng đứng (M71); frame không đều ở mức pipeline (M75); luồng YOLO gặp exception (M78); ảnh đứng hình (M83); ba test mất camera dùng `sleep` cố định (M87). Mốc này chỉ làm phần còn hở
+- **`agent.ts` (`frontend/src/live/agent.test.ts`, 38 test).** Lớp `LiveAgent` thật, dựng trên jsdom; giả: Python (`WebAgent`), camera và `<video>`, canvas, `postWebBatch`, `fetch`, đồng hồ (`vi.useFakeTimers`). Không model, không ảnh
+  - Gửi (khối 14): thứ tự lô rồi nhịp; khách thì không gì rời trình duyệt; không gửi được (0, 5xx) thì giữ nguyên thứ tự và gửi lại; hai vòng gửi chồng nhau không gửi trùng; nhịp lỗi không giữ lô lại, chỉ giữ nhịp mới nhất; gửi theo `flush_interval_s` và gửi ngay khi state có `flush`; hàng đợi vượt `publisher.max_queue` bỏ bản cũ nhất, không bỏ bản đang gửi (code của phiên "Low" làm song song)
+  - Tốc độ (khối 10): số đọc mới của `#/drive` được chuyển cho Python và không hỏi bộ giả lập; điều khiển đã ghép mà im quá `stale_s` là mất tín hiệu, không lấy bộ giả lập thay; chưa ghép (404) hoặc backend không tới được thì đọc bộ giả lập; không có nguồn nào thì Python không bao giờ nhận tốc độ (đúng tình huống việc 1 của top 10); không hỏi chồng; câu trả lời tới sau khi dừng không được chuyển
+  - Dừng: gửi nốt rồi mới nhả camera, model, Python; không còn timer nào; `stop()` lần hai không làm gì; frame tới sau khi dừng không được xử lý. `endTrip`: `local` / `sent` / `failed`
+  - Vòng lặp (khối 1): mỗi frame mới tới Python đúng một lần với giờ tăng dần; trình duyệt ngừng gọi thì sau `frame_timeout_s` timer kéo frame, và thôi kéo khi trình duyệt gọi lại; hình đứng yên thì mất camera, xin lại camera, có lại; track `ended` thì mất ngay và xin lại mỗi `reconnect_interval_s`; camera về sau khi đã dừng thì stream mới bị nhả; cùng một ảnh suốt `frame_timeout_s` là mất camera; frame lỗi phía trang được báo cho Python **chỉ bằng tên lớp lỗi**; Python cũng lỗi thì vòng lặp vẫn xin frame kế
+  - HUD: cảnh báo mới được đẩy ngay trong frame mang nó, một lần, và thôi sau khi huỷ đăng ký
+- **Âm thanh của `HudScreen.tsx` (`frontend/src/hud/HudScreen.test.tsx`, 22 test).** `HudScreen` được mount thật (`react-dom` + `act`), `chime.ts` thay bằng bản ghi "cái gì sẽ kêu", `HudView` thay bằng bản ghi props
+  - Cảnh báo đẩy tới kêu ngay, câu nói sau `chime_to_voice_s`, kêu một lần dù được hỏi lại mười lần; nguồn không đẩy được thì kêu ở lần hỏi kế; mở HUD giữa chuyến có nhiều cảnh báo cũ thì không kêu lại
+  - Còi L3 lặp mỗi `alarm_repeat_s` chừng nào mắt còn nhắm, dừng khi mắt mở; không lặp khi mất camera
+  - Mất / có lại: camera, mặt (`unavailable`), lỗi xử lý, dữ liệu cũ quá `stale_s`, mất kết nối sau `link_down_failures` lần hỏi, tín hiệu xe; không kêu sau khi chuyến đã kết thúc
+  - "Bạn còn ở đó không?": kêu ngay và mỗi `presence_repeat_s`, không ai trả lời thì còi L3, hết khi thấy mặt
+  - Đăng ký: bước mới được đọc, hết bước thì bíp trước
+  - **Câu hỏi của audit, "vào chế độ mô phỏng có còn nghe cảnh báo thật không":** có. Trên `#/live` và trên HUD đang giám sát thì không có nút mô phỏng; ở HUD chưa có thiết bị, khi thiết bị bắt đầu giám sát thì màn hình về chế độ thật trong một lần hỏi (0,3 s) và cảnh báo L3 thật kêu, còi lặp chạy
+- **Worker YOLO (`frontend/src/live/yolo.worker.test.ts`, 15 test).** Hàm xử lý message thật, ONNX Runtime và adapter GPU giả: có GPU thật thì WebGPU; không adapter / adapter phần mềm / `phone.web_gpu` tắt thì wasm và không thử WebGPU; WebGPU không dựng được hoặc hỏng ở lần chạy thử thì wasm; session WebGPU chết giữa chừng thì lần đó báo lỗi rồi wasm thay và trả lời tiếp; chỉ lùi một lần
+- **Khối 4 và khối 1 trên đồng hồ giả (`test_m88_missing_tests.py`).** Vòng lặp của `AsyncPhoneDetector` và của `FrameSource` chạy ngay trong luồng của test, module `time` và sự kiện dừng được thay bằng một đồng hồ do test đẩy. Không đổi code: test thay thuộc tính của đối tượng
+  - Khối 4: YOLO chạy đúng mỗi `1 / target_fps` trên frame mới nhất (khoảng 60 frame được đưa, 20 lần chạy, lệch 0); model chậm hơn chu kỳ thì chạy nối nhau và **không chạy bù** khi nhanh lại; lần chạy lỗi không làm lệch lịch; kết quả cũ quá `max_result_age_s` là không rõ, cảnh báo một lần; không có frame thì chờ 0,5 s một lần, không quay vòng
+  - Khối 1: camera mất sau 30 lần đọc lỗi liên tiếp (0,29 s), được xin lại **đúng** mỗi `reconnect_interval_s`, handle hỏng được nhả, mở lại được thì frame đầu tới sau một chu kỳ frame và số frame đi tiếp; lỗi driver khi mở lại là một lần thử hỏng; tắt reconnect thì luồng kết thúc ngay; vài lần đọc lỗi lẻ không phải mất camera; `read()` treo thì mất sau đúng `frame_timeout_s`; file video được nhả theo FPS của nó và không dồn frame sau một frame chậm
+  - `test_phone_detector.py::test_async_detector_runs_at_target_fps_on_latest_frame` (M87 để lại): bỏ khoảng "6 đến 12 lần trong 1 s", còn là test khói trên luồng thật
+- **Khối 2.** `resize` giữ tỉ lệ ở 7 kích thước (không phóng to, không ra chiều cao 0), `scale` quy toạ độ về ảnh gốc. Ảnh màu sáng không phải hồng ngoại. **Ảnh màu tối không phải hồng ngoại: `xfail(strict)` ở ba mức sáng**, đây là A1 H1 chưa sửa; sửa xong thì test đỏ và gỡ dấu
+- **Trang và thiết bị đo cùng một ảnh (A1 L4, "ba bản không có test so chéo").** `tools/measure_fixture.py` (mới) ghi `frontend/src/live/measure.fixture.json`: ba ảnh tổng hợp 40 × 30 (sóng + vân, không phải ảnh camera) và số của khối 2, 5, 6 trên đó. Test Python tính lại trên điểm ảnh trong file; `measureCross.test.ts` (19 test) bắt `measure.ts` rơi trong sai số ghi ở file
+
+  | Số đo | Thiết bị so với trang, trên ba ảnh | Sai số cho phép |
+  |---|---|---|
+  | Độ chênh kênh (phép thử hồng ngoại) | bằng nhau | 10⁻⁶ |
+  | Độ sáng vùng mặt | lệch tới 0,21 | 0,5 |
+  | Độ sáng cả khung | lệch tới 0,23 (thiết bị lấy mọi điểm ảnh, trang lấy mỗi điểm thứ 4) | 0,5 |
+  | Độ tương phản cả khung | lệch tới 0,07 | 0,5 |
+  | Độ nét (phương sai Laplacian) | 10,4 so với 9,4 ở ảnh tối; 1 263 so với 1 243 (1,6 %) ở ảnh có vân | 2,0 + 2 % |
+
+  Lý do lệch: thiết bị làm tròn độ sáng từng điểm ảnh về số nguyên (Y của OpenCV), trang giữ phần lẻ. `quality.blur_sharpness` là 3, nên quanh ngưỡng mờ hai bên có thể lệch nhau khoảng 1
+- **Khối 12 với ngưỡng của YAML.** Test đơn vị cũ dùng cooldown L3 10 s, YAML là 0: L3 phát ngay ở frame đầu; microsleep thứ hai sau `fall_hold_s` là cảnh báo mới ngay; mắt mở ngắn hơn `fall_hold_s` vẫn là một L3; mức hạ sau đúng `fall_hold_s`. Frame không đều (12 FPS, 12 hạt giống): mức được xác nhận theo thời gian, sớm nhất sau `rise_confirm_s`, muộn nhất thêm một khoảng frame; tám lần nhìn lệch ngắn hơn thời gian xác nhận không bao giờ thành cảnh báo
+- **Ngữ cảnh trên trace thật (dòng cuối của A3 L5).** 44 video fixture replay hai lần, 12:00 chưa lái và 02:00 sau 4 giờ lái: `drowsy_score` ban đêm đúng bằng `min(điểm ban ngày × 1,44, 100)` ở mọi frame; sự kiện và số đo của khối 7, 8 không đổi; mức không bao giờ thấp hơn; cảnh báo của luật khác (`microsleep`, `off_road`, `phone`) ở cùng frame, cùng mức; không video nào ít cảnh báo hơn
+- **Kiểm test có bắt lỗi không:** làm hỏng code ở 20 chỗ, mỗi chỗ một lần (10 chỗ ở `agent.ts` / `HudScreen.tsx`, 10 chỗ ở Python trên một bản sao ngoài repo): chỗ nào cũng có test đỏ
+- **Bốn chỗ test nêu ra việc chưa sửa** (không sửa trong mốc này, chờ anh quyết định):
+  1. `stop()` chờ vòng gửi cuối rồi mới nhả camera, mà `POST` không có hạn chờ: backend treo thì camera không tắt (A4 M1). Test viết điều mong muốn và đánh dấu `it.fails`
+  2. Lô bị backend từ chối (4xx) bị bỏ cả lô, tới `publisher.web_batch_size` bản ghi (A4 M1). Test ghim hành vi hiện tại, có ghi chú
+  3. Token hết hạn (401): lô đầu được thử lại mãi, mọi lô sau xếp hàng sau nó (A4 H2). Test ghim hành vi hiện tại
+  4. Ảnh màu tối bị nhận là hồng ngoại (A1 H1): `xfail`, và fixture so chéo cho thấy cả trang lẫn thiết bị đều nhận như vậy
+- **Hai hành vi của HUD thấy khi viết test, ghim nguyên trạng:**
+  - Cảnh báo (và "mất tín hiệu xe") tới trong lúc trình duyệt còn chặn tiếng thì không bao giờ được phát bù sau lần chạm đầu tiên; còi L3 lặp và câu hỏi hiện diện thì bắt đầu ngay khi có tiếng
+  - Mở HUD giữa chuyến mà danh sách có **đúng một** cảnh báo cũ thì cảnh báo đó kêu lại (chỉ danh sách từ hai cảnh báo mới được coi là lịch sử)
+- **Chưa làm / còn hở:**
+  - Đề xuất của A4 M10 "tách phần gửi của `LiveAgent` thành một lớp thuần": không tách, vì test được lớp thật mà không phải sửa code. Tách vẫn có ích khi sửa A4 M1 / H2
+  - `LiveAgent.start` (xin camera, tải song song, lùi delegate GPU → CPU) chưa có test: cần giả thêm Pyodide và MediaPipe
+  - E2E chưa có kịch bản tắt mạng, token hết hạn, camera rớt (A4 M10); test ở mốc này phủ các ca đó ở mức lớp, không ở trình duyệt thật
+  - Ngữ cảnh trên trace: kiểm bằng quan hệ (đêm = ngày × hệ số), **không ghim số cảnh báo ban đêm** vào `expected.json` (file đó phiên M86 vừa ghim lại)
+  - `test_decision.py` vẫn dùng `cooldown_s` L3 = 10 trong `CFG`; không đổi, đã có test nói rõ khác biệt
+  - Bản web xin lại camera trễ tới một lần nhìn (1 s) so với `reconnect_interval_s`, và hình đứng yên được coi là mất camera sau 6–8 s (hai lần `frame_timeout_s` cộng tới hai lần nhìn); bản thiết bị là 3 s. Test ghi đúng các con số này
+  - `jsdom` 29.1.1 (không phải 30): bản 30 đòi Node từ 22.22, `package.json` khai báo từ 20.19
+  - Chưa chạy e2e (không đổi code frontend ngoài test). Trong lúc làm có bốn phiên khác sửa cùng cây làm việc; lần kiểm "làm hỏng code" đầu tiên em sửa tạm rồi khôi phục `agent.ts` và `HudScreen.tsx` tại chỗ trong khoảng 15 giây (từ 06:12:36), ngay trước khi phiên "Low" ghi `agent.ts` (06:13:22). Đã so lại: thay đổi của phiên đó còn đủ; các lần sau em làm trên bản sao
+- Test: 1589 test Python pass, 10 xfail (7 của M75, 3 của mốc này) trên cây làm việc có M87, M89, M90 chưa commit; vitest 267 pass + 1 expected fail; `tsc -b`, `vite build`, `ruff check`, `ruff format --check` sạch
+
+<a id="m89"></a>
+
+#### M89: Khung giờ của màn hình tách khỏi khung giờ của điểm; bố cục cho màn hình dọc (khối 10, 13)
+
+**Xong là thấy gì:** chuỗi số giả, 60 km/h, một lần nhắm 1,1 s: lúc 20:00 state của HUD có `dim: true`, `night: false` và điểm buồn ngủ cao nhất bằng đúng lúc 12:00; lúc 02:00 cả hai cờ bật và điểm nhân `risk.drowsy.night_factor` như trước. `#/hud-preview` ở 800 × 1 280 và 1 200 × 1 920: stage `data-shape="portrait"`, không cuộn, không phần tử nào ra ngoài màn hình, "Cảnh báo này sai?" một dòng nằm trên hai nút "Đổi tài xế" / "Kết thúc chuyến"
+
+**Trạng thái:** Xong (09/10). Làm theo [audit-2026-10-08.md](audit-2026-10-08.md) mục 4.1 dòng X6 và [audit-4-output-platform.md](audit-4-output-platform.md) mục M9. Một khoá mới: `hud.dim_hours` (`[[18, 6]]`, tạm). `context.night_hours` giữ `[[0, 5]]`: **không số báo sai nào đổi**. Bản web dùng chung `HudState` nên nhận cùng cờ. Số mốc là M89 vì năm phiên chạy song song sáng 09/10 và M87 đã có chủ
+
+- **Trước:**
+  - `context.night_hours` [0, 5) làm hai việc: nhân điểm buồn ngủ ×1,2 (khối 9) và làm mờ HUD 20 % ở L0–L1 (`HudView.tsx` đọc `snap.night`). Từ chập tối tới nửa đêm HUD sáng nguyên; muốn mờ sớm hơn thì phải nới khung giờ, tức tăng điểm (M73 đo: 02:00 làm cửa sổ ≥ L1 của người tỉnh táo từ 3,7 % lên 5,9 %)
+  - Màn hình dọc rơi về bố cục co giãn của điện thoại. Chụp `#/hud-preview` trước khi sửa: 800 × 1 280 trang cao 1 344 px (L0), 1 413 px (L1), 1 420 px (chưa có tiếng), tức thẻ tốc độ và thanh nút nằm dưới mép màn hình, phải cuộn; 1 200 × 1 920 thì đủ 1 024 px nên dùng bố cục **ngang** hai cột kéo dài 1 920 px, chữ nhỏ 11 px không phóng
+  - Điểm ngắt (`sm:` / `lg:`) và cỡ chữ (`clamp(…vw…)`) của HUD tính theo màn hình, không theo stage: ở stage 1280 × 800 trên màn hình 1 024 px, tiêu đề nhỏ hơn bản vẽ dù cả stage đã được thu nhỏ
+- **Khung giờ của màn hình** (`edge_agent/hud/server.py`): `HudConfig.dim_hours`, cùng cách viết với `night_hours` (`[bắt đầu, kết thúc)`, qua nửa đêm được, `[]` = không bao giờ mờ). `HudState.update` gửi `dim` cạnh `night` trong mỗi state. `HudView` làm mờ theo `hudModel.hudDimmed(snap, level, system)` (đọc `snap.dim`); biểu tượng mặt trăng cạnh đồng hồ cũng theo `dim`. `night` còn trong state cho dòng terminal của bản thiết bị, trang không đọc nữa. L2, L3 và mọi màn hình "không giám sát" vẫn sáng nguyên như trước
+- **Stage dọc** (`frontend/src/hud/HudStage.tsx`, `stageLayout` thay `stageScale`): màn hình rộng từ 640 px, cao gấp 1,2 lần rộng trở lên → stage 800 × 1 280 co theo màn hình như stage ngang. Điện thoại (hẹp hơn 640 px) và cửa sổ gần vuông giữ bố cục co giãn, có cuộn
+- **Điểm ngắt theo stage** (`frontend/src/index.css`): stage là container `hud`; `hud-sm` / `hud-md` / `hud-lg` (640 / 768 / 1 024 px, cùng số với `sm` / `md` / `lg`) hỏi bề rộng stage. 46 chỗ trong `HudView.tsx` và `TripSummaryView.tsx` chuyển sang; hộp thoại xác nhận nằm ngoài stage nên giữ `sm:`. Cỡ chữ `clamp` đổi `vw` → `cqw`. Hệ quả ở chiều ngang: stage 1280 × 800 nay đúng bản vẽ ở mọi cỡ màn hình (ở đúng 1 280 px không đổi gì; ở 1 024 px tiêu đề to hơn trước, vẫn trong khung)
+- **Riêng cho stage dọc** (`hud-tall:`): thẻ trạng thái nhận phần chiều cao còn lại thay cho chiều cao tối thiểu 46 / 52 % màn hình; thanh dưới thành hai hàng (ghi chú hoặc "Cảnh báo này sai?" một hàng, hai nút một hàng; trước đó nút báo sai bị ép thành cột 170 px, chữ gãy 5 dòng); ba ô của màn hình sự cố xếp dọc (trước bị cắt "Đang thử …", "Nguồn và…"); năm tiêu đề chính có cỡ riêng (54–112 px)
+- **Đã chụp và xem** (Chromium, `#/hud-preview`, 23 kịch bản × 800 × 1 280 và 1 200 × 1 920; thêm 12 kịch bản ở 1 280 × 800, 1 024 × 768, 390 × 844): hai cỡ dọc cho cùng một bố cục, không phần tử nào ra ngoài màn hình; chiều ngang và điện thoại giữ bố cục cũ
+- **Chưa làm / còn hở:**
+  - **Ô tự xem của `#/live` che nút, ở cả hai chiều** (đo bằng một hộp cùng cỡ và chỗ đặt, 176 px ở góc dưới trái): chiều ngang che 62 % nút "Cảnh báo này sai?" (có từ M64, không phải do mốc này); chiều dọc che 22 % nút đó và 44 % nút "Đổi tài xế". A4 M9 đề xuất ẩn ô tự xem khi xe chạy; mốc này không đụng, **chờ anh quyết**
+  - 18–6 giờ là theo đồng hồ, không đọc ánh sáng: hè 18:00 còn sáng, hầm và trời mưa tối thì không mờ. Mức mờ vẫn là 20 % viết trong `HudView` (kiểu dáng, không phải ngưỡng), chưa ai xem trong cabin tối
+  - `context.night_hours` [0, 5) không đổi: chập tối tới nửa đêm vẫn không có hệ số đêm. Nới hay không là quyết định về báo sai, có số của M73 để cân
+  - `hud.*` không nằm trong các mục nạp lại giữa chuyến: đổi `dim_hours` trên dashboard có hiệu lực từ lần khởi động sau
+  - Android box xuất hình ngang hay dọc, và bao nhiêu px: chưa biết (không còn thiết bị). Hai stage phủ cả hai; chưa ai xem trên màn hình 10 inch thật. Cần trình duyệt có container query (Chrome / WebView 105 trở lên)
+  - `#/live` thật (camera, ô tự xem, bước đăng ký có ảnh) chưa mở ở khổ dọc; chỉ có các màn hình vẽ sẵn. Điện thoại 390 px: huy hiệu "Chú ý" đè lên tiêu đề L1, có từ trước, không sửa ở đây
+- Test: 11 test Python mới (`test_m89_dim_hours.py`), 2 test vitest mới và 1 test sửa (`m58.test.ts`), 4 test e2e mới (`frontend/e2e/portrait.e2e.ts`, pass). vitest 266 pass, `tsc` sạch. Cả bộ Python: 1483 pass, 5 fail đều ở phần các phiên khác đang sửa dở lúc chạy (`blink_rate` × 2, `publisher._wake`, trường `conflicts` của backend, hai số mới trong `distraction.py` / `publisher.py` bị phép quét hardcode bắt); chưa chạy lại sau khi các phiên đó xong
+
+<a id="tai-lieu-audit"></a>
+
+#### Sửa tài liệu theo audit 08/10 (không đánh số): 33 chỗ lệch code, thứ tự việc, giai đoạn pilot, M66
+
+**Xong là thấy gì:** `docs/risk_engine_spec.md` khớp `edge_agent/decision/risk_engine.py`; tốc độ từ GPS là việc 4 của `improvements.md`, mô tả đúng hai chiều hỏng; `pilot-readiness.md` ghi thẳng giai đoạn 2–4 không có trong kế hoạch; không liên kết nào vào `improvements.md` còn gãy
+
+**Trạng thái:** Xong (09/10). Làm theo [audit-2026-10-08.md](audit-2026-10-08.md) mục 6.2 và bốn bảng "tài liệu lệch code" (A1 mục 3.6, A2 L7, A3 mục 3.7, A4 mục 3.5). Không đổi logic, không đổi ngưỡng, không đổi số đo nào. Chưa có số mốc: lúc làm có phiên khác đang dùng M87.
+
+- **33 chỗ lệch code: 23 chỗ sửa ở đây, 10 chỗ đã đúng sẵn** sau M70–M86 (mặc định `low_light_brightness`, cài đặt camera của bản web, mở lại camera trên web, `bad_angle` là lý do tạm ngưng, mốc tư thế sau đăng ký, bằng chứng lúc dừng, ngày của `pilot-readiness.md`, docstring nạp ngưỡng, dòng D1, chữ "Đang kết nối lại…")
+- **`docs/risk_engine_spec.md`:** chữ ký `assess` có `quality`, `RiskAssessment` có `unavailable_reason`; thêm luật L3 `unresponsive`; `trend` là L0 (chỉ ghi nhận từ M53); công thức điểm bỏ `10·slow_blink + 10·brow` (trọng số 0), tổng trọng số 100 chứ không phải 120; đứng yên là mức 0 từ M30 chứ không phải L1; thêm ngoại lệ `turned_away`; mục câu hỏi mở viết lại
+- **Docstring và comment (không đổi code):** `risk_engine.py` (công thức, `trend`, chuông ở đèn đỏ), `alert_manager.py` ("mức cao hơn luôn được phát" sai: cooldown của chính mức đó vẫn giữ), `hud/hud.py` (không còn là "HUD tối thiểu M4"), `config/thresholds.yaml` (cài đặt camera là của bản thiết bị; tổng điểm 0..100 là trước hệ số ngữ cảnh), `tools/trace_studies.py` (`is_ir` bằng 0 chỉ đúng với các dataset đó), `main.py` (ví dụ `--hud-origin` không còn ghi địa chỉ của v1)
+- **`frontend/src/live/LiveScreen.tsx`:** "Dùng thử: không gửi gì đi" thành "không gửi số liệu giám sát"; trang vẫn hỏi máy chủ tốc độ xe mô phỏng 4 lần mỗi giây ở chế độ này
+- **`docs/safety-fmea.md`:** ba liên kết `#viec-apk` và một `#viec-do-phan-cung` trỏ về danh sách đã bỏ 08/10; dòng 14 sửa câu về mức cao hơn; dòng 15 ghi rõ bản web cần CDN và server lúc khởi động, và chưa từng có tốc độ thì là đỗ
+- **Ba địa chỉ Railway:** kiểm 09/10 bằng `/health` và `/openapi.json`, cả ba đang chạy: `driveguard-production-5093` là v3 (27 đường API, có `/api/v1/policy`, `/api/v1/fleet`), `driveguard-v2-production` là v2.2 (17), `driveguard-production-6b83` là v1.1 (13). `README.md` và `release-v3.md` ghi cả ba; `release-v3.md` bỏ câu "chưa deploy". Chưa kiểm bản v3 đang chạy gồm tới mốc nào
+- **APK:** `README.md`, `architecture_diagram.md`, `safety-fmea.md` ghi APK là thiết kế, đóng gói đã bỏ 08/10, đầu ra là bản web mô phỏng. `architecture_diagram.md` ghi file INT8 không dùng được
+- **`CLAUDE.md`:** khối 5 chạy sau khối 6 (trigger cần EAR từng mắt); `face_conf` là tỉ lệ landmark nằm trong ảnh
+- **Mục 6.2, bảy chỗ mâu thuẫn thứ tự trong `improvements.md`:**
+  1. Nộp bài dùng số M69: đã hết từ M70 (gọi đủ tên "nhánh buồn ngủ" / "mọi nhánh")
+  2. GPS từ việc 12 "trung bình đến thấp" lên **việc 4, nhóm riêng, độ nên làm cao**; mô tả sửa chiều hỏng: chưa từng có số đọc thì khối 10 coi là đỗ, không cảnh báo nào. Việc 4–11 cũ thành 5–12; 22 liên kết có số được sửa theo
+  3. Hàng đợi offline (việc 13): thêm điều kiện làm trước, phiên đăng nhập hết hạn sau 60 phút thì mọi lô bị 401
+  4. Đường đi của frame: đồng hồ canh đã đi trước ở M71, ghi lại trong phần mở đầu nhóm
+  5. `rise_confirm_s`: khoảng hở giữa hai frame đã sửa ở M71; thêm yêu cầu thử cả chuỗi có khoảng hở
+  6. `l1` 40 → 50: không chốt trên tập giữ riêng đã đọc nhiều lần; cần DROZY, k-fold khai báo trước, hoặc giờ lái thật
+  7. `pilot-readiness.md` giai đoạn 2–4: đánh dấu "không có trong kế hoạch từ 08/10", ghi tiêu chí nào không có đường để đạt; C3 ghi chiều hỏng khi chưa có tốc độ; hai liên kết gãy (`#viec-chat-luong`, `#viec-xac-nhan`) trỏ về M43, M44
+- **M66 bị nhảy:** M66 có trong roadmap từ lần gộp `main`, ở mục "Vận hành"; thêm ghi chú ở bảng tổng quan và phần chi tiết của Version 4 để chỗ M65 → M67 không còn bị đọc là thiếu mốc
+- **Không sửa:** năm file `audit-*.md` (ảnh chụp ngày 08/10, số việc trong đó là số cũ); ba chỗ trong phụ lục của `improvements.md` gọi số việc theo cách đánh số trước 08/10; tiêu đề phần chi tiết "Version 2 (M9–M21)", "Version 3 (M32–M42)" lệch bảng tổng quan
+- **Còn hở, chưa có việc nào trong `improvements.md`:** hành vi khi chưa từng có tốc độ (ghi trong việc 4, chờ quyết định); phiên đăng nhập hết hạn giữa chuyến (ghi trong việc 13); `is_ir` trên ảnh màu tối; đóng gói runtime thay cho CDN
+- Test: `ruff check` / `ruff format --check` sạch trên các file Python đã chạm; `vitest` 247 pass. `pytest tests` cả bộ: 1480 pass, 5–8 test đỏ tuỳ lần chạy, đều ở phần phiên khác đang sửa dở cùng lúc (luật `blink_rate` của `risk_engine.py`, `publisher.py`, `backend`), không ở file nào của thay đổi này ngoài docstring; chưa chạy lại được cả bộ trên một cây đứng yên
+
+
+<a id="m90"></a>
+
+#### M90: Các phát hiện Low còn lại của audit: `blink_rate`, số mẫu của `phone_ratio_2s`, trần cho các cấu trúc, outbox, hàng đợi web (khối 1, 4, 7–11, 14, backend)
+
+**Xong là thấy gì:** `pytest tests/test_edge_agent/test_m90_small_findings.py tests/test_backend/test_m90_event_id_conflict.py`: 32 pass. Chuỗi số giả 30 FPS: 15 lần chớp mỗi phút, mặt chỉ thấy nửa thời gian, `blink_rate` đọc 15 (trước: 8). Một frame có điện thoại giữa toàn frame không có kết quả YOLO: `phone_ratio_2s` 0 (trước: 1,0 trong 2 s). Nhắm mắt 1 s, gục, mất mặt 60 s: L3 trong 30 s rồi "tạm ngưng" `no_face` và câu "Bạn còn ở đó không?" (trước: L3 suốt 60 s). Đỗ 10 phút với PERCLOS cao: `drowsy_score` 0 (trước: 55). Xi nhan trái bật mãi ở 60 km/h: `turn_side` hết sau 32 s (trước: không bao giờ).
+
+**Trạng thái:** Xong (09/10). Làm theo [audit-2-features.md](audit-2-features.md) mục L1–L3, [audit-3-risk-alert.md](audit-3-risk-alert.md) mục L2, L3, L6, [audit-4-output-platform.md](audit-4-output-platform.md) mục L2–L5, [audit-1-perception.md](audit-1-perception.md) mục L5. Số mốc là M90 vì các phiên chạy song song sáng 09/10 đã dùng M87–M89. Sáu khoá mới, một khoá đổi giá trị (`risk.blink.min_observed_s` 60 → 30, đổi cả nghĩa). **Test hồi quy trace không đổi kết quả nào** (44 video × ba đường, `expected.json` không ghim lại)
+
+- **`blink_rate` (A2 L1, A3 L6)** (`drowsiness/eyes.py`, `analyzer.py`, `risk_engine.py`):
+  - Trước: số lần chớp trong 60 s chia cho thời gian đồng hồ từ frame đầu của chuyến. Thấy mắt nửa thời gian thì đọc nửa nhịp; 30 s sau khi điểm được xoá (đăng ký xong, M68) cũng đọc nửa
+  - Nay: chia cho số giây đọc được mắt trong cửa sổ đó (ít nhất `blink_rate_min_span_s`). Số giây này ra ngoài là `DrowsinessState.blink_observed_s`
+  - Luật `blink_rate` của khối 9 (đang ở mức 0, chỉ ghi nhận) chờ `risk.blink.min_observed_s` giây **dữ liệu mắt** trong cửa sổ, trước là chờ ngần ấy giây từ đầu chuyến. Vì cửa sổ dài 60 s, ngưỡng cũ 60 chỉ đạt khi thấy mắt 100 % thời gian, nên đổi thành 30 (bằng độ phủ tối thiểu của PERCLOS). Luật mới trong `consistency_errors`: ngưỡng này ≤ `drowsiness.blink_window_s`
+- **`phone_ratio_2s` (A2 L2)** (`analysis/distraction.py`): đọc 0 cho tới khi cửa sổ 2 s có `distraction.phone_min_coverage_s` (0,5 s, tạm) kết quả YOLO. Sau khi xe chạy lại (cửa sổ vừa bị xoá), cảnh báo `phone` sớm nhất là sau 1,0 s thay cho 0,5 s; cửa sổ đầy thì tỉ lệ như cũ
+- **Trần cho trạng thái của khối 7 (A2 L3)** (`drowsiness/eyes.py`, `head.py`):
+  - Lần nhắm mắt được đếm tiếp qua lúc gục kết thúc sau `drowsiness.head_drop.carry_max_lost_s` (30 s, tạm) không thấy mắt lẫn đầu đang cúi. Sau đó khối 9 chuyển sang "tạm ngưng" `no_face` và khối 12 hỏi "Bạn còn ở đó không?". Đầu còn thấy đang cúi thì vẫn đếm không giới hạn. Còi L3 và `unresponsive` (6 s) đã kêu từ lâu trước mốc 30 s
+  - `_dip_track` của gục đầu chỉ ghi trong `nod.max_s` (2 s) đầu của một cú cúi: sau đó cú cúi không thể là `nod` nữa. Kết quả `nod` / `bow` không đổi. Trước: 900 phần tử sau 30 s giữ đầu cúi
+- **Khối 11 (A3 L2, L3, L6)** (`decision/trip_memory.py`, `trip_summary.py`):
+  - Độ dốc `trend_15min` chỉ tính lại khi một phút đóng hoặc khi `forget_since` chạy. Trước: `np.polyfit` ở mọi frame (62 µs, khoảng 1 / 5 của `DecisionPipeline.step`)
+  - Trục thời gian của độ dốc là số thứ tự phút thật: phút bị bỏ (nghỉ, đứng hình) vẫn là một phút. Trước: hai điểm hai bên một lần nghỉ 10 phút được coi là cách nhau một phút. Chuỗi phút liền nhau cho đúng số cũ
+  - `_microsleeps` giữ `trip_memory.microsleep_history` (32) mốc mới nhất; phút của bản tổng kết dừng ở `trip_summary.max_minutes` (1440, bằng giới hạn của backend)
+- **`drowsy_score` khi nghỉ (A3 L6)** (`risk_engine.py`): điểm và các thành phần đọc 0 khi `ctx.resting`, như ở bước nhắm mắt của đăng ký (M68). Dừng đèn đỏ (chưa đủ `rest_after_s`) vẫn hiện điểm
+- **Xi nhan (A3 L6)** (`context/vehicle_context.py`): xi nhan bật về một phía quá `context.turn_signal_max_s` (30 s lái xe, tạm) thì hết nới góc cho tới khi tắt hoặc đổi phía. Thời gian đứng yên (chờ rẽ ở đèn đỏ) không tính
+- **Outbox của bản thiết bị (A4 L2)** (`io/publisher.py`):
+  - Khi luồng gửi đang chạy, `publish()` chỉ đưa bản ghi vào bộ nhớ và đánh thức luồng đó; luồng gửi ghi xuống SQLite ngay, trong một transaction, trước khi gửi bất cứ gì. Trước: `INSERT`, hai `COUNT(*)` và `commit` chạy trên luồng của vòng lặp, đúng frame có cảnh báo. Không có luồng gửi (công cụ, test) thì ghi tại chỗ như cũ
+  - Số hàng được đếm một lần lúc mở rồi giữ trong bộ nhớ, không còn `COUNT(*)` mỗi bản ghi
+  - File outbox chỉ chủ sở hữu đọc được (0600), như database của backend
+  - Giãn cách thử lại dài thêm ngẫu nhiên tới `publisher.backoff_jitter` (20 %) của chính nó
+  - Chưa đo một lần ghi trên eMMC mất bao lâu (không có thiết bị); bản ghi nằm trong RAM trong khoảng từ `publish()` tới lúc luồng gửi ghi xong, tiến trình bị giết đúng lúc đó thì mất bản ghi ấy
+- **Hàng đợi của bản web (A4 L3)** (`web/bridge.py`, `frontend/src/live/agent.ts`): danh sách bản ghi trong Python và danh sách lô chờ gửi của trang đều dừng ở `publisher.max_queue`, bỏ cái cũ nhất và đếm (`dropped_records`, `stats.dropped`); lô đang gửi dở không bị bỏ. Trang đếm theo lô, không theo bản ghi: việc 13 (hàng đợi offline) vẫn cần làm
+- **`sqlite3` trong Pyodide (A4 L4):** `publisher.py` chỉ import `sqlite3` khi mở outbox; trang bỏ gói này khỏi danh sách tải. Chưa đo thời gian khởi động giảm bao nhiêu
+- **`event_id` trùng của thiết bị khác (A4 L5)** (`backend/app.py`, `db.py`, `schemas.py`): sự kiện mang `event_id` mà thiết bị khác đã dùng không còn bị đếm là bản trùng của chính thiết bị gửi: câu trả lời có `conflicts`, backend ghi một dòng cảnh báo (tên thiết bị, không có nội dung). Sự kiện đó vẫn không được lưu: khoá `event_id` vẫn duy nhất toàn cục, đổi thành duy nhất theo thiết bị cần dựng lại bảng `events` trên database đang chạy
+- **Việc nhỏ của khối 1–5 (A1 L5):**
+  - Trang đo độ sáng và độ nét của **mọi** mặt, Python đọc số của mặt nó chọn làm tài xế (trước: mặt lớn nhất). Hai mặt trong khung thì bước đo làm hai lần
+  - MediaPipe của trang nhận giờ chụp của frame, cùng giờ với khối 6–12 (trước: giờ xử lý)
+  - Kết quả YOLO được so với hộp mặt của chính frame nó chạy trên (`FaceBoxMemory.at`, lịch sử dài `phone.max_result_age_s`), ở cả bản thiết bị và bản web (trước: hộp mặt của frame hiện tại, lệch tới 0,6 s)
+  - `FrameSource.stop()` không còn giải phóng camera khi luồng đọc còn kẹt trong `read()`; luồng đó tự giải phóng khi `read()` trả về
+  - Độ sáng vùng mặt tính hai lần mỗi frame: không sửa, audit ghi là không đáng (0,075 ms)
+- **Khoá mới:** `drowsiness.head_drop.carry_max_lost_s` (30), `distraction.phone_min_coverage_s` (0,5), `context.turn_signal_max_s` (30), `trip_memory.microsleep_history` (32), `trip_summary.max_minutes` (1440), `publisher.backoff_jitter` (0,2). Ba khoá đầu là tạm: chưa có dữ liệu để chọn giá trị
+- **Chưa làm / còn hở:**
+  - Không có hộp mặt thì `phone_near_face` vẫn trả `False` chứ không phải "không biết" (phần kèm theo của A2 L2): đổi sẽ làm `PhoneHealth` (M50) báo "mất nhánh điện thoại" mỗi khi mất mặt 10 s, cần tách hai tín hiệu trước
+  - Chuyến dài hơn 24 giờ: bản tổng kết vẫn bị backend từ chối vì `duration_s` vượt giới hạn; mốc này chỉ chặn danh sách phút lớn dần
+  - Các giá trị tạm chưa chạy trên UTA-RLDD: trace ở đó không có điện thoại, xi nhan hay lần mất mặt dài, nên không có gì để đo
+- Test: **1589 Python pass, 10 xfail**; `ruff check` / `ruff format --check` sạch; `tsc -b` sạch, **vitest 267 pass**; **e2e `live.e2e.ts` 7 pass** trên Chromium với Pyodide thật (không còn gói `sqlite3`). Bốn test cũ sửa theo hành vi mới (`conflicts` trong câu trả lời, `blink_observed_s`, tín hiệu gửi ngay của publisher)
+
 
 ### Vận hành (M66–)
 
