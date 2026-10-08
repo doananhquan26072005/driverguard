@@ -13,6 +13,7 @@ import {
   perfDetail,
   perfLines,
   perfText,
+  recoveryText,
   startupText,
   policyNote,
   eventReasonText,
@@ -353,6 +354,14 @@ describe("loop timings (M49)", () => {
     expect(startupText({ ...startup, phone_model: null })).toContain("model điện thoại –");
     expect(startupText({ ...startup, first_frame: null })).toBe("");
     expect(startupText(null)).toBe("");
+  });
+
+  it("says what the loop of #/live did to keep getting frames (M71), and nothing when it did nothing", () => {
+    expect(recoveryText({ pulls: 0, reopens: 0 })).toBe("");
+    expect(recoveryText(null)).toBe("");
+    expect(recoveryText({ pulls: 2, reopens: 0 })).toBe("Vòng lặp đứng 2 lần, đã tự chạy lại");
+    expect(recoveryText({ pulls: 0, reopens: 3 })).toBe("Mở lại camera 3 lần");
+    expect(recoveryText({ pulls: 1, reopens: 1 })).toBe("Vòng lặp đứng 1 lần, đã tự chạy lại · mở lại camera 1 lần");
   });
 });
 

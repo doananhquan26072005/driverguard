@@ -4,6 +4,9 @@
 //   -> 13 HUD (HudScreen via HudSource) + 14 batches posted with the user's token.
 // Frames stay in this page's memory (video element + one canvas); only the numbers above reach
 // Python and only metadata JSON leaves the browser.
+// The loop watches itself (M71, watchdog.ts): when the browser stops calling it, frames are pulled
+// with a timer; a camera that gives none is reported lost and asked for again; a frame that fails
+// on this side is reported to Python like one that fails there.
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
@@ -26,6 +29,7 @@ import { chooseDelegate, gpuKind, webglRenderer, type GpuKind, type YoloProvider
 import { YoloPacer } from "./pace";
 import { urgentKey } from "../hud/hudModel";
 import { PerfWindow, type PerfSnapshot, type PerfTotals } from "./perf";
+import { LoopWatchdog, type CameraTrack } from "./watchdog";
 import type { YoloRequest, YoloResponse } from "./yolo.worker";
 
 // Pinned versions: the Python side is tested against this Pyodide (numpy, pyyaml). No OpenCV since M45
@@ -34,6 +38,11 @@ const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
 const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const PYODIDE_PACKAGES = ["numpy", "pyyaml", "sqlite3"];
 const BASE = import.meta.env.BASE_URL;
+const CAMERA: MediaStreamConstraints = {
+  video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" },
+  audio: false,
+};
+const WATCH_LOOKS = 3; // looks at the loop per capture.frame_timeout_s
 
 // End-to-end test builds only (VITE_E2E=1; production builds drop this code): block 3 reads
 // synthetic landmark numbers that the Playwright test puts on window.__dgFeed instead of running
@@ -86,6 +95,13 @@ export interface LiveStats {
   perf: PerfSnapshot | null; // M49: time per stage of the loop over the last seconds
   totals: PerfTotals | null; // M67: counted since the loop started (long runs)
   startup: StartupMs | null; // M67: how long starting took
+  recovery: Recovery; // M71
+}
+
+/** What the loop had to do to keep getting frames since it started (M71; counts only). */
+export interface Recovery {
+  pulls: number; // times the browser's frame callback went quiet and a timer took over
+  reopens: number; // times the camera was asked for again
 }
 
 /** Start-up, in ms from the call to `LiveAgent.start` to each part being ready (M67; local only). */
@@ -107,6 +123,7 @@ export interface Measures {
 }
 
 interface Settings {
+  capture: { frame_timeout_s: number; reconnect_interval_s: number; camera_fps: number };
   target_width: number;
   landmarks: {
     num_faces: number;
@@ -125,9 +142,12 @@ interface Settings {
 interface PyAgent {
   settings(): string;
   frame(...args: unknown[]): string;
+  frame_error(t: number, error: string): string;
   phone_output(...args: unknown[]): number;
   false_alarm(eventId: string): string;
   camera(lost: boolean): void;
+  camera_attempts(attempts: number): void;
+  hud_state(): string;
   end_trip(): string;
   vehicle(action: string): string;
   vehicle_signal(speed: number, turn: string | null): void;
@@ -222,7 +242,7 @@ export class LiveAgent implements HudSource {
   /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
   readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null, recovery: { pulls: 0, reopens: 0 } };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -249,6 +269,13 @@ export class LiveAgent implements HudSource {
   private lastFrameMs = -Infinity; // time of the last frame (frameTimeMs), M50
   private listeners = new Set<(snap: HudSnapshot) => void>(); // M50: the HUD hears of an alert at once
   private pushed = "";
+  private watch: LoopWatchdog; // M71
+  private watchTimer: number | undefined;
+  private pullTimer: number | undefined; // set while a timer drives the loop
+  private frameCallback: number | null = null; // the pending requestVideoFrameCallback / requestAnimationFrame
+  private cameraLost = false;
+  private reopening = false;
+  private recovery: Recovery = { pulls: 0, reopens: 0 };
 
   private constructor(
     private video: HTMLVideoElement,
@@ -264,6 +291,8 @@ export class LiveAgent implements HudSource {
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloCtx = this.yoloCanvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloPacer = new YoloPacer(settings.phone.target_fps);
+    const cap = settings.capture;
+    this.watch = new LoopWatchdog(cap.frame_timeout_s * 1000, cap.reconnect_interval_s * 1000, performance.now());
   }
 
   /** Ask for the camera, load the models, start the loop. onStep reports progress for the setup screen. */
@@ -298,10 +327,7 @@ export class LiveAgent implements HudSource {
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: "user" },
-        audio: false,
-      });
+      stream = await navigator.mediaDevices.getUserMedia(CAMERA);
     } catch (err) {
       dropYolo();
       throw err;
@@ -461,7 +487,7 @@ export class LiveAgent implements HudSource {
   }
 
   getStats(): LiveStats {
-    return { ...this.stats, pending: this.pendingBodies.length, perf: this.perfSnapshot(), totals: this.perf.totals(), startup: this.startup?.ms ?? null };
+    return { ...this.stats, pending: this.pendingBodies.length, perf: this.perfSnapshot(), totals: this.perf.totals(), startup: this.startup?.ms ?? null, recovery: { ...this.recovery } };
   }
 
   private perfSnapshot(): PerfSnapshot {
@@ -470,37 +496,133 @@ export class LiveAgent implements HudSource {
 
   // ------------------------------------------------------------------ loop
   private run() {
-    const track = this.stream.getVideoTracks()[0];
-    track?.addEventListener("ended", () => this.py.camera(true)); // camera unplugged / permission revoked
+    this.listenToCamera();
     this.flushTimer = window.setInterval(() => void this.flush(), this.settings.flush_interval_s * 1000);
     if (this.session && this.settings.config_poll_s > 0)
       this.configTimer = window.setInterval(() => void this.pollThresholds(), this.settings.config_poll_s * 1000);
     this.simTimer = window.setInterval(() => void this.pollSim(), SIM_POLL_MS);
-    const next = () => {
-      if (this.stopped) return;
-      if ("requestVideoFrameCallback" in this.video) this.video.requestVideoFrameCallback(tick);
-      else requestAnimationFrame(tick);
-    };
+    this.watchTimer = window.setInterval(() => this.checkLoop(), (this.settings.capture.frame_timeout_s * 1000) / WATCH_LOOKS);
+    this.armFrameCallback();
+  }
+
+  /** A camera that ends (unplugged, permission revoked) is acted on at once, not at the next look. */
+  private listenToCamera() {
+    this.stream.getVideoTracks()[0]?.addEventListener("ended", () => this.checkLoop());
+  }
+
+  /** Ask the browser for the next camera frame; a request still pending is dropped first. */
+  private armFrameCallback() {
+    if (this.stopped) return;
+    const video = this.video;
     // requestVideoFrameCallback passes (now, metadata); requestAnimationFrame only (now).
-    const tick = (_now?: number, metadata?: FrameMetadata) => {
-      if (this.stopped) return;
-      if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime) {
-        this.lastVideoTime = this.video.currentTime;
-        const presented = metadata?.presentedFrames;
-        if (presented != null) {
-          // Frames the camera delivered since the last one processed: more than 1 = the loop skipped some.
-          if (this.lastPresented != null) this.perf.cameraFrames(presented - this.lastPresented);
-          this.lastPresented = presented;
-        }
-        try {
-          this.processFrame(metadata);
-        } catch (err) {
-          console.error("[live] frame failed", err);
-        }
+    if ("requestVideoFrameCallback" in video) {
+      if (this.frameCallback != null) video.cancelVideoFrameCallback(this.frameCallback);
+      this.frameCallback = video.requestVideoFrameCallback((_now, metadata) => this.onFrame(metadata, false));
+    } else {
+      if (this.frameCallback != null) cancelAnimationFrame(this.frameCallback);
+      this.frameCallback = requestAnimationFrame(() => this.onFrame(undefined, false));
+    }
+  }
+
+  /** One look at the video: a frame not seen yet goes through the loop. pulled: called by the
+   *  watchdog's timer, not by the browser's frame callback. */
+  private onFrame(metadata: FrameMetadata | undefined, pulled: boolean) {
+    if (this.stopped) return;
+    if (!pulled) this.frameCallback = null;
+    if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime) {
+      this.lastVideoTime = this.video.currentTime;
+      this.watch.frame(performance.now(), pulled);
+      if (!pulled) this.stopPulling(); // the browser calls again
+      this.setCameraLost(false);
+      const presented = metadata?.presentedFrames;
+      if (presented != null) {
+        // Frames the camera delivered since the last one processed: more than 1 = the loop skipped some.
+        if (this.lastPresented != null) this.perf.cameraFrames(presented - this.lastPresented);
+        this.lastPresented = presented;
       }
-      next();
-    };
-    next();
+      try {
+        this.processFrame(metadata);
+      } catch (err) {
+        console.error("[live] frame failed", err);
+        this.frameError(err);
+      }
+    }
+    if (!pulled) this.armFrameCallback();
+  }
+
+  /** A frame failed on this side (MediaPipe, the canvas, the call into Python). Python hears of it like
+   *  of a frame failing there (M28): failing for a while = "processing error" on the HUD and to the
+   *  backend. Only the error's class name is passed on. */
+  private frameError(err: unknown) {
+    try {
+      this.showFrame(JSON.parse(this.py.frame_error(performance.now() / 1000, err instanceof Error ? err.name : "Error")));
+    } catch {
+      // Python does not answer either: the HUD says the loop stopped after its own timeout
+    }
+  }
+
+  // ------------------------------------------------------------------ loop watch (M71)
+  /** Is the loop still getting frames? Called on a timer, and when the camera track ends. */
+  private checkLoop() {
+    if (this.stopped) return;
+    const track = this.stream.getVideoTracks()[0];
+    const camera: CameraTrack = !track || track.readyState === "ended" ? "ended" : track.muted ? "muted" : "live";
+    const verdict = this.watch.check(performance.now(), camera, document.visibilityState !== "hidden");
+    if (!verdict.pull) this.stopPulling();
+    else if (this.pullTimer === undefined) {
+      this.recovery.pulls += 1;
+      this.armFrameCallback(); // in case the browser dropped the pending request
+      this.pullTimer = window.setInterval(() => this.onFrame(undefined, true), 1000 / this.settings.capture.camera_fps);
+    }
+    this.setCameraLost(verdict.lost);
+    if (verdict.reopen) void this.reopenCamera(verdict.reopen);
+  }
+
+  private stopPulling() {
+    window.clearInterval(this.pullTimer);
+    this.pullTimer = undefined;
+  }
+
+  /** The camera gives no frames / gives them again: Python tells the HUD and the backend. */
+  private setCameraLost(lost: boolean) {
+    if (lost === this.cameraLost) return;
+    this.cameraLost = lost;
+    this.py.camera(lost);
+    this.showHud();
+  }
+
+  /** The HUD state as Python has it now: no frame brings it while the camera is lost. */
+  private showHud() {
+    this.show(JSON.parse(this.py.hud_state()) as HudSnapshot);
+  }
+
+  /** Ask for the lost camera again, as block 1 does on the device every capture.reconnect_interval_s. */
+  private async reopenCamera(attempt: number) {
+    if (this.reopening) return;
+    this.reopening = true;
+    this.recovery.reopens += 1;
+    this.py.camera_attempts(attempt);
+    this.showHud();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(CAMERA);
+      if (this.stopped) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      this.stream.getTracks().forEach((t) => t.stop());
+      this.stream = stream;
+      this.video.srcObject = stream;
+      this.lastPresented = null; // the frame counter starts again with the new stream
+      this.watch.reopened(performance.now());
+      this.listenToCamera();
+      this.armFrameCallback();
+      // Not awaited: a play() that never settles must not block the next attempt.
+      void this.video.play().catch(() => undefined);
+    } catch {
+      // still lost (unplugged, refused, in use): asked again after capture.reconnect_interval_s
+    } finally {
+      this.reopening = false;
+    }
   }
 
   private processFrame(metadata?: FrameMetadata) {
@@ -577,12 +699,22 @@ export class LiveAgent implements HudSource {
     this.perf.add("python", done - pythonStart);
     this.perf.add("total", done - started);
     if (this.startup && this.startup.ms.first_frame == null) this.startup.ms.first_frame = Math.round(done - this.startup.t0);
+    this.showFrame(state);
+  }
+
+  /** What Python answered for a frame, good or failed: the numbers for the camera card, then the HUD. */
+  private showFrame(state: HudSnapshot & { measures: Measures; error?: string; flush?: boolean }) {
     if (state.flush) void this.flush(); // an L3 / unresponsive / no_answer event: not on the timer (M44)
     this.stats.level = state.level;
     this.stats.fps = state.fps ?? 0;
     this.stats.measures = state.measures;
     if (state.error) this.stats.lastError = state.error; // kept after recovery: what failed, where
     this.stats.enrollment = state.enrollment ?? null;
+    this.show(state);
+  }
+
+  /** The HUD state from now on; the HUD hears at once of a change the driver must (M50). */
+  private show(state: HudSnapshot) {
     this.snap = state;
     const key = urgentKey(state);
     if (key !== this.pushed) {
@@ -718,6 +850,11 @@ export class LiveAgent implements HudSource {
     }
   }
 
+  /** False once the camera and the loop are stopped (trip ended, or `stop`). */
+  get running(): boolean {
+    return !this.stopped;
+  }
+
   /** The camera stream, for the enrollment frame of this page (shown only, in memory). */
   cameraStream(): MediaStream | null {
     return this.stream;
@@ -729,6 +866,8 @@ export class LiveAgent implements HudSource {
     window.clearInterval(this.flushTimer);
     window.clearInterval(this.configTimer);
     window.clearInterval(this.simTimer);
+    window.clearInterval(this.watchTimer);
+    this.stopPulling();
     await this.flush();
     this.stream.getTracks().forEach((t) => t.stop());
     this.video.srcObject = null;

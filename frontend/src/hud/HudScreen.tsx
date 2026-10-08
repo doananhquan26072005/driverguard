@@ -5,7 +5,7 @@ import { demoSnapshot } from "./demo";
 import { edgeSource, type HudSource, type TripEnd } from "./edge";
 import HudView from "./HudView";
 import TripSummaryView from "./TripSummaryView";
-import { alertVoiceKey, enrollCue, enrollVoiceKeys, type HudLink, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
+import { alertVoiceKey, enrollCue, enrollVoiceKeys, type HudLink, hudCanLeave, monitoringStopped, presenceUp, systemState, vehicleSignalLost } from "./hudModel";
 
 // The spoken line follows the chime, not over it.
 const CHIME_TO_VOICE_MS = 700;
@@ -27,9 +27,10 @@ interface Props {
   source?: HudSource;
   onTripEnded?: () => void; // the camera stopped: e.g. #/live hides its self-view
   onDone?: () => void; // "Xong" on the trip summary
+  askEnd?: number; // a new number asks "Kết thúc chuyến?" (#/live's "Dừng camera", M72)
 }
 
-export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: Props) {
+export default function HudScreen({ source = edgeSource, onTripEnded, onDone, askEnd }: Props) {
   const [mode, setMode] = useState<Mode>("live");
   const [link, setLink] = useState<HudLink>("connecting");
   const [snap, setSnap] = useState<HudSnapshot | null>(null);
@@ -55,18 +56,23 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
       if (mode === "demo") {
         setSnap(demoSnapshot((Date.now() - demoStart.current) / 1000, demoFlags.current));
         setLink("ok");
-        return;
       }
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 1000);
       try {
         const s = await source.state(ctrl.signal);
         if (cancelled) return;
+        if (mode === "demo") {
+          // M72: the demo was started with no device behind the screen. One that now watches a driver
+          // takes the screen back: its alerts must not stay hidden behind scripted ones.
+          if (s.connected) setMode("live");
+          return;
+        }
         failures.current = 0;
         setSnap(s);
         setLink("ok");
       } catch {
-        if (cancelled) return;
+        if (cancelled || mode === "demo") return;
         failures.current += 1;
         if (failures.current >= 3) setLink("down");
       } finally {
@@ -280,7 +286,10 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone }: 
       toast={toast}
       edgeUrl={source.address}
       onEnableSound={() => unlock()}
-      onToggleDemo={() => setMode((m) => (m === "live" ? "demo" : "live"))}
+      onToggleDemo={
+        hudCanLeave(link, snap, mode === "demo", !!source.cameraStream) ? () => setMode((m) => (m === "live" ? "demo" : "live")) : undefined
+      }
+      askEnd={mode === "live" && source.endTrip ? askEnd : undefined}
       onFalseAlarm={onFalseAlarm}
       onEndTrip={mode === "live" && source.endTrip ? onEndTrip : undefined}
       onVehicle={mode === "live" && source.vehicle ? onVehicle : undefined}

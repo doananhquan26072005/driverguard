@@ -11,6 +11,8 @@
 // - the trip numbers (continuous driving, the last minutes' fatigue, an alert's detail) come from the
 //   agent (M65), so a reload shows them again at once; nothing here counts them
 // - "Kết thúc chuyến" and "Đổi tài xế" ask once more (no accidental tap while driving)
+// - nothing on the screen stops or hides the monitoring with one touch (M72): the demo button and the
+//   Dashboard link are there only while no device is watched (hudModel.hudCanLeave)
 // - sound is always on; while the browser still blocks it, an amber strip under the top bar asks for
 //   one touch (on every screen, also L3 and the system screens)
 // Enrollment, consent, presence and system screens keep their M57 look inside this frame until M59.
@@ -109,7 +111,8 @@ export interface HudViewProps {
   toast: string | null;
   edgeUrl: string;
   onEnableSound: () => void; // a touch that lifts the browser's sound block
-  onToggleDemo: () => void;
+  onToggleDemo?: () => void; // absent: no demo button and no Dashboard link (a driver is watched, M72)
+  askEnd?: number; // a new number opens the "Kết thúc chuyến" question (#/live's "Dừng camera", M72)
   onFalseAlarm: () => void;
   onEndTrip?: () => void; // shown when the source can end the trip (live HUD, #/live)
   ending?: boolean;
@@ -160,6 +163,11 @@ export default function HudView(props: HudViewProps) {
   const dim = !system && !!snap?.night && level <= 1 ? "opacity-80" : "";
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDriver, setConfirmDriver] = useState(false);
+  const [askedEnd, setAskedEnd] = useState(props.askEnd ?? 0);
+  if ((props.askEnd ?? 0) !== askedEnd) {
+    setAskedEnd(props.askEnd ?? 0);
+    setConfirmEnd(true);
+  }
   const soundBlocked = !props.sound;
   const presence = presenceUp(system, snap);
   // Rows: top bar, [sound blocked], content, bottom bar.
@@ -350,18 +358,23 @@ function TopBar({
               <VolumeX aria-hidden className="size-[18px]" />
             </button>
           )}
-          <button
-            type="button"
-            aria-label={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
-            title={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
-            onClick={onToggleDemo}
-            className={`${TOP_TILE} hidden cursor-pointer sm:inline-grid`}
-          >
-            {demo ? <Square aria-hidden className="size-[18px]" /> : <Play aria-hidden className="size-[18px]" />}
-          </button>
-          <a href="#/dashboard" aria-label="Dashboard" title="Dashboard" className={`${TOP_TILE} hidden sm:inline-grid`}>
-            <LayoutDashboard aria-hidden className="size-[18px]" />
-          </a>
+          {/* M72: both take the screen (and the alert sounds) away, so not while a driver is watched. */}
+          {onToggleDemo && (
+            <>
+              <button
+                type="button"
+                aria-label={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
+                title={demo ? "Về thiết bị thật" : "Chạy mô phỏng"}
+                onClick={onToggleDemo}
+                className={`${TOP_TILE} hidden cursor-pointer sm:inline-grid`}
+              >
+                {demo ? <Square aria-hidden className="size-[18px]" /> : <Play aria-hidden className="size-[18px]" />}
+              </button>
+              <a href="#/dashboard" aria-label="Dashboard" title="Dashboard" className={`${TOP_TILE} hidden sm:inline-grid`}>
+                <LayoutDashboard aria-hidden className="size-[18px]" />
+              </a>
+            </>
+          )}
           <span className="dg-tile inline-flex h-10 items-center gap-2.5 px-3.5">
             {snap?.night ? <Moon aria-label="Ban đêm" className="size-4 text-[#bdbdbd]" /> : <Clock aria-hidden className="size-4 text-[#bdbdbd]" />}
             <span className="dg-num text-[17px] font-medium">{clockText(snap?.clock_hour)}</span>
