@@ -8,8 +8,10 @@ import { ArrowBigLeft, ArrowBigRight, ChevronDown, ChevronUp, Gauge, OctagonX, U
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "../lib/api";
 import { command, DRIVE_KEYS, DRIVE_SIM, type DriveCommand, isDriveCode, PARKED, step } from "./sim";
+import { DEFAULTS } from "../lib/defaults";
 
-const SEND_MS = 200; // #/live reads every 250 ms and treats a reading older than 1 s as lost
+// context.vehicle_send_s: below context.vehicle_signal_stale_s, after which #/live treats a reading as lost.
+const SEND_MS = DEFAULTS.vehicle.send_s * 1000;
 
 function codeFromHash(): string {
   const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "");

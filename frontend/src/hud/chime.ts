@@ -18,6 +18,7 @@
 // - driver enrollment: one short clear beep when a step ends ("open your eyes" after step 3)
 // The level sets the volume. alertSound() is pure (tested); play() does the WebAudio part.
 import type { Level, Reason } from "../lib/types";
+import { HUD_DEFAULTS } from "../lib/defaults";
 import VOICE_LINES from "./voice-lines.json";
 
 export type SoundKind =
@@ -51,13 +52,13 @@ export interface Sound {
   notes: Note[];
 }
 
-/** "Bạn còn ở đó không?" is repeated this often until it is answered (M44). */
-export const PRESENCE_REPEAT_S = 2.0;
+// Loudness by level (thresholds.yaml hud.gain): the build's own until the agent's state brings its.
+let gain: readonly number[] = HUD_DEFAULTS.gain;
 
-/** L3 siren is repeated this often while the driver's eyes are still closed. */
-export const ALARM_REPEAT_S = 1.5;
-
-const GAIN: Record<Level, number> = { 0: 0, 1: 0.12, 2: 0.25, 3: 0.35 };
+/** The agent's hud.gain (HudSnapshot.display.gain), by level 0-3. */
+export function setGain(byLevel: readonly number[]): void {
+  gain = byLevel;
+}
 
 const seq = (freqs: number[], step: number, dur: number, wave: OscillatorType, start = 0): Note[] =>
   freqs.map((freq, i) => ({ at: start + i * step, freq, dur, wave }));
@@ -114,7 +115,7 @@ function notesFor(kind: SoundKind, level: Level): Note[] {
 export function alertSound(level: Level, reasons: readonly Reason[]): Sound | null {
   if (level === 0) return null;
   const kind: SoundKind = level === 3 ? "alarm" : (KIND_OF_REASON[reasons[0]] ?? "drowsy");
-  return { kind, gain: GAIN[level], notes: notesFor(kind, level) };
+  return { kind, gain: gain[level], notes: notesFor(kind, level) };
 }
 
 export type SystemSoundKind =
@@ -131,7 +132,7 @@ export type SystemSoundKind =
 export function systemSound(kind: SystemSoundKind): Sound {
   const loud =
     kind === "camera_lost" || kind === "monitoring_unavailable" || kind === "vehicle_signal_lost" || kind === "monitoring_stopped" || kind === "presence";
-  return { kind, gain: loud ? GAIN[2] : GAIN[1], notes: notesFor(kind, 1) };
+  return { kind, gain: loud ? gain[2] : gain[1], notes: notesFor(kind, 1) };
 }
 
 /** The Vietnamese voice to speak with, or null. Setting only `lang` is not enough: a browser without a

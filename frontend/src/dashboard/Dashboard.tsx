@@ -20,10 +20,9 @@ import StatsTiles from "./StatsTiles";
 import ThresholdsView from "./ThresholdsView";
 import TimelineView from "./TimelineView";
 import TripReports from "./TripReports";
+import { HUD_DEFAULTS } from "../lib/defaults";
 
 const REFRESH_MS = 15_000;
-const DEFAULT_L1 = 40; // config/thresholds.yaml risk.drowsy.l1 / l2
-const DEFAULT_L2 = 70;
 
 // What each page is for, under its title.
 const PAGE_LEAD: Partial<Record<PageKey, string>> = {
@@ -254,8 +253,8 @@ export default function Dashboard() {
           tripId={tripId}
           onTripChange={setTripId}
           onPickTrip={goTimeline}
-          l1={thresholds?.values["risk.drowsy.l1"] ?? DEFAULT_L1}
-          l2={thresholds?.values["risk.drowsy.l2"] ?? DEFAULT_L2}
+          l1={thresholds?.values["risk.drowsy.l1"] ?? HUD_DEFAULTS.score_l1}
+          l2={thresholds?.values["risk.drowsy.l2"] ?? HUD_DEFAULTS.score_l2}
           onUnreviewed={setUnreviewed}
           onThresholdsSaved={setThresholds}
           hash={hash}

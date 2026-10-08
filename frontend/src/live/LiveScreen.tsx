@@ -13,6 +13,7 @@ import { ApiError, loadSession, login, saveSession } from "../lib/api";
 import { perfDetail, perfLines, recoveryText, startupText } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
 import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
+import { HUD_DEFAULTS } from "../lib/defaults";
 
 const BTN =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-0 px-5 text-hud-label font-semibold transition-colors disabled:opacity-50";
@@ -29,7 +30,6 @@ function cameraError(err: unknown): string {
 }
 
 const TECH_KEY = "driverguard.live.tech"; // per-browser convenience only
-const LEAVE_VOICE_MS = 700; // the spoken line follows the chime (as HudScreen's CHIME_TO_VOICE_MS)
 
 function readTech(): boolean {
   try {
@@ -73,7 +73,7 @@ export default function LiveScreen() {
       if (!agent?.running) return; // the trip was ended on the HUD: nothing left to stop
       // Back button, another address: the page goes, and the monitoring with it. Not silently.
       play(systemSound("monitoring_stopped"));
-      setTimeout(() => speak("sys.stopped"), LEAVE_VOICE_MS);
+      setTimeout(() => speak("sys.stopped"), HUD_DEFAULTS.chime_to_voice_s * 1000); // the line follows the chime
       void agent.endTrip().catch(() => agent.stop());
     },
     [agent],
@@ -147,7 +147,7 @@ export default function LiveScreen() {
                 <>
                   <span className="dg-card-title">
                     <b className="!text-xl !font-semibold">Đang khởi động</b>
-                    <span>{guest || !session ? "Dùng thử · không lưu, không gửi gì đi" : `Lưu vào tài khoản ${session.username}`}</span>
+                    <span>{guest || !session ? "Dùng thử · không lưu, không gửi số liệu giám sát" : `Lưu vào tài khoản ${session.username}`}</span>
                   </span>
                   <Progress step={step} />
                   <p className="m-0 text-[13px] leading-relaxed text-hud-ink-3">
@@ -169,7 +169,7 @@ export default function LiveScreen() {
                       </div>
                     ) : guest ? (
                       <div className="dg-tile flex flex-wrap items-center gap-3 p-4">
-                        <span className="text-[15px]">Dùng thử: không lưu cảnh báo, không gửi gì đi.</span>
+                        <span className="text-[15px]">Dùng thử: không lưu cảnh báo, không gửi số liệu giám sát đi. Trang vẫn hỏi máy chủ tốc độ xe mô phỏng.</span>
                         <button type="button" onClick={() => setGuest(false)} className={`${BTN} dg-tile ml-auto min-h-10 text-hud-ink-2`}>
                           Đăng nhập để lưu
                         </button>

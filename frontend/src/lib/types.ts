@@ -30,7 +30,8 @@ export type Reason =
   | "low_fps" // system events (M28): too slow for a while, alerts may be late / back up
   | "fps_restored"
   | "phone_detection_lost" // system events (M50): the phone detector gives no fresh results / again
-  | "phone_detection_restored";
+  | "phone_detection_restored"
+  | "road_pose_recalibrated"; // system event (M80): a pose held off road for long became the road pose
 
 export interface Session {
   token: string;
@@ -161,6 +162,10 @@ export interface FleetDevice {
   thresholds_current?: boolean | null; // false: behind the newest thresholds version, or it refused them
   thresholds_latest?: number;
   perf?: PerfSnapshot | null; // M49: loop timings of the last heartbeat that carried any
+  // M82: server time minus the time of its last heartbeat, seconds (positive: the device's clock is
+  // behind); clock_wrong: past the backend's limit, so the times this device reports are not reliable.
+  clock_skew_s?: number | null;
+  clock_wrong?: boolean | null;
 }
 
 export interface Stats {
@@ -210,6 +215,24 @@ export interface HudAlert {
 }
 
 /** M65: the running trip as the agent keeps it (block 11), so a HUD reload loses nothing. */
+/** What the screen needs from thresholds.yaml (edge_agent/hud/server.py hud_display): hud.* and the
+ *  three rule numbers it shows. Seconds unless named otherwise. */
+export interface HudDisplay {
+  poll_s: number; // ask for the state this often
+  state_timeout_s: number; // one request given up after this long
+  link_down_failures: number; // this many in a row: no link to the device
+  stale_s: number; // no new state for this long: the loop is frozen
+  chime_to_voice_s: number; // the spoken line follows the chime
+  alarm_repeat_s: number; // L3 siren again while the eyes are closed
+  presence_repeat_s: number; // "Bạn còn ở đó không?" again until answered
+  gain: number[]; // loudness by level 0-3
+  feedback_window_s: number;
+  blink_max_s: number; // drowsiness.blink_max_s: shorter closures are blinks
+  microsleep_l3_s: number; // risk.microsleep_l3_s: where the L3 rule starts
+  score_l1: number; // risk.drowsy.l1 / l2
+  score_l2: number;
+}
+
 export interface HudTrip {
   drive_run_s: number; // continuous driving of the current driver: reset by a rest or "Đổi tài xế"
   driving_s: number; // driving time of the whole trip
@@ -361,7 +384,8 @@ export interface HudSnapshot {
   distraction_score?: number;
   speed_kmh?: number | null;
   clock_hour?: number;
-  night?: boolean;
+  night?: boolean; // block 10's window (context.night_hours): the score's night factor, not shown
+  dim?: boolean; // the screen's window (hud.dim_hours): calm screens dimmed, moon by the clock
   eyes_closed_s?: number;
   perclos_60s?: number;
   fps?: number;
@@ -379,6 +403,7 @@ export interface HudSnapshot {
   trip_ended?: boolean; // the trip summary was built (device HUD server)
   vehicle?: HudVehicle;
   feedback_window_s?: number; // "false alarm" button hidden this long after an alert
+  display?: HudDisplay; // M85: the screen's own numbers, from the agent's thresholds
   enrollment?: HudEnrollment;
   alerts: HudAlert[];
 }

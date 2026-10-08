@@ -1,7 +1,7 @@
 // Pure view-model helpers for the HUD (unit-tested in hudModel.test.ts). No thresholds here:
 // the level and the reasons come from the edge agent, the HUD only decides what to show first.
 import { ENROLL_HINTS, ENROLL_STEPS, ENROLL_TEXT } from "../lib/labels";
-import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, HudTrip, Level, Reason } from "../lib/types";
+import type { EnrollStep, HudAlert, HudDisplay, HudEnrollment, HudSnapshot, HudTrip, Level, Reason } from "../lib/types";
 
 export type HudLink = "connecting" | "ok" | "down";
 export type SystemState = "down" | "camera_lost" | "error" | "unavailable" | "stale" | "connecting";
@@ -63,6 +63,13 @@ export function orderedReasons(reasons: readonly Reason[]): Reason[] {
 
 export const isDrowsyReason = (r: Reason) => DROWSY_REASONS.has(r);
 export const isDistractionReason = (r: Reason) => DISTRACTION_REASONS.has(r);
+
+/** The calm screens (L0, L1) are dimmed in the screen's dark hours: `snap.dim`, the agent's reading of
+ *  hud.dim_hours. Not `snap.night`, which is the window of the score's night factor (M89). An alert
+ *  from L2 and every "not monitored" screen stay at full brightness. */
+export function hudDimmed(snap: HudSnapshot | null, level: Level, system: SystemState | null): boolean {
+  return !system && !!snap?.dim && level <= 1;
+}
 
 /** Why the driver panel cannot be shown, or null when it can. Link down wins over a stale snapshot.
  *  "unavailable": the face is lost while moving (PRD FR-6), the driver is not monitored. */
@@ -246,14 +253,17 @@ export function attentionWord(reasons: readonly Reason[], level: Level): { word:
   return { word: "Tập trung", tone: "ok" };
 }
 
-/** Eyes shut shorter than this are blinks: the tile keeps saying "Đang mở" (display only, no alert). */
-export const EYES_SHOWN_CLOSED_S = 0.5;
-
-/** The eyes in words: open, or shut for how long. */
-export function eyesWord(closedS: number | undefined, num: (v: number) => string): { word: string; tone: Tone } {
+/** The eyes in words: open, or shut for how long. Display only, no alert: closures up to a blink
+ *  (drowsiness.blink_max_s) keep saying "Đang mở", and the tile turns red where the L3 rule starts
+ *  (risk.microsleep_l3_s). Both come from the agent (HudSnapshot.display). */
+export function eyesWord(
+  closedS: number | undefined,
+  num: (v: number) => string,
+  limits: Pick<HudDisplay, "blink_max_s" | "microsleep_l3_s">,
+): { word: string; tone: Tone } {
   const s = closedS ?? 0;
-  if (s < EYES_SHOWN_CLOSED_S) return { word: "Đang mở", tone: "ok" };
-  return { word: `Nhắm ${num(s)} giây`, tone: s >= 1.5 ? "danger" : "caution" };
+  if (s < limits.blink_max_s) return { word: "Đang mở", tone: "ok" };
+  return { word: `Nhắm ${num(s)} giây`, tone: s >= limits.microsleep_l3_s ? "danger" : "caution" };
 }
 
 // ------------------------------------------------------------------ spoken lines (hud/voice-lines.json)

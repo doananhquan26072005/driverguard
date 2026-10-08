@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { frameTimeMs, MAX_FRAME_AGE_MS } from "./frameTime";
+import { frameTimeMs as frameTime, type FrameMetadata } from "./frameTime";
+
+const MAX_FRAME_AGE_MS = 1000; // capture.web_max_frame_age_s of thresholds.yaml, in ms
+const frameTimeMs = (now: number, meta: FrameMetadata | undefined, last: number) => frameTime(now, meta, last, MAX_FRAME_AGE_MS);
 
 describe("frameTimeMs (M50)", () => {
   it("is the capture time when the browser gives one", () => {

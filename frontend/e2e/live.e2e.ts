@@ -189,6 +189,54 @@ test("the loop recovers by itself: quiet frame callback, frames failing in the p
   await expect.poll(fresh, { timeout: 5_000 }).toBeLessThan(1);
 });
 
+test("a camera that hands over the same image again and again is a lost camera", async ({ page }) => {
+  // M83. Frames keep arriving, so the watch on the loop (M71) saw nothing: a face that never moves.
+  type Health = State & { camera_lost?: boolean; incident?: { kind: string; attempts: number | null } | null };
+  const health = () => state(page) as Promise<Health>;
+  const open = { faces: [FACES.open], blink: [0.05, 0.05], brow: [0] };
+  await stubSimulator(page);
+  await page.addInitScript((f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f), open);
+  await startLive(page);
+  await page.waitForTimeout(5_000);
+  expect((await health()).camera_lost).toBe(false); // Chrome's fake camera moves: not a repeat
+
+  // The video now shows a canvas repainted with the same pixels on every animation frame.
+  const delivered = await page.evaluate(async () => {
+    const ask = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = async (c) => {
+      await new Promise((r) => setTimeout(r, 3_000)); // long enough for the test to see "lost"
+      return ask(c);
+    };
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [640, 360];
+    const ctx = canvas.getContext("2d")!;
+    const still = ctx.createImageData(640, 360);
+    for (let i = 0; i < still.data.length; i++) still.data[i] = i % 4 === 3 ? 255 : (i * 2654435761) >>> 24;
+    const paint = () => {
+      ctx.putImageData(still, 0, 0);
+      requestAnimationFrame(paint);
+    };
+    paint();
+    const video = document.querySelector("video")!;
+    video.srcObject = canvas.captureStream(30);
+    void video.play();
+    let frames = 0;
+    const count = () => {
+      frames += 1;
+      video.requestVideoFrameCallback(count);
+    };
+    video.requestVideoFrameCallback(count);
+    await new Promise((r) => setTimeout(r, 2_000));
+    return frames;
+  });
+  expect(delivered).toBeGreaterThan(10); // frames do arrive: it is their content that stands still
+  await expect.poll(async () => (await health()).camera_lost, { timeout: 5_000 }).toBe(true);
+  expect((await health()).incident?.kind).toBe("camera_lost");
+  // Asked for again like a camera that ended (at the watch's next look): back on the stream that moves.
+  await expect.poll(async () => (await health()).incident?.attempts, { timeout: 3_000 }).toBe(1);
+  await expect.poll(async () => (await health()).camera_lost, { timeout: 15_000 }).toBe(false);
+});
+
 test("signed-in driver: change of driver enrolls again; the manager gets the trip report", async ({ page, browser }) => {
   await stubSimulator(page);
   await obedientDriver(page);

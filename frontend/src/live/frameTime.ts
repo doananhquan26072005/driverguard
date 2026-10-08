@@ -10,16 +10,14 @@ export interface FrameMetadata {
   presentedFrames?: number;
 }
 
-/** A capture time further back than this is not believed (a stalled tab, another clock). */
-export const MAX_FRAME_AGE_MS = 1000;
-
 /** Time of the frame in ms on the performance.now() clock: its capture time when the browser gives a
- *  believable one (not in the future, not older than MAX_FRAME_AGE_MS, after the previous frame's),
- *  else its presentation time under the same checks, else `nowMs` as before. */
-export function frameTimeMs(nowMs: number, meta: FrameMetadata | undefined, lastMs: number): number {
+ *  believable one (not in the future, not older than maxAgeMs, after the previous frame's), else its
+ *  presentation time under the same checks, else `nowMs` as before. maxAgeMs: a capture time further
+ *  back is not believed (a stalled tab, another clock); thresholds.yaml capture.web_max_frame_age_s. */
+export function frameTimeMs(nowMs: number, meta: FrameMetadata | undefined, lastMs: number, maxAgeMs: number): number {
   for (const candidate of [meta?.captureTime, meta?.presentationTime]) {
     if (candidate == null || !Number.isFinite(candidate)) continue;
-    if (candidate <= nowMs && nowMs - candidate <= MAX_FRAME_AGE_MS && candidate > lastMs) return candidate;
+    if (candidate <= nowMs && nowMs - candidate <= maxAgeMs && candidate > lastMs) return candidate;
   }
   return nowMs;
 }

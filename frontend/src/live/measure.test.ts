@@ -3,7 +3,6 @@ import {
   bbox,
   channelDiff,
   concatFaces,
-  largestFace,
   letterboxGeometry,
   lumaSpread,
   meanLuma,
@@ -36,8 +35,8 @@ describe("meanLuma", () => {
 
 describe("channelDiff", () => {
   it("is 0 for a grey (IR) frame and large for a coloured one", () => {
-    expect(channelDiff(image(8, 8, () => [90, 90, 90]), 8, 8)).toBe(0);
-    expect(channelDiff(image(8, 8, () => [200, 100, 0]), 8, 8)).toBe(100);
+    expect(channelDiff(image(8, 8, () => [90, 90, 90]), 8, 8, 4)).toBe(0);
+    expect(channelDiff(image(8, 8, () => [200, 100, 0]), 8, 8, 4)).toBe(100);
   });
 });
 
@@ -60,12 +59,8 @@ describe("faces", () => {
       expect.closeTo(-64, 4),
     ]);
   });
-  it("picks the largest face as the driver", () => {
-    const small = new Float32Array([0, 0, 0, 10, 10, 0]);
-    const big = new Float32Array([0, 0, 0, 50, 40, 0]);
-    expect(bbox(big)).toEqual([0, 0, 50, 40]);
-    expect(largestFace([small, big])).toBe(1);
-    expect(largestFace([])).toBe(-1);
+  it("boxes a face by its landmarks", () => {
+    expect(bbox(new Float32Array([0, 0, 0, 50, 40, 0]))).toEqual([0, 0, 50, 40]);
   });
 
   it("puts every face back to back for Python", () => {
@@ -80,11 +75,11 @@ describe("frame quality numbers (M43)", () => {
   const gray = (values: number[]) => new Uint8ClampedArray(values.flatMap((v) => [v, v, v, 255]));
 
   it("a flat image has no spread, a checkerboard has", () => {
-    const flat = lumaSpread(gray(Array(64).fill(7)), 8, 8);
+    const flat = lumaSpread(gray(Array(64).fill(7)), 8, 8, 4);
     expect(flat.mean).toBeCloseTo(7, 3);
     expect(flat.std).toBeCloseTo(0, 3);
     const px = gray(Array.from({ length: 64 }, (_, i) => ((i % 8) + Math.floor(i / 8)) % 8 < 4 ? 0 : 200));
-    expect(lumaSpread(px, 8, 8).std).toBeGreaterThan(50);
+    expect(lumaSpread(px, 8, 8, 4).std).toBeGreaterThan(50);
   });
 
   it("sharpness is the Laplacian variance inside the box: 0 when flat, high on edges, null when tiny", () => {

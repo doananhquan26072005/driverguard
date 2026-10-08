@@ -77,14 +77,14 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
 
   return (
     <HudStage rows={["72px", "minmax(0,1fr)", "auto"]} className="bg-hud-bg text-hud-ink">
-      <header className="flex items-center px-4 sm:px-8">
+      <header className="flex items-center px-4 hud-sm:px-8">
         <span className="flex flex-col gap-0.5">
           <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
           <span className="dg-num text-xs text-hud-ink-3">Tổng kết chuyến đi · {span}</span>
         </span>
       </header>
 
-      <main className="grid min-h-0 gap-3.5 px-4 sm:px-8 lg:grid-cols-[450px_minmax(0,1fr)]">
+      <main className="grid min-h-0 gap-3.5 px-4 hud-sm:px-8 hud-lg:grid-cols-[450px_minmax(0,1fr)]">
         <div className="flex min-h-0 flex-col gap-3.5">
           <section aria-live="polite" className={`dg-alert ${tone.card} flex flex-col gap-[18px] px-[26px] py-6`}>
             <div className="flex items-start justify-between gap-3">
@@ -132,7 +132,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
                 <b>Gợi ý cho lần sau</b>
                 <span>Từ số liệu của chuyến, không phải chẩn đoán</span>
               </span>
-              <div className="grid gap-2.5 sm:grid-cols-2">
+              <div className="grid gap-2.5 hud-sm:grid-cols-2">
                 {s.suggestions.map((x, i) => {
                   const tile = suggestionTile(x.code, x.minutes);
                   return (
@@ -151,7 +151,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
         </div>
       </main>
 
-      <footer className="grid items-center gap-3.5 px-4 pt-3.5 pb-5 sm:grid-cols-[minmax(0,1fr)_230px] sm:px-8">
+      <footer className="grid items-center gap-3.5 px-4 pt-3.5 pb-5 hud-sm:grid-cols-[minmax(0,1fr)_230px] hud-sm:px-8">
         <span className="flex items-center gap-2.5 text-[15px] text-hud-ink-2">
           <Send aria-hidden className={`size-[18px] shrink-0 ${delivery === "failed" ? "text-hud-caution" : "text-[#93c5fd]"}`} />
           {DELIVERY_TEXT[delivery]}
