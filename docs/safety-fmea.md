@@ -127,12 +127,23 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Từ M33:** nhịp "còn sống" mỗi 30 s lên backend. Tiến trình chết hẳn (máy treo, hết bộ nhớ, app bị hệ
   điều hành dừng): sau 90 s tab "Đội xe" của dashboard hiện xe đó **"Mất liên lạc"**, khác với "Đã kết thúc
   chuyến". Vòng lặp còn sống mà không có frame: nhịp báo `stalled`.
+- **Từ M71 (bản web):**
+  - Trình duyệt ngừng gọi `requestVideoFrameCallback` quá `capture.frame_timeout_s` (3 s) khi trang đang ở
+    trước mặt: vòng lặp tự lấy frame bằng timer cho tới khi trình duyệt gọi lại. Tab bị che thì không kéo
+    (trình duyệt chỉ cho khoảng 1 frame / giây), nhịp vẫn báo `stalled` như trước.
+  - Lỗi ở phía trang (MediaPipe, canvas, lời gọi sang Python) đi cùng đường `frame_failed` với lỗi trong
+    Python: quá 1 s là "Lỗi xử lý" và `agent_error`. Trước đó chỉ là một dòng trong console.
+  - Hai frame cách nhau quá `max_gap_s` (0,5 s) không còn bị nối thành một đợt: khối 7, 8 bắt đầu đếm lại,
+    khối 12 xác nhận lại. Trước đó chớp mắt ở hai đầu một lần đứng 2 s cho còi L3, 7 s cho "không phản ứng".
 - **Còn lại:** quản lý phải đang mở tab "Đội xe" mới thấy; chưa có âm báo hay thông báo đẩy (improvements:
-  "cảnh báo cần xác nhận, báo quản lý ngay"). Tài xế trong xe vẫn không được báo khi tiến trình chết hẳn
+  "cảnh báo cần xác nhận, báo quản lý ngay"). Bản web chưa tự tạo lại model mặt khi MediaPipe lỗi mãi; vòng
+  lặp rất chậm (dưới 2 FPS) vẫn báo "đang giám sát" kèm `low_fps` dù không đợt nào đếm được. Tài xế trong xe vẫn không được báo khi tiến trình chết hẳn
   (improvements: "kênh cảnh báo vật lý").
 - **Test:** `test_frames_failing_for_a_while_are_a_processing_error_then_recover`,
   `test_a_failing_frame_is_caught_and_a_lasting_failure_shows_on_the_hud`,
-  `test_loop_health_events_are_system_events`; frontend: trạng thái "error", âm báo dừng giám sát.
+  `test_loop_health_events_are_system_events`; frontend: trạng thái "error", âm báo dừng giám sát. M71:
+  `tests/test_edge_agent/test_m71_frame_gaps.py`, `test_a_frame_failing_in_the_page_takes_the_same_path`,
+  `frontend/src/live/watchdog.test.ts`, e2e "the loop recovers by itself".
 
 <a id="4-app-bi-android-dung"></a>
 
@@ -171,7 +182,11 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   Chạm một lần bất kỳ đâu, hoặc mặt hiện lại, là xong. Không trả lời trong `presence.answer_s` (10 s): sự kiện
   `no_answer` gửi lên backend ngay, tab "Đội xe" đưa xe lên mục "Cần chú ý ngay" kèm tiếng; HUD chuyển sang
   còi L3 (người ngồi cạnh nghe được). Không hỏi khi camera bị che / lệch / ảnh xấu (lỗi của camera, dòng 7).
-- **Còn lại:** hai ngưỡng là tạm (chưa có số liệu tài xế rời khung có chủ ý trong bao lâu); tài xế bất tỉnh mà
+- **Từ M74:** mặt chập chờn không còn bị hỏi dồn. Đã hỏi rồi thì mặt phải hiện lại liền `presence.back_s` (1 s)
+  mới coi là trở lại; sau một lần chạm thì `presence.reask_after_s` (60 s) sau mới hỏi lại. Mặt hiện một frame mỗi
+  12 s: 10 lần hỏi trong 2 phút thành một. Đánh đổi: trong 60 s sau lần chạm, tài xế gục ra khỏi khung không được
+  hỏi. Test: `tests/test_edge_agent/test_m74_alert_reminders.py`.
+- **Còn lại:** bốn ngưỡng là tạm (chưa có số liệu tài xế rời khung có chủ ý trong bao lâu); tài xế bất tỉnh mà
   mặt vẫn trong khung, mắt mở thì ngoài khả năng của camera.
 - **Test thêm:** `tests/test_edge_agent/test_m44_unresponsive.py` (hỏi, chạm, không trả lời, che camera thì
   không hỏi), `tests/test_backend/test_m44_urgent.py`; frontend `hudModel.test.ts`, `lib.test.ts`.
@@ -184,9 +199,10 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 ### 7. Tạm ngưng giám sát: mất mặt ≥ 3 s khi chạy — Vừa
 
 - **Nguyên nhân:** che camera, tài xế ra khỏi khung, chói (PRD FR-6, M10).
-  `risk.unavailable.no_face_s` = 3 s, chỉ khi xe chạy. Từ M43 còn có: thấy mặt nhưng mặt quá tối, quá chói
-  hoặc ảnh mờ suốt `risk.unavailable.low_quality_s` (5 s); giai đoạn chất lượng của khối 6
-  (`edge_agent/perception/quality.py`, ngưỡng `quality.*`, tạm).
+  `risk.unavailable.no_face_s` = 3 s, khi xe không đứng yên (từ M72: từ 1 km/h, trước đó từ 5 km/h). Từ M43 còn
+  có: thấy mặt nhưng mặt quá tối, quá chói hoặc ảnh mờ suốt `risk.unavailable.low_quality_s` (5 s); giai đoạn
+  chất lượng của khối 6 (`edge_agent/perception/quality.py`, ngưỡng `quality.*`, tạm). Từ M72 mặt lọt một phần
+  khỏi khung (`bad_angle`) cũng được tính 5 s đó; trước M72 ca này không đo, không tạm ngưng, không giới hạn.
 - **Phát hiện:** có, `RiskAssessment.unavailable` kèm `unavailable_reason`: `no_face`, `camera_blocked` (không
   thấy mặt và cả khung tối / phẳng), `bad_angle` (mặt nằm một phần ngoài khung), `low_light`, `glare`, `blur`.
   Mọi luật bị tắt trong lúc đó (đoán sẽ là báo sai).
@@ -205,6 +221,13 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   `lib.test.ts` (demo mất mặt).
 
 - **Test thêm (M43):** `tests/test_edge_agent/test_quality.py`, `tests/test_backend/test_m43_unavailable_cause.py`.
+- **Test thêm (M72):** `tests/test_edge_agent/test_m72_silent_states.py` (mặt lọt một phần, giới hạn giữ nhìn lệch,
+  xe bò 1–5 km/h), `test_unavailable_in_a_crawl_below_min_speed`.
+- **Từ M72 (nút trên HUD):** không còn nút một chạm nào tắt hoặc che giám sát. "Chạy mô phỏng" và liên kết Dashboard
+  chỉ hiện khi chưa có thiết bị nào đang giám sát sau màn hình; "Dừng camera" của bản web hỏi lại và kết thúc chuyến
+  có tổng kết; rời trang giữa chuyến có âm `monitoring_stopped`. Còn hở: đóng tab hoặc tải lại trang giữa chuyến
+  (không tiếng, đội xe thấy "Mất liên lạc" sau 90 s). Test: `hudModel.test.ts` ("ways out of the HUD"), e2e
+  `live.e2e.ts`.
 
 <a id="8-mat-camera"></a>
 
@@ -212,6 +235,10 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 
 - **Nguyên nhân:** camera rút ra / hỏng / treo. `capture.max_consecutive_failures` (30 lần đọc lỗi) hoặc
   không có frame trong `frame_timeout_s` (3 s); mở lại mỗi `reconnect_interval_s` (2 s).
+- **Bản web (từ M71):** track camera kết thúc thì báo mất ngay; track bị `mute` hoặc video đứng hình quá
+  `frame_timeout_s` (kể cả khi đã kéo frame bằng timer) cũng là mất camera. Trang xin lại camera mỗi
+  `reconnect_interval_s`, HUD hiện "Lần thử N"; frame đầu tiên của luồng mới là `camera_restored`. Trước M71
+  bản web chỉ báo khi track kết thúc và không bao giờ mở lại.
 - **Phát hiện:** có.
 - **Tài xế thấy:** "Mất camera: ngừng giám sát", tiếng báo to.
 - **Quản lý thấy:** sự kiện `camera_lost` / `camera_restored`; bản tổng kết có `camera_lost_s`.
@@ -269,6 +296,11 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   khi xe thật sự đỗ; sai khi tín hiệu tốc độ sai (dòng 2).
 - **Đánh đổi (chốt 02/10):** ngủ gật lúc dừng đèn đỏ không còn tiếng chuông; khi xe chạy lại thì mọi luật
   hoạt động bình thường (microsleep vẫn L3 ngay).
+- **Từ M73 (chốt 08/10):** xe chạy lại sau lần dừng từ `context.short_stop_forget_s` (10 s, tạm) thì phần PERCLOS /
+  microsleep gom lúc dừng bị bỏ, như sau lần nghỉ. Trước M73 phần đó được mang sang: nhắm mắt 25 s ở đèn đỏ thành L1
+  sau 1,0 s lăn bánh (L2 ban đêm), lúc tài xế đã mở mắt. Đánh đổi thêm: người ngủ gật thật ở đèn đỏ bắt đầu đoạn kế
+  tiếp không có phần điểm đó; mắt còn nhắm khi xe lăn bánh vẫn L3. Dừng dưới 10 s giữ nguyên bằng chứng. Cũng từ M73
+  hệ số "lái lâu" tắt khi nghỉ và khi đổi tài xế. Test: `tests/test_edge_agent/test_m73_context.py`.
 - **Test:** `test_standing_still_raises_no_alert_at_all`, `test_standing_still_looking_away_with_a_phone_raises_nothing`,
   `test_the_same_closure_while_driving_is_l3`, `test_resting_the_eyes_after_parking_is_never_l3_and_goes_silent`, `test_driving_off_after_a_rest_raises_nothing`,
   `test_microsleep_after_a_rest_is_still_l3`, `test_stationary_cap_from_config`, `test_standing_still_becomes_a_rest`,
@@ -296,8 +328,13 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 
 - Cùng (mức, lý do) không phát lại trong `alert.cooldown_s`: L1 120 s, L2 30 s, L3 0 s. HUD vẫn hiện mức
   đang bật; chỉ không có tiếng / sự kiện mới. Mức cao hơn luôn được phát. Còi L3 lặp lại khi mắt còn nhắm.
+- **Từ M74:** cooldown chỉ giữ lại, không nuốt. Lý do còn đó khi cooldown hết thì được phát lại (`alert.remind`).
+  Trước M74 có ba ca mất tiếng: đợt bắt đầu trong cooldown (nhìn lệch 40 s không tiếng vì 5 s trước có một lần
+  ngắn), mức đứng yên (L1 nửa giờ một chuông), lý do bắt đầu dưới một mức cao hơn. Còn lại: lần nhìn lệch thứ hai
+  vẫn im tới khi cooldown của lần đầu hết (tối đa 30 s). Cái giá: báo sai trên UTA-RLDD dev 1,29 → 1,81 / giờ.
 - **Test:** `test_cooldown_suppresses_same_level`, `test_escalation_bypasses_lower_cooldown`,
-  `test_cooldown_is_per_reason`, `test_dropping_a_level_is_not_a_new_alert`.
+  `test_cooldown_is_per_reason`, `test_dropping_a_level_is_not_a_new_alert`; M74:
+  `tests/test_edge_agent/test_m74_alert_reminders.py`.
 
 <a id="15-mat-mang"></a>
 

@@ -42,7 +42,9 @@ cao xuống), `drowsy_score`, `distraction_score` (thang 0–100), `drowsy_terms
 
 - Mỗi thành phần nằm trong khoảng 0..1. Riêng perclos được nội suy tuyến tính trong khoảng 5%→20%.
 - Microsleep vẫn tính trong 5 phút sau khi xảy ra.
-- Nhân thêm 1.2 nếu là ban đêm, nhân 1.2 nếu đã lái lâu. Tối đa 100.
+- Nhân thêm 1.2 nếu là ban đêm, nhân 1.2 nếu đã lái lâu. Tối đa 100. "Lái lâu" = thời gian lái từ lần nghỉ /
+  lần "Đổi tài xế" gần nhất (`drive_run_s` của khối 10) ≥ `context.long_drive_s` (M73; trước đó là tổng thời gian
+  lăn bánh từ lúc mở app, không bao giờ tắt).
 
 ## 5. Ngữ cảnh
 - **Mất tập trung:** chỉ xét khi xe đang chạy. Xi nhan không tắt luật off_road; khối 8 chỉ nới
@@ -50,11 +52,15 @@ cao xuống), `drowsy_score`, `distraction_score` (thang 0–100), `drowsy_terms
 - **Buồn ngủ:** mức tối đa bị giới hạn theo trạng thái xe:
   - xe chạy: tối đa L3
   - xe dừng: tối đa `stationary_max_level` (mặc định L1)
-  - nghỉ hẳn, hoặc đang đăng ký tài xế (bước nhắm mắt): L0
+  - xe chạy lại sau lần dừng từ `context.short_stop_forget_s` (10 s) hoặc sau lần nghỉ: phần khối 7 và trip memory
+    gom từ lúc dừng bị bỏ (M73; trước đó chỉ sau lần nghỉ)
+  - nghỉ hẳn, hoặc đang đăng ký tài xế (bước nhắm mắt): L0; riêng lúc đăng ký `drowsy_score` và các số hạng đọc 0 (M68)
 
 ## 6. Mất giám sát (FR-6)
-Xe đang chạy mà mất mặt ≥ 3 s thì `unavailable = True`: xoá mọi hit, không cảnh báo, và báo cho
-HUD/backend biết là "không giám sát được".
+Xe không đứng yên (`rolling`: từ `context.stationary_kmh`, kể cả lúc bò dưới 5 km/h; M72) mà mất mặt ≥ 3 s thì
+`unavailable = True`: xoá mọi hit, không cảnh báo, và báo cho HUD/backend biết là "không giám sát được".
+Thấy mặt nhưng không đọc được suốt `risk.unavailable.low_quality_s` (5 s) cũng vậy: `low_light`, `glare`, `blur`
+(M43) và `bad_angle` (mặt lọt một phần khỏi khung hoặc không có tư thế đầu; M72).
 **Ngoại lệ:** nếu đang đếm một lần nhắm mắt và đầu gục ra khỏi khung hình (`head_drop`), engine
 vẫn giám sát và còi L3 vẫn kêu.
 
