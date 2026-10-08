@@ -109,6 +109,12 @@ cho HUD các số nó đã giữ sẵn (đọc ra, không đổi logic cảnh b�
 | [M75](#m75) | Hành vi dưới 15 FPS, chỉ đo (audit 08/10, mục 6.1 việc 7): replay các video UTA-RLDD quay từ 25 FPS trở lên sau khi bỏ bớt frame xuống 15 / 12 / 10 FPS, khoảng cách đều và không đều; test chuỗi số giả cho khối 7, 8, 9, 12 với tám kiểu vòng lặp (công cụ eval: `tools/seq_eval.py` `resample_trace`, `tools/uta_rldd.py fps`; `tests/test_edge_agent/test_m75_low_fps.py`) | `eval/results/fps_low_uta_rldd.md`: 59 video của 21 người dùng để dò, báo sai nhánh buồn ngủ 5 lần khi giữ nguyên, 2–7 lần ở 10–15 FPS (mỗi dòng 3 lượt, dao động giữa các lượt lớn hơn chênh lệch giữa các tốc độ); người buồn ngủ có cảnh báo 12 / 19 → 12–14, đạt L3 10 → 9–11. Chuỗi số giả: không cảnh báo nào được tạo thêm ở vòng lặp chậm, sự kiện rõ ràng trễ tối đa hai khoảng frame; nhắm mắt 1,6 s (vượt mốc L3 0,1 s) bị bỏ sót ở 10 FPS không đều | ✅ Xong · 08/10 (chỉ đo: không đổi ngưỡng, không đổi hành vi; thêm 4 khoá `eval.fps_study_*`, độ không đều 0,3 là tạm; 7 ca ghi `xfail` là chỗ vòng lặp chậm làm mất độ nhạy; khối 2–5 trên máy chậm và nhánh điện thoại chưa đo; tập giữ riêng không được đọc) |
 | [M76](#m76) | Mắt díp rồi mới nhắm hẳn (audit 08/10, mục 6.1 việc 10): khi cả đợt nhắm chưa đạt tỉ lệ nhắm sâu, chuỗi frame nhắm sâu đang chạy được đếm từ frame đầu của chính nó; chuỗi đó cũng mở được phần đếm tiếp khi gục đầu (khối 7: `edge_agent/analysis/drowsiness/eyes.py`; khoá `drowsiness.microsleep_deep.run_gap_s`) | Chuỗi số giả: mí sụp 2 / 4 / 10 / 30 s rồi nhắm hẳn: còi L3 đúng 1,5 s sau khi nhắm (trước: 2,0 / 4,0 / 10,0 s, và không bao giờ với 30 s). UTA-RLDD 24 người dùng để dò: chuỗi nhắm sâu từ 1,5 s có L3 đúng lúc 45 → 47 / 50, báo sai trên video `0` không đổi; YawDD, FL3D, SUST, bản tự ghi không thêm cảnh báo sai nào | ✅ Xong · 08/10 |
 
+### Vận hành (M66–)
+
+| Mốc | Làm gì | Xong là thấy gì | Trạng thái |
+|---|---|---|---|
+| [M66](#m66) | Deploy lên Railway và tự deploy khi CI pass: `.railwayignore` gửi đúng hai model, job `deploy` trong CI (model lấy từ GitHub Release), hướng dẫn cấu hình | Merge vào `main` → CI pass → bản mới tự lên Railway; test fail thì không deploy | 🟡 Giai đoạn A, B xong · 08/10 (repo, cấu hình Railway / GitHub, deploy tay đầu tiên); chờ lần tự deploy đầu tiên từ CI |
+
 ---
 
 ## Chi tiết từng mốc
@@ -1598,3 +1604,22 @@ hình, bỏ nhãn vùng tốc độ "Nhanh" / "Rất nhanh".
   - Số trong `eval/results` là của hành vi trước M74; mốc này chỉ làm lệch thêm một dòng (sự kiện microsleep của FL3D 145 → 146) và các dòng của F2_S18. Sinh lại vẫn cần anh cho phép
   - Lỗi nhỏ của audit ở `tools/uta_rldd.py` `load_trace` (numpy 2) gặp lại khi viết script đo, chưa sửa: ngoài phạm vi mốc
 - Test: 1180 Python pass, 7 xfail (19 test mới ở `test_m76_droop_then_shut.py`, không test cũ nào phải sửa); ruff / format sạch; `frontend/public/py/edge_agent.zip` đóng gói lại. Không đổi code frontend, nên test frontend và e2e không chạy lại
+
+### Vận hành (M66–)
+
+<a id="m66"></a>
+
+#### M66: Deploy lên Railway, tự deploy khi CI pass (`.railwayignore`, `ci.yml`, `docs/deploy-railway.md`)
+
+**Xong là thấy gì:** merge vào `main` → job `python`, `frontend`, `e2e` pass → job `deploy` đưa bản mới lên Railway; một job fail thì không deploy
+
+**Trạng thái:** Giai đoạn A xong (07/10, repo). Giai đoạn B xong (08/10): release `models-v1`, cấu hình Railway (volume `/app/data`, `DG_JWT_SECRET`, domain), secret `RAILWAY_TOKEN` + variable `RAILWAY_SERVICE` trên GitHub, lần deploy tay đầu tiên thành công (08/10 lúc 00:09, service `driveguard` Online). Chưa làm: lần tự deploy đầu tiên từ job `deploy` của CI và kiểm tra trên bản thật (giai đoạn C)
+
+- **Sửa build trên Railway (08/10):** stage `webpy` của `Dockerfile.railway` chạy `tools/build_web_py.py`, file này đọc dấu vân tay model qua `edge_agent.version` → `edge_agent.config` (cần `yaml`). Thiếu `pyyaml` nên ba lần deploy tay đầu tiên fail với `ModuleNotFoundError: No module named 'yaml'`; nay stage này cài `pyyaml>=6.0`
+- **Gộp `main` (M67 của nhánh DAQuan):** chỉ đụng `docs/roadmap.md` (cả hai cùng thêm mục mới); sau khi gộp: 980 Python + 138 frontend pass, `ruff` sạch, `vite build` chạy được (e2e để CI chạy)
+- **Model không tới được build:** `Dockerfile.railway` chép `models/face_landmarker.task` và `models/yolov8n.onnx`, nhưng `.railwayignore` cũ bỏ cả `models/`, và `railway up` mặc định còn bỏ mọi thứ trong `.gitignore` (có `models/*.task`, `models/*.onnx`). Nay deploy chạy `railway up --no-gitignore`; `.railwayignore` tự liệt kê mọi thứ không được gửi (`.env*`, database, log, `data/`, `.ai-log/`, `.claude/`, model không dùng, `node_modules`, ...)
+- **Job `deploy`** trong `.github/workflows/ci.yml`: chỉ khi push lên `main`, `needs: [python, frontend, e2e]` (job `template` của khoá học không chặn); `concurrency` để hai lần deploy không chồng nhau; kiểm tra secret / variable trước và báo đúng cái thiếu; tải hai model từ GitHub Release `models-v1` (`gh release download`), rồi `npx @railway/cli@5 up --ci --no-gitignore --service $RAILWAY_SERVICE`. Railway tự build `Dockerfile.railway`, chỉ chuyển sang bản mới khi `/health` trả 200
+- **Hướng dẫn:** `docs/deploy-railway.md` (cấu hình một lần, deploy tay, kiểm tra sau deploy, quay lui)
+- **Sửa kèm:** `_error_site` (`edge_agent/web/bridge.py`) đổi `\` thành `/` trước khi cắt đường dẫn, nên test `test_a_failing_frame_names_the_error_and_its_code_location` pass cả trên Windows; trong Pyodide đường dẫn vốn là `/`, không đổi hành vi
+- **Chưa kiểm:** chưa chạy job `deploy` thật (cần secret); chưa thử `railway up --no-gitignore` với `.railwayignore` mới trên Railway
+- Test: 969 Python pass trên Windows (trước 968 + 1 lỗi do đường dẫn); YAML của CI đọc được, đủ 5 job; `ruff` sạch

@@ -114,6 +114,45 @@ jobs:
             frontend/test-results/
           retention-days: 7
 
+  # DriverGuard on Railway (M66): a push to main deploys only after the three DriverGuard jobs pass.
+  # Railway builds Dockerfile.railway itself; the two pretrained models are not in git, so they come
+  # from the GitHub release `models-v1`. Needs the secret RAILWAY_TOKEN (project token) and the
+  # variable RAILWAY_SERVICE (service name), see docs/deploy-railway.md.
+  deploy:
+    needs: [python, frontend, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: railway-deploy
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy settings
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}
+        run: |
+          [ -n "$RAILWAY_TOKEN" ] || { echo "::error::secret RAILWAY_TOKEN is not set"; exit 1; }
+          [ -n "$RAILWAY_SERVICE" ] || { echo "::error::variable RAILWAY_SERVICE is not set"; exit 1; }
+
+      - name: Download pretrained models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p models
+          gh release download models-v1 --dir models --pattern face_landmarker.task --pattern yolov8n.onnx
+          ls -l models/face_landmarker.task models/yolov8n.onnx
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        # --no-gitignore: .gitignore holds the models back; .railwayignore lists what must not be sent.
+        run: npx -y @railway/cli@5 up --ci --no-gitignore --service "${{ vars.RAILWAY_SERVICE }}"
+
   # Course template (src/, LangGraph / LangChain). Kept separate so it cannot hide DriverGuard results.
   template:
     runs-on: ubuntu-latest
