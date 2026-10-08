@@ -10,6 +10,12 @@ screen once. Three ways out:
 - no answer within `answer_s`: "no_answer", reported to the backend at once so the fleet view can
   show it while it is happening. It stays `unanswered` until the face is back or the driver taps.
 
+A face that flickers (a cap, a mask, a camera aimed badly: one frame with a face every few seconds)
+must not turn that into a question every few seconds (M74):
+- once the question was asked, the face only counts as back after it has been seen for `back_s`
+  without a break; a shorter glimpse leaves the question, the answer or `unanswered` as it is;
+- after a tap, no new question for `reask_after_s`, even when the face came back and went again.
+
 A covered lens, a badly aimed camera or an unusable image are camera problems, not a missing
 driver: no question (the HUD names the cause instead). Pure logic on the times it is given.
 """
@@ -29,6 +35,8 @@ class PresenceConfig:
     enabled: bool = True
     ask_after_s: float = 5.0  # face lost (no_face) this long while moving: ask
     answer_s: float = 10.0  # no tap this long after asking: no_answer
+    back_s: float = 1.0  # once asked, the face must be seen this long before the loss is over
+    reask_after_s: float = 60.0  # no new question this long after the driver's tap
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PresenceConfig:
@@ -50,10 +58,16 @@ class PresenceCheck:
         self._asked_at: float | None = None
         self._answered = False  # for this loss of the face
         self._unanswered = False
+        self._back_since: float | None = None  # the face has been seen again since this time
+        self._last_answer: float | None = None  # time of the driver's last tap
+
+    def _loss_over(self) -> None:
+        self._lost_since = self._asked_at = self._back_since = None
+        self._answered = self._unanswered = False
 
     def reset(self) -> None:
-        self._lost_since = self._asked_at = None
-        self._answered = self._unanswered = False
+        self._loss_over()
+        self._last_answer = None
 
     def update(self, t: float, lost: bool, ack: bool = False) -> PresenceState:
         """lost: monitoring is unavailable because the driver is out of view. ack: the driver tapped."""
@@ -61,12 +75,19 @@ class PresenceCheck:
         if not cfg.enabled:
             return PresenceState()
         if not lost:
-            self.reset()
-            return PresenceState()
+            touched = self._asked_at is not None or self._answered or self._unanswered
+            if self._back_since is None:
+                self._back_since = t
+            if not touched or t - self._back_since >= cfg.back_s:
+                self._loss_over()
+                return PresenceState()
+        else:
+            self._back_since = None
         if self._lost_since is None:
             self._lost_since = t
         if ack and (self._asked_at is not None or self._unanswered) and not self._answered:
             self._answered, self._unanswered, self._asked_at = True, False, None
+            self._last_answer = t
             return PresenceState(event="answered")
         if self._answered:
             return PresenceState()
@@ -74,6 +95,8 @@ class PresenceCheck:
             return PresenceState(unanswered=True)
         if self._asked_at is None:
             if t - self._lost_since < cfg.ask_after_s:
+                return PresenceState()
+            if self._last_answer is not None and t - self._last_answer < cfg.reask_after_s:
                 return PresenceState()
             self._asked_at = t
             return PresenceState(asking=True, remaining_s=cfg.answer_s, event="asked")

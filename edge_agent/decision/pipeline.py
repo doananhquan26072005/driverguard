@@ -9,16 +9,27 @@ its frames are not binned by trip memory, and once the vehicle moves again, what
 drowsiness branch and trip memory gathered since it stopped is dropped. Without this,
 eyes closed to rest would raise a drowsiness alert on the first seconds of the next drive.
 
+A shorter stop of at least context.short_stop_forget_s (a red light, M73) is handled the same way
+when the vehicle drives off: what blocks 7 and trip memory gathered since it stopped is dropped.
+Standing still raises no alert (M30), and before M73 eyes closed at a red light only moved the alert
+to the moment the vehicle rolled again, with the driver awake and looking at the road. Its frames
+are still binned while it lasts (nobody knows yet how long it will be), and the repeated-L1
+escalation of block 12 goes on: the driver has not rested. A stop shorter than that keeps everything.
+
 Driver enrollment (block 6 stage) runs here too, since it needs block 10's "standing still".
 Once it is done its profile goes to blocks 7 and 8 (block 3 gets it from the caller, which
 owns the face detector). While it asks the driver to close the eyes, and for
 enrollment.reopen_grace_s after (the driver opens them on the beep), drowsiness alerts are
-off, those frames are not binned by trip memory, and what they fed block 7 is dropped, as
-after a rest.
+off, drowsy_score reads 0, those frames are not binned by trip memory, and what they fed block 7
+is dropped, as after a rest. When that step completed the enrollment, block 7 drops everything it
+gathered so far instead: it was measured on the self-learnt baselines, and the enrolled driver
+starts from zero on their own, and trip memory drops what it gathered since the vehicle stopped
+(what it holds from driving before a late enrollment stays: a microsleep on the road still counts).
 
 Driver change ("Đổi tài xế" on the HUD, `change_driver`): everything learnt about the previous
 driver is dropped (eye / mouth / pose baselines, PERCLOS, blinks, trend, road pose, enrollment)
-and the new driver enrolls. The vehicle context and the whole-trip summary (block 11) go on.
+and the new driver enrolls, and their continuous driving (block 10 `drive_run_s`, what "long drive" is
+judged on) starts at 0. The rest of the vehicle context and the whole-trip summary (block 11) go on.
 
 Presence check (block 12 stage, M44): while monitoring is unavailable because the driver is out of
 view, the HUD asks "Bạn còn ở đó không?"; `presence_answer` is the driver's tap.
@@ -72,7 +83,8 @@ class DecisionPipeline:
             long_drive_s=self.context.config.long_drive_s,
             score_l2=self.risk.config.drowsy_l2,
         )
-        self._rest_from: float | None = None  # frame time the vehicle stopped, once the stop is a rest
+        self._stop_from: float | None = None  # frame time the vehicle stopped, once the stop is long enough to forget
+        self._stop_rested = False  # ... and it became a rest
 
     def _new_driver(self) -> None:
         """Fresh per-driver state: blocks 7, 8, 11 (trip memory), 12 and enrollment."""
@@ -92,6 +104,7 @@ class DecisionPipeline:
         self._presence_ack = False  # the driver tapped the HUD's question since the last frame
         self._closing_from: float | None = None  # start of enrollment's close_eyes step
         self._closing_until: float | None = None  # ... its end + reopen_grace_s
+        self._closing_stop_from = 0.0  # when the vehicle stopped for that enrollment
         self._trip_state: TripState | None = None
 
     def enrollment_answer(self, agree: bool) -> bool:
@@ -106,29 +119,39 @@ class DecisionPipeline:
     def change_driver(self) -> None:
         """Another driver took the wheel (see module doc). The caller clears block 3's anchor."""
         self._new_driver()
-        self._rest_from = None
+        self._stop_from, self._stop_rested = None, False
+        self.context.new_driver()
         self.trip_log.driver_changed()
 
     def _track_rest(self, ctx: VehicleContext, t: float) -> None:
-        if ctx.resting:
-            if self._rest_from is None:
-                self._rest_from = t - ctx.stationary_s
-        elif self._rest_from is not None and not ctx.stationary:  # driving off after a rest
-            self.drowsiness.forget_since(self._rest_from)
-            self.trip.forget_since(self._rest_from)
-            self.alerts.forget_repeats()  # 12: the driver rested, repeated-L1 escalation starts again
-            self._rest_from = None
+        """Driving off after a rest or a long enough stop: drop what was gathered since the vehicle stopped."""
+        if ctx.long_stop:
+            if self._stop_from is None:
+                self._stop_from = t - ctx.stationary_s
+            self._stop_rested = self._stop_rested or ctx.resting
+        elif self._stop_from is not None and not ctx.stationary:
+            self.drowsiness.forget_since(self._stop_from)
+            self.trip.forget_since(self._stop_from)
+            if self._stop_rested:
+                self.alerts.forget_repeats()  # 12: the driver rested, repeated-L1 escalation starts again
+            self._stop_from, self._stop_rested = None, False
 
-    def _track_enrollment(self, e: EnrollmentState, t: float) -> None:
+    def _track_enrollment(self, e: EnrollmentState, ctx: VehicleContext, t: float) -> None:
         if e.status == "close_eyes":
             if self._closing_from is None:
                 self._closing_from = t
+                self._closing_stop_from = t - ctx.stationary_s
             self._closing_until = None
         elif self._closing_from is not None:  # the eyes-closed step is over (done, redone or aborted)
             if self._closing_until is None:
                 self._closing_until = t + self.enrollment.config.reopen_grace_s
             if t >= self._closing_until:
-                self.drowsiness.forget_since(self._closing_from)
+                if e.enrolled:  # the scores start from zero (see module doc)
+                    self.drowsiness.forget_since(float("-inf"))
+                    self.trip.forget_since(self._closing_stop_from)
+                    self._trip_state = self.trip.update(t, 0.0, observed=False)  # block 9 reads it this frame
+                else:  # the step is redone, or was aborted: only what it fed block 7 goes
+                    self.drowsiness.forget_since(self._closing_from)
                 self._closing_from = self._closing_until = None
         if "enrolled" in e.events and e.profile is not None:
             self._apply_profile(e.profile)
@@ -172,12 +195,19 @@ class DecisionPipeline:
         ctx = self.context.update(signals)
         self._track_rest(ctx, features.timestamp)
         enrollment = self.enrollment.update(features, ctx.stationary)
-        self._track_enrollment(enrollment, features.timestamp)
+        self._track_enrollment(enrollment, ctx, features.timestamp)
         closing_eyes = self._closing_from is not None
         quality = self.quality.update(features)
         drowsy = self.drowsiness.update(features)
         distraction = self.distraction.update(
-            features, phone_near_face, ctx.moving, ctx.turn_side, drowsy.gaze_down, phone_kind, drowsy.deep_closed
+            features,
+            phone_near_face,
+            ctx.moving,
+            ctx.turn_side,
+            drowsy.gaze_down,
+            phone_kind,
+            drowsy.deep_closed,
+            rolling=ctx.rolling,
         )
         risk = self.risk.assess(drowsy, distraction, ctx, self._trip_state, drowsy_muted=closing_eyes, quality=quality)
         if risk.unavailable:  # 8: nothing was judged, the glance window starts again

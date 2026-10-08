@@ -58,6 +58,10 @@ class BrowRaise:
             self._raises.append(t)
             events.append("brow_raise")
 
+    def gap(self) -> None:
+        """No frame for too long: the raise under way starts again."""
+        self._since, self._fired = None, False
+
     def count(self, t: float) -> int:
         expire(self._raises, t, self.config.brow_window_s)
         return len(self._raises)

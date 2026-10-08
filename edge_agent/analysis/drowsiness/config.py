@@ -42,6 +42,9 @@ class DrowsinessConfig:
     microsleep_deep_cnn: float = 0.8
     microsleep_deep_blendshape: float = 0.55  # block 5 score = eyeBlink
     microsleep_deep_min_frac: float = 0.5
+    # Below min_frac, the running stretch of deep frames counts from its own start; frames that are not
+    # deep for longer than this end it (< 0 = off)
+    microsleep_deep_run_gap_s: float = 0.0
     microsleep_deep_blink: float = 0.5  # EAR deep frames also need eyeBlink >= this when known (0 = off)
     # Enrolled driver: the vote needs this x the driver's own closed-eye eyeBlink, if that is higher (0 = off)
     microsleep_deep_enrolled_blink_ratio: float = 0.0

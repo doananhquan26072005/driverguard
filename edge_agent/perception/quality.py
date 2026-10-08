@@ -14,7 +14,8 @@ is wrong with a frame, from numbers only:
 `QualityMonitor` times how long an issue has lasted (good frames for `clear_s` end it) and keeps
 `score`, the share of the last `window_s` with a usable frame. The risk engine (block 9) turns a
 lasting issue into "monitoring unavailable" with that reason (risk.unavailable). A number that was
-not measured (None: old traces, synthetic sequences) is never an issue.
+not measured (None: old traces, synthetic sequences) is never an issue; bad_angle needs none of
+them (it comes from block 6's face_reliable and head pose), so it is judged on every trace.
 
 `measure` takes the numbers on the device from block 2's luminance (before CLAHE); the browser
 measures the same ones in frontend/src/live/measure.ts. Sharpness = variance of the 4-neighbour
@@ -35,10 +36,12 @@ from edge_agent.perception.landmarks import FaceLandmarks
 from edge_agent.perception.preprocess import PreprocessedFrame
 
 # Issues with a face in view (timed against risk.unavailable.low_quality_s), and without a usable one
-# (they only name why block 8's no-face time is running).
+# (they name why block 8's no-face time is running). bad_angle is both (M72): the face is in view, so
+# block 8's no-face time does not run, and it is timed like the face issues (TIMED_ISSUES).
 FACE_ISSUES = ("low_light", "glare", "blur")
 NO_FACE_ISSUES = ("camera_blocked", "bad_angle")
 ISSUES = NO_FACE_ISSUES + FACE_ISSUES
+TIMED_ISSUES = (*FACE_ISSUES, "bad_angle")
 SCENE_STRIDE = 4  # the whole-image numbers are taken on every 4th pixel (as block 2's IR test)
 
 

@@ -16,6 +16,11 @@ eyes.py, mouth.py, head.py, slow_blink.py, brow.py.
 - After a rest (the vehicle parked, block 10), `forget_since` drops what was gathered
   since the vehicle stopped: eyes closed to rest and waking-up yawns say nothing about the
   next drive. Events from before the stop stay.
+- Two frames more than `max_gap_s` apart (the loop stood still, the camera dropped frames): nothing
+  was seen in between, so whatever was running (closure, blink timing, yawn, head dip, brow raise)
+  ends there, uncounted, as after a face dropout of that length. Every duration here is a
+  difference of timestamps: without this, a closed-eye frame on each side of a 2 s freeze read as
+  one 2 s closure (L3), and 7 s as "unresponsive".
 """
 
 from __future__ import annotations
@@ -85,12 +90,22 @@ class DrowsinessAnalyzer:
         self._baseline.drop_since(t0)
         self._pose.drop_since(t0)
 
+    def _break_episodes(self) -> None:
+        """Nothing was seen since the last frame (see module doc): end what was running, uncounted."""
+        self._closure.end()
+        self._slow.gap()
+        self._yawn.gap()
+        self._nod.gap()
+        self._brow.gap()
+
     # ------------------------------------------------------------------ main update
     def update(self, f: FrameFeatures) -> DrowsinessState:
         cfg = self.config
         t = f.timestamp
         if self._start_t is None:
             self._start_t = t
+        if self._last_t is not None and t - self._last_t > cfg.max_gap_s:
+            self._break_episodes()
         dt = 0.0 if self._last_t is None else min(max(0.0, t - self._last_t), cfg.max_gap_s)
         self._last_t = t
         events: list[str] = []

@@ -145,6 +145,11 @@ class NodDetector:
             self._dip_track = []
             self._level_t = t
 
+    def gap(self) -> None:
+        """No frame for too long: the dip under way is dropped (its speeds cannot be measured across it)."""
+        self._dip_start = None
+        self._dip_track = []
+
     def count(self, t: float) -> int:
         expire(self._nods, t, self.config.nod_window_s)
         return len(self._nods)

@@ -13,6 +13,12 @@ Anti false-positive rules:
   when MediaPipe's eyeBlink blendshape (block 3, pretrained, no per-driver baseline) agrees
   it is at least that shut: EAR alone also collapses for glare on glasses, a head tilted
   down and eyes that are narrow before the driver's own baseline is learnt.
+- Lids droop, then shut (how falling asleep looks): the drooping sits inside the same closure and
+  dilutes `microsleep_deep_min_frac`, so the L3 rule came late by about its length, or never. While
+  the closure as a whole is not deep, the running stretch of firmly shut frames counts from its own
+  first frame; frames that are not firmly shut for longer than `microsleep_deep_run_gap_s` end it
+  (narrowed again). The yawn / talking mask restarts it like the rest of the counted part, and such
+  a stretch of `head_drop_carry_min_closed_s` also starts the head-drop carry.
 - Block 5's score is the eye CNN on the device and MediaPipe's eyeBlink in the web / APK build
   (FrameFeatures.p_closed_source). They are not on one scale: shut eyes give the CNN ~0.9 and
   eyeBlink 0.55-0.7, so with the CNN's 0.6 / 0.8 an eyeBlink closure never became "deep" (own
@@ -25,7 +31,8 @@ Anti false-positive rules:
   Hysteresis is for episodes (blinks, microsleep); PERCLOS is a time fraction.
 - PERCLOS only raises "perclos_high" after `perclos_min_coverage_s` of eye data.
 - Short face dropouts (< max_gap_s) do not break episodes; longer ones end them
-  without counting a blink.
+  without counting a blink. So does a gap that long between two frames (analyzer.py): the eyes
+  were not seen in it, and a carried closure (head drop) ends there too.
 - Head drop: when the eyes were seen closed for `head_drop_carry_min_closed_s` and the
   head then drops past `eye_max_pitch_down_deg` (eyes can no longer be judged), the
   closure keeps counting while the head stays down or the face is lost, so falling
@@ -132,6 +139,8 @@ class EyeClosure:
         self._eye_frames = 0
         self._episode_deep = 0  # same, over the whole episode (not reset by the yawn / talking mask)
         self._episode_eye = 0
+        self._run_since: float | None = None  # first frame of the running stretch of firmly shut frames
+        self._run_last = 0.0  # its latest firmly shut frame
         self._blinks: deque[float] = deque()
 
     def judge(self, closing: bool, opening: bool) -> bool:
@@ -149,6 +158,7 @@ class EyeClosure:
         self.head_drop = False
         self._deep_frames = self._eye_frames = 0
         self._episode_deep = self._episode_eye = 0
+        self._run_since = None
 
     def _episode_is_deep(self) -> bool:
         return self._episode_eye > 0 and self._episode_deep >= self.config.microsleep_deep_min_frac * self._episode_eye
@@ -170,7 +180,8 @@ class EyeClosure:
                 head_down
                 and t - self._last_eye_t <= cfg.max_gap_s
                 and closed_before >= cfg.head_drop_carry_min_closed_s
-                and self._episode_is_deep()  # lids lowered to look down are not carried
+                # lids lowered to look down are not carried
+                and (self._episode_is_deep() or self._run_s(self._last_eye_t) >= cfg.head_drop_carry_min_closed_s)
             ):
                 self.head_drop = True  # eyes shut, then the head dropped: keep counting
                 return
@@ -196,6 +207,13 @@ class EyeClosure:
         if self.closed_since is not None and not self.head_drop:
             self._count_since = t
             self._deep_frames = self._eye_frames = 0
+            self._run_since = None
+
+    def _run_s(self, t: float) -> float:
+        """Seconds since the running stretch of firmly shut frames began (0: none, or the rule is off)."""
+        return (
+            t - self._run_since if self._run_since is not None and self.config.microsleep_deep_run_gap_s >= 0 else 0.0
+        )
 
     def closed_duration(self, t: float, eye_closed: bool | None, deep_frame: bool, events: list[str]) -> float:
         """Seconds of the counted, deep closure (0 when not deep); fires "microsleep" once."""
@@ -206,8 +224,19 @@ class EyeClosure:
         if eye_closed and self._count_since is not None:
             self._eye_frames += 1
             self._deep_frames += deep_frame
+            if deep_frame:
+                if self._run_since is None:
+                    self._run_since = t
+                self._run_last = t
+            elif self._run_since is not None and t - self._run_last > cfg.microsleep_deep_run_gap_s:
+                self._run_since = None  # the lids came back up: narrowed again, not shut
         deep = self._eye_frames > 0 and self._deep_frames >= cfg.microsleep_deep_min_frac * self._eye_frames
-        duration = t - self._count_since if self._count_since is not None and deep else 0.0
+        if self._count_since is None:
+            duration = 0.0
+        elif deep:
+            duration = t - self._count_since
+        else:  # too much narrowing before it: only the firmly shut stretch counts
+            duration = self._run_s(t)
         if duration >= cfg.microsleep_min_s and not self._microsleep_fired:
             self._microsleep_fired = True
             events.append("microsleep")
@@ -263,4 +292,6 @@ class Perclos:
             _, dt, closed = self._samples.pop()
             self._known -= dt
             self._closed -= dt if closed else 0.0
+        if not self._samples:  # nothing left: no rounding residue in the running sums
+            self._known = self._closed = 0.0
         self._armed = True

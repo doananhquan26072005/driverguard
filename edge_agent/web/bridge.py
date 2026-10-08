@@ -14,6 +14,9 @@ Differences from the device, forced by the browser:
 - block 5: eye_state.source = blendshape (MediaPipe eyeBlink, no eye-crop classifier).
 - block 14: records are handed back to the browser as batch bodies; it posts them to
   /api/v1/web/events with the signed-in user's token.
+- block 1: the page watches its own camera loop with block 1's numbers (`capture` in `settings`): a
+  camera that stops giving frames is `camera(True)` and is asked for again (`camera_attempts`), and
+  a frame that fails in the page's own code is reported with `frame_error` (M71).
 
 What happens after the features (blocks 6-12, HUD state, block 14 records, end of trip) is
 edge_agent.runtime.TripRuntime, shared with the device. Images never reach this module: only
@@ -33,6 +36,7 @@ from typing import Any
 
 import numpy as np
 
+from edge_agent.capture.frame_source import CaptureConfig
 from edge_agent.config import PROJECT_ROOT, load_thresholds
 from edge_agent.context.can_sim import SIM, CanSimulator, ExternalVehicle, load_scenario
 from edge_agent.context.vehicle_context import ContextConfig
@@ -130,6 +134,7 @@ class WebAgent:
         self.phone_cfg = PhoneDetectorConfig.from_dict(th.get("phone"))
         self.preprocess_cfg = PreprocessConfig.from_dict(th.get("preprocess"))
         self.landmark_cfg = LandmarkConfig.from_dict(th.get("landmarks"))
+        self.capture_cfg = CaptureConfig.from_dict(th.get("capture"))
         self.selector = DriverSelector(self.landmark_cfg)
         self.publisher_cfg = PublisherConfig.from_dict(th.get("publisher"))
         self.face_memory = FaceBoxMemory(self.phone_cfg.face_memory_s)
@@ -165,9 +170,14 @@ class WebAgent:
 
     def settings(self) -> str:
         """What the browser side needs from thresholds.yaml (JSON): it keeps no thresholds of its own."""
-        lm, ph, pub = self.landmark_cfg, self.phone_cfg, self.publisher_cfg
+        lm, ph, pub, cap = self.landmark_cfg, self.phone_cfg, self.publisher_cfg, self.capture_cfg
         return json.dumps(
             {
+                "capture": {  # M71: the page's watch on its own loop
+                    "frame_timeout_s": cap.frame_timeout_s,
+                    "reconnect_interval_s": cap.reconnect_interval_s,
+                    "camera_fps": cap.camera_fps,
+                },
                 "target_width": self.preprocess_cfg.target_width,
                 "landmarks": {
                     "num_faces": lm.num_faces,
@@ -230,11 +240,22 @@ class WebAgent:
             where = _error_site(e)
             if self.runtime.last_error != type(e).__name__:  # once per kind of error in a row
                 print(f"[agent] frame failed at {where}\n{traceback.format_exc()}")  # browser console only
-            self.runtime.frame_failed(t, type(e).__name__)
-            state = self.hud.to_json()
-            state["measures"] = {"face": False, "ear": None, "mar": None, "yaw": None, "pitch": None, "phone": None}
-            state["error"] = f"{type(e).__name__} · {where}"  # for "Chi tiết kỹ thuật" of #/live
-            return json.dumps(state)
+            return self._failed(t, type(e).__name__, where)
+
+    def frame_error(self, t: float, error: str) -> str:
+        """A frame failed in the page before it reached `frame` (MediaPipe, the canvas, the call into
+        Python): the same path as a frame failing here, so frames failing for hud.processing_error_s
+        are "processing error" on the HUD and `agent_error` to the backend (M71; they used to be a
+        line in the browser console only). error: the error's class name, never data. Returns the HUD
+        state like `frame`."""
+        return self._failed(t, str(error), "page")
+
+    def _failed(self, t: float, error: str, where: str) -> str:
+        self.runtime.frame_failed(t, error)
+        state = self.hud.to_json()
+        state["measures"] = {"face": False, "ear": None, "mar": None, "yaw": None, "pitch": None, "phone": None}
+        state["error"] = f"{error} · {where}"  # for "Chi tiết kỹ thuật" of #/live
+        return json.dumps(state)
 
     def _frame(
         self,
@@ -326,8 +347,18 @@ class WebAgent:
         return self.runtime.false_alarm(event_id)
 
     def camera(self, lost: bool) -> None:
-        """Camera track ended / came back: the dashboard learns this driver is (not) monitored."""
+        """The camera stopped giving frames / gives them again: the dashboard learns this driver is
+        (not) monitored."""
         self.runtime.camera(lost)
+
+    def camera_attempts(self, attempts: int) -> None:
+        """The page asks for the lost camera again, for the `attempts`-th time ("Lần thử N" on the HUD)."""
+        self.hud.set_incident_attempts(int(attempts))
+
+    def hud_state(self) -> str:
+        """The HUD state now (JSON), for the page to show between frames: while the camera is lost no
+        frame brings it."""
+        return json.dumps(self.hud.to_json())
 
     def expect_phone(self, expected: bool) -> None:
         """The page means to run the phone detector (it says so even when YOLO failed to load): frames

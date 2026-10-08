@@ -246,6 +246,48 @@ def test_a_failing_frame_names_the_error_and_its_code_location(agent, monkeypatc
     assert capsys.readouterr().out.count("[agent] frame failed") == 1
 
 
+def test_a_frame_failing_in_the_page_takes_the_same_path(agent):
+    """M71: MediaPipe / canvas errors in the page were a console line only: no HUD state, no event."""
+    face = synthetic_face()
+    _, t, n = run(agent, 1, points=face)
+    state = json.loads(agent.frame_error(t, "TypeError"))
+    assert state["processing_error"] is False  # one failing frame is not an outage
+    assert state["error"] == "TypeError · page" and state["measures"]["face"] is False
+    for i in range(1, 46):  # 1.5 s of frames failing in the page
+        state = json.loads(agent.frame_error(t + i / FPS, "TypeError"))
+    assert state["processing_error"] is True and state["incident"]["kind"] == "processing_error"
+    agent.idle(t + 2.0)
+    assert json.loads(agent.take_heartbeat())["heartbeat"]["state"] == "error"
+    state, _, _ = run(agent, 0.2, t0=t + 2.0, points=face, frame0=n)
+    assert state["processing_error"] is False and "error" not in state
+    reasons = [e["reasons"] for e in events_of(agent)]
+    assert ["agent_error"] in reasons and ["agent_recovered"] in reasons
+
+
+def test_a_lost_camera_shows_between_frames_with_the_reopen_attempts(agent):
+    """M71: while the camera is lost no frame brings the HUD state, the page asks for it."""
+    run(agent, 1, points=synthetic_face())
+    assert json.loads(agent.hud_state())["camera_lost"] is False
+    agent.camera(True)
+    agent.camera_attempts(2)
+    state = json.loads(agent.hud_state())
+    assert state["camera_lost"] is True
+    assert state["incident"]["kind"] == "camera_lost" and state["incident"]["attempts"] == 2
+    agent.camera(False)
+    state = json.loads(agent.hud_state())
+    assert state["camera_lost"] is False and state["incident"] is None
+    assert [e["reasons"] for e in events_of(agent)] == [["camera_lost"], ["camera_restored"]]
+
+
+def test_the_page_gets_block_1s_numbers_for_its_loop_watch(agent):
+    th, _ = web_thresholds()
+    assert json.loads(agent.settings())["capture"] == {
+        "frame_timeout_s": th["capture"]["frame_timeout_s"],
+        "reconnect_interval_s": th["capture"]["reconnect_interval_s"],
+        "camera_fps": th["capture"]["camera_fps"],
+    }
+
+
 def test_heartbeat_is_a_body_of_its_own_and_only_the_newest(agent):
     """M33: heartbeats never ride in the record batches; the page gets the latest one to POST."""
     assert agent.take_heartbeat() is None

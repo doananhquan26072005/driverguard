@@ -89,7 +89,8 @@ def test_hud_snapshot_carries_the_trip_and_reads_the_same_after_a_reload():
     feed(rt, 90)
     first, again = rt.hud.to_json(), rt.hud.to_json()  # a HUD that reloads just reads it again
     trip = first["trip"]
-    assert trip["drive_run_s"] == pytest.approx(90, abs=1) and len(trip["recent_minutes"]) == 2
+    # 90 s here on top of the scenario's initial_drive_time_s (600): block 10's counter, as the long-drive rule (M73)
+    assert trip["drive_run_s"] == pytest.approx(690, abs=1) and len(trip["recent_minutes"]) == 2
     assert trip["score_l1"] < trip["score_l2"]  # the chart's colour bands come from thresholds.yaml
     assert again["trip"] == trip
     check_metadata_only(first)

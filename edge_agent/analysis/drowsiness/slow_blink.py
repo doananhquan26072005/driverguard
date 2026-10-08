@@ -111,6 +111,11 @@ class SlowBlinks:
             else ramp(reopen_ratio, cfg.slow_blink_reopen_ratio_low, cfg.slow_blink_reopen_ratio_high),
         )
 
+    def gap(self) -> None:
+        """No frame for too long: a crossing cannot be timed across it, a blink under way is not measured."""
+        self._aperture.clear()
+        self._pending = None
+
     def forget_since(self, t0: float) -> None:
         while self._log and self._log[-1][0] >= t0:
             self._log.pop()

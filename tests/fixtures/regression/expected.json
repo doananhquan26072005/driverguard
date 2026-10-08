@@ -16,6 +16,10 @@
   {
    "date": "2026-10-06",
    "reason": "M53: weight_slow_blink and weight_brow 10 -> 0, risk.trend.level 1 -> 0 (UTA-RLDD, eval/results/dataset_uta_rldd.md); drowsy_score lower on 2 FL3D videos, events and alerts unchanged"
+  },
+  {
+   "date": "2026-10-08",
+   "reason": "M74: block 12 reminds a reason still there once its cooldown has passed (2 of 36 videos get L2 drowsy_score reminders)"
   }
  ],
  "videos": {
@@ -74,6 +78,13 @@
      ]
     ],
     [
+     2409,
+     2,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
      2855,
      3,
      [
@@ -116,6 +127,20 @@
     ],
     [
      914,
+     2,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
+     1678,
+     2,
+     [
+      "drowsy_score"
+     ]
+    ],
+    [
+     2441,
      2,
      [
       "drowsy_score"
