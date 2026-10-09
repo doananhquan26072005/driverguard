@@ -142,7 +142,8 @@ export interface Trip {
 // Fleet overview (backend /api/v1/fleet, M33). state / moving / trip_id come from the last heartbeat.
 export type FleetStatus = "online" | "offline" | "ended" | "never";
 /** Why monitoring is unavailable (edge_agent/decision/risk_engine.py unavailable_reason). */
-export type UnavailableCause = "no_face" | "camera_blocked" | "bad_angle" | "low_light" | "glare" | "blur";
+// slow_loop (M96): not the picture but the loop: under 2 FPS the agent cannot time a closure or a look away.
+export type UnavailableCause = "no_face" | "camera_blocked" | "bad_angle" | "low_light" | "glare" | "blur" | "slow_loop";
 export type MonitorState = "monitoring" | "unavailable" | "camera_lost" | "stalled" | "error" | "ended";
 
 export interface FleetDevice {
@@ -362,7 +363,9 @@ export type TripDelivery = "sent" | "failed" | "local" | "device";
  *  source "sim" = the driving simulator (tools/drive_sim.py); connected false = it is not running,
  *  so the vehicle stands still at 0 km/h. Other sources: a scripted CAN scenario (device --scenario).
  *  signal_lost (M26): a signal had come in and the link went quiet; the driver is told. While driving
- *  the speed is unknown (null) and it is still monitored as driving; while parked it stays parked. */
+ *  the speed is unknown (null) and it is still monitored as driving; while parked it stays parked.
+ *  never_received (M95): signal_lost because no reading ever came while a driver was in view for
+ *  context.vehicle_signal_wait_s; speed unknown, monitored as driving. Older agents omit it. */
 export interface HudVehicle {
   source: string | null;
   connected: boolean;
@@ -370,6 +373,7 @@ export interface HudVehicle {
   turn_signal: "left" | "right" | null;
   driving: boolean;
   signal_lost?: boolean;
+  never_received?: boolean;
 }
 
 // "Đổi tài xế", and the driver's answer on the enrollment consent screen ("Đồng ý" / "Để sau").

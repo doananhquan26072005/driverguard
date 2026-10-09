@@ -100,7 +100,9 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Còn lại:**
   - Đỗ, mất tín hiệu rồi chạy đi: trong lúc chưa có lại tốc độ, hệ thống vẫn coi là đỗ (tắt nhánh mất tập
     trung, buồn ngủ tối đa L1). Tài xế đã được báo mất tín hiệu từ lúc đỗ (chốt 02/10: chấp nhận).
-  - Chưa từng có tín hiệu (không chạy công cụ): coi là đỗ, HUD hiện "Chưa có tín hiệu xe", không tiếng.
+  - Chưa từng có tín hiệu (không chạy công cụ): coi là đỗ, HUD hiện "Chưa có tín hiệu xe", không tiếng. Từ M95 chỉ trong
+    `context.vehicle_signal_wait_s` (30 s) đầu camera thấy tài xế; sau đó tốc độ là không rõ, giám sát như đang chạy, có
+    tiếng báo và sự kiện `vehicle_signal_lost`. Test: `tests/test_edge_agent/test_m95_never_a_speed_reading.py`.
   - Âm báo cần âm thanh đã bật (dòng 1).
 - **Im lặng tối đa:** không còn im lặng: mất tín hiệu lúc chạy hay lúc đỗ đều được báo. Đỗ rồi chạy đi khi
   chưa có lại tín hiệu thì giám sát bị hạn chế (như xe đỗ) tới khi có lại tốc độ.
@@ -128,6 +130,8 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
 - **Từ M33:** nhịp "còn sống" mỗi 30 s lên backend. Tiến trình chết hẳn (máy treo, hết bộ nhớ, app bị hệ
   điều hành dừng): sau 90 s tab "Đội xe" của dashboard hiện xe đó **"Mất liên lạc"**, khác với "Đã kết thúc
   chuyến". Vòng lặp còn sống mà không có frame: nhịp báo `stalled`.
+- **Từ M96:** vòng lặp chậm hơn 2 FPS suốt `hud.low_fps_s` (5 s) là "tạm ngưng giám sát" với lý do `slow_loop`, tài xế và
+  backend được báo; trước đó vẫn là "đang giám sát". Test: `tests/test_edge_agent/test_m96_slow_loop.py`.
 - **Từ M71 (bản web):**
   - Trình duyệt ngừng gọi `requestVideoFrameCallback` quá `capture.frame_timeout_s` (3 s) khi trang đang ở
     trước mặt: vòng lặp tự lấy frame bằng timer cho tới khi trình duyệt gọi lại. Tab bị che thì không kéo
@@ -346,20 +350,24 @@ Tính từ cấu hình `config/thresholds.yaml`, **chưa đo trên video**. Đo 
   Trước M74 có ba ca mất tiếng: đợt bắt đầu trong cooldown (nhìn lệch 40 s không tiếng vì 5 s trước có một lần
   ngắn), mức đứng yên (L1 nửa giờ một chuông), lý do bắt đầu dưới một mức cao hơn. Còn lại: lần nhìn lệch thứ hai
   vẫn im tới khi cooldown của lần đầu hết (tối đa 30 s). Cái giá: báo sai trên UTA-RLDD dev 1,29 → 1,81 / giờ.
+- **Từ M92:** `drowsy_score` không được nhắc (`alert.remind_skip_reasons`), các lý do khác vẫn được. Báo sai trên
+  UTA-RLDD dev về lại 1,29 / giờ. Đổi lại, ba ca mất tiếng ở trên còn nguyên cho riêng `drowsy_score`: điểm đứng trên
+  ngưỡng nửa giờ là một chuông; HUD vẫn hiện mức.
 - **Test:** `test_cooldown_suppresses_same_level`, `test_escalation_bypasses_lower_cooldown`,
   `test_cooldown_is_per_reason`, `test_dropping_a_level_is_not_a_new_alert`; M74:
-  `tests/test_edge_agent/test_m74_alert_reminders.py`.
+  `tests/test_edge_agent/test_m74_alert_reminders.py`; M92: `tests/test_edge_agent/test_m92_reminders_and_context_cap.py`.
 
 <a id="15-mat-mang"></a>
 
 ### 15. Hub mất mạng giữa chuyến — Thấp
 
 - Trang đã chạy rồi mới mất mạng: giám sát và cảnh báo chạy tiếp tại chỗ, không ảnh hưởng; chỉ quản lý biết trễ.
-- **Không đúng cho lúc khởi động bản web:** `#/live` tải Pyodide và wasm của MediaPipe từ `cdn.jsdelivr.net`
-  (`frontend/src/live/agent.ts`), tải trang và ngưỡng đã chỉnh từ server. Không có mạng lúc mở thì không giám sát
-  được; chưa đóng gói hai runtime vào bản build (audit 08/10, A4 H3). Bản thiết bị (Python) không cần mạng.
+- **Lúc khởi động bản web:** từ M99 `#/live` lấy Pyodide và wasm của MediaPipe từ chính bản build, không còn từ CDN, và
+  trang có Content-Security-Policy (script chỉ từ chính origin). Nó vẫn tải trang và ngưỡng đã chỉnh từ server của nó:
+  không tới được server lúc mở thì không giám sát được. Bản thiết bị (Python) không cần mạng.
 - Tốc độ xe của bản web cũng đi qua mạng (`#/drive` qua backend, hoặc `127.0.0.1`). Đã có số đọc rồi mất: dòng 2.
-  **Chưa từng có số đọc nào** thì khối 10 coi xe đang đỗ ở 0 km/h và không có cảnh báo nào (dòng 12); xem việc
+  **Chưa từng có số đọc nào** thì khối 10 coi xe đang đỗ ở 0 km/h và không có cảnh báo nào trong 30 s đầu camera thấy
+  tài xế, rồi giám sát như đang chạy (M95; dòng 12); xem việc
   [tốc độ xe từ GPS](improvements.md#viec-gps).
 - Thiết bị: outbox SQLite giữ qua khởi động lại, tối đa `publisher.max_queue` (10 000). App (bọc code web):
   chỉ giữ trong RAM, app tắt là mất → việc [Hàng đợi offline cho app](improvements.md#viec-outbox-web).
@@ -427,6 +435,6 @@ Dòng chưa có test hoặc chưa có cách phát hiện (ghi ở [improvements.
 | 6 | Cảnh báo cần xác nhận, báo quản lý ngay: xong ở M44 |
 | 7 | Điểm chất lượng frame: xong ở M43 (ngưỡng tạm) |
 | 16 | Khối 5 trên thiết bị: CNN mắt bỏ sót nhắm mắt khi mặt tối / ảnh xám (mới, từ M46) |
-| 15 | Hàng đợi offline cho app (đã có); đóng gói runtime vào bản build để khởi động không cần CDN (chưa có việc) |
+| 15 | Hàng đợi offline cho app (đã có); runtime đã đóng gói vào bản build, khởi động không cần CDN (M99) |
 
 Khi sửa code liên quan tới một dòng, cập nhật dòng đó ở đây (mức, im lặng tối đa, test).

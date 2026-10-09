@@ -114,6 +114,7 @@ class RiskConfig:
     drowsy_l2: float = 70.0
     drowsy_night_factor: float = 1.2
     drowsy_long_drive_factor: float = 1.2
+    drowsy_context_factor_cap: float = 1.2  # the two factors together multiply by no more than this
     drowsy_stationary_max_level: int = 0  # 0 = off while standing still (M30), 3 = no cap
     distraction_off_road_s: float = 2.0
     distraction_off_road_high_speed_s: float = 1.5
@@ -206,10 +207,10 @@ class RiskEngine:
             + cfg.drowsy_weight_slow_blink * d.slow_blink_score
             + cfg.drowsy_weight_brow * brow
         )
-        if ctx.night:
-            score *= cfg.drowsy_night_factor
-        if ctx.long_drive:
-            score *= cfg.drowsy_long_drive_factor
+        factor = (cfg.drowsy_night_factor if ctx.night else 1.0) * (
+            cfg.drowsy_long_drive_factor if ctx.long_drive else 1.0
+        )
+        score *= min(factor, cfg.drowsy_context_factor_cap)
         return min(score, MAX_SCORE), (perclos, microsleep, yawn, nod, d.slow_blink_score, brow)
 
     def drowsy_level_cap(self, ctx: VehicleContext) -> int:

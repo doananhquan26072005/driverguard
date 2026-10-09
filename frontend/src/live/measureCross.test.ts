@@ -39,8 +39,10 @@ describe("the page measures an image as the device does", () => {
         expect(Math.abs(measured[field] - device[field])).toBeLessThanOrEqual(abs + rel * Math.abs(device[field]));
       });
     }
-    it(`${name}: infrared or not, by the same limit`, () => {
-      expect(measured.channel_diff <= FIXTURE.ir_channel_diff_max).toBe(device.is_ir);
+    it(`${name}: infrared or not, by the same two limits`, () => {
+      // edge_agent/perception/preprocess.py looks_infrared: small in itself and against the brightness (M98).
+      const infrared = measured.channel_diff <= FIXTURE.ir_channel_diff_max && measured.channel_diff <= FIXTURE.ir_channel_rel_max * measured.scene_brightness;
+      expect(infrared).toBe(device.is_ir);
     });
   }
 
@@ -48,9 +50,10 @@ describe("the page measures an image as the device does", () => {
     const { colour, dim, gray } = FIXTURE.images;
     expect(colour.device.is_ir).toBe(false);
     expect(gray.device).toMatchObject({ is_ir: true, channel_diff: 0 });
-    // Audit A1 H1, open (improvements.md, the eye-state work in low light): the dim image is the
-    // colour one at a twelfth of the light, and both sides take it for infrared.
-    expect(dim.device.is_ir).toBe(true);
+    // Audit A1 H1: the dim image is the colour one at a twelfth of the light. Its channel difference is
+    // under the absolute limit, and before M98 both sides took it for infrared.
+    expect(dim.device.is_ir).toBe(false);
     expect(dim.device.channel_diff).toBeGreaterThan(0);
+    expect(dim.device.channel_diff).toBeLessThanOrEqual(FIXTURE.ir_channel_diff_max);
   });
 });

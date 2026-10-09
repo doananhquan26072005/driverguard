@@ -28,6 +28,10 @@
   {
    "date": "2026-10-08",
    "reason": "M86: every video is also pinned on the page's eye path (web: eyeBlink where block 5 steps in; web_ir: on every frame); 8 3MDAD videos with the phone flag and frame-quality numbers added; summaries also pin the frames monitoring was paused on, by reason. No device-path result of the 36 earlier videos changed"
+  },
+  {
+   "date": "2026-10-09",
+   "reason": "M92: drowsy_score is not reminded (alert.remind_skip_reasons); the L2 drowsy_score reminders M74 added on 2 FL3D videos are gone, nothing else changed"
   }
  ],
  "videos": {
@@ -355,13 +359,6 @@
      ]
     ],
     [
-     2409,
-     2,
-     [
-      "drowsy_score"
-     ]
-    ],
-    [
      2855,
      3,
      [
@@ -405,20 +402,6 @@
     ],
     [
      914,
-     2,
-     [
-      "drowsy_score"
-     ]
-    ],
-    [
-     1678,
-     2,
-     [
-      "drowsy_score"
-     ]
-    ],
-    [
-     2441,
      2,
      [
       "drowsy_score"
@@ -1330,13 +1313,6 @@
       ]
      ],
      [
-      2412,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
       2855,
       3,
       [
@@ -1380,20 +1356,6 @@
      ],
      [
       914,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
-      1678,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
-      2441,
       2,
       [
        "drowsy_score"
@@ -2279,13 +2241,6 @@
       ]
      ],
      [
-      2407,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
       2856,
       3,
       [
@@ -2329,20 +2284,6 @@
      ],
      [
       914,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
-      1678,
-      2,
-      [
-       "drowsy_score"
-      ]
-     ],
-     [
-      2441,
       2,
       [
        "drowsy_score"

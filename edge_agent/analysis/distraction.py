@@ -2,7 +2,7 @@
 
 Per frame, from head pose + phone flag + whether the vehicle is moving, computes:
 - off_road_duration: seconds the head has been continuously turned away from the road.
-- phone_ratio_2s: fraction of recent samples (window `phone_window_s`) with a phone
+- phone_ratio_2s: fraction of the recent detector time (window `phone_window_s`; M93: time, not results) with a phone
   in the driver zone; 0 until the window holds `phone_min_coverage_s` of detector results (one
   detection among frames without a fresh result used to be a ratio of 1.0).
 - no_face_duration: seconds without any face while the vehicle is not standing still (driver
@@ -98,6 +98,7 @@ from typing import Any
 
 import numpy as np
 
+from edge_agent.analysis.drowsiness.common import share_of
 from edge_agent.config import config_from_dict
 from edge_agent.perception.features import FrameFeatures
 
@@ -163,6 +164,16 @@ class DistractionState:
 RECAL_CHECK_S = 1.0  # the spread of the recalibration window is recomputed at most this often (cost only)
 
 
+@dataclass
+class _PhoneSample:
+    """One detector result in the phone window."""
+
+    t: float
+    phone: bool
+    kind: str | None
+    seen_s: float  # the time it stands for (see `_phone_ratio`)
+
+
 class DistractionAnalyzer:
     def __init__(self, config: DistractionConfig | None = None) -> None:
         self.config = config or DistractionConfig()
@@ -183,7 +194,10 @@ class DistractionAnalyzer:
         self._off_road_since: float | None = None
         self._on_road_since: float | None = None
         self._no_face_since: float | None = None
-        self._phone: deque[tuple[float, bool, str | None, float]] = deque()  # (t, phone, kind, dt)
+        self._phone: deque[_PhoneSample] = deque()
+        self._phone_open: _PhoneSample | None = (
+            None  # the newest result while its weight is not final (see _phone_ratio)
+        )
         self._last_t: float | None = None
         self._pose_t: float | None = None  # last frame with a reliable head pose
         self._turned_pose_t: float | None = None  # last reliable pose, when it was a large head turn
@@ -370,19 +384,29 @@ class DistractionAnalyzer:
         return angle, (self._gaze_last - self._gaze_since if self._gaze_since is not None else 0.0)
 
     def _phone_ratio(self, t: float, dt: float, phone_near_face: bool | None, kind: str | None = None) -> float:
-        """Share of the window's detector results with a phone; 0 until they cover `phone_min_coverage_s`."""
+        """Share of the window's detector time with a phone; 0 until it covers `phone_min_coverage_s`.
+        Time, not results (M93): a result stands for half the wait before its frame and half the wait
+        after it (the newest one: the wait before it, as `TimeShare`), so a burst of frames after a slow
+        stretch counts for no more than the time it spans. At an even frame rate every result weighs the
+        same: the share of results, as before."""
         cfg = self.config
+        wait = min(dt, cfg.max_gap_s)
+        if self._phone_open is not None:  # the frame before had a result: its weight is now final
+            self._phone_open.seen_s = (self._phone_open.seen_s + wait) / 2.0
+        self._phone_open = None
         if phone_near_face is not None:  # None = no fresh detector result: not counted
-            self._phone.append((t, phone_near_face, kind if phone_near_face else None, min(dt, cfg.max_gap_s)))
-        while self._phone and t - self._phone[0][0] > cfg.phone_window_s:
+            self._phone_open = _PhoneSample(t, phone_near_face, kind if phone_near_face else None, wait)
+            self._phone.append(self._phone_open)
+        while self._phone and t - self._phone[0].t > cfg.phone_window_s:
             self._phone.popleft()
-        if not self._phone or sum(seen for *_, seen in self._phone) < cfg.phone_min_coverage_s:
+        seen = sum(s.seen_s for s in self._phone)
+        if seen <= 0 or seen < cfg.phone_min_coverage_s:
             return 0.0
-        return sum(1 for _, p, *_ in self._phone if p) / len(self._phone)
+        return share_of(sum(s.seen_s for s in self._phone if s.phone), seen)
 
     def _phone_kind(self) -> str | None:
         """Most frequent kind among the window's phone samples; a tie, or no kind given, is "unknown"."""
-        kinds = [k or "unknown" for _, p, k, _ in self._phone if p]
+        kinds = [s.kind or "unknown" for s in self._phone if s.phone]
         if not kinds:
             return None
         counts = {k: kinds.count(k) for k in set(kinds)}

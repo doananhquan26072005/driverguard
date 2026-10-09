@@ -64,7 +64,7 @@ from edge_agent.perception.phone_detector import (
     phone_kind,
     phone_near_face,
 )
-from edge_agent.perception.preprocess import PreprocessConfig, PreprocessedFrame
+from edge_agent.perception.preprocess import IrLatch, PreprocessConfig, PreprocessedFrame, looks_infrared
 from edge_agent.runtime import TripRuntime
 from edge_agent.version import bundled_models, version_info
 
@@ -164,6 +164,7 @@ class WebAgent:
         self.eye_state = EyeStateEstimator(EyeStateConfig.from_dict(th.get("eye_state")))
         self.phone_cfg = PhoneDetectorConfig.from_dict(th.get("phone"))
         self.preprocess_cfg = PreprocessConfig.from_dict(th.get("preprocess"))
+        self._camera_kind = IrLatch(self.preprocess_cfg)  # infrared or colour, held over time as on the device (M98)
         self.landmark_cfg = LandmarkConfig.from_dict(th.get("landmarks"))
         self.capture_cfg = CaptureConfig.from_dict(th.get("capture"))
         self.selector = DriverSelector(self.landmark_cfg)
@@ -177,6 +178,7 @@ class WebAgent:
                 stale_s=ctx_cfg.vehicle_signal_stale_s,
                 moving_kmh=ctx_cfg.min_speed_kmh,
                 stationary_kmh=ctx_cfg.stationary_kmh,
+                wait_s=ctx_cfg.vehicle_signal_wait_s,
             )
             can = self.external
         else:
@@ -249,6 +251,7 @@ class WebAgent:
                     "restart_limit": ph.web_restart_limit,
                 },
                 "flush_interval_s": pub.flush_interval_s,
+                "send_timeout_s": pub.timeout_s,  # a POST of the page gives up after this, as the device's does
                 "config_poll_s": pub.config_poll_s,
                 "max_queue": pub.max_queue,  # POST bodies the page keeps while it cannot send
                 "problems": self.problems,
@@ -387,7 +390,9 @@ class WebAgent:
             image=np.empty((0, 0, 3), np.uint8),
             gray=np.empty((0, 0), np.uint8),
             brightness=float(face_brightness),
-            is_ir=float(channel_diff) <= self.preprocess_cfg.ir_channel_diff_max,
+            is_ir=self._camera_kind.update(
+                t, looks_infrared(self.preprocess_cfg, float(channel_diff), scene_brightness)
+            ),
             scale=1.0,
             frame_id=frame_id,
             timestamp=t,

@@ -56,6 +56,7 @@ class ContextConfig:
     rest_after_s: float = 120.0
     short_stop_forget_s: float = 10.0  # a stop this long: what it gathered is dropped on driving off
     vehicle_signal_stale_s: float = 1.0  # external speed source silent this long = standing still
+    vehicle_signal_wait_s: float = 30.0  # a driver in view this long and never a reading: speed unknown (0 = off)
     vehicle_poll_s: float = 0.25  # the agent asks for the vehicle signals this often
     vehicle_send_s: float = 0.2  # the web driving controls (#/drive) send them this often
 

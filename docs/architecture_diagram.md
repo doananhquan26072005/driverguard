@@ -189,19 +189,16 @@ flowchart LR
     subgraph RW["Railway · service driveguard-v2 · image quanpk07/driveguard:v2.2"]
         direction TB
         APIR["<b>FastAPI</b><br/>/auth, /api/v1/*<br/>relay /api/v1/drive (RAM)"]
-        STATIC["<b>File tĩnh</b><br/>React, edge_agent.zip, 2 model"]
+        STATIC["<b>File tĩnh</b><br/>React, edge_agent.zip, 2 model,<br/>Pyodide, MediaPipe wasm (M99)"]
         VOL[("Volume /app/data<br/>driverguard.db")]
         APIR --> VOL
     end
-
-    CDN["cdn.jsdelivr.net<br/>Pyodide, MediaPipe wasm"]
 
     EA == "metadata JSON<br/>X-Device-Key" ==> APIR
     LIVE == "metadata JSON<br/>token người dùng" ==> APIR
     MGR -- "REST + JWT" --> APIR
     REMOTE -- "PUT /api/v1/drive/{code}<br/>chỉ số" --> APIR
     APIR -. "GET /api/v1/drive/{code}" .-> LIVE
-    LIVE -. runtime .-> CDN
 ```
 
 - **Server không chạy model nào.** Image chỉ có FastAPI và file tĩnh (không OpenCV / MediaPipe / onnxruntime),
@@ -209,7 +206,7 @@ flowchart LR
 - **Mũi tên đậm** là metadata JSON đi lên backend: edge agent xác thực bằng `X-Device-Key`,
   trang `#/live` bằng token của người đăng nhập.
 - **File tĩnh** (không vẽ mũi tên cho gọn): mọi trình duyệt tải trang React từ cùng domain; `#/live` tải thêm
-  `py/edge_agent.zip`, `face_landmarker.task`, `yolov8n.onnx` từ Railway và Pyodide 0.29.3 + MediaPipe wasm từ jsDelivr.
+  `py/edge_agent.zip`, `face_landmarker.task`, `yolov8n.onnx` và, từ M99, cả Pyodide 0.29.3 lẫn wasm của MediaPipe từ Railway (trước đó từ jsDelivr). Mọi file đi kèm Content-Security-Policy.
 - **Image** build từ `Dockerfile.railway`, chạy `uvicorn deploy.railway_app:app`. Volume `/app/data` giữ SQLite qua các lần redeploy.
 - **Backend và frontend cùng domain**, nên dashboard gọi API không cần cấu hình CORS.
   `--hud-origin` cho phép trang HUD trên Railway đọc HUD server ở `127.0.0.1` của chính máy đó.
@@ -221,7 +218,7 @@ flowchart LR
   Backend chỉ giữ số mới nhất trong bộ nhớ (hết hạn sau 10 phút, không ghi database).
 - **Sản phẩm cuối (chốt 02/10, đổi 08/10):** thiết kế là app APK chạy trên hub gắn trên xe, bọc chính code web
   (Capacitor), mọi model và Pyodide đóng gói sẵn trong app. Không có code APK nào; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](improvements.md#bo-hub)).
-  Đầu ra hiện tại là bản web mô phỏng trên Railway, và nó còn tải Pyodide và wasm của MediaPipe từ CDN lúc khởi động.
+  Đầu ra hiện tại là bản web mô phỏng trên Railway; từ M99 nó không còn tải code từ CDN (bản đang deploy thì chưa có M99).
 
 ---
 

@@ -197,6 +197,12 @@ class DecisionPipeline:
         self.trip_log.tired_score = self.risk.config.drowsy_l1
         self.trip_log.score_l2 = self.risk.config.drowsy_l2
 
+    @property
+    def max_gap_s(self) -> float:
+        """Two frames further apart than this are a hole for blocks 7, 8 or 12: a running duration or
+        confirmation starts again (M71). A loop whose every frame comes that late times nothing."""
+        return min(self.drowsiness.config.max_gap_s, self.distraction.config.max_gap_s, self.alerts.config.max_gap_s)
+
     def step(
         self,
         features: FrameFeatures,

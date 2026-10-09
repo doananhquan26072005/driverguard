@@ -66,7 +66,7 @@ class StrictModel(BaseModel):
 
 
 # Why monitoring is unavailable (edge_agent/decision/risk_engine.py unavailable_reason).
-UnavailableCause = Literal["no_face", "camera_blocked", "bad_angle", "low_light", "glare", "blur"]
+UnavailableCause = Literal["no_face", "camera_blocked", "bad_angle", "low_light", "glare", "blur", "slow_loop"]
 
 
 class EventMetrics(StrictModel):

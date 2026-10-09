@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -b",
-    "prepare-live": "python3 ../tools/build_web_py.py public/py/edge_agent.zip && mkdir -p public/models && cp ../models/face_landmarker.task ../models/yolov8n.onnx public/models/",
+    "prepare-live": "python3 ../tools/build_web_py.py public/py/edge_agent.zip && mkdir -p public/models && cp ../models/face_landmarker.task ../models/yolov8n.onnx public/models/ && node scripts/web-runtime.mjs",
+    "web-runtime": "node scripts/web-runtime.mjs",
     "e2e": "playwright test"
   },
   "engines": {

@@ -35,6 +35,8 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const [now, setNow] = useState(Date.now() / 1000);
   const failures = useRef(0);
   const seenAlerts = useRef<Set<string>>(new Set());
+  const firstState = useRef(true); // no state seen yet: what the first one lists was sounded before this HUD opened
+  const unheard = useRef<{ alert: HudAlert; late: boolean } | null>(null); // an alert not sounded yet (sound blocked)
   const reasonsRef = useRef<HudSnapshot["reasons"]>([]); // the alert being repeated with the L3 siren
   const demoStart = useRef(Date.now());
   const demoFlags = useRef<Set<string>>(new Set());
@@ -104,15 +106,29 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   }, [mode, source, display.poll_s]);
 
   // Sound for alerts not heard yet: its own sound per kind of alert (chime.ts).
+  // - The alerts of the first state this HUD sees are history, however many (M100): a HUD opened in the
+  //   middle of a trip does not sound an old alert again. Before, a list of exactly one did.
+  // - An alert that comes while the browser still blocks sound waits for the first touch, and is then
+  //   sounded if it is still the newest and a level is still up (M100). Before, it was never heard.
   useEffect(() => {
-    const newest = snap?.alerts[0];
-    if (!newest || seenAlerts.current.has(newest.event_id)) return;
-    const firstLoad = seenAlerts.current.size === 0 && (snap?.alerts.length ?? 0) > 1;
-    snap?.alerts.forEach((a) => seenAlerts.current.add(a.event_id));
-    if (sound && !firstLoad) {
-      playAlert(newest.level, newest.reasons);
-      afterChime(() => speak(alertVoiceKey(newest.reasons) as VoiceKey)); // what to do, in Vietnamese
+    if (!snap) return;
+    const newest = snap.alerts[0];
+    const history = firstState.current;
+    firstState.current = false;
+    if (newest && !seenAlerts.current.has(newest.event_id)) {
+      snap.alerts.forEach((a) => seenAlerts.current.add(a.event_id));
+      unheard.current = history ? null : { alert: newest, late: false };
     }
+    const due = unheard.current;
+    if (!due) return;
+    if (!sound) {
+      due.late = true;
+      return;
+    }
+    unheard.current = null;
+    if (due.late && (newest?.event_id !== due.alert.event_id || !(snap.connected && snap.level > 0))) return; // over meanwhile
+    playAlert(due.alert.level, due.alert.reasons);
+    afterChime(() => speak(alertVoiceKey(due.alert.reasons) as VoiceKey)); // what to do, in Vietnamese
   }, [snap, sound]);
 
   useEffect(() => {
@@ -164,6 +180,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const wasCameraLost = useRef(false);
   useEffect(() => {
     if (cameraLost === wasCameraLost.current) return;
+    if (!sound && cameraLost) return; // blocked: kept as "not told yet", sounded with the first touch if it still holds (M100)
     wasCameraLost.current = cameraLost;
     if (sound) {
       play(systemSound(cameraLost ? "camera_lost" : "camera_restored"));
@@ -176,6 +193,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const wasUnavailable = useRef(false);
   useEffect(() => {
     if (unavailable === wasUnavailable.current) return;
+    if (!sound && unavailable) return; // blocked: kept as "not told yet", sounded with the first touch if it still holds (M100)
     wasUnavailable.current = unavailable;
     if (sound) {
       play(systemSound(unavailable ? "monitoring_unavailable" : "monitoring_restored"));
@@ -205,6 +223,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const wasStopped = useRef(false);
   useEffect(() => {
     if (stopped === wasStopped.current) return;
+    if (!sound && stopped) return; // blocked: kept as "not told yet", sounded with the first touch if it still holds (M100)
     wasStopped.current = stopped;
     if (sound) {
       play(systemSound(stopped ? "monitoring_stopped" : "monitoring_restored"));
@@ -218,6 +237,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
   const wasSignalLost = useRef(false);
   useEffect(() => {
     if (signalLost === wasSignalLost.current) return;
+    if (!sound && signalLost) return; // blocked: kept as "not told yet", sounded with the first touch if it still holds (M100)
     wasSignalLost.current = signalLost;
     if (sound) {
       play(systemSound(signalLost ? "vehicle_signal_lost" : "vehicle_signal_restored"));

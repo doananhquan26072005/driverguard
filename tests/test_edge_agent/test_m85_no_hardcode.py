@@ -108,6 +108,7 @@ SHARED_REASONS = {*SECONDS.values(), *EPSILON.values(), *HTTP.values(), *RGB.val
 ALLOWED: dict[str, dict[float, str]] = {
     "analysis/distraction.py": {10: "percentiles of 'spread' (10th-90th) and the median", 50: "", 90: ""},
     "analysis/drowsiness/brow.py": {50: "median"},
+    "analysis/drowsiness/common.py": {9: "SHARE_DIGITS: decimals a share is rounded to, float noise not a threshold"},
     "analysis/drowsiness/eyes.py": {**SECONDS, **EPSILON},
     "analysis/drowsiness/head.py": {50: "median", **EPSILON},
     "analysis/drowsiness/mouth.py": {90: "cos() is taken up to a right angle"},
@@ -266,7 +267,10 @@ JS_ALLOWED = {
     "hud/forcedLog.ts": {"FORCED_LOG_MAX"},
     "hud/HudPreview.tsx": {"?? 68", "?? 52"},  # scores of the design preview's sample screens
     "lib/scale.ts": {"MINUTE", "?? 10"},
-    "live/agent.ts": {"WATCH_LOOKS"},  # looks per capture.frame_timeout_s, not a time of its own
+    # looks per capture.frame_timeout_s, not a time of its own; what a browser lets a closing page send
+    "live/agent.ts": {"WATCH_LOOKS", "KEEPALIVE_BUDGET_BYTES"},
+    "live/LiveScreen.tsx": {"TECH_WIDTH_PX"},  # layout of the self-view
+    "live/selfView.ts": {"MARGIN"},
     "live/tripId.ts": {"RANDOM_BYTES"},
 }
 
@@ -405,8 +409,9 @@ def test_the_escalated_l1_goes_out_at_l1_repeat_level():
             t += 0.5
         return alerts[-1].level, alerts[-1].reasons
 
-    assert third_alert(AlertConfig()) == (2, ("drowsy_score", REPEATED_L1))
-    assert third_alert(AlertConfig(l1_repeat_level=3)) == (3, ("drowsy_score", REPEATED_L1))
+    # reminders of every reason, so that a steady L1 reaches its third alert (M92 skips drowsy_score)
+    assert third_alert(AlertConfig(remind_skip_reasons=())) == (2, ("drowsy_score", REPEATED_L1))
+    assert third_alert(AlertConfig(remind_skip_reasons=(), l1_repeat_level=3)) == (3, ("drowsy_score", REPEATED_L1))
 
 
 def test_the_fps_smoothing_is_read():

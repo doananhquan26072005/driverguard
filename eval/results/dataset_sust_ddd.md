@@ -2,7 +2,7 @@
 
 Blocks 5, 7-12 replayed from the traces with config/thresholds.yaml.
 
-Source: commit 9a9c14e (uncommitted changes); thresholds.yaml sha256 6048dd7f4bb4; sust_v2.pkl (modified 2026-09-26).
+Source: commit 2990b41 (uncommitted changes); thresholds.yaml sha256 73401e6a77ce; sust_v2.pkl (modified 2026-09-26). Traced with: not recorded (2074 traces made before M86).
 
 2074 clips of ~10 s (975 drowsy, 1099 not drowsy; 163 + 183 min), phone camera in the driver's own car, portrait 720x1280. Full pipeline (blocks 2-12, YOLO on, simulated 60 km/h), fresh state per clip.
 
@@ -16,8 +16,8 @@ Every clip is shorter than `drowsiness.perclos_min_coverage_s` (30 s) and `eye.b
 | L2 or L3 reached | 1.9% | 3.5% | 32.8% |  |
 | L3 reached | 1.1% | 0.2% | 84.6% |  |
 | any microsleep event | 2.6% | 0.5% | 80.6% |  |
-| any yawn event | 0.9% | 0.1% | 90.0% |  |
-| any nod event | 1.4% | 1.4% | 48.3% |  |
+| any yawn event | 0.8% | 0.0% | 100.0% |  |
+| any nod event | 0.8% | 0.9% | 44.4% |  |
 
 Alerts by clip class and reason: drowsy: L2 off_road 5, drowsy: L3 microsleep 13, drowsy: L3 unresponsive 1, not_drowsy: L2 off_road 25, not_drowsy: L3 microsleep 2.
 
@@ -41,7 +41,7 @@ AUC 0.5 = no information, 1.0 = perfect; oriented so that higher = drowsier (EAR
 | closed_frac_block7 | 0.670 | 0.043 | 0.017 | block 7 eye_closed (short-window PERCLOS) |
 | ear_p10 | 0.670 | 0.252 | 0.296 | lower = more closed |
 | ear_mean | 0.665 | 0.295 | 0.331 | lower = more closed |
-| max_closed_duration | 0.659 | 0.100 | 0.033 | block 7 closed_duration |
+| max_closed_duration | 0.662 | 0.100 | 0.033 | block 7 closed_duration |
 | blink_closed_frac | 0.639 | 0.017 | 0.004 | eyeBlink ≥ 0.5 (short-window PERCLOS, no baseline needed) |
 | perclos_own_base | 0.622 | 0.064 | 0.033 | EAR < 0.65 x the clip's own p90 EAR |
 | blinks_per_min | 0.622 | 18.000 | 12.000 | block 7 blink events / clip length |
@@ -49,7 +49,7 @@ AUC 0.5 = no information, 1.0 = perfect; oriented so that higher = drowsier (EAR
 | face_rate | 0.563 | 1.000 | 1.000 | block 3 |
 | cnn_mean | 0.556 | 0.036 | 0.023 | block 5 CNN mean p_closed |
 | cnn_closed_frac | 0.540 | 0.003 | 0.000 | block 5 CNN p ≥ 0.6, every frame |
-| max_drowsy_score | 0.515 | 0.000 | 0.000 | block 9 drowsy_score |
+| max_drowsy_score | 0.514 | 0.000 | 0.000 | block 9 drowsy_score |
 | microsleep_events | 0.510 | 0.000 | 0.000 | block 7 events |
 | yawn_events | 0.504 | 0.000 | 0.000 | block 7 events |
 | nod_events | 0.500 | 0.000 | 0.000 | block 7 events |

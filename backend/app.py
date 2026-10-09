@@ -334,6 +334,18 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         token = create_token(secret, row["username"], row["role"], row["driver_id"], settings.token_ttl_min)
         return TokenOut(access_token=token, role=row["role"], expires_in=settings.token_ttl_min * 60)
 
+    @app.post("/auth/refresh", response_model=TokenOut)
+    def refresh(user: Annotated[dict[str, Any], Depends(current_user)], conn: Conn) -> TokenOut:
+        """A token that is still valid for a new one with a full lifetime (M97): a trip on #/live lasts
+        longer than DG_TOKEN_TTL_MIN, and after that every batch of it was refused (audit 08/10, A4 H2).
+        An expired token gets nothing here, and the account is read again: a deleted user or a changed
+        role does not live on in refreshed tokens."""
+        row = db.get_user(conn, user["sub"])
+        if row is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account no longer exists")
+        token = create_token(secret, row["username"], row["role"], row["driver_id"], settings.token_ttl_min)
+        return TokenOut(access_token=token, role=row["role"], expires_in=settings.token_ttl_min * 60)
+
     @app.get("/auth/me", response_model=UserOut)
     def me(user: Annotated[dict[str, Any], Depends(current_user)]) -> UserOut:
         return UserOut(username=user["sub"], role=user["role"], driver_id=user.get("driver_id"))

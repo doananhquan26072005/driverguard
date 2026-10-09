@@ -22,6 +22,7 @@ from edge_agent.decision.risk_engine import RiskAssessment, RuleHit
 TH = load_thresholds()
 ALERTS = AlertConfig.from_dict(TH["alert"])
 BEFORE = replace(ALERTS, remind=False)
+REMIND_ALL = replace(ALERTS, remind_skip_reasons=())  # M74 as it was; M92 stopped reminding drowsy_score
 L1_COOLDOWN, L2_COOLDOWN = ALERTS.cooldown_s[1], ALERTS.cooldown_s[2]
 L1_CONFIRM, L2_CONFIRM = ALERTS.rise_confirm_s[1], ALERTS.rise_confirm_s[2]
 DT = 0.1
@@ -113,7 +114,7 @@ def test_frame_gap_restarts_the_confirmation_of_a_reminder():
 
 
 def test_steady_l1_is_reminded_and_every_third_alert_is_l2():
-    got = play(ALERTS, [(1, ("drowsy_score",), 1800)])
+    got = play(REMIND_ALL, [(1, ("drowsy_score",), 1800)])
     assert levels(got)[:9] == [1, 1, 2, 1, 1, 2, 1, 1, 2]
     assert all(("repeated_l1" in a[2]) == (a[1] == 2) for a in got)
     assert got[1][0] - got[0][0] == pytest.approx(L1_COOLDOWN + L1_CONFIRM, abs=0.21)
@@ -134,7 +135,7 @@ def test_count_starts_again_only_for_the_reason_that_escalated():
 
 
 def test_a_rest_still_restarts_the_count():
-    m, got = AlertManager(ALERTS), []
+    m, got = AlertManager(REMIND_ALL), []
     for i in range(round(400 / DT)):
         t = i * DT
         if abs(t - 200.0) < DT / 2:
@@ -159,7 +160,7 @@ def test_phone_that_began_under_a_microsleep_is_alerted_when_the_level_drops():
 
 def test_drowsy_l1_that_began_under_a_look_away_is_alerted_and_counted():
     script = [(2, ("off_road",), 6), (1, ("drowsy_score",), 600)]
-    got = play(ALERTS, script)
+    got = play(REMIND_ALL, script)
     assert got[0][1:] == (2, ("off_road",))
     assert got[1][1:] == (1, ("drowsy_score",))
     assert got[1][0] == pytest.approx(6 + ALERTS.fall_hold_s + L1_CONFIRM, abs=0.21)

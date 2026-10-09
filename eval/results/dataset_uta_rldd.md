@@ -270,6 +270,47 @@ By frame rate of the video (the system commits to ≥ 15 FPS; no video is droppe
   tell, replay the 30 FPS traces with frames thinned to 10 / 12 FPS and compare the alerts (not done).
 - The `10` videos below 15 FPS are 4 (3 with an alert); too few to say anything about detection at low frame rate.
 
+## 10. The same tables with the code of 09/10/2026 (M94, after M71-M93)
+
+Between section 9 and this one the decision blocks changed in many places (frame gaps M71, silent states M72, context
+M73, alert reminders M74 and M92, droop-then-shut M76, non-finite guards M77, pose baselines M80, nod / yawn M81,
+blink rate and smaller findings M90, shares by time M93). `python tools/uta_rldd.py report --split dev` and
+`--split test` were run again with `config/thresholds.yaml` of 09/10 (sha256 `73401e6a77ce`, commit `2990b41` plus the
+uncommitted M92 and M93). The held-out subjects were read **once** for this (fifth logged read in all:
+`eval/splits/uta_rldd_test_reads.tsv`); no threshold was chosen on it. Rules: `eval/splits/README.md`.
+
+| Alerts on `0` videos | Dev: alerts, hours, per hour | Test: alerts, hours, per hour |
+|---|---:|---:|
+| Drowsiness branch, after the 30 s start-up | 5, 3.87 h, 1.3 (0.42–3.0) | 4, 4.08 h, 1.0 (0.27–2.5) |
+| Drowsiness branch, whole video | 6, 4.07 h, 1.5 (0.54–3.2) | 4, 4.28 h, 0.9 (0.25–2.4) |
+| All branches, after the start-up | 9, 3.87 h, 2.3 (1.06–4.4) | 4, 4.08 h, 1.0 (0.27–2.5) |
+| **All branches, whole video** (the one to put next to the PRD's ≤ 1.0 / h) | 10, 4.07 h, 2.5 (1.18–4.5) | 5, 4.28 h, 1.2 (0.38–2.7) |
+
+| Per subject | Dev | Test |
+|---|---:|---:|
+| `10` videos with a drowsiness alert / reaching L3 | 14 / 12 of 24 | 15 / 12 of 24 |
+| `5` videos with a drowsiness alert / reaching L3 | 5 / 3 of 24 | 12 / 9 of 24 |
+| `0` videos with a drowsiness alert | 3 of 24 | 1 of 24 |
+| AUC of the mean drowsy_score, `10` against `0` | 0.863 | 0.929 |
+| Same subject scores higher on `10` than on `0` | 22 of 24 | 23 of 24 |
+| Drowsiness false alarms resampled by person, per hour (95 %) | 1.3 (0.00–2.8) | 1.0 (0.00–3.0) |
+
+- **Every count of section 9 is unchanged**, on both splits: the four ways of counting, the table by frame rate (dev
+  3 and 2 false alarms at ≥ 15 / < 15 FPS, test 0 and 4), and the subjects alerted. The four false alarms on test are
+  still one subject on one 12 FPS video (F4_S44: L1, L1, L3, L3).
+- What moved is the score, not the alerts: AUC on test 0.920 → 0.929 and 23 of 24 subjects (was 22) score higher on
+  their `10` video; on dev 0.859 → 0.863.
+- Why nothing moved on the alert side although M74 added reminders: on dev the reminders were 2 more drowsiness false
+  alarms (5 → 7, 1.29 → 1.81 / h, printed, not in this file), and M92 took the reminder of `drowsy_score` away again.
+  `off_road` and `phone` are still reminded; no awake video here holds a look away long enough for one.
+- The context factors are off in every number here (noon, no driving behind). On dev, replayed at 02:00 after two hours
+  of driving: 5 false alarms and 15 of 24 `10` subjects alerted with the factors capped at 1.2 together (M92); 11 and
+  18 with the factors stacking (x 1.44, before).
+- The low frame rate study (`fps_low_uta_rldd.md`) was written again the same day: every row from 10 to 15 FPS is
+  still inside the run-to-run noise of the others.
+- Not written again: section 8's trade-off (`uta_rldd_tradeoff.md`) and section 7 (`personalization_uta_rldd.md`), each
+  of which reads the held-out subjects once more. Their numbers are those of 08/10 and 06/10.
+
 ## Status
 
 Applied in M53 (06/10/2026): `risk.drowsy.weight_slow_blink` 10 → 0, `risk.drowsy.weight_brow` 10 → 0,

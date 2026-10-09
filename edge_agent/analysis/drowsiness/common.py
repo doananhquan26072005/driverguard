@@ -41,6 +41,54 @@ class RollingWindow:
         return cached[1]
 
 
+SHARE_DIGITS = 9  # a share is rounded here, so that sums of float waits give 18 / 36 = 0.5, not 0.4999999
+
+
+def share_of(on_s: float, total_s: float) -> float:
+    """on_s / total_s as a share that compares cleanly with a threshold (see SHARE_DIGITS); 0 of nothing."""
+    return round(on_s / total_s, SHARE_DIGITS) if total_s > 0 else 0.0
+
+
+class TimeShare:
+    """Share of the time a yes / no reading was "yes", on frames at any spacing (M93). `step` is called
+    on every frame with the wait since the frame before; a frame that was read stands for half the wait
+    before it and half the wait after it (the newest one, whose "after" is not known yet: the wait
+    before it). So the first frame after a slow stretch does not carry that whole stretch, and a burst
+    of frames counts for no more than the time it spans. At an even frame rate every frame weighs the
+    same: exactly the share of frames read, which is what was counted before."""
+
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._on_s = 0.0  # frames whose weight is final
+        self._total_s = 0.0
+        self._newest: tuple[bool, float] | None = None  # (reading, wait before it): weight not final yet
+
+    def step(self, dt: float, on: bool | None) -> None:
+        """dt: seconds since the frame before (gaps already capped by the caller). on: None = not read."""
+        if self._newest is not None:
+            was_on, before = self._newest
+            weight = (before + dt) / 2.0
+            self._total_s += weight
+            self._on_s += weight if was_on else 0.0
+        self._newest = None if on is None else (bool(on), dt)
+
+    @property
+    def share(self) -> float:
+        on, total = self._on_s, self._total_s
+        if self._newest is not None:
+            total += self._newest[1]
+            on += self._newest[1] if self._newest[0] else 0.0
+        if total > 0:
+            return share_of(on, total)
+        return 1.0 if self._newest is not None and self._newest[0] else 0.0  # one frame: the reading itself
+
+    def at_least(self, frac: float) -> bool:
+        """False before any frame was read."""
+        return (self._total_s > 0 or self._newest is not None) and self.share >= frac
+
+
 def expire(events: deque[float], t: float, window: float) -> None:
     """Drop event times older than `window` seconds before t."""
     while events and t - events[0] > window:

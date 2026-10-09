@@ -40,6 +40,18 @@ preprocess:
   # A 3-channel frame counts as IR/grayscale when the mean absolute difference
   # between its channels is below this value (0-255 scale).
   ir_channel_diff_max: 2.0
+  # ... and below this share of the frame's mean brightness (M98). A colour camera's channel
+  # difference shrinks with the light (6-20 % of the brightness on the webcam of the self-recorded
+  # sessions): in a dark cabin it fell under the absolute limit, the colour image passed for infrared
+  # (98-100 % of the frames at a face brightness of 10-11), and block 5 handed the eyes to the CNN /
+  # eyeBlink exactly where M54 had given them to EAR. A grayscale / infrared camera hands over equal
+  # channels: about 0 at any light. 0 = the absolute limit alone, as before M98.
+  # PROVISIONAL: one webcam; no real infrared camera to measure its chroma noise in the dark.
+  ir_channel_rel_max: 0.03
+  # A camera does not change its kind from one frame to the next: the first frame decides, and the
+  # kind changes only after the frames have said otherwise for this long without a break (a camera
+  # that switches its IR filter at dusk). Single images (tools/dataset.py) are judged one by one.
+  ir_switch_s: 2.0
   # The whole-image numbers (the IR test above, quality.blocked_* of block 6) are taken on every
   # sample_stride-th pixel, rows and columns. One value for the device and the page: both must
   # measure the same image the same way, or the limits above mean different things.
@@ -276,9 +288,9 @@ drowsiness:
   blink_window_s: 60
   blink_rate_min_span_s: 10     # ... divides by at least this: 1 blink in the first 2 s is not 30/min
   microsleep_min_s: 1.0         # closure at least this long = microsleep event
-  # Only a deep closure counts toward closed_duration (microsleep event + L3 rule): on at
-  # least deep_min_frac of its eye frames EAR <= deep_ear_ratio x open-eye baseline (or CNN
-  # p_closed >= deep_cnn). Narrowed eyes (looking down, sun, smiling) stay at 0.55-0.75 x
+  # Only a deep closure counts toward closed_duration (microsleep event + L3 rule): for at
+  # least deep_min_frac of its time (M93; of its eye frames before, the same thing at an even frame
+  # rate) EAR <= deep_ear_ratio x open-eye baseline (or CNN p_closed >= deep_cnn). Narrowed eyes (looking down, sun, smiling) stay at 0.55-0.75 x
   # baseline for seconds; YawDD: most false microsleeps were such. PERCLOS / blinks unchanged.
   microsleep_deep:
     ear_ratio: 0.5
@@ -422,6 +434,8 @@ drowsiness:
     # deepest point, so holding the head down counts for neither the drop nor the rise.
     bottom_frac: 0.15
     require_eyes_closed: true   # a glance at the dashboard keeps the eyes open
+    # Share of the dip's time with the eyes shut. A frame stands for half the wait before it and half
+    # the wait after it (M93): the first frame after a slow stretch does not carry that stretch.
     eyes_closed_min_frac: 0.3
     # true: a frame of the dip is "closed" only when firmly shut, by the deep-closure test for a bowed
     # head (microsleep_deep: bowed_ear_ratio + the eyeBlink vote, or block 5's deep score). false: the
@@ -486,7 +500,9 @@ distraction:
   # side keeps 30 deg. Provisional, to check on real drives with a turn / lane change.
   turn_signal_extra_yaw_deg: 30
   left_yaw_sign: 1                  # yaw sign of the driver's own left (unmirrored camera: +1)
-  phone_window_s: 2.0               # window for phone_ratio_2s
+  # Window for phone_ratio_2s: the share of its detector time with a phone (M93: time, not results;
+  # the same thing at an even frame rate).
+  phone_window_s: 2.0
   # phone_ratio_2s reads 0 until the window holds this many seconds of detector results. Without it
   # one detection among frames without a fresh result was a ratio of 1.0, and right after driving
   # off (the window starts empty) the first results alone decided (A2 L2 of the 08/10 audit).
@@ -580,6 +596,14 @@ context:
   # at 0 km/h; the last said driving = signal lost, speed unknown, monitored as moving (M26) and the
   # driver / backend are told (vehicle_signal_lost).
   vehicle_signal_stale_s: 1.0
+  # Never had a reading at all (M95, decision of 09/10): once the camera has seen a driver for this
+  # long (time spent on the enrollment screens is not counted, enrollment needs a parked vehicle), the
+  # speed is unknown instead of 0: monitored as moving (assume_moving_when_speed_unknown), and the
+  # driver / backend are told as for a lost signal. Before, a device with no speed source stood
+  # "parked" for the whole trip and raised no alert at all (audit 08/10, finding 1). Price: the page
+  # opened at a desk without the driving simulator alerts as if driving after this long. 0 = off.
+  # PROVISIONAL: 30 s is a choice, no data behind it.
+  vehicle_signal_wait_s: 30
   # How often the agent (device and page) asks for the vehicle signals, and how often the web
   # driving controls (#/drive) send them. Both must stay below vehicle_signal_stale_s, or a link
   # that works reads as lost (checked at start-up).
@@ -601,7 +625,8 @@ risk:
     level: 3
   drowsy:
     # drowsy_score = sum(weight x term), each term normalised to 0..1: the weighted sum is 0..100.
-    # It is then multiplied by night_factor / long_drive_factor (both: x1.44, up to 144) and capped at 100.
+    # It is then multiplied by night_factor / long_drive_factor, together by no more than
+    # context_factor_cap, and capped at 100.
     weight_perclos: 40
     weight_microsleep: 25
     weight_yawn: 15
@@ -624,6 +649,10 @@ risk:
     l2: 70
     night_factor: 1.2           # score multipliers from context
     long_drive_factor: 1.2
+    # Night and a long drive together multiply by no more than this (M92). 1.2 = the larger of the
+    # two, not 1.2 x 1.2: on the 24 UTA-RLDD dev subjects x1.44 gave 11 false alerts against 5, and
+    # no data shows it catching more real drowsiness. 1.44 = the factors stack, as before M92.
+    context_factor_cap: 1.2
     # Highest drowsiness level while standing still (speed below context.stationary_kmh, i.e. 0 km/h).
     # 0 (M30, 02/10): no alert at all when the vehicle stands still; distraction is already off below
     # context.min_speed_kmh. Before it was 1 (a microsleep at a red light got a chime). Drowsiness signs
@@ -703,10 +732,17 @@ alert:
   # cooldown) is not reminded, block 9 has `unresponsive` for that. false = one alert per episode,
   # as before M74.
   remind: true
+  # Reasons that are not reminded (M92): one alert per episode, as with remind off. drowsy_score is
+  # a slow score that stays up for minutes, and its reminders were the false alerts M74 added on
+  # UTA-RLDD. Also no alert of its own when a higher level drops onto it (as before M74): the HUD
+  # shows the level, without a sound. [] = remind every reason.
+  remind_skip_reasons: [drowsy_score]
   # Escalation over time (M32): the l1_repeat_count-th L1 alert of the same reason within
   # l1_repeat_window_s goes out as L2 (reason repeated_l1 added): told several times, still not
   # resting. With the 120 s L1 cooldown, 3 alerts take at least 4 minutes. Reminders count; after
-  # the L2 the count of that reason starts again (M74), so a steady L1 is L1, L1, L2, L1, L1, L2.
+  # the L2 the count of that reason starts again (M74), so a steady L1 of a reminded reason is L1,
+  # L1, L2, L1, L1, L2. drowsy_score is not reminded (remind_skip_reasons): what is counted for it
+  # is the score coming back up to L1 after it had dropped for fall_hold_s.
   # A rest (context.rest_after_s) or a driver change restarts the count. 0 = off. Provisional: no
   # dataset has drives this long.
   l1_repeat_count: 3

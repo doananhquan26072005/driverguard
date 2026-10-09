@@ -141,7 +141,8 @@ thay được.
 
 ## 7. Bảo mật
 
-- Mật khẩu băm bằng scrypt; phiên đăng nhập là token có hạn (mặc định 60 phút), chỉ nằm trong
+- Mật khẩu băm bằng scrypt; phiên đăng nhập là token có hạn (mặc định 60 phút; trong lúc một chuyến trên `#/live` đang chạy, trang đổi token còn
+  hạn lấy token mới, M97), chỉ nằm trong
   `sessionStorage` của trình duyệt.
 - Khoá thiết bị chỉ lưu dạng băm, hiện một lần lúc tạo.
 - Bản deploy chạy qua HTTPS. HUD trên thiết bị chỉ nghe ở `127.0.0.1`, và từ M84 chỉ nhận lệnh từ trang HUD: yêu cầu mang `Host` hoặc `Origin` lạ bị từ chối.
@@ -219,5 +220,6 @@ mốc thực hành tốt.
 - Bản sao lưu không nằm trong cơ chế tự xoá.
 - Trang `#/drive` (điều khiển xe của bản xem thử) không cần đăng nhập; nó chỉ nhận tốc độ và xi nhan
   giả lập, không có dữ liệu của tài xế.
-- Bản web tải thư viện từ CDN bên ngoài (jsdelivr): máy chủ CDN thấy địa chỉ IP của trình duyệt. Không
-  có dữ liệu giám sát nào đi qua đó.
+- Từ M99 bản web không tải thư viện từ CDN bên ngoài nữa: Pyodide và MediaPipe là file của chính bản build, và trang
+  gửi kèm Content-Security-Policy chỉ cho nối tới chính server của nó và máy của tài xế. (Trước đó máy chủ jsDelivr thấy
+  địa chỉ IP của trình duyệt; không có dữ liệu giám sát nào đi qua đó.)

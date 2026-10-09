@@ -7,7 +7,7 @@ numbers, a frozen camera, a YOLO run that raises). What was still open:
   in a second"). Here their loops run in the test's own thread on a clock the test moves, so the
   schedule is asserted exactly: when YOLO runs and on which frame, when a lost camera is asked for again.
 - Block 2: `resize` keeps the aspect ratio; a dark colour image is not an infrared one (audit A1 H1,
-  still open: stated as what is wanted, xfail strict).
+  closed by M98).
 - The page and the device measure an image with the same arithmetic written twice (Python, measure.ts):
   one fixture, checked from both sides (tools/measure_fixture.py, frontend/src/live/measureCross.test.ts).
 - Block 12 with the thresholds of config/thresholds.yaml (L3 has no cooldown there; the unit tests of
@@ -458,13 +458,9 @@ def test_a_colour_image_in_daylight_is_not_infrared():
         assert not pre.is_ir_image(colour_image(brightness)), brightness
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit A1 H1, open (docs/improvements.md: block 5 in low light): the IR test compares the "
-    "absolute channel difference with preprocess.ir_channel_diff_max, so a dark colour image passes for infrared",
-)
 @pytest.mark.parametrize("brightness", [6, 10, 12])
 def test_a_dark_colour_image_is_not_infrared(brightness):
+    """Audit A1 H1, xfail until M98: the IR test compared the absolute channel difference alone."""
     pre = Preprocessor(PreprocessConfig.from_dict(TH["preprocess"]))
     assert not pre.is_ir_image(colour_image(brightness))
 
@@ -624,7 +620,7 @@ def day_and_night():
 
 def test_night_and_a_long_drive_multiply_the_drowsy_score_and_nothing_else(day_and_night):
     drowsy = TH["risk"]["drowsy"]
-    factor = drowsy["night_factor"] * drowsy["long_drive_factor"]
+    factor = min(drowsy["night_factor"] * drowsy["long_drive_factor"], drowsy["context_factor_cap"])
     raised = 0
     for name, (day, night) in day_and_night.items():
         d, n = day["cols"]["drowsy_score"], night["cols"]["drowsy_score"]
@@ -648,13 +644,16 @@ def other_rules(run):
 
 
 def test_night_and_a_long_drive_never_lower_a_level_and_only_add_drowsiness_alerts(day_and_night):
-    added = []
+    added, higher = [], 0
     for name, (day, night) in day_and_night.items():
         assert np.all(night["cols"]["level"] >= day["cols"]["level"]), name
+        higher += int((night["cols"]["level"] > day["cols"]["level"]).sum())
         # Alerts of the other rules (microsleep, off_road, phone, ...) come in the same frame at the same
         # level; a drowsiness line crossed at night may only be named beside them.
         by_day, by_night = other_rules(day), other_rules(night)
         assert by_night == by_day, name
         added.append(len(night["alerts"]) - len(day["alerts"]))
-    assert sum(added) > 0, "no fixture video crosses a drowsiness line at night: the test shows nothing"
+    # With the factors capped at 1.2 together (M92) no fixture video gets one more alert at night
+    # (stacked, x1.44, one did); hundreds of frames still sit a level higher, so the test is not empty.
+    assert higher > 100, "no fixture video crosses a drowsiness line at night: the test shows nothing"
     assert min(added) >= 0  # no video has fewer alerts at night

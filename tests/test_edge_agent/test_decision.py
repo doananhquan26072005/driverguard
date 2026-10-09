@@ -66,7 +66,9 @@ def test_drowsy_score_l2_and_capped():
     assert r.drowsy_score == pytest.approx(75)  # 40 + 15 + 20
     assert r.level == 2
     r = assess(d=d, c=replace(C0, night=True, long_drive=True))
-    assert r.drowsy_score == 100.0  # 75 * 1.44 capped
+    assert r.drowsy_score == pytest.approx(90.0)  # 75 * 1.2: the two factors together stop at the cap (M92)
+    full = replace(d, closed_duration=2.0)  # + the microsleep term: 100 before any factor
+    assert assess(d=full, c=replace(C0, night=True)).drowsy_score == 100.0  # 100 * 1.2 capped at the scale
 
 
 def test_perclos_needs_coverage():

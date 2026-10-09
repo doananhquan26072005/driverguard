@@ -162,9 +162,18 @@ class ExternalVehicle:
     (the link) and one reader (the main loop): plain attribute swaps."""
 
     def __init__(
-        self, stale_s: float = 1.0, moving_kmh: float = 5.0, clock: Any = time.monotonic, stationary_kmh: float = 1.0
+        self,
+        stale_s: float = 1.0,
+        moving_kmh: float = 5.0,
+        clock: Any = time.monotonic,
+        stationary_kmh: float = 1.0,
+        wait_s: float = 0.0,
     ) -> None:
+        """wait_s: context.vehicle_signal_wait_s (0 = never had a reading stays "parked" for good)."""
         self.stale_s = stale_s
+        self.wait_s = wait_s
+        self._watched_s = 0.0  # time the camera has watched a driver without any reading yet (M95)
+        self._watch_t: float | None = None
         self.moving_kmh = moving_kmh
         self.stationary_kmh = stationary_kmh  # last reading below this when lost = parked, not lost
         self._clock = clock
@@ -187,15 +196,33 @@ class ExternalVehicle:
     def connected(self) -> bool:
         return self._received is not None and self._clock() - self._received <= self.stale_s
 
+    def observe(self, t: float, watching: bool) -> None:
+        """Called on every frame, before `sample`. watching: the camera sees a driver who is not being
+        enrolled. Without any reading yet, that time is counted towards `wait_s` (M95); a frame after
+        a hole counts `stale_s` at most."""
+        if watching and self._received is None and self._watch_t is not None:
+            self._watched_s += min(max(t - self._watch_t, 0.0), self.stale_s)
+        self._watch_t = t
+
+    @property
+    def never_received(self) -> bool:
+        """No reading ever came, and a driver has been in view for `wait_s`: not "parked" any more but
+        speed unknown, monitored as moving, and the driver is told (M95). Before, a page with no speed
+        source stood "parked" for the whole trip and raised no alert at all."""
+        return self._received is None and self.wait_s > 0 and self._watched_s >= self.wait_s
+
     @property
     def link_lost(self) -> bool:
-        """A signal had come in and the link went quiet (driving or parked): the driver is told."""
-        return self._received is not None and not self.connected
+        """A signal had come in and the link went quiet (driving or parked), or none ever came
+        (`never_received`): the driver is told."""
+        return (self._received is not None and not self.connected) or self.never_received
 
     @property
     def signal_lost(self) -> bool:
-        """The link went quiet while the last reading said the vehicle was driving: speed unknown."""
-        return self._received is not None and not self.connected and self._speed >= self.stationary_kmh
+        """Speed unknown: the link went quiet while the last reading said the vehicle was driving, or no
+        reading ever came (`never_received`)."""
+        lost_driving = self._received is not None and not self.connected and self._speed >= self.stationary_kmh
+        return lost_driving or self.never_received
 
     def sample(self, t: float) -> VehicleSignals:
         live = self.connected
@@ -214,11 +241,17 @@ class ExternalVehicle:
 
 
 def hud_vehicle(
-    source: str, connected: bool, signals: VehicleSignals | None, stationary_kmh: float, signal_lost: bool = False
+    source: str,
+    connected: bool,
+    signals: VehicleSignals | None,
+    stationary_kmh: float,
+    signal_lost: bool = False,
+    never_received: bool = False,
 ) -> dict:
     """The HUD's vehicle card: where the speed comes from, and parked / driving by the speed alone
     (below `context.stationary_kmh` = stopped / parked). signal_lost: the link went quiet while driving,
-    speed unknown (None), still counted as driving; with `driving` False the link went quiet while parked."""
+    speed unknown (None), still counted as driving; with `driving` False the link went quiet while parked.
+    never_received: the signal is "lost" because none ever came (M95); the HUD words it that way."""
     speed = signals.speed_kmh if signals is not None else 0.0
     return {
         "source": source,
@@ -227,6 +260,7 @@ def hud_vehicle(
         "turn_signal": None if signals is None else signals.turn_signal,
         "driving": speed is None or speed >= stationary_kmh,
         "signal_lost": signal_lost,
+        "never_received": never_received,
     }
 
 

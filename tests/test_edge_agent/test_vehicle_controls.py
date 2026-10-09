@@ -74,6 +74,7 @@ def test_hud_vehicle_parked_or_driving_by_speed_alone():
         "turn_signal": "right",
         "driving": True,
         "signal_lost": False,
+        "never_received": False,
     }
     assert hud_vehicle("sim", False, None, 1.0)["speed_kmh"] == 0.0
     lost = hud_vehicle("sim", False, sig(None), 1.0, signal_lost=True)
