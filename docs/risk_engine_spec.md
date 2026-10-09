@@ -49,7 +49,8 @@ cuối có trọng số 0), `unavailable`, `unavailable_reason` (`no_face`, `cam
 - Chớp chậm (`slow_blink`) và nhướn mày (`brow`) vẫn được đo và nằm trong `drowsy_terms`, nhưng trọng số là 0 từ M53
   (`risk.drowsy.weight_slow_blink`, `weight_brow`; trước đó mỗi cái 10). Tổng bốn trọng số còn lại là 100.
 - Microsleep vẫn tính trong 5 phút sau khi xảy ra.
-- Nhân thêm 1.2 nếu là ban đêm, nhân 1.2 nếu đã lái lâu (cả hai: 1,44, tức tới 144 trước khi cắt). Tối đa 100. "Lái lâu" = thời gian lái từ lần nghỉ /
+- Nhân thêm 1.2 nếu là ban đêm, nhân 1.2 nếu đã lái lâu; cả hai cùng bật thì tích bị chặn ở
+  `risk.drowsy.context_factor_cap` (1,2 từ M92; trước là 1,44). Tối đa 100. "Lái lâu" = thời gian lái từ lần nghỉ /
   lần "Đổi tài xế" gần nhất (`drive_run_s` của khối 10) ≥ `context.long_drive_s` (M73; trước đó là tổng thời gian
   lăn bánh từ lúc mở app, không bao giờ tắt).
 
@@ -90,7 +91,7 @@ là `no_face`.
 ## 9. Câu hỏi mở
 - ~~`slow_blink` và `brow` có trọng số tạm~~: đã đo trên UTA-RLDD và đặt về 0 ở M53. Tổng trọng số nay là 100 (trước
   là 120 rồi cắt ở 100); perclos + nod (60) vẫn đủ L1.
-- Hai hệ số ngữ cảnh nhân chồng (1,44 khi lái đêm đã lâu) hay cộng có trần: chờ quyết định (M73; trên 24 người dùng
-  để dò của UTA-RLDD, đêm + lái lâu cho 11 lần báo sai thay vì 5).
+- ~~Hai hệ số ngữ cảnh nhân chồng (1,44) hay có trần~~: chốt 09/10, trần 1,2 (M92). Trên 24 người dùng để dò của
+  UTA-RLDD, đêm + lái lâu: báo sai 11 → 5 lần, người buồn ngủ có cảnh báo 18 → 15 / 24.
 - Luật `trend` trên chuyến dài hàng giờ chưa có dữ liệu để bật lại.
 - `distraction_score` hiện chỉ dùng để hiển thị, chưa có luật nào dựa vào nó để lên mức.
