@@ -12,6 +12,20 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 | **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
+## Ảnh chụp màn hình
+
+| HUD: bình thường (L0) | HUD: cầm điện thoại (L2) | HUD: ngủ gật (L3) |
+|---|---|---|
+| ![HUD mức L0: Tỉnh táo, tốc độ 68 km/h](docs/screenshots/hud-l0.png) | ![HUD mức L2: Bỏ điện thoại xuống](docs/screenshots/hud-l2-phone.png) | ![HUD mức L3: Mở mắt, dừng xe nghỉ ngay](docs/screenshots/hud-l3.png) |
+
+| Dashboard: nhật ký sự kiện | Dashboard: timeline mệt mỏi |
+|---|---|
+| ![Nhật ký sự kiện: 5 cảnh báo L1–L3 của một chuyến](docs/screenshots/dash-events.png) | ![Timeline mệt mỏi: drowsy_score từng phút kèm các cảnh báo](docs/screenshots/dash-timeline.png) |
+
+Ảnh HUD chụp ở trang `#/hud-preview` (trạng thái cố định, đã ẩn thanh chọn kịch bản). Ảnh dashboard chụp trên một
+database tạm với một chuyến **mô phỏng** (các dòng mang nhãn "mô phỏng"), không phải số liệu lái thật. Không ảnh nào
+có khuôn mặt.
+
 ## Mục lục
 
 1. [Vấn đề và giải pháp](#vấn-đề-và-giải-pháp)
@@ -68,7 +82,20 @@ Chi tiết ngưỡng ở [`config/thresholds.yaml`](config/thresholds.yaml) và 
 
 ## Kiến trúc
 
-14 khối chạy theo thứ tự, mỗi khối là một module trong `edge_agent/`, giao tiếp qua dataclass:
+![Kiến trúc hệ thống DriverGuard: Frontend React, edge agent 14 khối, Backend FastAPI, SQLite, nguồn model pretrained](docs/diagrams/architecture.svg)
+
+Hệ thống có năm phần. **Agent** (`edge_agent/`, Python) chạy trên thiết bị trong xe: đọc camera, nhận diện, chấm
+mức rủi ro L0–L3 và phát cảnh báo; frame chỉ nằm trong RAM. **Frontend** (React) có bốn trang: `#/hud` hỏi agent
+qua HTTP cục bộ, `#/live` chạy cả agent ngay trong trình duyệt, `#/drive` giả lập tốc độ / xi nhan, `#/dashboard`
+cho tài xế, quản lý, kỹ sư. **Backend API** (FastAPI trên Railway) chỉ nhận JSON metadata, từ chối mọi thứ giống ảnh
+(HTTP 422), và trả ngưỡng đã chỉnh về cho agent. **Database** là SQLite. **External**: ba nguồn model pretrained, chỉ
+dùng lúc cài đặt; lúc chạy không gọi API bên ngoài nào. Hệ thống không có LLM, LangGraph hay Vector Store: "agent" ở
+đây là pipeline thị giác + luật chạy on-device (code LangGraph trong `src/` là mẫu của khoá học, DriverGuard không dùng).
+
+Bản PNG: [docs/diagrams/png/architecture.png](docs/diagrams/png/architecture.png); hình sinh từ
+[docs/diagrams/build_architecture.py](docs/diagrams/build_architecture.py).
+
+Bên trong agent, 14 khối chạy theo thứ tự, mỗi khối là một module trong `edge_agent/`, giao tiếp qua dataclass:
 
 ```mermaid
 flowchart LR
@@ -76,8 +103,9 @@ flowchart LR
         B1[1 Camera] --> B2[2 Tiền xử lý]
         B2 --> B3[3 MediaPipe<br/>Face Landmarker]
         B2 --> B4[4 YOLOv8n<br/>điện thoại]
-        B2 --> B5[5 CNN mắt]
-        B3 & B4 & B5 --> B6[6 Feature extractor]
+        B3 & B4 --> B6[6 Feature extractor]
+        B6 -. "EAR không tin được" .-> B5[5 CNN mắt]
+        B5 -. eye_closed .-> B7
         B6 --> B7[7 Nhánh buồn ngủ]
         B6 --> B8[8 Nhánh mất tập trung]
         B10[10 Ngữ cảnh xe<br/>tốc độ, xi nhan] --> B9
@@ -172,6 +200,27 @@ cd frontend && npm install && npm run dev
 
 Chỉ muốn xem camera và chỉ số, không cần backend: `python tools/debug_view.py --source 0`.
 Kịch bản demo gợi ý: [HowToUse.md mục 7.4](HowToUse.md#74-kịch-bản-demo-gợi-ý).
+
+### 5. Chạy bằng Docker (backend + web trong một image)
+
+[`Dockerfile.railway`](Dockerfile.railway) là image của bản deploy: backend FastAPI, dashboard, HUD và `#/live` cùng một
+origin. Server không chạy model; trình duyệt tải model rồi tự chạy. Cần có sẵn `models/face_landmarker.task` và
+`models/yolov8n.onnx` (bước 1) trước khi build.
+
+```bash
+docker build -f Dockerfile.railway -t driverguard .
+docker run -d --name driverguard -p 8000:8000 \
+  -e DG_JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+  -v driverguard-data:/app/data driverguard
+
+# Tạo tài khoản trong container (hỏi mật khẩu), rồi mở http://localhost:8000
+docker exec -it driverguard python -m backend.manage create-user admin --role admin
+```
+
+Volume `driverguard-data` giữ file SQLite qua các lần chạy lại. `#/live` cần camera nên chỉ chạy ở `localhost` hoặc
+HTTPS. Edge agent (đọc camera, chạy model) không nằm trong image này: chạy như bước 4 và trỏ `--backend
+http://localhost:8000`. `Dockerfile` và `docker-compose.yml` ở gốc repo là app mẫu của khoá học, không phải DriverGuard
+(xem [mục Template](#template-khoá-ai20k)). Deploy lên Railway: [docs/deploy-railway.md](docs/deploy-railway.md).
 
 ## Biến môi trường
 
@@ -301,18 +350,24 @@ Công cụ: `tools/eval.py` (video có nhãn theo thời gian), `tools/dataset.p
 ## Cấu trúc thư mục
 
 ```
-edge_agent/          14 khối on-device (camera → … → HUD server, metadata publisher), runtime chung, web bridge
-backend/             FastAPI: auth, sự kiện, chuyến, báo cáo, ngưỡng, quản trị (SQLite)
-frontend/            React: HUD, #/live (chạy trong trình duyệt), #/drive, dashboard; e2e Playwright
-config/              thresholds.yaml (mọi ngưỡng), kịch bản CAN, drive_sim.yaml
-tools/               tải model, mô phỏng lái xe, eval, dataset, benchmark, debug view
-tests/               pytest cho edge agent, backend, tools
-models/              model đã tải (không commit)
-eval/results/        kết quả đánh giá và benchmark
-deploy/, Dockerfile.railway, railway.json   bản deploy Railway (API + dashboard cùng origin)
-packaging/edge/      gói cài và chạy edge agent trên máy trong xe
-docs/                PRD, kiến trúc, roadmap, release notes, FMEA, nhật ký công việc
-src/                 code mẫu của template khoá học (LangGraph), DriverGuard không dùng
+P-135/
+├── edge_agent/          14 khối on-device (camera → … → HUD server, metadata publisher), runtime chung, web bridge
+├── backend/             FastAPI: auth, sự kiện, chuyến, báo cáo, ngưỡng, quản trị (SQLite)
+├── frontend/
+│   ├── src/hud/         HUD trong xe, #/hud-preview
+│   ├── src/live/        #/live: cả agent chạy trong trình duyệt
+│   ├── src/drive/       #/drive: giả lập tốc độ / xi nhan
+│   ├── src/dashboard/   dashboard theo vai trò
+│   └── e2e/             test Playwright
+├── config/              thresholds.yaml (mọi ngưỡng), kịch bản CAN, drive_sim.yaml
+├── tools/               tải model, mô phỏng lái xe, eval, dataset, benchmark, debug view
+├── tests/               pytest cho edge agent, backend, tools
+├── models/              model đã tải (không commit)
+├── eval/results/        kết quả đánh giá và benchmark
+├── deploy/              app Railway (API + dashboard cùng origin), kèm Dockerfile.railway, railway.json
+├── packaging/edge/      gói cài và chạy edge agent trên máy trong xe
+├── docs/                PRD, kiến trúc, roadmap, release notes, FMEA, nhật ký công việc, screenshots/
+└── src/                 code mẫu của template khoá học (LangGraph), DriverGuard không dùng
 ```
 
 Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
@@ -322,14 +377,14 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | # | Deliverable | Ở đâu | Trạng thái |
 |---|---|---|---|
 | 1 | Source code | `edge_agent/`, `backend/`, `frontend/`, `tools/`, `config/` | ✅ |
-| 2 | README | File này + [HowToUse.md](HowToUse.md) | ✅ |
+| 2 | README | File này (ảnh ở [docs/screenshots/](docs/screenshots/)) + [HowToUse.md](HowToUse.md) | ✅ |
 | 3 | Architecture diagram | [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
 | 5 | Live URL | https://driveguard-v2-production.up.railway.app | ✅ |
 | 6 | Video demo | `presentation/` | Chưa có |
 | 7 | Pitch deck | `presentation/` | Chưa có |
-| 8 | Development journal | [JOURNAL.md](JOURNAL.md), [docs/worklog/](docs/worklog/) | ✅ |
-| 9 | Worklog | [WORKLOG.md](WORKLOG.md), [docs/roadmap.md](docs/roadmap.md) | ✅ |
+| 8 | Development journal | [docs/JOURNAL.md](docs/JOURNAL.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
+| 9 | Worklog | [docs/WORKLOG.md](docs/WORKLOG.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
 | 10 | Evaluation evidence | [eval/results/](eval/results/) | ✅ |
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
@@ -344,12 +399,12 @@ không cảnh báo được), [docs/improvements.md](docs/improvements.md) (vi�
 
 Team DriverGuard (4 người), AI20K Build Phase Cohort 4, VinUni:
 
-| GitHub |
-|---|
-| [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) |
-| [@hddung-vinai](https://github.com/hddung-vinai) |
-| [@Yuhnguyn](https://github.com/Yuhnguyn) |
-| [@kelsingo](https://github.com/kelsingo) |
+| Thành viên | GitHub | Vai trò (theo [docs/WORKLOG.md](docs/WORKLOG.md)) |
+|---|---|---|
+| Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent và chống báo sai, đánh giá trên dataset, bản web `#/live`, backend, audit, deploy Railway, tài liệu |
+| Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Dựng pipeline 14 khối, backend và dashboard ban đầu (M0–M7); giao diện Version 4, giọng nói tiếng Việt, deploy tự động (M57–M66) |
+| Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | PRD, sơ đồ Use Case và User Flow |
+| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | PRD gate 1 |
 
 ## AI usage logging
 

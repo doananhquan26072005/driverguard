@@ -740,6 +740,43 @@ Chi tiết: [roadmap M101](roadmap.md#m101).
 
 ---
 
+### 3.32 Sơ đồ kiến trúc tổng quan dạng SVG / PNG; `ARCHITECTURE.md` viết theo code (09/10)
+
+Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
+
+- **Thêm:** `docs/diagrams/architecture.svg` và `png/architecture.png`: một hình gồm Frontend, Agent, Backend API, Database,
+  External và mũi tên luồng dữ liệu; sinh từ `docs/diagrams/build_architecture.py` (PNG chụp bằng Chrome headless). Hình
+  ghi rõ hệ thống không có LLM, LangGraph, Vector Store. Nhúng vào `README.md` (kèm mô tả ngắn) và mục 0 mới của
+  `architecture_diagram.md`.
+- **Sửa:** hai hình Mermaid 14 khối (README, `architecture_diagram.md` hình 1) vẽ khối 5 trước khối 6; code chạy khối 5 sau
+  khối 6 và chỉ khi EAR không tin được. `architecture_diagram.md` ghi ngưỡng "tải một lần lúc khởi động"; đúng là lúc khởi
+  động và mỗi 5 phút, áp khi xe nghỉ (M47, M79).
+- **Sửa:** `ARCHITECTURE.md` ở gốc repo vẫn là mẫu khoá học chưa điền (vẽ LangGraph, Vector Store); viết lại theo code.
+- **Sửa:** `docs/kich-ban-demo.md` phần 3 (kiến trúc) theo hình mới: mở bằng hình tổng quan năm phần, khối 5 sau khối 6,
+  ranh giới "chỉ còn con số" là khối 7 (trước ghi khối 6), thêm luồng ngưỡng mỗi 5 phút.
+
+### 3.33 Development journal và worklog thật thay cho mẫu khoá học (09/10)
+
+Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
+
+- **Thêm:** `docs/JOURNAL.md`: 11 mục theo ngày làm việc (24/09–09/10), mỗi mục 2–3 câu về quyết định, khó khăn, bài
+  học, và một bảng tổng hợp cho slide "Challenges & Learnings". `docs/WORKLOG.md`: bảng theo ngày (ai, việc, kết quả, PR)
+  và bảng 108 commit lấy từ `git log`.
+- **Sửa:** `JOURNAL.md` và `WORKLOG.md` ở gốc repo vẫn là mẫu khoá học chưa điền, trong khi README đánh dấu ✅; nay chỉ
+  còn một dòng trỏ sang `docs/`. Bảng Deliverables của README trỏ thẳng tới hai file mới.
+
+### 3.34 README: ảnh chụp màn hình, chạy bằng Docker, vai trò thành viên (09/10)
+
+Soát README theo checklist của khoá học. Chỉ đổi tài liệu.
+
+- **Thêm** mục "Ảnh chụp màn hình" và năm ảnh ở `docs/screenshots/`: HUD L0 / L2 điện thoại / L3 (trang `#/hud-preview`,
+  ẩn thanh chọn kịch bản) và hai trang dashboard (nhật ký sự kiện, timeline) trên database tạm với một chuyến mô phỏng
+  gắn nhãn `simulated`. Không ảnh nào có khuôn mặt.
+- **Thêm** bước "Chạy bằng Docker" với `Dockerfile.railway`. Lệnh viết theo Dockerfile, **chưa chạy thử** trên máy này
+  (Docker không bật lúc viết).
+- **Sửa** bảng Team: thêm họ tên và vai trò lấy từ `docs/WORKLOG.md`; họ tên của `hddung-vinai` còn trống.
+- **Sửa** mục "Cấu trúc thư mục" thành dạng cây.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
