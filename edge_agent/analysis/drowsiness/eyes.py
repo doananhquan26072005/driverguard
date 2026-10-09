@@ -3,10 +3,10 @@
 Anti false-positive rules:
 - Eye closure is relative to the driver's own open-eye EAR (a high percentile of recent
   EAR), so narrow eyes are not "always closed". Hysteresis between close / reopen.
-- Deep closure: closed_duration (microsleep event + L3 rule) only counts a closure whose
-  eye frames are mostly "firmly shut": EAR <= `microsleep_deep_ear_ratio` x the open-eye
-  baseline (or CNN p_closed >= `microsleep_deep_cnn`) on at least `microsleep_deep_min_frac`
-  of them. Narrowed eyes (looking down, squinting in sunlight, smiling) sit around 0.55-0.75
+- Deep closure: closed_duration (microsleep event + L3 rule) only counts a closure that is
+  mostly "firmly shut": EAR <= `microsleep_deep_ear_ratio` x the open-eye baseline (or CNN
+  p_closed >= `microsleep_deep_cnn`) for at least `microsleep_deep_min_frac` of its time
+  (`TimeShare`, M93: a share of time, which at an even frame rate is the share of eye frames). Narrowed eyes (looking down, squinting in sunlight, smiling) sit around 0.55-0.75
   x baseline and stay inside the close / reopen hysteresis for seconds; a real closure drops
   well below. Once the closure is deep, its whole length counts (no added delay). Blinks
   keep the looser close_ratio. With `microsleep_deep_blink` > 0, an EAR frame is deep only
@@ -38,7 +38,7 @@ Anti false-positive rules:
   closure keeps counting while the head stays down or the face is lost, so falling
   asleep with a head drop still reaches the microsleep L3 rule. A blink followed by a
   glance down is shorter than the minimum and is not carried. Only a deep closure is
-  carried (`microsleep_deep_min_frac` of the episode's eye frames firmly shut): lids lowered
+  carried (`microsleep_deep_min_frac` of the episode's time firmly shut): lids lowered
   while slowly bowing to the phone / dashboard used to start the carry and raise L3.
   The carry needs something to go on: after `head_drop_carry_max_lost_s` with neither the eyes nor a
   lowered head in view (the face is gone) it ends. Nothing says the eyes are still shut then, and
@@ -71,7 +71,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from edge_agent.analysis.drowsiness.common import RollingWindow, drop_since, expire
+from edge_agent.analysis.drowsiness.common import RollingWindow, TimeShare, drop_since, expire
 from edge_agent.analysis.drowsiness.config import DrowsinessConfig
 from edge_agent.perception.features import FrameFeatures
 
@@ -143,10 +143,8 @@ class EyeClosure:
         self._count_since: float | None = None  # start of the counted part (closed_duration)
         self._microsleep_fired = False
         self.head_drop = False  # closure carried through a head drop
-        self._deep_frames = 0  # eye frames of the counted closure that are firmly shut
-        self._eye_frames = 0
-        self._episode_deep = 0  # same, over the whole episode (not reset by the yawn / talking mask)
-        self._episode_eye = 0
+        self._counted = TimeShare()  # time of the counted closure firmly shut (M93: time, not frames)
+        self._episode = TimeShare()  # same, over the whole episode (not reset by the yawn / talking mask)
         self._run_since: float | None = None  # first frame of the running stretch of firmly shut frames
         self._run_last = 0.0  # its latest firmly shut frame
         self._carry_seen_t = 0.0  # head-drop carry: last frame that showed the head down
@@ -167,12 +165,12 @@ class EyeClosure:
         self._count_since = None
         self._microsleep_fired = False
         self.head_drop = False
-        self._deep_frames = self._eye_frames = 0
-        self._episode_deep = self._episode_eye = 0
+        self._counted.reset()
+        self._episode.reset()
         self._run_since = None
 
     def _episode_is_deep(self) -> bool:
-        return self._episode_eye > 0 and self._episode_deep >= self.config.microsleep_deep_min_frac * self._episode_eye
+        return self._episode.at_least(self.config.microsleep_deep_min_frac)
 
     def update(self, t: float, eye_closed: bool | None, head_down: bool, face_lost: bool, events: list[str]) -> None:
         cfg = self.config
@@ -222,7 +220,7 @@ class EyeClosure:
         would never reach the microsleep rules."""
         if self.closed_since is not None and not self.head_drop:
             self._count_since = t
-            self._deep_frames = self._eye_frames = 0
+            self._counted.reset()
             self._run_since = None
 
     def _run_s(self, t: float) -> float:
@@ -231,22 +229,23 @@ class EyeClosure:
             t - self._run_since if self._run_since is not None and self.config.microsleep_deep_run_gap_s >= 0 else 0.0
         )
 
-    def closed_duration(self, t: float, eye_closed: bool | None, deep_frame: bool, events: list[str]) -> float:
-        """Seconds of the counted, deep closure (0 when not deep); fires "microsleep" once."""
+    def closed_duration(
+        self, t: float, dt: float, eye_closed: bool | None, deep_frame: bool, events: list[str]
+    ) -> float:
+        """Seconds of the counted, deep closure (0 when not deep); fires "microsleep" once.
+        dt: seconds since the frame before (the share of firmly shut frames is a share of time)."""
         cfg = self.config
-        if eye_closed and self.closed_since is not None:
-            self._episode_eye += 1
-            self._episode_deep += deep_frame
-        if eye_closed and self._count_since is not None:
-            self._eye_frames += 1
-            self._deep_frames += deep_frame
+        self._episode.step(dt, deep_frame if eye_closed and self.closed_since is not None else None)
+        counted = bool(eye_closed) and self._count_since is not None
+        self._counted.step(dt, deep_frame if counted else None)
+        if counted:
             if deep_frame:
                 if self._run_since is None:
                     self._run_since = t
                 self._run_last = t
             elif self._run_since is not None and t - self._run_last > cfg.microsleep_deep_run_gap_s:
                 self._run_since = None  # the lids came back up: narrowed again, not shut
-        deep = self._eye_frames > 0 and self._deep_frames >= cfg.microsleep_deep_min_frac * self._eye_frames
+        deep = self._counted.at_least(cfg.microsleep_deep_min_frac)
         if self._count_since is None:
             duration = 0.0
         elif deep:

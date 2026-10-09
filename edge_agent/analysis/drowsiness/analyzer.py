@@ -178,7 +178,7 @@ class DrowsinessAnalyzer:
         )
         if masked and not spared:
             self._closure.mask(t)
-        closed_duration = self._closure.closed_duration(t, eye_closed, deep_frame, events)
+        closed_duration = self._closure.closed_duration(t, dt, eye_closed, deep_frame, events)
 
         # Per frame, not the hysteresis state: narrowed eyes after a blink are not closed.
         perclos_eye: bool | None = None

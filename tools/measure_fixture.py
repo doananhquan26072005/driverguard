@@ -78,7 +78,8 @@ def channel_diff(pre: Preprocessor, bgr: np.ndarray) -> float:
     lo, hi = 0.0, 255.0
     for _ in range(60):
         mid = (lo + hi) / 2.0
-        if Preprocessor(replace(pre.config, ir_channel_diff_max=mid)).is_ir_image(bgr):
+        # the absolute limit alone: the share of the brightness (M98) is another number of the fixture
+        if Preprocessor(replace(pre.config, ir_channel_diff_max=mid, ir_channel_rel_max=0.0)).is_ir_image(bgr):
             hi = mid
         else:
             lo = mid
@@ -115,6 +116,7 @@ def fixture(thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
         "box": list(BOX),
         "stride": PreprocessConfig.from_dict(th["preprocess"]).sample_stride,
         "ir_channel_diff_max": PreprocessConfig.from_dict(th["preprocess"]).ir_channel_diff_max,
+        "ir_channel_rel_max": PreprocessConfig.from_dict(th["preprocess"]).ir_channel_rel_max,
         "tolerance": TOLERANCE,
         "images": {
             name: {"rgb": rgb.reshape(-1).tolist(), "device": device_numbers(rgb, th)} for name, rgb in IMAGES.items()

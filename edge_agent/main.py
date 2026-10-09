@@ -160,7 +160,10 @@ def main(argv: list[str] | None = None) -> int:
     can: CanSimulator | ExternalVehicle
     if args.scenario is None:
         external = ExternalVehicle(
-            stale_s=ctx_cfg.vehicle_signal_stale_s, moving_kmh=moving_kmh, stationary_kmh=ctx_cfg.stationary_kmh
+            stale_s=ctx_cfg.vehicle_signal_stale_s,
+            moving_kmh=moving_kmh,
+            stationary_kmh=ctx_cfg.stationary_kmh,
+            wait_s=ctx_cfg.vehicle_signal_wait_s,
         )
         link = SignalLink(external, args.sim_url, ctx_cfg.vehicle_poll_s).start()
         can, scenario_name = external, SIM

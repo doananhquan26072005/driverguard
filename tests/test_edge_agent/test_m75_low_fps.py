@@ -1,4 +1,5 @@
 """M75: blocks 7-12 when frames come slower than 15 FPS, or unevenly. Measured only, nothing changed.
+(M93 then made the phone ratio and the nod's closed-eye share follow time: one xfail came off.)
 
 Every other timing test feeds frames 1 / 30 s apart. The target device is estimated at 11-14 FPS, and a
 loop that shares its thread does not deliver frames evenly. Here the same thing happens in front of the
@@ -186,20 +187,21 @@ def test_a_clear_look_away_is_one_l2_at_most_two_frame_gaps_late(loop):
 
 
 @pytest.mark.parametrize("loop", LOOPS)
-def test_a_phone_held_up_is_one_l2_and_its_ratio_is_counted_by_frames(loop):
-    """phone_ratio_2s is the share of the frames of the window, not of its time: uneven frames move the
-    moment it passes the limit both ways (the stuttering loop alerts up to 0.1 s early). A phone seen for
-    0.8 s of the 2 s (40 %) reads 36-48 %, still far from the limit."""
+def test_a_phone_held_up_is_one_l2_and_its_ratio_is_counted_by_time(loop):
+    """phone_ratio_2s is the share of the window's time (M93; before, of its frames: a phone seen for
+    0.8 s of the 2 s read 36-48 %, and the stuttering loop alerted up to 0.1 s early). What is left is
+    the sampling itself: the phone is seen from the first frame after it came up."""
     gap = largest_gap(loop)
     ratio, window_s = float(TH["risk"]["distraction"]["phone_ratio"]), float(TH["distraction"]["phone_window_s"])
     for phase in PHASES:
         start = WARM_S + phase
         alerts, _ = drive(loop, lambda t: {}, WARM_S + 8, phone=lambda t, a=start: a <= t < a + 5.0)
         late = late_by(alerts, 2, "phone", start + ratio * window_s + RISE_S[2])
-        assert -gap <= late <= 2 * gap + 0.01
+        assert -gap / 2 - 0.01 <= late <= 2 * gap + 0.01
         alerts, results = drive(loop, lambda t: {}, WARM_S + 4, phone=lambda t, a=start: a <= t < a + 0.8)
         assert alerts == []
-        assert max(r.distraction.phone_ratio_2s for r in results) == pytest.approx(0.8 / window_s, abs=0.1)
+        seen = max(r.distraction.phone_ratio_2s for r in results)
+        assert seen == pytest.approx(0.8 / window_s, abs=gap / window_s / 2 + 0.03)
 
 
 # ---------------------------------------------------------------- what a slow loop costs
@@ -271,20 +273,11 @@ def nod(start, drop_s=0.6, rise_s=0.2, depth=30.0):
     return signal
 
 
-@pytest.mark.parametrize(
-    "loop",
-    [
-        known_gap(
-            loop,
-            "stutter",
-            reason="the 0.3 s without a frame can fall on the way up: the first frame after it shows open "
-            "eyes and counts 0.3 s as open, the closed share of the dip drops under "
-            "nod.eyes_closed_min_frac and the nod is a `bow` (1 of 5 tries)",
-        )
-        for loop in LOOPS
-    ],
-)
+@pytest.mark.parametrize("loop", LOOPS)
 def test_a_nod_with_the_eyes_shut_is_a_nod(loop):
+    """Before M93 the stuttering loop made 1 nod in 5 a `bow`: the 0.3 s without a frame fell on the way
+    up, and the first frame after it (eyes open) counted all of it as open. A frame now stands for half
+    the wait on each side of it."""
     for phase in PHASES:
         _, results = drive(loop, nod(WARM_S + phase), WARM_S + 5)
         assert (events(results, "nod"), events(results, "bow")) == (1, 0)

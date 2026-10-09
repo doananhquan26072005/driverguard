@@ -121,6 +121,7 @@ class HudState:
         self._camera_lost = False
         self._processing_error = False  # frames keep failing: not monitored (M28)
         self._low_fps = False  # FPS too low for a while: alerts may be late (M28)
+        self._too_slow = False  # under 2 FPS for a while: nothing can be timed, not monitored (M96)
         self._phone_unavailable = False  # the phone detector gives no fresh results (M50)
         # M65: since when the driver is not monitored (camera lost / processing error), how many times
         # the camera was reopened meanwhile, and whether the backend has the event (None: not known here).
@@ -208,6 +209,12 @@ class HudState:
         with self._lock:
             self._processing_error = error
             self._snapshot = {**self._snapshot, "updated_at": time.time()}
+
+    def set_too_slow(self, slow: bool) -> None:
+        """The loop is too slow for the decision blocks to time anything: shown as "monitoring unavailable"
+        with the reason `slow_loop`, whatever block 9 says about the face."""
+        with self._lock:
+            self._too_slow = slow
 
     def set_low_fps(self, low: bool) -> None:
         with self._lock:
@@ -315,6 +322,7 @@ class HudState:
                 "camera_lost": self._camera_lost,  # driver not monitored, reconnecting
                 "processing_error": self._processing_error,  # frames keep failing: not monitored (M28)
                 "low_fps": self._low_fps,  # too slow for a while: alerts may be late (M28)
+                **({"unavailable": True, "unavailable_reason": "slow_loop"} if self._too_slow else {}),  # M96
                 "phone_unavailable": self._phone_unavailable,  # phones are not being detected (M50)
                 "incident": None if self._incident is None else dict(self._incident),  # M65
                 "trip_ended": self._summary is not None,

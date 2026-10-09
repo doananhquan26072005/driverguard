@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from collections import deque
 
-from edge_agent.analysis.drowsiness.common import RollingWindow, drop_since, expire
+from edge_agent.analysis.drowsiness.common import RollingWindow, TimeShare, drop_since, expire
 from edge_agent.analysis.drowsiness.config import DrowsinessConfig
 from edge_agent.perception.features import FrameFeatures
 
@@ -99,8 +99,7 @@ class NodDetector:
     def __init__(self, config: DrowsinessConfig) -> None:
         self.config = config
         self._dip_start: float | None = None
-        self._dip_known = 0.0
-        self._dip_closed = 0.0
+        self._dip_eyes = TimeShare()  # time of the dip with the eyes shut, of the time they were read
         self._nods: deque[float] = deque()
         self._level_t: float | None = None  # last time the pitch was back near the usual pose
         self._dip_track: list[tuple[float, float]] = []  # (t, pitch offset) of the current dip
@@ -125,14 +124,13 @@ class NodDetector:
             if pitch_off < cfg.nod_return_deg:
                 self._level_t = t
             elif pitch_off > cfg.nod_pitch_down_deg:
-                self._dip_start, self._dip_known, self._dip_closed = t, 0.0, 0.0
+                self._dip_start = t
+                self._dip_eyes.reset()  # counted from the frame after this one, as before M93
                 self._dip_track = [(t, pitch_off)]
             return
         if t - self._dip_start <= cfg.nod_max_s:  # later samples cannot make it a nod (see module doc)
             self._dip_track.append((t, pitch_off))
-        if eyes_shut is not None:
-            self._dip_known += dt
-            self._dip_closed += dt if eyes_shut else 0.0
+        self._dip_eyes.step(dt, eyes_shut)
         if pitch_off < cfg.nod_return_deg:
             # Drop: leaving the usual pose -> first reaching the bottom; rise: last at the bottom ->
             # back. "Bottom" = within nod_bottom_frac of the dip depth, so holding the head down does not count.
@@ -144,8 +142,7 @@ class NodDetector:
             rise_s = max(t - at_bottom[-1], 1e-3)
             depth = peak - cfg.nod_return_deg
             down_speed, up_speed = depth / drop_s, depth / rise_s
-            closed_frac = self._dip_closed / self._dip_known if self._dip_known > 0 else 0.0
-            eyes_ok = not cfg.nod_require_eyes_closed or closed_frac >= cfg.nod_eyes_closed_min_frac
+            eyes_ok = not cfg.nod_require_eyes_closed or self._dip_eyes.at_least(cfg.nod_eyes_closed_min_frac)
             jerk_up = up_speed >= cfg.nod_min_rise_deg_s and (
                 cfg.nod_rise_speed_ratio <= 0 or up_speed >= cfg.nod_rise_speed_ratio * down_speed
             )

@@ -117,12 +117,16 @@ def test_a_new_driver_is_not_on_a_long_drive_and_the_hud_shows_the_same_counter(
 
 
 def test_the_long_drive_factor_is_off_after_a_rest():
-    """The same 1.1 s closure by night: scored with both factors before the rest, with one after it."""
+    """The same 1.1 s closure by night: scored with both factors before the rest, with one after it.
+    Run with the factors stacking (context_factor_cap 1.44, as before M92) so the two cases differ."""
     stop = 60.0
     go = stop + REST_S + 30
     vehicle = can(stop_and_go(stop, REST_S + 30), clock="02:00", driven=LONG_S)
-    _, results = run(go + 60, vehicle, ear=lambda t: SHUT if 30 <= t < 31.1 or go + 30 <= t < go + 31.1 else OPEN)
-    risk = TH["risk"]["drowsy"]
+    th = load_thresholds()
+    risk = th["risk"]["drowsy"]
+    risk["context_factor_cap"] = risk["night_factor"] * risk["long_drive_factor"]
+    closed = lambda t: SHUT if 30 <= t < 31.1 or go + 30 <= t < go + 31.1 else OPEN  # noqa: E731
+    _, results = run(go + 60, vehicle, ear=closed, thresholds=th)
     one = risk["weight_microsleep"] * risk["night_factor"]
     assert at(results, 33).risk.drowsy_score == pytest.approx(one * risk["long_drive_factor"], abs=0.5)
     assert at(results, go + 33).risk.drowsy_score == pytest.approx(one, abs=0.5)

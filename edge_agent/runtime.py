@@ -94,6 +94,10 @@ Emit = Callable[[str, dict[str, Any]], None]
 
 # Monitoring state in a heartbeat, most specific first (backend/schemas.py MonitorState).
 MONITOR_STATES = ("ended", "camera_lost", "stalled", "error", "unavailable", "monitoring")
+# Block 6 asks nothing of the driver: no enrollment, done, put off ("Để sau") or given up. Only then is a
+# driver in view counted towards context.vehicle_signal_wait_s: enrollment itself needs a parked vehicle.
+ENROLLMENT_IDLE = ("off", "done", "later", "failed")
+SLOW_LOOP = "slow_loop"  # why monitoring is unavailable when the loop itself is too slow (M96)
 
 
 def new_trip_id(now: datetime | None = None) -> str:
@@ -176,6 +180,9 @@ class TripRuntime:
         self.phone_expected = phone_expected
         self._phone_health = PhoneHealth(PhoneDetectorConfig.from_dict(thresholds.get("phone")))
         self._signal_lost = False  # the vehicle link went quiet while driving (speed unknown)
+        self._enrollment_idle = False  # block 6 is not asking the driver for anything (see ENROLLMENT_IDLE)
+        self._slow_since: float | None = None  # every frame since then came later than the blocks can time over
+        self._too_slow = False  # ... for hud.low_fps_s: not monitored (M96)
         self._signal_lost_s = 0.0
         self._last_t: float | None = None
         self._pub_cfg = PublisherConfig.from_dict(thresholds.get("publisher"))
@@ -208,7 +215,8 @@ class TripRuntime:
 
     def _vehicle_state(self, signals: VehicleSignals | None) -> dict[str, Any]:
         connected = self.vehicle.connected if isinstance(self.vehicle, ExternalVehicle) else True
-        return hud_vehicle(self.vehicle_source, connected, signals, self.stationary_kmh, self._signal_lost)
+        never = isinstance(self.vehicle, ExternalVehicle) and self.vehicle.never_received
+        return hud_vehicle(self.vehicle_source, connected, signals, self.stationary_kmh, self._signal_lost, never)
 
     def _track_vehicle_signal(self, t: float) -> None:
         """Vehicle link lost (driving or parked) / back: system event, and the lost time for the summary.
@@ -268,17 +276,23 @@ class TripRuntime:
         phone_kind: how the phone is held on this frame (block 4), recorded only."""
         if self._t0 is None:
             self._t0 = t
+        if isinstance(self.vehicle, ExternalVehicle):  # a driver in view and never a speed reading (M95)
+            self.vehicle.observe(t - self._t0, features.face_found and self._enrollment_idle)
         signals = self.vehicle.sample(t - self._t0)  # 10 (CAN)
         self.last_speed = signals.speed_kmh
         self._track_vehicle_signal(t)
+        self._track_slow_loop(t)
         self._last_t = t
         r = self.decisions.step(features, phone_flag, signals, phone_kind)  # 6 enrollment, 7, 8, 10, 11, 9, 12
         self._resting = r.context.resting
-        changed = r.risk.unavailable != self._unavailable
-        if changed:  # 9: face lost or unusable while moving / back (FR-6)
-            self._unavailable = r.risk.unavailable
+        self._enrollment_idle = r.enrollment.status in ENROLLMENT_IDLE
+        unavailable = r.risk.unavailable or self._too_slow
+        changed = unavailable != self._unavailable
+        if changed:  # 9: face lost or unusable while moving / back (FR-6); or the loop is too slow (M96)
+            self._unavailable = unavailable
             if self._unavailable:
-                self._system_event("monitoring_unavailable", {"cause": r.risk.unavailable_reason})
+                cause = SLOW_LOOP if self._too_slow else r.risk.unavailable_reason
+                self._system_event("monitoring_unavailable", {"cause": cause})
             else:
                 self._system_event("monitoring_restored")
         self.hud.set_vehicle(self._vehicle_state(signals))  # 0 km/h = parked
@@ -352,6 +366,25 @@ class TripRuntime:
             self.hud.set_processing_error(False)
             self.hud.end_incident("processing_error")
             self._system_event("agent_recovered")
+
+    def _track_slow_loop(self, t: float) -> None:
+        """Every frame for hud.low_fps_s came later than the decision blocks can time over (their
+        max_gap_s, 0.5 s: under 2 FPS): each frame is a hole to them, no closure, look away or alert
+        confirmation can run. That is not "monitoring, alerts may be late" but not monitoring: the HUD and
+        the backend are told (cause `slow_loop`), until one frame comes in time again (M96)."""
+        if self._last_t is None:
+            return
+        if t - self._last_t <= self.decisions.max_gap_s:
+            self._slow_since = None
+            if self._too_slow:
+                self._too_slow = False
+                self.hud.set_too_slow(False)
+            return
+        if self._slow_since is None:
+            self._slow_since = t  # from the first late frame on: one long hole alone is not a slow loop
+        if not self._too_slow and t - self._slow_since >= self._hud_cfg.low_fps_s:
+            self._too_slow = True
+            self.hud.set_too_slow(True)
 
     def _track_fps(self, clock: float) -> None:
         cfg = self._hud_cfg

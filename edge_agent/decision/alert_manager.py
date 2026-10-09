@@ -23,6 +23,9 @@ Turns the per-frame risk level into stable alerts:
   chime every cooldown, not one chime), and a reason that began under a higher level and is still
   there when that level drops. One alert covers every reason of the frame, so reasons that became
   due at different times do not each make a sound. A level with cooldown 0 is never reminded.
+  A reason in `remind_skip_reasons` (M92: drowsy_score) is not reminded: it is one alert per
+  episode, exactly as with remind off. That includes the case of a reason that is first seen when
+  a higher level drops onto it: no alert of its own.
 - Escalation over time (M32): an L1 alert whose reason was already alerted at L1 often enough
   (l1_repeat_count alerts within l1_repeat_window_s, this one included, reminders too) goes out
   as L2 with the extra reason "repeated_l1": the driver was told several times and did not rest.
@@ -79,6 +82,7 @@ class AlertConfig:
     l3_repeat_window_s: float = 600.0
     max_gap_s: float = 0.5  # frames further apart than this restart a running confirmation
     remind: bool = True  # a reason still there once its cooldown has passed is alerted again (M74)
+    remind_skip_reasons: tuple[str, ...] = ("drowsy_score",)  # reasons that are not reminded (M92)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:
@@ -96,6 +100,7 @@ class AlertConfig:
             l3_repeat_window_s=float(d.get("l3_repeat_window_s", default.l3_repeat_window_s)),
             max_gap_s=float(d.get("max_gap_s", default.max_gap_s)),
             remind=bool(d.get("remind", default.remind)),
+            remind_skip_reasons=tuple(str(x) for x in d.get("remind_skip_reasons", default.remind_skip_reasons)),
         )
 
 
@@ -167,7 +172,7 @@ class AlertManager:
     def _due(self, t: float, level: int, reason: str) -> bool:
         """The cooldown of this reason at this level has passed (or it was never alerted there)."""
         cooldown = self.config.cooldown_s.get(level, 0.0)
-        if not self.config.remind or cooldown <= 0:
+        if not self.config.remind or cooldown <= 0 or reason in self.config.remind_skip_reasons:
             return False
         return t - self._last_emit.get((level, reason), -float("inf")) >= cooldown
 

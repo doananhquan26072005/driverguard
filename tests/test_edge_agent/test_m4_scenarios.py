@@ -149,15 +149,17 @@ def test_growing_drowsiness_raises_l1_then_l2_at_night():
     assert results[-1].risk.drowsy_score >= 70
 
 
-def test_same_drowsiness_is_l2_at_night_but_l1_by_day():
-    # PERCLOS term 1 (40) + 2 yawns (10) = 50 -> L1; at night after a long drive x1.44 = 72 -> L2.
+def test_same_drowsiness_scores_higher_at_night_but_no_more_than_the_cap():
+    # PERCLOS term 1 (40) + 2 yawns (10) = 50 -> L1; at night after a long drive x1.2 = 60, still L1.
+    # Before M92 the two factors stacked: x1.44 = 72 -> L2.
     ear = lambda t: normal_blinks(t) if t < 30 else (0.08 if (t % 4.0) < 0.9 else OPEN_EAR)  # noqa: E731
     yawn = lambda t: 0.8 if any(s <= t < s + 3 for s in (70, 85)) else 0.05  # noqa: E731
     night, rn = drive(110, constant_speed(90, clock="03:00", drive_s=8000), ear=ear, mar=yawn)
     day, rd = drive(110, constant_speed(90, clock="15:00", drive_s=600), ear=ear, mar=yawn)
-    assert max(lv for _, lv, _ in night) == 2
+    assert max(lv for _, lv, _ in night) == 1
     assert max(lv for _, lv, _ in day) == 1
-    assert rn[-1].risk.drowsy_score == pytest.approx(rd[-1].risk.drowsy_score * 1.44, abs=0.5)
+    cap = load_thresholds()["risk"]["drowsy"]["context_factor_cap"]
+    assert rn[-1].risk.drowsy_score == pytest.approx(rd[-1].risk.drowsy_score * cap, abs=0.5)
 
 
 def test_narrowed_eyes_in_the_sun_no_alert():
