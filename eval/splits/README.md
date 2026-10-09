@@ -44,6 +44,8 @@ Ba cách đếm trên video `0` luôn đi cùng nhau và luôn gọi đủ tên;
   không có cổng chất lượng frame, ban ngày, tốc độ giả lập 60 km/h.
 - Quyết định `risk.drowsy.l1` 40 → 50 **không** được chốt trên tập test hiện tại: nó đã được đọc nhiều lần. Cần dữ liệu
   mới (DROZY có ở `data/drozy`, chưa dùng) hoặc chia lại theo k-fold khai báo trước.
+  **09/10 (M101):** đã quyết trên DROZY bằng luật viết trước khi chạy, [`drozy_l1_rule.md`](drozy_l1_rule.md): giữ 40
+  (kết quả ở `eval/results/drozy_l1.md`).
 
 ## 5. Nhật ký đọc tập test
 

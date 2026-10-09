@@ -2,7 +2,7 @@
 
 Blocks 5, 7-12 replayed from the traces with config/thresholds.yaml.
 
-Source: commit 9a9c14e (uncommitted changes); thresholds.yaml sha256 6048dd7f4bb4; fl3d_v2.pkl (modified 2026-09-26).
+Source: commit 2990b41 (uncommitted changes); thresholds.yaml sha256 73401e6a77ce; fl3d_v2.pkl (modified 2026-09-26). Traced with: not recorded (44 traces made before M86).
 
 44 NITYMED night-driving videos, 47.2 min at 25 FPS, full pipeline (blocks 2-12, YOLO on, simulated 60 km/h). FL3D labels 53331 of their frames: alert 38954, microsleep 8880, yawning 5497. Frames FL3D left out (outside its crops) are unlabelled and not scored.
 
@@ -34,7 +34,7 @@ AUC = chance that a microsleep frame scores more closed than an alert frame (0.5
 | Signal | AUC | Rule | Precision | Recall | FPR |
 |---|---:|---|---:|---:|---:|
 | MAR (block 6) | 0.997 | ≥ 0.45 | 97.9% | 88.7% | 0.3% |
-| block 7 yawning flag | 0.665 | yawning | 97.1% | 33.1% | 0.1% |
+| block 7 yawning flag | 0.664 | yawning | 97.2% | 32.9% | 0.1% |
 | block 7 microsleep mask (yawn / talk) | 0.827 | masked | 29.7% | 98.1% | 32.8% |
 
 ## 4. Episodes (runs of one label, gaps ≤ 0.5 s joined)
@@ -50,7 +50,7 @@ Detected = the event falls inside the run ± 1 s.
 
 - Microsleep ≥ 1 s: delay p50 1.00 s after the labelled start.
 - Microsleep ≥ 1.5 s (should reach L3 at once): 74/95 got a new L3 alert (77.9%); risk level 3 reached on 77/95 (81.1%) (no new alert: L3 was still active, or its cooldown).
-- Yawning runs: 76/99 got a yawn event (76.8%), delay p50 1.56 s.
+- Yawning runs: 75/99 got a yawn event (75.8%), delay p50 1.56 s.
 
 ## 5. Where predictions land
 
@@ -58,15 +58,15 @@ hit = inside a matching labelled run ± 1 s (alerts: any microsleep / yawning ru
 
 | Prediction | Total | Hit | False | Other | False / hour of alert frames (95% CI) |
 |---|---:|---:|---:|---:|---:|
-| microsleep event | 145 | 137 | 4 | 4 | 9.2 (2.52–23.7) |
-| yawn event | 76 | 76 | 0 | 0 | 0.0 (0.00–8.5) |
-| nod event | 121 | 118 | 1 | 2 | 2.3 (0.06–12.9) |
+| microsleep event | 146 | 137 | 4 | 5 | 9.2 (2.52–23.7) |
+| yawn event | 75 | 75 | 0 | 0 | 0.0 (0.00–8.5) |
+| nod event | 86 | 84 | 0 | 2 | 0.0 (0.00–8.5) |
 | perclos_high event | 15 | 5 | 5 | 5 | 11.6 (3.75–27.0) |
-| L1 alert | 10 | 9 | 1 | 0 | 2.3 (0.06–12.9) |
-| L2 alert | 16 | 13 | 3 | 0 | 6.9 (1.43–20.3) |
+| L1 alert | 9 | 8 | 1 | 0 | 2.3 (0.06–12.9) |
+| L2 alert | 15 | 12 | 3 | 0 | 6.9 (1.43–20.3) |
 | L3 alert | 85 | 83 | 1 | 1 | 2.3 (0.06–12.9) |
 
-Alerts by reason: drowsy_score fp 2, drowsy_score hit 17, microsleep fp 1, microsleep hit 83, microsleep other 1, off_road fp 2, off_road hit 5, repeated_l3 fp 1, repeated_l3 hit 62.
+Alerts by reason: drowsy_score fp 2, drowsy_score hit 15, microsleep fp 1, microsleep hit 83, microsleep other 1, off_road fp 2, off_road hit 5, repeated_l3 fp 1, repeated_l3 hit 62.
 
 False alerts by reason and level (an alert with two reasons counts under both):
 
@@ -83,7 +83,7 @@ False alerts by reason and level (an alert with two reasons counts under both):
 | Scored | Awake windows | FAR (95% CI) | Drowsy windows | Positive share | MAR (95% CI) | Skipped |
 |---|---:|---:|---:|---:|---:|---:|
 | Drowsiness, level ≥ L1 | 5 | 60.0% (23.1%–88.2%) | 2 | 2 / 7 (28.6%) | 0.0% (0.0%–65.8%) | 154 |
-| Drowsiness, level ≥ L2 | 5 | 20.0% (3.6%–62.4%) | 2 | 2 / 7 (28.6%) | 0.0% (0.0%–65.8%) | 154 |
+| Drowsiness, level ≥ L2 | 5 | 0.0% (0.0%–43.4%) | 2 | 2 / 7 (28.6%) | 0.0% (0.0%–65.8%) | 154 |
 
 Unit: one window of 10 s. Positive share: drowsy windows among the scored ones (awake + drowsy).
 
@@ -98,7 +98,7 @@ Read with care: the videos are ~1 min (30 s start-up left out) and dense with mi
 | Video | Min | Face | Microsleep runs ≥1 s (detected) | Yawn runs (detected) | Alerts L1/L2/L3 | False alerts |
 |---|---:|---:|---:|---:|---:|---:|
 | P1042751 | 2.1 | 98.9% | 4 (0) | 0 (0) | 1/2/0 | 0 |
-| P1042756 | 2.1 | 93.8% | 7 (0) | 2 (0) | 0/3/0 | 2 |
+| P1042756 | 2.1 | 93.8% | 7 (0) | 2 (0) | 0/2/0 | 2 |
 | P1042757 | 2.4 | 99.7% | 4 (0) | 0 (0) | 0/1/0 | 0 |
 | P1042762 | 2.1 | 100.0% | 14 (9) | 1 (1) | 1/2/4 | 0 |
 | P1042767 | 2.2 | 96.8% | 9 (9) | 5 (0) | 1/1/7 | 0 |
@@ -111,7 +111,7 @@ Read with care: the videos are ~1 min (30 s start-up left out) and dense with mi
 | P1043066 | 0.5 | 88.5% | 0 (0) | 5 (3) | 0/0/0 | 0 |
 | P1043067 | 2.2 | 99.8% | 12 (12) | 0 (0) | 0/0/10 | 0 |
 | P1043068 | 2.4 | 98.8% | 16 (11) | 0 (0) | 1/2/4 | 0 |
-| P1043075 | 2.2 | 98.3% | 13 (12) | 0 (0) | 1/1/10 | 0 |
+| P1043075 | 2.2 | 98.3% | 13 (12) | 0 (0) | 0/1/10 | 0 |
 | P1043076 | 0.5 | 99.1% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043078 | 0.4 | 97.4% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043079 | 0.4 | 97.8% | 0 (0) | 3 (3) | 0/0/0 | 0 |
@@ -134,7 +134,7 @@ Read with care: the videos are ~1 min (30 s start-up left out) and dense with mi
 | P1043125 | 0.3 | 100.0% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043126 | 0.4 | 100.0% | 0 (0) | 3 (2) | 0/0/0 | 0 |
 | P1043127 | 0.3 | 100.0% | 0 (0) | 3 (2) | 0/0/0 | 0 |
-| P1043128 | 0.3 | 100.0% | 0 (0) | 3 (2) | 0/0/0 | 0 |
+| P1043128 | 0.3 | 100.0% | 0 (0) | 3 (1) | 0/0/0 | 0 |
 | P1043130 | 0.2 | 98.4% | 0 (0) | 4 (3) | 0/0/0 | 0 |
 | P1043131 | 0.4 | 98.2% | 0 (0) | 3 (3) | 0/0/0 | 0 |
 | P1043132 | 0.5 | 99.6% | 0 (0) | 5 (3) | 0/0/0 | 0 |

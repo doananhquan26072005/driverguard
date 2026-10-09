@@ -1,6 +1,6 @@
 # Evaluation Report
 
-> Báo cáo đánh giá chất lượng sản phẩm theo tiêu chí BTC. Mọi số liệu lấy từ các file kết quả trong `eval/results/` (đường dẫn ghi ở từng mục). Ngày đo theo từng mục: ảnh đơn (2.1) đo 24/09 và chưa chạy lại; FL3D, YawDD, SUST (2.2, 2.3) chạy lại 08/10/2026 (M70) với `config/thresholds.yaml` của ngày đó (dòng `Source:` ở đầu từng file ghi commit và mã băm ngưỡng); UTA-RLDD (2.8) đo 06–08/10. Các mục còn lại ghi ngày ở chỗ dẫn.
+> Báo cáo đánh giá chất lượng sản phẩm theo tiêu chí BTC. Mọi số liệu lấy từ các file kết quả trong `eval/results/` (đường dẫn ghi ở từng mục). Ngày đo theo từng mục: ảnh đơn (2.1) đo 24/09 và chưa chạy lại; FL3D, YawDD, SUST (2.2, 2.3) chạy lại 09/10/2026 (M94, sau M71–M93) với `config/thresholds.yaml` của ngày đó (dòng `Source:` ở đầu từng file ghi commit và mã băm ngưỡng); UTA-RLDD (2.8) đo 06–08/10 và chạy lại 09/10 (M94; các số đếm cảnh báo không đổi). Các mục còn lại ghi ngày ở chỗ dẫn.
 
 ---
 
@@ -60,7 +60,7 @@ Theo sự kiện:
 |---|---|---|
 | Microsleep ≥ 1.5 s đạt L3 | 77/95 (81.1%) | Chưa đạt mục tiêu ≥ 90% lần của PRD §7 |
 | Microsleep ≥ 3 s phát hiện | 11/11 (100%) | Đạt, nhưng chỉ 11 lần và là cảnh diễn |
-| Ngáp phát hiện | 76/99 (76.8%), trễ p50 1.56 s | Chưa đạt ≥ 90%; ngáp chỉ là một thành phần của `drowsy_score`, không tự phát cảnh báo |
+| Ngáp phát hiện | 75/99 (75.8%), trễ p50 1.56 s | Chưa đạt ≥ 90%; ngáp chỉ là một thành phần của `drowsy_score`, không tự phát cảnh báo |
 
 **Đơn vị và mẫu dương:** bảng dưới đếm sự kiện: 95 lần microsleep ≥ 1,5 s (11 lần ≥ 3 s) và 99 lần ngáp có nhãn, trong 44 video, không nhóm theo người.
 
@@ -69,11 +69,11 @@ Cảnh báo đúng / sai (sai = nằm trên đoạn nhãn tỉnh táo, xa mọi 
 
 | Mức | Tổng | Đúng | Sai | Sai / giờ (CI 95%) | Nhận định (mục tiêu PRD ≤ 1,0 / giờ) |
 |---|---:|---:|---:|---:|---|
-| L1 | 10 | 9 | 1 | 2.3 (0.06–12.9) | Chưa kết luận được: ước lượng trên 1,0 nhưng CI chứa 1,0 |
-| L2 | 16 | 13 | 3 | 6.9 (1.43–20.3) | Chưa đạt: cả cận dưới CI đã trên 1,0 |
+| L1 | 9 | 8 | 1 | 2.3 (0.06–12.9) | Chưa kết luận được: ước lượng trên 1,0 nhưng CI chứa 1,0 |
+| L2 | 15 | 12 | 3 | 6.9 (1.43–20.3) | Chưa đạt: cả cận dưới CI đã trên 1,0 |
 | L3 | 85 | 83 | 1 | 2.3 (0.06–12.9) | Chưa kết luận được: CI chứa 1,0 |
 
-**Đơn vị và mẫu dương:** một cảnh báo; mẫu số là giờ video tỉnh táo (0,43 giờ), không phải số cảnh báo. Mẫu dương (cảnh báo đúng) là 9 / 10, 13 / 16, 83 / 85 theo từng mức. Không nhóm theo người.
+**Đơn vị và mẫu dương:** một cảnh báo; mẫu số là giờ video tỉnh táo (0,43 giờ), không phải số cảnh báo. Mẫu dương (cảnh báo đúng) là 8 / 9, 12 / 15, 83 / 85 theo từng mức. Không nhóm theo người.
 
 CI rất rộng: 26 phút không đủ để nói gì về chỉ tiêu PRD ≤ 1,0 / giờ. Bảng tách theo lý do × mức, và
 FAR / MAR theo cửa sổ, ở `dataset_fl3d.md` (mục 5, 5b). FAR / MAR trên FL3D không đọc được: video
@@ -85,7 +85,7 @@ v2 (01/10): thêm thành phần chớp chậm vào `drowsy_score` (ngưỡng t�
 L2 13 (9 đúng, 3 sai). Chớp chậm nâng vài cảnh báo L1 đúng lên L2, và thêm 1 cảnh báo L1
 `drowsy_score` sai (P1042787, 77,9 s). Gục đầu giữ nguyên như v1, vì phép thử "giật lên nhanh" đang
 tắt mặc định. Nhướn mày chưa đo được, vì trace cũ không có blendshape lông mày. Chi tiết ở
-`docs/release-v2.md`. Các bảng ở trên là số của ngưỡng hôm nay (chạy lại 08/10, M70; từ M53 chớp chậm không còn cộng vào điểm); bản 25–26/09 ghi L3 75/95, L1 4,6 / giờ.
+`docs/release-v2.md`. Các bảng ở trên là số của ngưỡng hôm nay (chạy lại 09/10, M94; từ M53 chớp chậm không còn cộng vào điểm); bản 25–26/09 ghi L3 75/95, L1 4,6 / giờ. So với lần chạy 08/10 (M70): L1 10 → 9 và L2 16 → 15 cảnh báo, đều bớt một cảnh báo `drowsy_score` **đúng** (nhiều khả năng do gục đầu nay cần mắt nhắm sâu, M81: sự kiện `nod` 121 → 86, điểm thấp hơn; chưa tách từng mốc); số cảnh báo sai và sai / giờ ở cả ba mức không đổi; ngáp 76 → 75 / 99 (MAR quy về chính diện, M81).
 
 ### 2.3 Trên video có nhãn theo clip
 
@@ -93,7 +93,7 @@ tắt mặc định. Nhướn mày chưa đo được, vì trace cũ không có 
 
 | Hành vi | Precision | Recall | F1 | Giờ đo | FP / giờ (CI 95%) |
 |---|---:|---:|---:|---:|---:|
-| Ngáp | 100.0% | 82.5% | 0.90 | 1.45 | 0.0 (0.00–2.5) |
+| Ngáp | 100.0% | 79.8% | 0.89 | 1.45 | 0.0 (0.00–2.5) |
 | Cảnh báo L1–L3 bất kỳ (clip không ngáp) | – | – | – | 1.45 | 6.9 (3.31–12.7) |
 
 **Đơn vị và mẫu dương:** một clip (319 video, 114 lần ngáp có nhãn); cảnh báo sai chia cho giờ clip không ngáp. Mã người lấy từ tên file (xem dưới).
@@ -165,13 +165,15 @@ Dashboard (ô *Tài xế báo sai*, tab *Ngưỡng*) tính `false_alarms / tổn
 |---|---:|---:|---|
 | Cảnh báo sai nhánh buồn ngủ mỗi giờ (CI 95 %) | 1,96 (0,85–3,87) | 0,98 (0,27–2,51) | Giảm một nửa; cận trên vẫn trên chỉ tiêu 1,0 |
 | FAR theo cửa sổ 10 s, mức L1 | 3,9 % | 1,5 % | |
-| AUC `drowsy_score`, video `10` so với `0` | 0,917 | 0,924 (0,920 khi chạy lại 08/10 với ngưỡng mắt của M54) | Điểm tách được hai mức |
-| Cùng người: điểm ở `10` cao hơn ở `0` | 22 / 24 | 22 / 24 | |
+| AUC `drowsy_score`, video `10` so với `0` | 0,917 | 0,924 (0,920 khi chạy lại 08/10 với ngưỡng mắt của M54; 0,929 khi chạy lại 09/10, M94) | Điểm tách được hai mức |
+| Cùng người: điểm ở `10` cao hơn ở `0` | 22 / 24 | 22 / 24 (23 / 24 khi chạy lại 09/10) | |
 | Video `10` có cảnh báo buồn ngủ / đạt L3 | 17 / 12 trên 24 | 15 / 12 trên 24 | Mất 2 người chỉ có cảnh báo nhẹ |
 
 **Đơn vị và mẫu dương:** dòng đầu và dòng FAR theo cửa sổ: giờ video tỉnh táo và cửa sổ 10 s; dòng AUC và "cùng người": một người (24 người, mỗi người một video `0`, `5`, `10`; video `10` là 24 / 72 video); dòng cuối: video `10` (24). Đã nhóm theo người: tập giữ riêng là 24 người khác hẳn 24 người dùng để dò ngưỡng.
 
 **Điểm làm việc cố định (M69):** ở ngưỡng hiện tại, trên 24 người giữ riêng: **0,98 báo sai nhánh buồn ngủ / giờ** (Poisson 0,27–2,51; lấy mẫu lại theo người 0,00–3,02), **15 / 24** người có cảnh báo buồn ngủ, **12 / 24** đạt L3. Cả 4 lần báo sai là của một người trong 24, trên một video quay 12 FPS, dưới 15 FPS cam kết (`dataset_uta_rldd.md` mục 8, 9, `uta_rldd_tradeoff.md`).
+
+**Chạy lại 09/10 (M94), sau M71–M93:** tập giữ riêng được đọc thêm đúng một lần (lần thứ năm có ghi nhật ký). Mọi số đếm cảnh báo ở mục này không đổi trên cả hai tập: 0,98 / giờ, 15 / 24, 12 / 24, bảng bốn cách đếm bên dưới, và 4 lần báo sai vẫn là của một người trên video 12 FPS (`dataset_uta_rldd.md` mục 10). Các số này đo ở 12:00, chưa lái: hệ số đêm và lái lâu không bật.
 
 **Số này là một nhánh, không phải chỉ tiêu PRD (M70).** PRD tính mọi cảnh báo. Cùng 24 người, cùng ngưỡng, đếm bốn cách (`dataset_uta_rldd.md` mục 9):
 
@@ -204,7 +206,7 @@ Bảng tiêu chí đầy đủ để chạy thử trên xe thật: [`docs/pilot-
 ## 4. Test
 
 ```
-pytest tests/ -q                                       # 1000 passed (08/10/2026)
+pytest tests/ -q                                       # 1643 passed, 9 xfailed (09/10/2026)
 cd frontend && npm test                                # 67 passed
 ```
 
