@@ -12,6 +12,7 @@ ROUTES = {
     ("GET", "/api/v1/drive/{code}"),
     ("GET", "/api/v1/policy"),
     ("POST", "/auth/login"),
+    ("POST", "/auth/refresh"),  # M97: a valid token for a new one; no data is read or written
     ("GET", "/auth/me"),
     ("POST", "/api/v1/events"),
     ("POST", "/api/v1/web/events"),

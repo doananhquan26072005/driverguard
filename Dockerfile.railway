@@ -10,6 +10,9 @@ RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
 # Empty API URL: the dashboard calls the backend on the same origin.
 ENV VITE_API_URL=""
+# Pyodide and MediaPipe's wasm become files of the build (M99): the page loads no code from a CDN.
+# The two Python packages are downloaded here and checked against the sha256 of pyodide-lock.json.
+RUN node scripts/web-runtime.mjs
 RUN npx vite build
 
 # ---- Stage 2: backend dependencies only (no OpenCV / MediaPipe / onnxruntime) ----

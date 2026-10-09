@@ -105,3 +105,56 @@ def test_every_file_is_served_cross_origin_isolated(client):
     again = client.get("/models/yolov8n.onnx", headers={"If-None-Match": first.headers["etag"]})
     assert again.status_code == 304 and again.headers["Cross-Origin-Embedder-Policy"] == "require-corp"
     assert "Cross-Origin-Embedder-Policy" not in client.get("/api/ping").headers  # the API is called with CORS
+
+
+# ---------------------------------------------------------------- M99: code from this origin only
+
+
+def test_every_file_and_every_304_carries_the_content_security_policy(client):
+    from backend.static import CSP_HEADER
+
+    for path in ("/", "/assets/index-abc123.js", "/models/yolov8n.onnx", "/py/edge_agent.zip"):
+        r = client.get(path)
+        assert r.headers["content-security-policy"] == CSP_HEADER, path
+        again = client.get(path, headers={"If-None-Match": r.headers["etag"]})
+        assert again.status_code == 304 and again.headers["content-security-policy"] == CSP_HEADER, path
+
+
+def test_the_policy_lets_in_no_code_but_the_apps_own():
+    from backend.static import CSP
+
+    assert CSP["default-src"] == "'self'"
+    script = CSP["script-src"].split()
+    assert script == ["'self'", "'wasm-unsafe-eval'"]  # no CDN, no 'unsafe-inline', no 'unsafe-eval'
+    assert all("http" not in v or k == "connect-src" for k, v in CSP.items())
+    # what the page may talk to: its own server and the driver's own machine, nothing on the internet
+    assert CSP["connect-src"].split() == ["'self'", "http://127.0.0.1:*", "http://localhost:*"]
+    assert CSP["object-src"] == CSP["frame-ancestors"] == "'none'"
+
+
+def test_the_preview_server_of_the_end_to_end_tests_uses_the_same_policy():
+    """frontend/vite.config.ts repeats the header for `vite preview` (what Playwright drives), so the
+    end-to-end tests run under the policy the backend sends."""
+    import re
+    from pathlib import Path
+
+    from backend.static import CSP_HEADER
+
+    config = (Path(__file__).resolve().parents[2] / "frontend" / "vite.config.ts").read_text(encoding="utf-8")
+    assert re.search(r'const CSP =\s*"([^"]+)"', config).group(1) == CSP_HEADER
+
+
+def test_the_page_names_no_cdn():
+    """The two runtimes are files of the build (frontend/scripts/web-runtime.mjs); no source file of the
+    page may point at a CDN again."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[2] / "frontend" / "src"
+    hits = [
+        f"{p.relative_to(src)}: {host}"
+        for p in src.rglob("*.ts*")
+        if ".test." not in p.name
+        for host in ("cdn.jsdelivr.net", "unpkg.com", "cdnjs.", "googleapis.com")
+        if host in p.read_text(encoding="utf-8")
+    ]
+    assert hits == []
