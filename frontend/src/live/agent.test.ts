@@ -4,19 +4,24 @@
 // (block 1). The class is the real one. Python, the camera, the canvas, the backend and the clock are
 // fakes, so every case is a sequence of calls and times: no browser, no model, no image.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, postWebBatch } from "../lib/api";
+import { ApiError, postWebBatch, postWebBatchOnLeave, refreshSession } from "../lib/api";
 import type { HudSnapshot, Session } from "../lib/types";
 import { DRIVE_SIM_URL } from "../hud/edge";
-import { LiveAgent } from "./agent";
+import { LiveAgent, splitBatch } from "./agent";
 
 vi.mock("@mediapipe/tasks-vision", () => ({ FaceLandmarker: {}, FilesetResolver: {} }));
 vi.mock("../lib/api", async (original) => ({
   ...(await original<typeof import("../lib/api")>()),
   postWebBatch: vi.fn(),
+  postWebBatchOnLeave: vi.fn(),
+  refreshSession: vi.fn(),
   getWebThresholds: vi.fn(),
 }));
 
 const post = vi.mocked(postWebBatch);
+const refresh = vi.mocked(refreshSession);
+const onLeave = vi.mocked(postWebBatchOnLeave);
+const TOKEN_LIFE_S = 3600; // DG_TOKEN_TTL_MIN
 const SESSION: Session = { token: "token", username: "an", role: "driver", driverId: "d1", expiresAt: 0 };
 const FRAME_MS = 1000 / 30;
 const LOOK_MS = 1000; // the loop is looked at capture.frame_timeout_s / 3 apart
@@ -30,6 +35,7 @@ const SETTINGS = {
   landmarks: { num_faces: 2, min_face_detection_confidence: 0.5, min_face_presence_confidence: 0.5, min_tracking_confidence: 0.5, blendshapes: true },
   phone: { input_size: 640, target_fps: 2, num_threads: 2, web_gpu: true, gpu_target_fps: 10, run_timeout_s: 5, load_timeout_s: 30, restart_limit: 3 },
   flush_interval_s: 5,
+  send_timeout_s: 5,
   config_poll_s: 0,
   max_queue: 4, // publisher.max_queue is 10000; small here so a test can fill it
   problems: [],
@@ -152,6 +158,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   image.still = false;
   post.mockReset().mockResolvedValue({ accepted: 1 });
+  refresh.mockReset().mockResolvedValue(TOKEN_LIFE_S);
+  onLeave.mockReset();
   getUserMedia.mockReset().mockRejectedValue(new Error("no camera"));
   fetchMock.mockReset().mockRejectedValue(new Error("offline"));
   vi.stubGlobal("fetch", fetchMock);
@@ -212,18 +220,96 @@ describe("flush", () => {
     }
   });
 
-  it("a batch the backend refuses (4xx) is dropped whole and the next one waits for the next round", async () => {
-    // Audit A4 M1: the device splits a refused batch into its records (publisher.py); the page drops
-    // up to publisher.web_batch_size records with one bad one. Pinned as it is, not as it should be.
+  it("a record the backend will never take is dropped alone, and the rest goes out in the same round (M97)", async () => {
+    // Audit A4 M1. Before: one bad record took its whole batch (up to publisher.web_batch_size records)
+    // with it, and the next batch waited for the next round.
+    const { agent, inner, py } = build();
+    const batch = JSON.stringify({ device_id: "web-an", events: [{ event_id: "e1" }, { event_id: "bad" }, { event_id: "e3" }], samples: [{ minute: 1 }] });
+    py.batches.push(batch, "next");
+    post.mockImplementation((_s, body) =>
+      body === batch || body.includes('"bad"') ? Promise.reject(new ApiError(422, "drowsy_score: NaN")) : Promise.resolve({ accepted: 1 }),
+    );
+    await inner.flush();
+    const sent = post.mock.calls.map((c) => c[1]);
+    expect(sent[0]).toBe(batch);
+    expect(sent.slice(1, 5).map((b) => Object.keys(JSON.parse(b)).join())).toEqual(["device_id,events", "device_id,events", "device_id,events", "device_id,samples"]);
+    expect(sent[5]).toBe("next");
+    expect(agent.getStats()).toMatchObject({ sent: 4, pending: 0, refused: 1, sendError: "Máy chủ từ chối 1 bản ghi (HTTP 422)" });
+    py.batches.push("later");
+    await inner.flush();
+    expect(agent.getStats()).toMatchObject({ sent: 5, pending: 0, refused: 1, sendError: null });
+  });
+
+  it("a refused body of one record (or one this page did not build) is dropped as it is", async () => {
     const { agent, inner, py } = build();
     py.batches.push("bad", "good");
-    post.mockRejectedValueOnce(new ApiError(422, "drowsy_score: NaN")).mockResolvedValue({ accepted: 4 });
-    await inner.flush();
-    expect(post).toHaveBeenCalledTimes(1);
-    expect(agent.getStats()).toMatchObject({ sent: 0, pending: 1, sendError: "Máy chủ từ chối (HTTP 422)" });
+    post.mockRejectedValueOnce(new ApiError(400, "not a batch")).mockResolvedValue({ accepted: 4 });
     await inner.flush();
     expect(post.mock.calls.map((c) => c[1])).toEqual(["bad", "good"]);
-    expect(agent.getStats()).toMatchObject({ sent: 4, pending: 0, sendError: null });
+    expect(agent.getStats()).toMatchObject({ sent: 4, pending: 0, refused: 1 });
+  });
+
+  it("a refusal that is not about the content (403, 404, 429) keeps the batch for later, as the device does", async () => {
+    for (const status of [403, 404, 429]) {
+      const { agent, inner, py } = build();
+      py.batches.push("b1");
+      post.mockReset().mockRejectedValueOnce(new ApiError(status, "no")).mockResolvedValue({ accepted: 1 });
+      await inner.flush();
+      expect(agent.getStats(), `HTTP ${status}`).toMatchObject({ sent: 0, pending: 1, refused: 0 });
+      await inner.flush();
+      expect(agent.getStats(), `HTTP ${status}`).toMatchObject({ sent: 1, pending: 0, sendError: null });
+    }
+  });
+
+  it("splitBatch: one body per record, in order; a single record, a heartbeat or junk stay whole", () => {
+    const two = JSON.stringify({ device_id: "d", events: [{ a: 1 }], feedback: [{ b: 2 }] });
+    expect(splitBatch(two).map((b) => JSON.parse(b))).toEqual([
+      { device_id: "d", events: [{ a: 1 }] },
+      { device_id: "d", feedback: [{ b: 2 }] },
+    ]);
+    const one = JSON.stringify({ device_id: "d", summaries: [{ trip_id: "t" }] });
+    const beat = JSON.stringify({ device_id: "d", heartbeat: { state: "monitoring" } });
+    for (const body of [one, beat, "junk"]) expect(splitBatch(body)).toEqual([body]);
+  });
+
+  it("every POST carries publisher.timeout_s, so a backend that hangs is a backend not reached", async () => {
+    const { inner, py } = build();
+    py.batches.push("b1");
+    py.beats.push("beat");
+    await inner.flush();
+    expect(post.mock.calls.map((c) => c[2])).toEqual([5000, 5000]);
+    expect(refresh.mock.calls[0][1]).toBe(5000);
+  });
+
+  it("the login is renewed at the first round and then every half lifetime, so it outlives the trip (M97)", async () => {
+    // Audit A4 H2: after DG_TOKEN_TTL_MIN every batch came back 401 and the queue stood still.
+    const { inner } = build();
+    await inner.flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh.mock.calls[0][0]).toBe(SESSION);
+    await vi.advanceTimersByTimeAsync((TOKEN_LIFE_S / 2) * 1000 - 10_000);
+    await inner.flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await inner.flush();
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("a renewal that fails is tried again at the next round and never holds the batches back", async () => {
+    const { agent, inner, py } = build();
+    refresh.mockRejectedValueOnce(new ApiError(0, "offline")).mockRejectedValueOnce(new ApiError(404, "older backend"));
+    py.batches.push("b1");
+    await inner.flush();
+    expect(agent.getStats()).toMatchObject({ sent: 1, pending: 0, sendError: null });
+    await inner.flush();
+    await inner.flush();
+    expect(refresh).toHaveBeenCalledTimes(3);
+  });
+
+  it("guest mode asks for no token", async () => {
+    const { inner } = build({ session: null });
+    await inner.flush();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("an expired login (401) keeps the batch, says so, and every later batch queues up behind it", async () => {
@@ -246,7 +332,7 @@ describe("flush", () => {
       await inner.flush();
     }
     expect(agent.getStats()).toMatchObject({ pending: SETTINGS.max_queue, dropped: 3 });
-    post.mockReset().mockResolvedValue({ accepted: 1 });
+    post.mockReset().mockResolvedValue({ accepted: 1 }); // (per status)
     await inner.flush();
     expect(post.mock.calls.map((c) => c[1])).toEqual(["b4", "b5", "b6", "b7"]);
 
@@ -449,15 +535,76 @@ describe("stop", () => {
     expect(video.armed()).toBe(false);
   });
 
-  // Audit A4 M1: a POST has no time limit, and stop() waits for the last round before it lets the
-  // camera go. States what is wanted; `fails` comes off with the fix.
-  it.fails("lets the camera go even when the backend never answers the last round", async () => {
+  // Audit A4 M1: stop() waited for the last round before it let the camera go, and a POST had no time
+  // limit. M97: the camera goes first; Python stays until the round has taken its batches.
+  it("lets the camera go even when the backend never answers the last round", async () => {
     const { agent, py, camera } = build();
     py.batches.push("last");
     post.mockReturnValue(new Promise(() => undefined));
     void agent.stop();
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(camera.track.stop).toHaveBeenCalled();
+    expect(py.take_batch).toHaveBeenCalled();
+    expect(py.destroy).not.toHaveBeenCalled(); // still waiting for the answer the mock never gives
+  });
+});
+
+// M100: the tab is closed or reloaded with the trip running. Nothing asynchronous finishes any more.
+describe("leave", () => {
+  it("ends the trip in one turn: summary built, camera let go, the ended heartbeat first, then the batches", () => {
+    const { agent, inner, py, camera } = build();
+    inner.run();
+    py.end_trip.mockImplementationOnce(() => {
+      py.batches.push("summary"); // what Python queues when the trip ends
+      py.beats.push("ended");
+      return JSON.stringify({ trip_id: "trip-1" });
+    });
+    py.batches.push("events");
+    expect(agent.leave()).toEqual({ sent: 3, left: 0 });
+    expect(py.end_trip).toHaveBeenCalledTimes(1);
+    expect(camera.track.stop).toHaveBeenCalled();
+    expect(onLeave.mock.calls.map((c) => c[1])).toEqual(["ended", "events", "summary"]);
+    expect(onLeave.mock.calls.every((c) => c[0] === SESSION)).toBe(true);
+    expect(post).not.toHaveBeenCalled(); // no request that would need the page to stay
+    expect(agent.running).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("sends what was still waiting from earlier rounds too, and only once", async () => {
+    const { agent, inner, py } = build();
+    post.mockRejectedValue(new ApiError(0, "offline"));
+    py.batches.push("waiting");
+    await inner.flush();
+    expect(agent.leave()).toEqual({ sent: 1, left: 0 });
+    expect(agent.leave()).toEqual({ sent: 0, left: 0 });
+    expect(onLeave.mock.calls.map((c) => c[1])).toEqual(["waiting"]);
+    expect(py.end_trip).toHaveBeenCalledTimes(1);
+  });
+
+  it("guest mode: the trip ends and the camera goes, nothing leaves the browser", () => {
+    const { agent, py, camera } = build({ session: null });
+    py.batches.push("summary");
+    expect(agent.leave()).toEqual({ sent: 0, left: 0 });
+    expect(camera.track.stop).toHaveBeenCalled();
+    expect(onLeave).not.toHaveBeenCalled();
+  });
+
+  it("a body larger than what a closing page may send is left out, the smaller ones still go", () => {
+    const { agent, py } = build();
+    const huge = "x".repeat(70_000);
+    py.batches.push("small-1", huge, "small-2");
+    py.beats.push("ended");
+    expect(agent.leave()).toEqual({ sent: 3, left: 1 });
+    expect(onLeave.mock.calls.map((c) => c[1])).toEqual(["ended", "small-1", "small-2"]);
+  });
+
+  it("after a trip that was ended on the HUD there is nothing to do", async () => {
+    const { agent, py } = build();
+    await agent.endTrip();
+    py.end_trip.mockClear();
+    expect(agent.leave()).toEqual({ sent: 0, left: 0 });
+    expect(py.end_trip).not.toHaveBeenCalled();
+    expect(onLeave).not.toHaveBeenCalled();
   });
 });
 

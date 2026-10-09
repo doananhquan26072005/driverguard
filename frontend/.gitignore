@@ -6,6 +6,7 @@ dist/
 # In-browser agent assets (npm run prepare-live; the Docker build makes its own)
 public/py/
 public/models/
+public/runtime/
 
 # End-to-end tests (Playwright): throwaway database, synthetic faces, reports
 e2e/.cache/

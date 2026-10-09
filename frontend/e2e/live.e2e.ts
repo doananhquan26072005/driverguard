@@ -342,3 +342,79 @@ test("leaving #/live with the trip running ends the trip: the manager sees it en
   await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
   await expect(reports).toHaveCount(before + 1);
 });
+
+test("closing the tab with the trip running ends the trip too: the manager sees it ended, with its report", async ({ page, browser }) => {
+  // M100. Before, a closed or reloaded tab left no summary and no "ended": the fleet showed "lost" 90 s later.
+  await stubSimulator(page);
+  await page.addInitScript(
+    (f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f),
+    { faces: [FACES.open], blink: [0.05, 0.05], brow: [0] },
+  );
+  await startLive(page, "an");
+
+  const manager = await (await browser.newContext()).newPage();
+  await manager.goto("/#/dashboard");
+  await manager.getByLabel("Tên đăng nhập").fill("quanly");
+  await manager.getByLabel("Mật khẩu").fill(PASSWORD);
+  await manager.getByRole("button", { name: "Đăng nhập" }).click();
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
+  const vehicle = manager.getByRole("row").filter({ hasText: "web-an" });
+  const fleetShows = (text: string) =>
+    expect(async () => {
+      await manager.getByRole("button", { name: "Làm mới" }).click();
+      await expect(vehicle).toContainText(text, { timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+  await fleetShows("Đang hoạt động");
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  const reports = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
+  await expect(manager.getByRole("region", { name: "Danh sách báo cáo" })).toBeVisible();
+  await manager.waitForTimeout(1_000); // the list has loaded
+  const before = await reports.count();
+
+  await page.close({ runBeforeUnload: true }); // the browser's own "leave this page?" is accepted by Playwright
+
+  await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
+  await fleetShows("Đã kết thúc chuyến");
+  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await expect(reports).toHaveCount(before + 1);
+});
+
+test("the self-view can be dragged off the HUD's buttons and resized, and remembers where it was put", async ({ page }) => {
+  // M100 (the user's choice of 09/10). Before, it sat fixed over "Cảnh báo này sai?" (roadmap M89).
+  await stubSimulator(page);
+  await page.addInitScript(
+    (f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f),
+    { faces: [FACES.open], blink: [0.05, 0.05], brow: [0] },
+  );
+  await startLive(page);
+  const frame = page.getByTestId("self-view");
+  const start = (await frame.boundingBox())!;
+  expect(Math.round(start.width)).toBe(176);
+
+  await page.mouse.move(start.x + 40, start.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(700, 120, { steps: 5 });
+  await page.mouse.up();
+  const moved = (await frame.boundingBox())!;
+  expect(Math.abs(moved.x - (700 - 40))).toBeLessThan(3);
+  expect(Math.abs(moved.y - (120 - 30))).toBeLessThan(3);
+
+  await page.getByRole("button", { name: "Phóng to khung camera" }).click();
+  expect(Math.round((await frame.boundingBox())!.width)).toBe(264);
+  await expect(page.getByRole("button", { name: "Phóng to khung camera" })).toBeDisabled();
+  await page.getByRole("button", { name: "Thu nhỏ khung camera" }).click();
+  await page.getByRole("button", { name: "Thu nhỏ khung camera" }).click();
+  expect(Math.round((await frame.boundingBox())!.width)).toBe(112);
+
+  await page.mouse.move(moved.x + 20, moved.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(5000, 5000, { steps: 5 }); // thrown past the corner: it stays inside the window
+  await page.mouse.up();
+  const cornered = (await frame.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(cornered.x + cornered.width).toBeLessThanOrEqual(view.width);
+  expect(cornered.y + cornered.height).toBeLessThanOrEqual(view.height);
+
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("dg.live.selfview") ?? "null"));
+  expect(stored).toMatchObject({ size: 0, x: Math.round(cornered.x), y: Math.round(cornered.y) });
+});

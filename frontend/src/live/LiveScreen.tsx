@@ -5,7 +5,7 @@
 // chuyến?" and ends the trip like that button; leaving the page with the trip running ends it too
 // (summary and "ended" sent) and says aloud that the driver is no longer watched.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, ShieldCheck, Square } from "lucide-react";
+import { Camera, Check, Gauge, Info, LoaderCircle, LogOut, Minus, Plus, ShieldCheck, Square } from "lucide-react";
 import { play, speak, systemSound } from "../hud/chime";
 import HudScreen from "../hud/HudScreen";
 import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "../hud/voice";
@@ -14,6 +14,7 @@ import { perfDetail, perfLines, recoveryText, startupText } from "../lib/labels"
 import type { HudEnrollment, Session } from "../lib/types";
 import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
 import { HUD_DEFAULTS } from "../lib/defaults";
+import { SELF_VIEW_WIDTHS, clampCorner, readPlace, resized, writePlace, type SelfViewPlace } from "./selfView";
 
 const BTN =
   "inline-flex min-h-12 items-center justify-center gap-2 rounded-full border-0 px-5 text-hud-label font-semibold transition-colors disabled:opacity-50";
@@ -30,6 +31,7 @@ function cameraError(err: unknown): string {
 }
 
 const TECH_KEY = "driverguard.live.tech"; // per-browser convenience only
+const TECH_WIDTH_PX = 240; // the technical lines need this much, whatever size the frame was given
 
 function readTech(): boolean {
   try {
@@ -78,6 +80,25 @@ export default function LiveScreen() {
     },
     [agent],
   );
+
+  // The tab is closed or reloaded with the trip running (M100). Before: no summary, no "ended", and the
+  // fleet saw the vehicle "lost" 90 s later. The browser asks before it goes, and when the page does go
+  // the trip is ended in that same turn (LiveAgent.leave): nothing asynchronous would finish any more.
+  useEffect(() => {
+    if (!agent) return;
+    const ask = (e: BeforeUnloadEvent) => {
+      if (!agent.running) return;
+      e.preventDefault();
+      e.returnValue = ""; // the browser shows its own "leave this page?" question
+    };
+    const leave = () => void (agent.running && agent.leave());
+    window.addEventListener("beforeunload", ask);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("beforeunload", ask);
+      window.removeEventListener("pagehide", leave);
+    };
+  }, [agent]);
 
   async function start() {
     if (!videoRef.current) return;
@@ -360,14 +381,68 @@ function SelfView({
     writeTech(!tech);
   };
 
+  // M100: the frame can be dragged anywhere (by its picture) and made smaller or larger, so it no
+  // longer has to sit on a button of the HUD. Its place is kept in this browser.
+  const box = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<SelfViewPlace>(readPlace);
+  const grab = useRef<{ dx: number; dy: number } | null>(null);
+  const cornerAt = (x: number, y: number) => {
+    const el = box.current;
+    return el ? clampCorner(x, y, { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight }) : { x, y };
+  };
+  const onGrab = (e: React.PointerEvent<HTMLElement>) => {
+    const el = box.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    grab.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onDrag = (e: React.PointerEvent<HTMLElement>) => {
+    if (!grab.current) return;
+    const corner = cornerAt(e.clientX - grab.current.dx, e.clientY - grab.current.dy);
+    setPlace((p) => ({ ...p, ...corner }));
+  };
+  const onDrop = () => {
+    if (!grab.current) return;
+    grab.current = null;
+    setPlace((p) => (writePlace(p), p));
+  };
+  const resize = (step: 1 | -1) => setPlace((p) => {
+    const next = { ...p, size: resized(p.size, step) };
+    writePlace(next);
+    return next;
+  });
+  // A window that got smaller, or a frame that got larger: back into view.
+  useEffect(() => {
+    const fit = () => setPlace((p) => (p.x == null || p.y == null ? p : { ...p, ...cornerAt(p.x, p.y) }));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [place.size, tech, compact]);
+  const width = Math.max(SELF_VIEW_WIDTHS[place.size], tech ? TECH_WIDTH_PX : 0);
+  const placed = place.x != null && place.y != null;
+
   return (
     <div
+      ref={box}
+      data-testid="self-view"
+      style={{ ...(compact ? {} : { width }), ...(placed ? { left: place.x!, top: place.y!, bottom: "auto" } : {}) }}
       className={`fixed bottom-4 left-4 z-40 overflow-hidden rounded-hud-sm border border-solid border-white/15 bg-black/85 font-hud text-white shadow-[0_24px_48px_rgba(0,0,0,0.45)] backdrop-blur ${
-        compact ? "w-auto" : tech ? "w-60" : "w-44"
+        compact ? "w-auto" : ""
       } ${agent ? "" : "pointer-events-none opacity-0"}`}
     >
       {/* Kept mounted (it holds the stream), only hidden at L3. Small (M64): it sits over the HUD. */}
-      <video ref={videoRef} className={`aspect-[4/3] w-full -scale-x-100 object-cover ${compact ? "hidden" : "block"}`} muted playsInline />
+      <video
+        ref={videoRef}
+        onPointerDown={onGrab}
+        onPointerMove={onDrag}
+        onPointerUp={onDrop}
+        onPointerCancel={onDrop}
+        title="Kéo để dời khung camera"
+        className={`aspect-[4/3] w-full -scale-x-100 cursor-grab touch-none object-cover active:cursor-grabbing ${compact ? "hidden" : "block"}`}
+        muted
+        playsInline
+      />
       {agent && compact && (
         <button type="button" onClick={onStop} className="inline-flex min-h-10 items-center gap-1 rounded-full border-0 bg-transparent px-4 text-[13px] font-semibold text-white">
           <Square aria-hidden className="size-3.5" /> Dừng camera
@@ -407,7 +482,7 @@ function SelfView({
             </>
           )}
           {stats?.sendError && <span className="text-hud-caution">{stats.sendError}</span>}
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <a
               href={`#/drive?code=${agent.driveCode}`}
               target="_blank"
@@ -418,6 +493,26 @@ function SelfView({
             >
               <Gauge aria-hidden className="size-3.5" /> {agent.driveCode}
             </a>
+            <button
+              type="button"
+              onClick={() => resize(-1)}
+              disabled={place.size === 0}
+              aria-label="Thu nhỏ khung camera"
+              title="Thu nhỏ khung camera"
+              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
+            >
+              <Minus aria-hidden className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => resize(1)}
+              disabled={place.size === SELF_VIEW_WIDTHS.length - 1}
+              aria-label="Phóng to khung camera"
+              title="Phóng to khung camera"
+              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
+            >
+              <Plus aria-hidden className="size-4" />
+            </button>
             <button
               type="button"
               onClick={toggleTech}

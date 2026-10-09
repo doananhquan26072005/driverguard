@@ -1,6 +1,8 @@
 // End-to-end tests of the web app (npm run e2e): the backend on a throwaway database, the frontend
 // built for tests (VITE_E2E=1: block 3 reads synthetic landmark numbers instead of MediaPipe, see
-// src/live/agent.ts) and Chrome's fake camera. No face image is involved. Pyodide comes from its CDN.
+// src/live/agent.ts) and Chrome's fake camera. No face image is involved. Pyodide is served by the app
+// itself (scripts/web-runtime.mjs, M99), and the build is served with the Content-Security-Policy of
+// backend/static.py, so a page that needed another origin or `eval` would fail here.
 import { defineConfig } from "@playwright/test";
 
 const API_PORT = 8199;
@@ -38,7 +40,7 @@ export default defineConfig({
     },
     {
       // A production build (not the dev server), with the E2E hook compiled in.
-      command: `npx vite build --outDir ${CACHE}/dist --emptyOutDir && npx vite preview --outDir ${CACHE}/dist --port ${WEB_PORT} --strictPort`,
+      command: `node scripts/web-runtime.mjs && npx vite build --outDir ${CACHE}/dist --emptyOutDir && npx vite preview --outDir ${CACHE}/dist --port ${WEB_PORT} --strictPort`,
       url: `http://localhost:${WEB_PORT}`,
       env: { VITE_E2E: "1", VITE_API_URL: `http://127.0.0.1:${API_PORT}` },
       timeout: 120_000,

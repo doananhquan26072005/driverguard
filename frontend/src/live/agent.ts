@@ -8,7 +8,7 @@
 // with a timer; a camera that gives none is reported lost and asked for again; a frame that fails
 // on this side is reported to Python like one that fails there.
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
-import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId } from "../lib/api";
+import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId, refreshSession, postWebBatchOnLeave } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
 import { newDriveCode } from "../drive/sim";
 import { DRIVE_SIM_URL, type FeedbackResult, type HudSource, type TripEnd } from "../hud/edge";
@@ -37,8 +37,11 @@ import { DEFAULTS } from "../lib/defaults";
 
 // Pinned versions: the Python side is tested against this Pyodide (numpy, pyyaml). No OpenCV since M45
 // (11.7 MB less to download): head pose and box suppression run in numpy (edge_agent/perception/geometry.py).
-const PYODIDE_URL = "https://cdn.jsdelivr.net/pyodide/v0.29.3/full/";
-const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
+// Both runtimes are served by the app itself (M99: `npm run prepare-live` puts them under public/runtime,
+// scripts/web-runtime.mjs), not by a CDN: no third party's code runs in the page that holds the camera
+// stream and the login token, and the page starts without reaching anything but its own server.
+/** Absolute, for the dynamic import of pyodide.mjs; read when the page starts a trip, not at import. */
+const runtimeUrl = (part: string) => new URL(`${import.meta.env.BASE_URL}runtime/${part}`, location.href).href;
 const PYODIDE_PACKAGES = ["numpy", "pyyaml"]; // not sqlite3: the page has no outbox (publisher.py imports it there only)
 const BASE = import.meta.env.BASE_URL;
 // Asked for before Python has loaded (the camera opens meanwhile), so from the build's copy of
@@ -99,6 +102,7 @@ export interface LiveStats {
   sent: number;
   pending: number;
   dropped: number; // POST bodies pushed out of a full queue (publisher.max_queue), oldest first
+  refused: number; // records the backend will never take (HTTP 400 / 413 / 422), dropped one by one (M97)
   sendError: string | null;
   measures: Measures | null;
   enrollment: HudEnrollment | null;
@@ -149,6 +153,7 @@ interface Settings {
   };
   phone: { input_size: number; target_fps: number; num_threads: number; web_gpu: boolean; gpu_target_fps: number; run_timeout_s: number; load_timeout_s: number; restart_limit: number };
   flush_interval_s: number;
+  send_timeout_s: number; // publisher.timeout_s: a POST gives up after this (M97)
   max_queue: number; // publisher.max_queue: POST bodies kept while the backend cannot be reached
   config_poll_s: number; // ask the backend for tuned thresholds this often (M47); 0 = only at start
   problems: string[];
@@ -188,6 +193,7 @@ interface Pyodide {
 // real clock. How often, and how old a remote reading may be before it is not passed on (the vehicle
 // signal goes stale, M26): settings.vehicle, i.e. context.vehicle_poll_s / vehicle_signal_stale_s.
 async function loadPython(session: Session | null): Promise<{ agent: PyAgent; settings: Settings }> {
+  const PYODIDE_URL = runtimeUrl("pyodide/");
   const mod = (await import(/* @vite-ignore */ `${PYODIDE_URL}pyodide.mjs`)) as {
     loadPyodide(o: { indexURL: string; packages?: string[] }): Promise<Pyodide>;
   };
@@ -228,7 +234,7 @@ function forced(key: string): string | null {
  *  wasm runtime into the browser's HTTP cache (createFromOptions loads it from there). */
 async function loadFaceFiles(): Promise<{ fileset: Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>; model: Uint8Array }> {
   const [fileset, model] = await Promise.all([
-    FilesetResolver.forVisionTasks(MEDIAPIPE_WASM),
+    FilesetResolver.forVisionTasks(runtimeUrl("mediapipe")),
     fetch(`${BASE}models/face_landmarker.task`).then(async (r) => {
       if (!r.ok) throw new Error(`face_landmarker.task: HTTP ${r.status}`);
       return new Uint8Array(await r.arrayBuffer());
@@ -245,12 +251,35 @@ interface YoloSession {
   provider: YoloProvider;
 }
 
+// The backend will never accept this content (edge_agent/io/publisher.py DROP_STATUSES). Anything else
+// that is not a success (401, 403, 429, 5xx, no answer) is kept and tried again.
+const DROP_STATUSES: readonly number[] = [400, 413, 422];
+// A closing page may have about 64 KiB of `keepalive` request bodies in flight (Fetch standard); a little
+// is left for the headers.
+const KEEPALIVE_BUDGET_BYTES = 60000;
+
+/** A POST body of several records as one body per record, in order; a body of one record (or one that
+ *  is not a batch) as itself. */
+export function splitBatch(body: string): string[] {
+  try {
+    const { device_id, ...kinds } = JSON.parse(body) as Record<string, unknown>;
+    const singles: string[] = [];
+    for (const [kind, records] of Object.entries(kinds)) {
+      if (!Array.isArray(records)) return [body]; // a heartbeat, or something this page did not build
+      for (const record of records) singles.push(JSON.stringify({ device_id, [kind]: [record] }));
+    }
+    return singles.length > 1 ? singles : [body];
+  } catch {
+    return [body];
+  }
+}
+
 export class LiveAgent implements HudSource {
   address = "trình duyệt này";
   /** Pairing code for the web driving controls (#/drive?code=...), shown on the camera card. */
   readonly driveCode = newDriveCode();
   private snap: HudSnapshot = { connected: false, level: 0, reasons: [], alerts: [] };
-  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, dropped: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null, recovery: { pulls: 0, reopens: 0, yoloRestarts: 0 } };
+  private stats: LiveStats = { level: 0, fps: 0, yoloMs: null, phoneOn: false, sent: 0, pending: 0, dropped: 0, refused: 0, sendError: null, measures: null, enrollment: null, lastError: null, perf: null, totals: null, startup: null, recovery: { pulls: 0, reopens: 0, yoloRestarts: 0 } };
   private stopped = false;
   private frameId = 0;
   private lastTsMs = -1;
@@ -265,6 +294,7 @@ export class LiveAgent implements HudSource {
   private heartbeatBody: string | null = null; // M33: newest heartbeat not sent yet (never queued)
   private sending = false;
   private flushTimer: number | undefined;
+  private refreshAt = 0; // ms epoch: the login token is exchanged for a new one from then on (M97)
   private configTimer: number | undefined;
   private simTimer: number | undefined;
   private simBusy = false;
@@ -521,6 +551,46 @@ export class LiveAgent implements HudSource {
     }
     await this.stop();
     return { summary, delivery };
+  }
+
+  /** The page is going away with the trip running (tab closed, reload; M100). Nothing asynchronous will
+   *  finish, so the trip is ended in this turn: Python builds the summary, the camera is let go, and
+   *  what is waiting goes out with `keepalive` requests the browser finishes by itself: the "ended"
+   *  heartbeat first (so the fleet shows an ended trip, not a lost vehicle), then the batches, oldest
+   *  first, while they fit in what a browser lets a closing page send. Guest mode sends nothing.
+   *  Returns how many bodies were sent and how many did not fit. */
+  leave(): { sent: number; left: number } {
+    if (this.stopped) return { sent: 0, left: 0 };
+    this.stopped = true;
+    window.clearInterval(this.flushTimer);
+    window.clearInterval(this.configTimer);
+    window.clearInterval(this.simTimer);
+    window.clearInterval(this.watchTimer);
+    this.stopPulling();
+    this.py.end_trip();
+    this.py.idle(performance.now() / 1000);
+    const beat = this.py.take_heartbeat() ?? this.heartbeatBody;
+    for (let body = this.py.take_batch(); body; body = this.py.take_batch()) this.pendingBodies.push(body);
+    this.stream.getTracks().forEach((t) => t.stop());
+    this.video.srcObject = null;
+    let sent = 0;
+    let left = 0;
+    if (this.session) {
+      let room = KEEPALIVE_BUDGET_BYTES;
+      for (const body of [...(beat ? [beat] : []), ...this.pendingBodies]) {
+        const size = new Blob([body]).size;
+        if (size > room) {
+          left += 1;
+          continue;
+        }
+        room -= size;
+        postWebBatchOnLeave(this.session, body);
+        sent += 1;
+      }
+    }
+    this.pendingBodies = [];
+    this.heartbeatBody = null;
+    return { sent, left };
   }
 
   getStats(): LiveStats {
@@ -842,35 +912,65 @@ export class LiveAgent implements HudSource {
       this.pendingBodies.splice(this.sending ? 1 : 0, 1);
       this.stats.dropped += 1;
     }
-    if (!this.session || this.sending || !(this.pendingBodies.length || this.heartbeatBody)) return;
+    if (!this.session || this.sending) return;
     this.sending = true;
+    const timeoutMs = this.settings.send_timeout_s * 1000;
     try {
+      let refused: number | null = null; // status of the last record the backend would never take
       while (this.pendingBodies.length) {
-        const r = await postWebBatch(this.session, this.pendingBodies[0]);
-        this.pendingBodies.shift();
-        this.stats.sent += r.accepted;
-        this.stats.sendError = null;
+        try {
+          const r = await postWebBatch(this.session, this.pendingBodies[0], timeoutMs);
+          this.pendingBodies.shift();
+          this.stats.sent += r.accepted;
+        } catch (err) {
+          const status = (err as ApiError).status;
+          if (!DROP_STATUSES.includes(status)) throw err;
+          // The backend will never take this content. As the device does (publisher.py): the records of
+          // the batch are tried one by one, and only the one that is refused alone is dropped. Before M97
+          // one bad record took up to publisher.web_batch_size good ones with it.
+          const singles = splitBatch(this.pendingBodies[0]);
+          if (singles.length > 1) this.pendingBodies.splice(0, 1, ...singles);
+          else {
+            this.pendingBodies.shift();
+            this.stats.refused += 1;
+            refused = status;
+          }
+        }
       }
-      await this.sendHeartbeat(this.session);
+      this.stats.sendError = refused == null ? null : `Máy chủ từ chối ${this.stats.refused} bản ghi (HTTP ${refused})`;
+      await this.sendHeartbeat(this.session, timeoutMs);
     } catch (err) {
       const e = err as ApiError;
       if (e.status === 401) this.stats.sendError = "Phiên đăng nhập hết hạn: sự kiện chưa được lưu";
-      else if (e.status && e.status < 500 && e.status !== 0) {
-        this.pendingBodies.shift(); // the backend will never accept this batch
-        this.stats.sendError = `Máy chủ từ chối (HTTP ${e.status})`;
-      } else this.stats.sendError = `Chưa gửi được tới ${API_URL || "máy chủ"}, sẽ thử lại`;
-    } finally {
-      this.sending = false;
+      else this.stats.sendError = `Chưa gửi được tới ${API_URL || "máy chủ"}, sẽ thử lại`;
+    }
+    // After the round, whatever became of it: the batches never wait for the renewal.
+    await this.keepSession(this.session, timeoutMs);
+    this.sending = false;
+  }
+
+  /** The login outlives the trip (M97): the token is exchanged for a new one at the first round and
+   *  then every half lifetime, long before it expires. Before, a trip longer than DG_TOKEN_TTL_MIN
+   *  (60 min) lost everything after that: each batch came back 401 and the queue stood still behind it.
+   *  Not reached: asked again at the next round. Already expired (401): nothing can renew it here, the
+   *  batches stay queued and the driver is told. */
+  private async keepSession(session: Session, timeoutMs: number) {
+    if (Date.now() < this.refreshAt) return;
+    try {
+      const lifetimeS = await refreshSession(session, timeoutMs);
+      this.refreshAt = Date.now() + (lifetimeS * 1000) / 2;
+    } catch {
+      // offline, or a backend older than M97 (404): the batches are still tried with the token there is
     }
   }
 
   /** The newest heartbeat, in a POST of its own after the batches. A failure never touches the
    *  batches: unreachable = kept for the next round (a newer one replaces it), refused = dropped. */
-  private async sendHeartbeat(session: Session) {
+  private async sendHeartbeat(session: Session, timeoutMs: number) {
     const body = this.heartbeatBody;
     if (!body) return;
     try {
-      await postWebBatch(session, body);
+      await postWebBatch(session, body, timeoutMs);
     } catch (err) {
       const status = (err as ApiError).status;
       if (!status || status >= 500 || status === 401) return;
@@ -926,11 +1026,13 @@ export class LiveAgent implements HudSource {
     window.clearInterval(this.simTimer);
     window.clearInterval(this.watchTimer);
     this.stopPulling();
-    await this.flush();
+    // The camera goes first (M97): the last round waits for the backend, and a backend that hangs must
+    // not keep the camera light on. Python stays until that round has taken its batches.
     this.stream.getTracks().forEach((t) => t.stop());
     this.video.srcObject = null;
     this.yolo?.terminate();
     this.landmarker?.close();
+    await this.flush();
     this.py.destroy();
   }
 }

@@ -57,12 +57,14 @@ export function saveSession(s: Session | null): void {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, session?: Session | null): Promise<T> {
+/** timeoutMs: give up after this long (the request then counts as "backend not reached", status 0). */
+async function request<T>(path: string, init: RequestInit = {}, session?: Session | null, timeoutMs?: number): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (session) headers.Authorization = `Bearer ${session.token}`;
   let resp: Response;
   try {
-    resp = await fetch(`${API_URL}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
+    const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+    resp = await fetch(`${API_URL}${path}`, { ...init, signal, headers: { ...headers, ...(init.headers ?? {}) } });
   } catch {
     throw new ApiError(0, `Không kết nối được máy chủ ${API_URL}`);
   }
@@ -198,8 +200,32 @@ export function getWebThresholds(s: Session): Promise<Thresholds> {
   return request("/api/v1/web/thresholds", {}, s);
 }
 
-export function postWebBatch(s: Session, body: string): Promise<{ accepted: number }> {
-  return request("/api/v1/web/events", { method: "POST", body }, s);
+export function postWebBatch(s: Session, body: string, timeoutMs?: number): Promise<{ accepted: number }> {
+  return request("/api/v1/web/events", { method: "POST", body }, s, timeoutMs);
+}
+
+/** A batch from a page that is going away (tab closed, reload): `keepalive` lets the browser finish the
+ *  request after the page is gone. Nothing is awaited and no answer is read; the browser allows about
+ *  64 KB of such bodies in flight at once (the caller keeps count). */
+export function postWebBatchOnLeave(s: Session, body: string): void {
+  void fetch(`${API_URL}/api/v1/web/events`, {
+    method: "POST",
+    body,
+    keepalive: true,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.token}` },
+  }).catch(() => undefined);
+}
+
+/** A token that is still valid for a new one with a full lifetime (M97). The session object is updated
+ *  in place and stored, so every holder of it (the trip's agent, the dashboard) goes on with the new
+ *  token. Throws ApiError: 401 when the token has already expired, 0 when the backend is not reached. */
+export async function refreshSession(s: Session, timeoutMs?: number): Promise<number> {
+  const t = await request<{ access_token: string; role: Role; expires_in: number }>("/auth/refresh", { method: "POST" }, s, timeoutMs);
+  s.token = t.access_token;
+  s.role = t.role;
+  s.expiresAt = Date.now() + t.expires_in * 1000;
+  if (loadSession()?.username === s.username) saveSession(s); // not for a session nobody stored (tests, guests)
+  return t.expires_in;
 }
 
 /** Same as backend.app.web_device_id: the user's browser as a device. */

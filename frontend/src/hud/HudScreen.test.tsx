@@ -148,11 +148,15 @@ describe("alerts", () => {
     expect(chime.playAlert.mock.calls).toEqual([[2, ["off_road"]]]);
   });
 
-  it("as it is today: opened on a trip with exactly one past alert, that one sounds again", async () => {
-    // Only a list of two or more is taken for history (HudScreen firstLoad). Pinned, not wanted.
+  it("a HUD opened on a trip with exactly one past alert does not sound it either (M100)", async () => {
+    // Before: only a list of two or more was taken for history, so a single old alert rang again.
     const hud = fakeSource(snap({ alerts: [alert("e1", 2, "phone")] }));
     await mount(hud.source);
-    expect(chime.playAlert.mock.calls).toEqual([[2, ["phone"]]]);
+    await wait(VOICE_MS + POLL_MS);
+    expect(chime.playAlert).not.toHaveBeenCalled();
+    expect(chime.speak).not.toHaveBeenCalled();
+    await hud.push(snap({ level: 2, reasons: ["off_road"], alerts: [alert("e2", 2, "off_road"), alert("e1", 2, "phone")] }));
+    expect(chime.playAlert.mock.calls).toEqual([[2, ["off_road"]]]); // the next one is new, and is heard
   });
 
   it("the volume per level comes from the agent's state, and from the build before the first one", async () => {
@@ -325,7 +329,8 @@ describe("enrollment", () => {
 });
 
 describe("while the browser blocks sound", () => {
-  it("nothing sounds, and what came meanwhile is not sounded late; what repeats starts with the sound", async () => {
+  it("nothing sounds; with the first touch, what still holds is sounded once, and what repeats starts (M100)", async () => {
+    // Before: the alert and the lost signal that came while blocked were never sounded.
     chime.allowed = false;
     const hud = fakeSource(snap());
     await mount(hud.source);
@@ -337,12 +342,50 @@ describe("while the browser blocks sound", () => {
     expect(chime.speak).not.toHaveBeenCalled();
 
     await act(async () => chime.change?.(true)); // the first touch
-    await wait(ALARM_MS - 1);
-    // As it is today: the alert and the lost signal that came while blocked are never sounded.
+    expect(chime.playAlert.mock.calls).toEqual([[3, ["microsleep"]]]); // the alert that is still up
+    expect(sounds()).toEqual(["vehicle_signal_lost"]);
+    await wait(ALARM_MS);
+    expect(sirens()).toBe(1); // the eyes are still closed: the siren goes on from here
+    await wait(10 * POLL_MS);
+    expect(chime.playAlert.mock.calls.filter((c) => (c[1] as Reason[]).length > 0)).toHaveLength(1); // the alert itself: once
+    expect(sounds()).toEqual(["vehicle_signal_lost"]);
+  });
+
+  it("an alert that was over before the first touch is not sounded late", async () => {
+    chime.allowed = false;
+    const hud = fakeSource(snap());
+    await mount(hud.source);
+    const old = alert("e1", 2, "off_road");
+    await hud.push(snap({ level: 2, reasons: ["off_road"], alerts: [old] }));
+    await hud.push(snap({ level: 0, reasons: [], alerts: [old] })); // the driver looked back at the road
+    await act(async () => chime.change?.(true));
+    await wait(VOICE_MS + POLL_MS);
     expect(chime.playAlert).not.toHaveBeenCalled();
-    expect(sounds()).toEqual([]);
-    await wait(1);
-    expect(sirens()).toBe(1); // the eyes are still closed: the siren
+    expect(chime.speak).not.toHaveBeenCalled();
+  });
+
+  it("of two alerts that came while blocked, only the newest is sounded", async () => {
+    chime.allowed = false;
+    const hud = fakeSource(snap());
+    await mount(hud.source);
+    const first = alert("e1", 1, "drowsy_score");
+    await hud.push(snap({ level: 1, reasons: ["drowsy_score"], alerts: [first] }));
+    await hud.push(snap({ level: 2, reasons: ["phone"], alerts: [alert("e2", 2, "phone"), first] }));
+    await act(async () => chime.change?.(true));
+    expect(chime.playAlert.mock.calls).toEqual([[2, ["phone"]]]);
+  });
+
+  it("monitoring that stopped while blocked is told with the first touch; what came back meanwhile is not", async () => {
+    chime.allowed = false;
+    const hud = fakeSource(snap());
+    await mount(hud.source);
+    await hud.push(snap({ camera_lost: true }));
+    await hud.push(snap()); // the camera is back before any touch: nothing to tell
+    await hud.push(snap({ unavailable: true, unavailable_reason: "no_face" }));
+    await act(async () => chime.change?.(true));
+    expect(sounds()).toEqual(["monitoring_unavailable"]);
+    await hud.push(snap());
+    expect(sounds()).toEqual(["monitoring_unavailable", "monitoring_restored"]);
   });
 });
 

@@ -664,7 +664,13 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
       {lost || noSignal ? (
         <span className="dg-chip w-fit self-center !text-[15px]" style={{ ["--dot" as string]: lost ? "var(--warning)" : "var(--series-1)" }}>
           <i />
-          {lost ? (driving ? "Mất tín hiệu xe · vẫn giám sát" : "Mất tín hiệu xe · coi như đỗ") : "Chưa có tín hiệu xe · coi như đỗ"}
+          {lost
+            ? v?.never_received
+              ? "Chưa có tín hiệu xe · giám sát như đang chạy"
+              : driving
+                ? "Mất tín hiệu xe · vẫn giám sát"
+                : "Mất tín hiệu xe · coi như đỗ"
+            : "Chưa có tín hiệu xe · coi như đỗ"}
         </span>
       ) : (
         <span role="img" aria-label="Tín hiệu xe đã kết nối" className="absolute right-5 bottom-5 grid size-9 place-items-center rounded-full bg-hud-safe/15 text-hud-safe">
@@ -743,7 +749,7 @@ function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap
       lead: `Camera vẫn chạy, nhưng ${text.short}`,
       tiles: [
         { icon: Camera, value: "Vẫn hoạt động", label: "Camera", tone: "ok" as const },
-        { icon: History, value: "Tự động", label: "Giám sát lại khi thấy rõ mặt" },
+        { icon: History, value: "Tự động", label: cause === "slow_loop" ? "Giám sát lại khi máy xử lý kịp" : "Giám sát lại khi thấy rõ mặt" },
       ],
       note: `${text.detail} Đây không tính là một cảnh báo.`,
     };
@@ -917,7 +923,7 @@ function noteFor(snap: HudSnapshot): string {
       : `Cảnh báo gần nhất lúc ${hourMinute(last.at)} · ${reasonText(orderedReasons(last.reasons)[0])}`
     : null;
   return footerNote(snap, {
-    signalLost: v?.signal_lost ? VEHICLE_SIGNAL_LOST_TEXT[v.driving ? "driving" : "parked"] : null,
+    signalLost: v?.signal_lost ? VEHICLE_SIGNAL_LOST_TEXT[v.never_received ? "never" : v.driving ? "driving" : "parked"] : null,
     lowFps: "Xử lý chậm hơn 15 khung hình/giây · cảnh báo có thể trễ",
     phoneOff: `${PHONE_UNAVAILABLE_TEXT} · mắt và đầu vẫn được theo dõi`,
     enroll: enrollReminder(snap.enrollment),

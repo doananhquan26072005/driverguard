@@ -352,6 +352,7 @@ export const PHONE_UNAVAILABLE_TEXT = "Không phát hiện được điện tho�
 export const VEHICLE_SIGNAL_LOST_TEXT = {
   driving: "Mất tín hiệu xe: vẫn giám sát như đang chạy",
   parked: "Mất tín hiệu xe: coi như đang đỗ đến khi có lại tốc độ",
+  never: "Chưa có tín hiệu tốc độ xe: đang giám sát như xe đang chạy",
 };
 
 // Driver enrollment: what the HUD shows and says. Spoken too, since in steps 2 and 3 the
@@ -428,6 +429,7 @@ export const UNAVAILABLE_CAUSES: Record<UnavailableCause, { short: string; detai
   low_light: { short: "mặt quá tối", detail: "Khuôn mặt quá tối, không đọc được mắt. Bật đèn trần hoặc chỉnh camera." },
   glare: { short: "mặt bị chói", detail: "Khuôn mặt bị chói nắng, không đọc được mắt. Hạ tấm che nắng hoặc chỉnh camera." },
   blur: { short: "ảnh mờ", detail: "Ảnh camera bị mờ, không đọc được mắt. Lau ống kính camera." },
+  slow_loop: { short: "máy xử lý quá chậm", detail: "Máy xử lý chưa tới 2 khung hình mỗi giây nên không đo được nhắm mắt hay nhìn lệch. Đóng ứng dụng khác hoặc khởi động lại." },
 };
 
 // "Bạn còn ở đó không?" (M44): the whole screen is one button, so it can be hit without aiming.
