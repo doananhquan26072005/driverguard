@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" width="1600" height="1000" font-family="-apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">Kiến trúc hệ thống DriverGuard</title>
+<desc id="d">Frontend React, edge agent 14 khối chạy trên thiết bị, Backend FastAPI, SQLite và nguồn model pretrained, cùng các luồng dữ liệu giữa chúng.</desc>
+<defs><marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#374151"/></marker></defs>
+<rect width="1600" height="1000" fill="#ffffff"/>
+<text x="40" y="44" font-size="24" font-weight="700" fill="#1f2933" text-anchor="start">DriverGuard · kiến trúc hệ thống</text>
+<text x="40" y="66" font-size="13" font-weight="400" fill="#52606d" text-anchor="start">Giám sát tài xế on-device: ảnh khuôn mặt không rời thiết bị, backend chỉ nhận JSON metadata</text>
+<rect x="40" y="84" width="1520" height="172" rx="12" fill="#eaf2fd" stroke="#3b73c4" stroke-width="2"/>
+<text x="58" y="110" font-size="16" font-weight="700" fill="#3b73c4" text-anchor="start">Frontend · React 19 + Vite + Tailwind v4</text>
+<text x="58" y="129" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">Một bundle, bốn trang theo hash route; trình duyệt tải từ cùng origin với Backend</text>
+<rect x="40" y="400" width="640" height="335" rx="12" fill="#e9f6ec" stroke="#3d8b55" stroke-width="2"/>
+<text x="662" y="426" font-size="16" font-weight="700" fill="#3d8b55" text-anchor="end">Agent · edge_agent (Python, 14 khối)</text>
+<text x="662" y="445" font-size="12" font-weight="400" fill="#52606d" text-anchor="end">Chạy trên thiết bị trong xe · frame chỉ nằm trong RAM · model pretrained + luật, không có LLM</text>
+<rect x="880" y="400" width="680" height="335" rx="12" fill="#fff3e0" stroke="#c77f1a" stroke-width="2"/>
+<text x="898" y="426" font-size="16" font-weight="700" fill="#c77f1a" text-anchor="start">Backend API · FastAPI</text>
+<text x="898" y="445" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">Railway, một container · không chạy model nào · chỉ nhận JSON metadata</text>
+<rect x="40" y="800" width="640" height="130" rx="12" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+<text x="58" y="826" font-size="16" font-weight="700" fill="#6b7280" text-anchor="start">External · nguồn model pretrained</text>
+<text x="58" y="845" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">Chỉ dùng lúc cài đặt / build image; lúc chạy hệ thống không gọi API bên ngoài nào</text>
+<rect x="70" y="152" width="320" height="88" rx="7" fill="#ffffff" stroke="#3b73c4" stroke-width="1.2"/>
+<text x="230.0" y="174" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">#/hud · màn hình trong xe</text>
+<text x="230.0" y="194" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Mức L0–L3, lý do, âm báo</text>
+<text x="230.0" y="212" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Đăng ký tài xế, kết thúc chuyến</text>
+<rect x="420" y="152" width="580" height="88" rx="7" fill="#ffffff" stroke="#3b73c4" stroke-width="1.2"/>
+<text x="710.0" y="174" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">#/live · cả agent chạy trong trình duyệt</text>
+<text x="710.0" y="194" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Khối 1–5: getUserMedia, MediaPipe Tasks JS, onnxruntime-web (cùng 2 file model)</text>
+<text x="710.0" y="212" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Khối 6–12: cùng code Python của thiết bị, chạy bằng Pyodide · HUD ngay trong trang</text>
+<rect x="1030" y="152" width="240" height="88" rx="7" fill="#ffffff" stroke="#3b73c4" stroke-width="1.2"/>
+<text x="1150.0" y="174" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">#/drive · điều khiển xe</text>
+<text x="1150.0" y="194" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Tốc độ, xi nhan (thay CAN thật)</text>
+<text x="1150.0" y="212" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Ghép với #/live bằng mã</text>
+<rect x="1300" y="152" width="230" height="88" rx="7" fill="#ffffff" stroke="#3b73c4" stroke-width="1.2"/>
+<text x="1415.0" y="174" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">#/dashboard</text>
+<text x="1415.0" y="194" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Tài xế · quản lý · kỹ sư · admin</text>
+<text x="1415.0" y="212" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Sự kiện, báo cáo chuyến, ngưỡng</text>
+<rect x="60" y="462" width="250" height="74" rx="7" fill="#ffffff" stroke="#3d8b55" stroke-width="1.2"/>
+<text x="185.0" y="484" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">13 HUD server</text>
+<text x="185.0" y="504" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">HTTP cục bộ 127.0.0.1:8765</text>
+<rect x="420" y="462" width="240" height="74" rx="7" fill="#ffffff" stroke="#3d8b55" stroke-width="1.2"/>
+<text x="540.0" y="484" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">14 Metadata publisher</text>
+<text x="540.0" y="504" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Outbox SQLite · lô ≤ 20 · chặn ảnh</text>
+<rect x="60" y="596" width="184" height="122" rx="7" fill="#ffffff" stroke="#3d8b55" stroke-width="1.2"/>
+<text x="152.0" y="618" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Nhận diện · khối 1–6</text>
+<text x="152.0" y="638" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">1 Camera → 2 Tiền xử lý</text>
+<text x="152.0" y="656" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">3 MediaPipe · 4 YOLOv8n</text>
+<text x="152.0" y="674" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">6 Đặc trưng EAR/MAR/pose</text>
+<text x="152.0" y="692" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">5 CNN mắt khi EAR kém</text>
+<rect x="268" y="596" width="184" height="122" rx="7" fill="#ffffff" stroke="#3d8b55" stroke-width="1.2"/>
+<text x="360.0" y="618" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Phân tích · khối 7–8</text>
+<text x="360.0" y="638" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">7 Buồn ngủ: PERCLOS,</text>
+<text x="360.0" y="656" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">microsleep, ngáp, gật</text>
+<text x="360.0" y="674" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">8 Mất tập trung:</text>
+<text x="360.0" y="692" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">nhìn lệch, điện thoại</text>
+<rect x="476" y="596" width="184" height="122" rx="7" fill="#ffffff" stroke="#3d8b55" stroke-width="1.2"/>
+<text x="568.0" y="618" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Quyết định · khối 9–12</text>
+<text x="568.0" y="638" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">9 Risk engine L0–L3</text>
+<text x="568.0" y="656" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">10 Ngữ cảnh xe (tốc độ)</text>
+<text x="568.0" y="674" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">11 Trip memory</text>
+<text x="568.0" y="692" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">12 Alert manager</text>
+<rect x="900" y="462" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1003.0" y="484" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Đăng nhập</text>
+<text x="1003.0" y="504" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/auth/login · refresh · me</text>
+<text x="1003.0" y="522" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">JWT theo vai trò</text>
+<rect x="1117" y="462" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1220.0" y="484" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Nhận sự kiện</text>
+<text x="1220.0" y="504" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/events · /web/events</text>
+<text x="1220.0" y="522" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Có ảnh / base64 → 422</text>
+<rect x="1334" y="462" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1437.0" y="484" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Ngưỡng</text>
+<text x="1437.0" y="504" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/thresholds · versions · rollout</text>
+<text x="1437.0" y="522" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/device/thresholds</text>
+<rect x="900" y="548" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1003.0" y="570" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Chuyến và báo cáo</text>
+<text x="1003.0" y="590" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/trips · /trip-reports · /fleet</text>
+<text x="1003.0" y="608" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/timeline · /stats</text>
+<rect x="1117" y="548" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1220.0" y="570" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Relay tín hiệu xe</text>
+<text x="1220.0" y="590" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/drive/{code}</text>
+<text x="1220.0" y="608" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Chỉ giữ trong RAM</text>
+<rect x="1334" y="548" width="206" height="74" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1437.0" y="570" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Quyền dữ liệu</text>
+<text x="1437.0" y="590" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/policy · /me/data · access-log</text>
+<text x="1437.0" y="608" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">/deletion-requests</text>
+<rect x="900" y="634" width="640" height="84" rx="7" fill="#ffffff" stroke="#c77f1a" stroke-width="1.2"/>
+<text x="1220.0" y="656" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">File tĩnh (cùng origin)</text>
+<text x="1220.0" y="676" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Bundle React · edge_agent.zip · face_landmarker.task · yolov8n.onnx</text>
+<text x="1220.0" y="694" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">Pyodide · MediaPipe wasm (không tải từ CDN)</text>
+<rect x="60" y="862" width="196" height="54" rx="7" fill="#ffffff" stroke="#6b7280" stroke-width="1.2"/>
+<text x="158.0" y="884" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Google MediaPipe</text>
+<text x="158.0" y="904" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">face_landmarker.task</text>
+<rect x="268" y="862" width="196" height="54" rx="7" fill="#ffffff" stroke="#6b7280" stroke-width="1.2"/>
+<text x="366.0" y="884" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Intel Open Model Zoo</text>
+<text x="366.0" y="904" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">open-closed-eye-0001</text>
+<rect x="476" y="862" width="184" height="54" rx="7" fill="#ffffff" stroke="#6b7280" stroke-width="1.2"/>
+<text x="568.0" y="884" font-size="13" font-weight="700" fill="#1f2933" text-anchor="middle">Ultralytics</text>
+<text x="568.0" y="904" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">yolov8n.pt → ONNX</text>
+<path d="M900,813 v104 a200.0,13 0 0 0 400,0 v-104" fill="#f1eafa" stroke="#7a55b0" stroke-width="2"/>
+<ellipse cx="1100.0" cy="813" rx="200.0" ry="13" fill="#f1eafa" stroke="#7a55b0" stroke-width="2"/>
+<text x="1100.0" y="850" font-size="15" font-weight="700" fill="#7a55b0" text-anchor="middle">SQLite · volume /app/data</text>
+<text x="1100.0" y="870" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">users · devices · device_status · events</text>
+<text x="1100.0" y="887" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">fatigue_samples · trip_summaries · threshold_*</text>
+<text x="1100.0" y="904" font-size="12" font-weight="400" fill="#52606d" text-anchor="middle">deletion_requests · access_log</text>
+<rect x="1330" y="800" width="230" height="130" rx="7" fill="#fffbe6" stroke="#b59a2b" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="1344" y="824" font-size="13" font-weight="700" fill="#1f2933" text-anchor="start">Không có trong hệ thống</text>
+<text x="1344" y="846" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">LLM, LangGraph, Vector Store.</text>
+<text x="1344" y="864" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">“Agent” ở đây là pipeline thị giác</text>
+<text x="1344" y="882" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">+ luật chạy on-device; dữ liệu</text>
+<text x="1344" y="900" font-size="12" font-weight="400" fill="#52606d" text-anchor="start">là bảng quan hệ, không RAG.</text>
+<polyline points="120,240 120,462" fill="none" stroke="#374151" stroke-width="1.6" marker-start="url(#head)" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="134" y="318" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">↓ trạng thái: GET /state mỗi 0,3 s</text>
+<text x="134" y="338" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">↑ POST /feedback · /vehicle · /end-trip</text>
+<polyline points="940,240 940,400" fill="none" stroke="#374151" stroke-width="3.2" marker-start="url(#head)" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="926" y="300" font-size="12" font-weight="600" fill="#1f2933" text-anchor="end">↓ POST /api/v1/web/events</text>
+<text x="926" y="320" font-size="12" font-weight="600" fill="#1f2933" text-anchor="end">chỉ JSON metadata · JWT</text>
+<text x="926" y="348" font-size="12" font-weight="600" fill="#1f2933" text-anchor="end">↑ ngưỡng, tốc độ theo mã ghép</text>
+<polyline points="1150,240 1150,400" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="1164" y="318" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">PUT /api/v1/drive/{code}</text>
+<text x="1164" y="338" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">chỉ số: tốc độ, xi nhan</text>
+<polyline points="1415,240 1415,400" fill="none" stroke="#374151" stroke-width="1.6" marker-start="url(#head)" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="1429" y="318" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">REST + JWT</text>
+<text x="1429" y="338" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">đọc và chỉnh</text>
+<polyline points="244,657 268,657" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<polyline points="452,657 476,657" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<polyline points="600,596 600,536" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<polyline points="520,596 520,566 185,566 185,536" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="352" y="559" font-size="12" font-weight="500" fill="#1f2933" text-anchor="middle">mức + lý do</text>
+<polyline points="660,499 880,499" fill="none" stroke="#374151" stroke-width="3.2" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="770" y="470" font-size="12" font-weight="600" fill="#1f2933" text-anchor="middle">POST /api/v1/events</text>
+<text x="770" y="488" font-size="12" font-weight="600" fill="#1f2933" text-anchor="middle">chỉ JSON metadata</text>
+<text x="770" y="519" font-size="12" font-weight="600" fill="#1f2933" text-anchor="middle">X-Device-Key · mỗi 5 s</text>
+<polyline points="880,676 660,676" fill="none" stroke="#374151" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="770" y="648" font-size="12" font-weight="500" fill="#1f2933" text-anchor="middle">ngưỡng đã chỉnh</text>
+<text x="770" y="666" font-size="12" font-weight="500" fill="#1f2933" text-anchor="middle">GET …/device/thresholds</text>
+<text x="770" y="696" font-size="12" font-weight="500" fill="#1f2933" text-anchor="middle">khởi động + mỗi 5 phút</text>
+<polyline points="1100,735 1100,800" fill="none" stroke="#374151" stroke-width="1.6" marker-start="url(#head)" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="1114" y="773" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">SQL</text>
+<polyline points="152,800 152,718" fill="none" stroke="#374151" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="166" y="774" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">tools/download_models.py (một lần lúc cài đặt)</text>
+<polyline points="40,968 96,968" fill="none" stroke="#374151" stroke-width="3.2" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="108" y="972" font-size="12" font-weight="600" fill="#1f2933" text-anchor="start">metadata JSON rời thiết bị / trang (không bao giờ có ảnh)</text>
+<polyline points="500,968 556,968" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="568" y="972" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">gọi HTTP thường xuyên</text>
+<polyline points="760,968 816,968" fill="none" stroke="#374151" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#head)" stroke-linejoin="round"/>
+<text x="828" y="972" font-size="12" font-weight="500" fill="#1f2933" text-anchor="start">thỉnh thoảng: cài đặt, khởi động, 5 phút một lần</text>
+</svg>

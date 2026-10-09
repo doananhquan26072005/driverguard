@@ -9,6 +9,20 @@ Hai sơ đồ BA cho DriverGuard, dựng từ [PRD v2.2](../PRD.md).
 
 Toàn bộ sơ đồ nằm trong **một file** `driverguard_uml_userflow.drawio` (2 trang).
 
+## Sơ đồ kiến trúc hệ thống
+
+[`architecture.svg`](architecture.svg) (PNG: [`png/architecture.png`](png/architecture.png)) là hình tổng quan
+Frontend / Agent / Backend API / Database / External, embed trong [README](../../README.md#kiến-trúc) và
+[`architecture_diagram.md`](../architecture_diagram.md#0-tổng-quan-hệ-thống). Khác hai sơ đồ BA ở trên, hình này vẽ theo
+**code** chứ không theo PRD.
+
+```bash
+python3 build_architecture.py     # ghi architecture.svg, rồi chụp PNG bằng Chrome headless (không cần draw.io)
+```
+
+`build_architecture.py` là nguồn duy nhất: mỗi khung, hộp, mũi tên là một dòng trong bảng. Sau khi sửa phải mở PNG
+ra soi (chữ tràn hộp, mũi tên đè chữ).
+
 ## Mở và sửa
 
 ```bash

@@ -2,8 +2,9 @@
 
 Sơ đồ kiến trúc theo code trên nhánh DAQuan. Hình 1–4 vẽ từ 30/09/2026 (sau M8, bản v1.1) và vẫn đúng
 về khung 14 khối; **phần thêm ở v2 (đến M31, 02/10/2026) ở [mục 5](#5-phần-thêm-ở-v2)**. Năm hình, mỗi
-hình trả lời một câu hỏi:
+hình trả lời một câu hỏi; trước đó là **hình tổng quan một trang** (09/10/2026, theo code đến M101):
 
+0. [Tổng quan hệ thống](#0-tổng-quan-hệ-thống): Frontend, Agent, Backend API, Database, External và các luồng dữ liệu.
 1. [Thành phần và luồng dữ liệu](#1-thành-phần-và-luồng-dữ-liệu): 14 khối nối với nhau thế nào, dữ liệu rời thiết bị ở đâu.
 2. [Hai cách chạy cùng một logic](#2-hai-cách-chạy-cùng-một-logic): thiết bị (Python) và trình duyệt (`#/live`).
 3. [Một cảnh báo đi từ camera tới dashboard](#3-một-cảnh-báo-đi-từ-camera-tới-dashboard): thứ tự và thời gian.
@@ -13,6 +14,37 @@ hình trả lời một câu hỏi:
 
 Thời gian mỗi khối lấy từ [`eval/results/benchmark.md`](../eval/results/benchmark.md)
 (Mac ARM, video YawDD 640×480). Mã `M0`…`M31` là mốc trong [`roadmap.md`](roadmap.md) đã làm ra khối đó.
+
+---
+
+## 0. Tổng quan hệ thống
+
+![Kiến trúc hệ thống DriverGuard](diagrams/architecture.svg)
+
+PNG: [`diagrams/png/architecture.png`](diagrams/png/architecture.png). Hình sinh từ
+[`diagrams/build_architecture.py`](diagrams/build_architecture.py); sửa bảng trong script rồi chạy lại, không sửa tay file SVG.
+
+| Thành phần | Trong DriverGuard | Code |
+|---|---|---|
+| Frontend | React 19 + Vite + Tailwind v4, một bundle, bốn trang: `#/hud`, `#/live`, `#/drive`, `#/dashboard` | `frontend/src/` |
+| Agent | Edge agent Python 14 khối, chạy trên thiết bị (hoặc trong trình duyệt bằng Pyodide ở `#/live`). Model pretrained + luật; **không có LLM, không dùng LangGraph** | `edge_agent/` |
+| Backend API | FastAPI: đăng nhập (JWT), nhận sự kiện, ngưỡng, chuyến và báo cáo, relay tín hiệu xe, quyền dữ liệu, file tĩnh | `backend/`, `deploy/railway_app.py` |
+| Database | SQLite trên volume `/app/data`, 11 bảng quan hệ. **Không có Vector Store** (không RAG, không embedding) | `backend/db.py` |
+| External | Ba nguồn model pretrained (Google MediaPipe, Intel Open Model Zoo, Ultralytics), chỉ dùng lúc cài đặt / build. Lúc chạy không gọi API bên ngoài nào (từ M99 cả Pyodide và wasm cũng do backend phục vụ) | `tools/download_models.py` |
+
+Luồng dữ liệu trên hình:
+
+- **`#/hud` ↔ khối 13:** màn hình hỏi `GET /state` mỗi 0,3 s (`hud.poll_s`), gửi lại `POST /feedback`, `/vehicle`, `/end-trip`.
+  Chỉ trong máy (`127.0.0.1:8765`).
+- **Khối 14 → Backend (mũi tên đậm):** `POST /api/v1/events`, lô ≤ 20 sự kiện, ít nhất mỗi 5 s, xác thực bằng `X-Device-Key`.
+  Đây là đường duy nhất dữ liệu rời thiết bị, và chỉ là JSON metadata.
+- **`#/live` ↔ Backend (mũi tên đậm):** trang gửi `POST /api/v1/web/events` bằng token người đăng nhập; lấy ngưỡng
+  (`/api/v1/web/thresholds`) và tốc độ / xi nhan theo mã ghép (`GET /api/v1/drive/{code}`).
+- **`#/drive` → Backend:** `PUT /api/v1/drive/{code}`, chỉ có số; backend giữ trong RAM, không ghi database.
+- **`#/dashboard` ↔ Backend:** REST + JWT, đọc sự kiện / báo cáo và chỉnh ngưỡng.
+- **Backend → khối 9 (nét đứt):** agent lấy ngưỡng đã chỉnh ở `GET /api/v1/device/thresholds` lúc khởi động và hỏi lại
+  mỗi 5 phút (`publisher.config_poll_s`); bản mới chỉ được áp khi xe đang nghỉ (M47, M79).
+- **External → khối 1–6 (nét đứt):** `tools/download_models.py` tải / xuất ba model một lần lúc cài đặt.
 
 ---
 
@@ -38,11 +70,11 @@ flowchart LR
         B14["<b>14 Publisher</b><br/>outbox · M5"]
 
         B1 --> B2 --> B3
-        B3 --> B5
         B2 -. luồng riêng .-> B4
         B3 --> B6
-        B5 --> B6
         B4 -.-> B6
+        B6 -. "EAR không tin được" .-> B5
+        B5 -. eye_closed .-> B7
         B6 --> B7 & B8
         B7 & B8 --> B9
         B10 --> B9
@@ -74,10 +106,11 @@ Cách đọc:
 - **Mũi tên đậm** (khối 14 → FastAPI) là đường duy nhất dữ liệu rời thiết bị. Chỉ có JSON metadata;
   publisher chặn dữ liệu nhị phân / base64 ngay trên thiết bị, backend chặn lần nữa (HTTP 422).
 - **Nét đứt** là đường không đồng bộ: YOLO chạy luồng riêng khoảng 5 lần/giây nên vòng chính vẫn đạt
-  151,8 FPS; ngưỡng chỉnh trên dashboard được thiết bị tải về một lần lúc khởi động
-  ([`edge_agent/io/remote_config.py`](../edge_agent/io/remote_config.py)).
-- **Khối 3 → 5 → 6**: MediaPipe trả 478 điểm và blendshape `eyeBlink`. Khối 5 cắt vùng mắt theo landmark,
-  chỉ được gọi khi EAR không tin được (mặt tối, camera IR, hai mắt lệch EAR), và gửi `p_closed` cho khối 6.
+  151,8 FPS; ngưỡng chỉnh trên dashboard được thiết bị tải về lúc khởi động và hỏi lại mỗi 5 phút, bản mới chỉ
+  áp khi xe đang nghỉ ([`edge_agent/io/remote_config.py`](../edge_agent/io/remote_config.py), M47, M79).
+- **Khối 3 → 6 → 5**: MediaPipe trả 478 điểm và blendshape `eyeBlink`. Khối 5 chạy **sau** khối 6
+  ([`edge_agent/main.py`](../edge_agent/main.py)): cắt vùng mắt theo landmark, chỉ được gọi khi EAR không tin được
+  (mặt tối, camera IR, hai mắt lệch EAR), và ghi kết quả vào đặc trưng trước khi sang khối 7.
   Nguồn chọn trong `config/thresholds.yaml` (`eye_state.source`). YOLO gửi cờ `phone_near_face`.
 - **Vào khối 9**: nhánh 7 và 8 gửi điểm, khối 10 gửi tốc độ (đang chạy hay đứng yên), khối 11 gửi xu hướng mệt của cả chuyến.
 - **Ra khỏi khối 12**: mức + lý do cho HUD server (màn `#/hud` hỏi mỗi 300 ms), và sự kiện cho publisher.
