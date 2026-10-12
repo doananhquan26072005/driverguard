@@ -2,7 +2,7 @@
 
 > Ai làm gì, ngày nào, kết quả gì. Bảng 1 tóm tắt theo ngày; bảng 2 là lịch sử commit lấy từ `git log`.
 > Ghi chép chi tiết từng ngày (số đo, lệnh chạy lại, việc còn mở) nằm ở [worklog/](worklog/); quyết định và bài học
-> ở [JOURNAL.md](JOURNAL.md); trạng thái từng mốc ở [roadmap.md](roadmap.md).
+> ở [journal.md](journal.md); trạng thái từng mốc ở [roadmap.md](roadmap.md).
 
 Thành viên theo tên trên GitHub: `kelsingo`, `Yuhnguyn` (PRD), `hddung-vinai` (nhánh `dungx`), `DAQuan` (nhánh `DAQuan`,
 hai tài khoản `DAQuan-VinAI` / `DQQuan-VinAI`).

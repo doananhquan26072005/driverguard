@@ -72,14 +72,14 @@ Ràng buộc thiết kế (từ `CLAUDE.md`):
 | **L2** | Cảnh báo | Âm thanh + rung ghế |
 | **L3** | Nguy hiểm | Cảnh báo mạnh, gợi ý dừng xe nghỉ |
 
-**Giao diện HUD** (`frontend/src/hud/HudView.tsx`, luôn nền tối): thiết kế để liếc 0,5 s là hiểu. Khối trạng thái lớn bên trái (gần tầm mắt tài xế ở xe tay lái thuận) có màu theo mức, icon theo lý do và một câu **hành động** ("Nhìn về phía trước", "Bỏ điện thoại xuống"); lý do cụ thể nằm ở dòng nhỏ bên dưới. Mức càng cao, màn hình càng ít chữ:
+**Giao diện HUD** (`frontend/src/hud/HudView.tsx`, luôn nền tối): thiết kế để liếc 0,5 s là hiểu. Khối trạng thái lớn bên trái (gần tầm mắt tài xế ở xe tay lái thuận) có màu theo mức, icon theo lý do và một câu **hành động** ("Nhìn đường!", "Bỏ điện thoại xuống"); lý do cụ thể nằm ở dòng nhỏ bên dưới. Mức càng cao, màn hình càng ít chữ:
 
 | Mức | HUD hiển thị |
 |---|---|
 | **L0** | Nền tối, khiên xanh "Tỉnh táo". Ban đêm giảm sáng 20 % cho đỡ chói |
 | **L1** | Viền và icon vàng |
 | **L2** | Cả khối trạng thái tô cam, chữ tối |
-| **L3** | Đỏ toàn màn hình, nhấp nháy 1 Hz (tắt nếu hệ điều hành bật "giảm chuyển động"). Chỉ còn "Mở mắt! Dừng xe nghỉ ngay" và số giây mắt nhắm; thông số và nút "Cảnh báo sai" bị ẩn |
+| **L3** | Đỏ toàn màn hình, nhấp nháy 1 Hz (tắt nếu hệ điều hành bật "giảm chuyển động"). Chỉ còn "Mở mắt! Dừng xe nghỉ ngay" và số giây mắt nhắm; thông số và nút "Cảnh báo nhầm" bị ẩn |
 | Mất camera / kết nối | Thẻ viền xanh dương: lỗi thiết bị, không phải lỗi tài xế |
 
 Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam giác → bát giác (như biển báo), luôn kèm chữ L0–L3. Khi có nhiều lý do, tiêu đề lấy lý do nguy hiểm nhất (`frontend/src/hud/hudModel.ts`: microsleep > no_face > phone > off_road > drowsy_score > trend > blink_rate). Thứ tự này chỉ dùng để hiển thị, không đổi mức cảnh báo.
@@ -103,13 +103,13 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 - **Mốc "nhìn đường" tự học**, nên camera lắp lệch không bị hiểu là mất tập trung.
 - **Tắt nhánh mất tập trung khi xe dừng** (dưới 5 km/h), và **bỏ qua nhìn ngang khi bật xi nhan**.
 - Cảnh báo phải **giữ đủ lâu** mới phát, **giữ mức một lúc** trước khi hạ, và có **cooldown**, nên không nhấp nháy, không lặp lại.
-- Tài xế bấm **"Cảnh báo sai"** trên HUD; kỹ sư xem tỉ lệ báo sai theo từng lý do để chỉnh ngưỡng.
+- Tài xế bấm **"Cảnh báo nhầm"** trên HUD; kỹ sư xem tỉ lệ báo sai theo từng lý do để chỉnh ngưỡng.
 
 ### 2.4 Theo vai trò
 
 | Vai trò | Dùng gì | Được làm gì |
 |---|---|---|
-| **Tài xế** | HUD trong xe (`#/hud`); dashboard (`#/dashboard`) | Xem mức cảnh báo, bấm "Cảnh báo sai"; xem sự kiện **của mình** |
+| **Tài xế** | HUD trong xe (`#/hud`); dashboard (`#/dashboard`) | Xem mức cảnh báo, bấm "Cảnh báo nhầm"; xem sự kiện **của mình** |
 | **Quản lý đội xe** (`manager`) | Dashboard | Nhật ký sự kiện, timeline mệt mỏi, thống kê; xem ngưỡng (chỉ đọc) |
 | **Kỹ sư** (`engineer`) | Dashboard | Như quản lý + **chỉnh ngưỡng** |
 | **Quản trị** (`admin`) | Dashboard + API | Mọi quyền + tạo tài khoản, đăng ký thiết bị |
@@ -120,24 +120,24 @@ Màu không phải tín hiệu duy nhất: icon mức đổi hình tròn → tam
 
 | Lúc | Tài xế thấy / làm | Ghi chú |
 |---|---|---|
-| Xe dừng, chưa đăng ký | Màn hình **"Đăng ký khuôn mặt"**: vì sao cần, ảnh không bị lưu / gửi. Bấm **"Đồng ý, bắt đầu đăng ký"** hoặc **"Để sau"** | "Để sau" vẫn lái được, hỏi lại ở lần dừng sau (M24) |
+| Xe dừng, chưa đăng ký | Màn hình **"Làm quen khuôn mặt"**: vì sao cần, ảnh không bị lưu / gửi. Bấm **"Đồng ý, bắt đầu"** hoặc **"Để sau"** | "Để sau" vẫn lái được, hỏi lại ở lần dừng sau (M24) |
 | Đăng ký (~10 s) | Nhìn thẳng camera → nhìn ra đường → nhắm mắt tới khi nghe bíp; HUD đọc từng bước | Mốc riêng của tài xế, chỉ trong RAM một chuyến (M9) |
-| Đang lái | Màu, hình, câu hành động ("Nhìn về phía trước", "Mở mắt! Dừng xe nghỉ ngay") và âm thanh riêng cho từng loại | Âm thanh luôn bật; trình duyệt chặn thì dải vàng "Chạm vào màn hình để bật" (M23) |
-| Cúi nhìn điện thoại / bảng đồng hồ | L2 "Nhìn về phía trước", không phải L3 ngủ gật | M25 |
+| Đang lái | Màu, hình, câu hành động ("Nhìn đường!", "Mở mắt! Dừng xe nghỉ ngay") và âm thanh riêng cho từng loại | Âm thanh luôn bật; trình duyệt chặn thì dải vàng "Chạm vào màn hình để bật" (M23) |
+| Cúi nhìn điện thoại / bảng đồng hồ | L2 "Nhìn đường!", không phải L3 ngủ gật | M25 |
 | Xe dừng (0 km/h) | Không có cảnh báo nào (kể cả nhắm mắt, cầm điện thoại) | M30 |
 | Đổi người lái | Nút **"Đổi tài xế"**: người mới được hỏi đồng ý và đăng ký lại khi xe dừng | M16, M24 |
-| Báo sai | Nút "Cảnh báo sai" trong 120 s sau cảnh báo | Gửi lên dashboard |
-| Hết chuyến | Nút **"Kết thúc chuyến"** → bảng tổng kết (đánh giá, biểu đồ từng phút, gợi ý nghỉ) | Quản lý / kỹ sư xem ở tab **"Báo cáo chuyến đi"** (M15) |
+| Báo sai | Nút "Cảnh báo nhầm" trong 120 s sau cảnh báo | Gửi lên dashboard |
+| Hết chuyến | Nút **"Kết thúc ca lái"** → bảng tổng kết (đánh giá, biểu đồ từng phút, gợi ý nghỉ) | Quản lý / kỹ sư xem ở tab **"Báo cáo ca lái"** (M15) |
 
 **Khi hệ thống không giám sát được, HUD nói rõ** (và có âm báo; chi tiết: `docs/safety-fmea.md`):
 
 | HUD hiện | Nghĩa |
 |---|---|
-| "Tạm ngưng giám sát: không thấy mặt" | Mất mặt ≥ 3 s khi xe chạy (M10) |
-| "Mất camera" | Camera rút ra / hỏng, đang kết nối lại |
-| "Lỗi xử lý" | Xử lý frame lỗi liên tục ≥ 1 s; vòng lặp tự thử lại (M28) |
+| "Tạm ngưng theo dõi", không thấy mặt | Mất mặt ≥ 3 s khi xe chạy (M10) |
+| "Mất hình camera" | Camera rút ra / hỏng, đang kết nối lại |
+| "Hệ thống gặp lỗi" | Xử lý frame lỗi liên tục ≥ 1 s; vòng lặp tự thử lại (M28) |
 | "Không nhận dữ liệu từ camera" / "Mất kết nối" | Vòng xử lý ngừng cập nhật / HUD không gọi được thiết bị (M28: có âm báo) |
-| Dải vàng "Mất tín hiệu xe" | Mất tín hiệu tốc độ: lúc chạy vẫn giám sát như đang chạy, lúc đỗ coi như đỗ (M26) |
+| Dải vàng "Mất tín hiệu tốc độ xe" | Mất tín hiệu tốc độ: lúc chạy vẫn giám sát như đang chạy, lúc đỗ coi như đỗ (M26) |
 | Chip "Máy chậm: cảnh báo có thể trễ" | FPS dưới 15 kéo dài 5 s (M28) |
 
 ## 3. Kiến trúc
@@ -282,7 +282,7 @@ uv pip install -r requirements-dev.txt      # hoặc: pip install -r requirement
 ```
 
 - `requirements.txt`: chỉ những gì DriverGuard cần để chạy (edge agent + backend).
-- `requirements-dev.txt`: thêm ruff, pytest, httpx để kiểm tra code và chạy test.
+- `requirements-dev.txt`: thêm ruff, pytest, pytest-cov, httpx để kiểm tra code và chạy test.
 - `requirements-template.txt`: phần template của khóa học (`src/`, LangGraph/LangChain, Dockerfile). DriverGuard không cần; khi chưa cài, `tests/test_agents` và `tests/test_api` được tự bỏ qua.
 - **`Dockerfile` / `docker-compose.yml` chạy app template của khóa học (`src.main:app`), không phải backend DriverGuard.** Backend DriverGuard chạy bằng `uvicorn backend.app:app` (mục 7.2); chưa có image Docker cho nó.
 - macOS: `requirements.txt` ghim `mediapipe==0.10.21`, vì bản 1.0.x bị crash (Metal).
@@ -426,7 +426,7 @@ python tools/drive_sim.py --scenario config\scenarios\city_day.yaml   # hoặc c
   nữa.
 - **Không chạy công cụ = xe đứng yên 0 km/h.** Tắt công cụ khi xe đang đỗ thì sau 1 s
   (`context.vehicle_signal_stale_s`) xe vẫn là đỗ, HUD báo mất tín hiệu.
-- **Tắt công cụ khi xe đang chạy = mất tín hiệu xe** (M26): HUD báo "Mất tín hiệu xe: vẫn giám sát như đang
+- **Tắt công cụ khi xe đang chạy = mất tín hiệu xe** (M26): HUD báo "Mất tín hiệu tốc độ xe: vẫn theo dõi như đang
   chạy" kèm âm báo, tốc độ hiện "–", hệ thống vẫn giám sát như xe đang chạy. Tắt công cụ khi xe đang đỗ cũng
   được báo ("coi như đang đỗ đến khi có lại tốc độ"). Chạy lại công cụ thì có lại tín hiệu.
 - `#/live` trên trình duyệt cũng đọc công cụ này (cùng máy).
@@ -435,7 +435,7 @@ python tools/drive_sim.py --scenario config\scenarios\city_day.yaml   # hoặc c
   **Giảm tốc**, **Chạy đều 50**, **Dừng xe**, xi nhan **Trái / Tắt / Phải**; phím giống công cụ terminal
   (W / S / Space / C / A / D / X). Tốc độ tăng giảm dần như xe thật. Trang này gửi tốc độ qua backend theo mã
   ghép (chỉ số, không lưu); `#/live` ưu tiên nó, không có thì đọc công cụ terminal. Đóng trang khi xe đang
-  chạy thì `#/live` báo "Mất tín hiệu xe".
+  chạy thì `#/live` báo "Mất tín hiệu tốc độ xe".
 - **Xe đứng yên (0 km/h) không có cảnh báo nào** (M30), kể cả nhắm mắt hay cầm điện thoại.
 
 **Terminal 4 – Frontend**
@@ -454,7 +454,7 @@ npm run dev
 1. Đăng nhập dashboard bằng `kysu` (kỹ sư).
 2. Trước webcam: nhắm mắt khoảng 2 s → HUD chuyển **L3**, terminal in `[ALERT L3] microsleep`.
 3. Cầm điện thoại lên tai khoảng 3 s → **L2** `phone`.
-4. Trên HUD bấm **"Cảnh báo sai"** → dashboard tab *Nhật ký sự kiện* hiện thẻ "Tài xế báo sai".
+4. Trên HUD bấm **"Cảnh báo nhầm"** → dashboard tab *Nhật ký sự kiện* hiện thẻ "Tài xế báo sai".
 5. Chờ hơn 1 phút → tab *Timeline mệt mỏi* có điểm `drowsy_score` theo từng phút.
 6. Tab *Ngưỡng*: đổi `drowsy_score → L1` thành 45 → **Lưu**. Edge agent đang chạy hỏi lại backend mỗi 5 phút (`publisher.config_poll_s`) và áp phiên bản mới **khi xe đỗ**, terminal in `[config] thresholds version N applied`; khởi động lại thì áp ngay (`[config] 1 tuned thresholds applied`).
 
@@ -495,7 +495,7 @@ drowsy_score = 40·PERCLOS + 25·microsleep + 15·ngáp + 20·gục đầu   (m�
 
 **Áp thử và quay lui (M47).** Ô "Chỉ áp thử cho các xe" nhận mã thiết bị (vd. `cam-001, web-an`): chỉ các xe
 đó nhận phiên bản mới, cả đội giữ phiên bản đang dùng. Bảng "Phiên bản ngưỡng" cho biết mỗi phiên bản đổi khoá
-nào, xe nào đang chạy, bao nhiêu cảnh báo và bao nhiêu lần tài xế bấm "Cảnh báo sai". Nút "Áp cho cả đội" đưa
+nào, xe nào đang chạy, bao nhiêu cảnh báo và bao nhiêu lần tài xế bấm "Cảnh báo nhầm". Nút "Áp cho cả đội" đưa
 một phiên bản bất kỳ (bản đang thử, hoặc một bản cũ để quay lui) thành của cả đội. Xe báo `config_applied` trong
 nhật ký sự kiện khi đã nhận; bộ ngưỡng không nhất quán bị xe từ chối (`config_refused`) và xe giữ bộ cũ.
 
@@ -746,6 +746,7 @@ python tools\phone_study.py report --dets data\eval_traces\3mdad_phone.pkl --out
 
 ```powershell
 pytest tests\test_edge_agent tests\test_backend -q       # không cần camera, video hay Docker
+pytest tests -q --cov=edge_agent --cov=backend --cov=tools   # kèm coverage (Linux/macOS: make coverage)
 ruff check edge_agent backend tools tests
 cd frontend; npm test; npm run build                     # test frontend (vitest)
 cd frontend; npx playwright install chromium; npm run e2e   # test end to end #/live + dashboard (lần đầu)
@@ -783,8 +784,8 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 
 - HUD server chỉ nghe trên `127.0.0.1`. HUD phải chạy trên **cùng máy** với edge agent.
 - Ngưỡng chỉnh trên dashboard có hiệu lực ở lần **xe đỗ** kế tiếp sau khi thiết bị hỏi lại backend (mỗi 5 phút), hoặc khi edge agent khởi động lại. Không bao giờ đổi lúc xe đang chạy (M47).
-- Nút "Cảnh báo sai" chỉ dùng được trong **120 giây** sau khi có cảnh báo (`hud.feedback_window_s`; HUD đọc giá trị này từ thiết bị).
-- **Mất camera** (rút dây, lỗi driver): sau `capture.max_consecutive_failures` lần đọc lỗi, hoặc `capture.frame_timeout_s` (3 s) không có frame, edge agent coi là mất camera. HUD hiện "Mất camera", backend nhận sự kiện `camera_lost` (loại `system`, mức 0, không tính vào thống kê cảnh báo), và camera được mở lại mỗi `capture.reconnect_interval_s` (2 s). Có hình trở lại thì gửi `camera_restored`. Video file vẫn kết thúc bình thường.
+- Nút "Cảnh báo nhầm" chỉ dùng được trong **120 giây** sau khi có cảnh báo (`hud.feedback_window_s`; HUD đọc giá trị này từ thiết bị).
+- **Mất camera** (rút dây, lỗi driver): sau `capture.max_consecutive_failures` lần đọc lỗi, hoặc `capture.frame_timeout_s` (3 s) không có frame, edge agent coi là mất camera. HUD hiện "Mất hình camera", backend nhận sự kiện `camera_lost` (loại `system`, mức 0, không tính vào thống kê cảnh báo), và camera được mở lại mỗi `capture.reconnect_interval_s` (2 s). Có hình trở lại thì gửi `camera_restored`. Video file vẫn kết thúc bình thường.
 - Ngưỡng liên quan nhau được kiểm tra chéo (`edge_agent/config.py`, `CONSISTENCY_RULES`, ví dụ L1 < L2, sự kiện microsleep không muộn hơn luật L3): YAML sai thì agent không khởi động, ngưỡng từ dashboard sai thì backend trả 422 khi lưu và thiết bị bỏ qua.
 - Khi xe dừng (dưới `context.min_speed_kmh` = 5 km/h), nhánh mất tập trung tắt. Nếu không có tín hiệu tốc độ (`speed_kmh = None`), hệ thống mặc định coi xe đang chạy (`context.assume_moving_when_speed_unknown`) nhưng không coi là tốc độ cao; cả risk engine lẫn nhánh 8 đều theo quy tắc này.
 - Nhánh buồn ngủ khi xe **đứng yên** (dưới `context.stationary_kmh` = 1 km/h; xe bò 2–4 km/h lúc kẹt xe vẫn tính là đang đi): cảnh báo buồn ngủ tối đa **L1** (`risk.drowsy.stationary_max_level`), nên microsleep ở đèn đỏ vẫn có chime, còn tài xế đỗ xe nhắm mắt nghỉ không bị báo động mạnh L3. Đứng yên từ `context.rest_after_s` (120 s) trở lên thì coi là **nghỉ**: không cảnh báo buồn ngủ, không đưa vào timeline mệt mỏi. Khi xe chạy lại, dữ liệu buồn ngủ gom từ lúc dừng (PERCLOS, microsleep, ngáp, gật đầu, mốc mắt mở) bị xoá, để giấc nghỉ không gây cảnh báo ở những giây đầu của lần lái tiếp. Đánh đổi: tài xế ngủ gật ở đèn đỏ chỉ nhận chime L1, và đèn đỏ dài hơn 120 s thì bị coi là nghỉ. Key cũ `risk.drowsy.active_when_stopped` đã bỏ (đặt `stationary_max_level: 0` để tắt hẳn khi đứng yên).
@@ -814,7 +815,7 @@ Logic theo thời gian (khối 7–12) được test bằng **chuỗi số giả
 | `Model not found: ...face_landmarker.task` | Chưa tải model | `python tools\download_models.py` |
 | `[phone] disabled: Model not found ...yolov8n.onnx` | Chưa export YOLO | Làm theo mục 6.2 |
 | `[publisher] disabled: no --device-key` | Thiếu khóa thiết bị | Đặt `$env:DG_DEVICE_KEY` hoặc dùng `--device-key` |
-| HUD báo "Không kết nối được thiết bị" | Edge agent chưa chạy hoặc `--hud-port 0` | Chạy `python -m edge_agent.main ...`, hoặc bấm "Chạy mô phỏng" |
+| HUD báo "Mất kết nối với thiết bị" | Edge agent chưa chạy hoặc `--hud-port 0` | Chạy `python -m edge_agent.main ...`, hoặc bấm "Chạy mô phỏng" |
 | HUD báo "Không nhận dữ liệu từ camera" | Vòng lặp camera bị treo hoặc đã kết thúc | Kiểm tra camera, hoặc thêm `--loop` cho video |
 | Dashboard: "Không kết nối được máy chủ" | Backend chưa chạy hoặc sai địa chỉ | Chạy uvicorn cổng 8100, kiểm tra `VITE_API_URL` |
 | Lỗi CORS trên trình duyệt | Frontend chạy ở cổng khác 5173 | Dùng `npm run dev` (cổng cố định), hoặc thêm origin vào `DG_CORS_ORIGINS` |

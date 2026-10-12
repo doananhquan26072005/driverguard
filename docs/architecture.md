@@ -8,11 +8,11 @@ thời gian; không có LLM, LangGraph hay Vector Store (code LangGraph trong `s
 
 ## Architecture Diagram
 
-![Kiến trúc hệ thống DriverGuard: Frontend React, edge agent 14 khối, Backend FastAPI, SQLite, nguồn model pretrained](docs/diagrams/architecture.svg)
+![Kiến trúc hệ thống DriverGuard: Frontend React, edge agent 14 khối, Backend FastAPI, SQLite, nguồn model pretrained](diagrams/architecture.svg)
 
-PNG: [docs/diagrams/png/architecture.png](docs/diagrams/png/architecture.png). Hình sinh từ
-[docs/diagrams/build_architecture.py](docs/diagrams/build_architecture.py). Các hình chi tiết (14 khối, hai cách chạy,
-trình tự một cảnh báo, deployment) ở [docs/architecture_diagram.md](docs/architecture_diagram.md).
+PNG: [docs/diagrams/png/architecture.png](diagrams/png/architecture.png). Hình sinh từ
+[docs/diagrams/build_architecture.py](diagrams/build_architecture.py). Các hình chi tiết (14 khối, hai cách chạy,
+trình tự một cảnh báo, deployment) ở [architecture_diagram.md](architecture_diagram.md).
 
 ## Components
 
@@ -79,8 +79,8 @@ flowchart LR
     BR -- "REST, cùng origin" --> API
 ```
 
-Chi tiết và các địa chỉ đang chạy: [docs/architecture_diagram.md mục 4](docs/architecture_diagram.md#4-deployment),
-[docs/deploy-railway.md](docs/deploy-railway.md).
+Chi tiết và các địa chỉ đang chạy: [architecture_diagram.md mục 4](architecture_diagram.md#4-deployment),
+[docs/deploy-railway.md](deploy-railway.md).
 
 ## Security
 
@@ -88,7 +88,7 @@ Chi tiết và các địa chỉ đang chạy: [docs/architecture_diagram.md m�
 - JWT theo vai trò cho người dùng, `X-Device-Key` cho thiết bị; secret nằm trong biến môi trường, không commit.
 - Backend và frontend cùng origin, có Content-Security-Policy (M99).
 - HUD server chỉ nghe ở `127.0.0.1` và kiểm nguồn gọi (M84).
-- Chi tiết: [SECURITY.md](SECURITY.md), [docs/data-policy.md](docs/data-policy.md).
+- Chi tiết: [SECURITY.md](../SECURITY.md), [docs/data-policy.md](data-policy.md).
 
 ## Design Decisions
 

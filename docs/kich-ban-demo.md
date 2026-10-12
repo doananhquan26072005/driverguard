@@ -13,6 +13,12 @@ và giới thiệu team, demo use case chính, kiến trúc, edge case, kết.
 
 Quay từng phần riêng rồi ghép. Lời thoại thu sau, đọc đè lên hình, để lúc quay chỉ cần tập trung thao tác.
 
+**Đã quay ngày 09/10/2026:** 21 clip chưa lồng tiếng, mỗi dòng của kịch bản một clip và một cảnh thêm, nằm ở
+`presentation/demo-clips/` (chưa đưa vào git). Bảng lồng tiếng kèm mốc giây của từng clip:
+[LOI-THOAI.md](../presentation/demo-clips/LOI-THOAI.md). Ghép nguyên là 299,9 giây (vừa chạm 5 phút, phải cắt bớt khi dựng). Khác kế hoạch dưới đây ở ba chỗ:
+phần 2 đổi thứ tự ba cảnh báo (đã sửa trong bảng phần 2), phần 3 dài 64 giây thay vì 50 để đọc kịp lời, và cảnh
+DevTools ở phần 3 thay bằng thẻ in lại request thật.
+
 ## Chuẩn bị trước khi quay
 
 **Bản để quay.** Chạy local nhánh `DAQuan` (4 terminal theo [HowToUse.md mục 7.3](../HowToUse.md#73-toàn-bộ-hệ-thống-4-terminal),
@@ -61,13 +67,17 @@ Diễn tập cả kịch bản ít nhất hai lượt trước khi bấm quay.
 
 | Thời gian | Thao tác | Màn hình phải thấy | Lời thoại |
 |---|---|---|---|
-| 0:35–0:55 | Cửa sổ A. Xe đang 0 km/h. Bấm "Đồng ý, bắt đầu đăng ký", làm 3 bước: nhìn camera, nhìn ra đường, nhắm mắt. Tua nhanh đoạn này khi dựng | Màn hình xin đồng ý, rồi 3 bước đăng ký, rồi "Đăng ký xong" | "Đây là bản chạy trong trình duyệt, cùng một logic với bản trên thiết bị. Xe đang đỗ, hệ thống xin đồng ý rồi đăng ký khuôn mặt khoảng mười giây để lấy mốc riêng của từng tài xế. Ảnh không bị lưu hay gửi đi." |
+| 0:35–0:55 | Cửa sổ A. Xe đang 0 km/h. Bấm "Đồng ý, bắt đầu", làm 3 bước: nhìn camera, nhìn ra đường, nhắm mắt. Tua nhanh đoạn này khi dựng | Màn hình xin đồng ý, rồi 3 bước làm quen, rồi "Làm quen xong" | "Đây là bản chạy trong trình duyệt, cùng một logic với bản trên thiết bị. Xe đang đỗ, hệ thống xin đồng ý rồi đăng ký khuôn mặt khoảng mười giây để lấy mốc riêng của từng tài xế. Ảnh không bị lưu hay gửi đi." |
 | 0:55–1:05 | Cửa sổ B: bấm "Chạy đều 50". Nhìn thẳng | Tốc độ lên 50 km/h, khiên xanh "Tỉnh táo", L0 | "Tôi cho xe chạy năm mươi cây số một giờ. Màn hình xanh: tỉnh táo." |
-| 1:05–1:20 | Nhắm chặt mắt 3 s, rồi mở | Đỏ toàn màn hình, "Mở mắt! Dừng xe nghỉ ngay", còi lặp, số giây mắt nhắm; mở mắt thì hết | "Nhắm mắt quá một giây rưỡi: mức ba. Đỏ toàn màn hình, còi lặp cho tới khi mở mắt." |
-| 1:20–1:32 | Đưa điện thoại lên tai, giữ 4 s, bỏ xuống | Khối trạng thái cam, L2, "Bỏ điện thoại xuống" | "Đưa điện thoại lên tai: mức hai, kèm câu nhắc hành động." |
-| 1:32–1:45 | Quay đầu sang phải, giữ 4 s, quay lại. Chạm nút "Cảnh báo này sai?" | L2 "Nhìn về phía trước"; sau khi chạm hiện "Đã ghi nhận cảnh báo sai" | "Nhìn khỏi đường hơn hai giây: mức hai. Nếu cảnh báo sai, tài xế chạm nút này, phản hồi được gửi cho kỹ sư để chỉnh ngưỡng." |
-| 1:45–1:57 | Cửa sổ B: "Dừng xe". Cửa sổ A: "Kết thúc chuyến", xác nhận | Bảng tổng kết chuyến: đánh giá, biểu đồ từng phút | "Hết chuyến, tài xế xem bản tổng kết của mình." |
-| 1:57–2:20 | Cửa sổ C (quản lý). Lần lượt: "Đội xe", "Báo cáo chuyến" (mở chuyến vừa xong), "Nhật ký sự kiện" (dòng tài xế báo sai), "Ngưỡng (chỉ xem)" | Xe vừa chạy trong danh sách; ba cảnh báo L3 / L2 / L2 vừa tạo; dòng có nhãn báo sai | "Phía quản lý chỉ nhận số liệu, không có hình. Tab Đội xe cho biết xe nào đang hoạt động, xe nào mất liên lạc. Báo cáo chuyến và nhật ký sự kiện có cả lần tài xế báo sai. Kỹ sư chỉnh ngưỡng theo phiên bản, áp thử vài xe rồi mới áp cho cả đội." |
+| 1:05–1:17 | Đưa điện thoại lên tai, giữ 4 s, bỏ xuống | Khối trạng thái cam, L2, "Bỏ điện thoại xuống" | "Đưa điện thoại lên tai: mức hai, kèm câu nhắc hành động." |
+| 1:17–1:30 | Quay đầu sang phải, giữ 4 s, quay lại. Chạm nút "Cảnh báo nhầm?" | L2 "Nhìn đường!"; sau khi chạm hiện "Đã ghi nhận cảnh báo nhầm" | "Nhìn khỏi đường hơn hai giây: mức hai. Nếu cảnh báo sai, tài xế chạm nút này, phản hồi được gửi cho kỹ sư để chỉnh ngưỡng." |
+| 1:30–1:45 | Nhắm chặt mắt 3 s, rồi mở | Đỏ toàn màn hình, "Mở mắt! Dừng xe nghỉ ngay", còi lặp, số giây mắt nhắm; mở mắt thì hết đỏ, còn mức L1 "Hãy tìm chỗ dừng nghỉ" tới khi xe dừng | "Nhắm mắt quá một giây rưỡi: mức ba. Đỏ toàn màn hình, còi lặp cho tới khi mở mắt." |
+| 1:45–1:57 | Cửa sổ B: "Dừng xe". Cửa sổ A: "Kết thúc ca lái", xác nhận | Bảng tổng kết ca lái: đánh giá, biểu đồ từng phút | "Hết chuyến, tài xế xem bản tổng kết của mình." |
+| 1:57–2:20 | Cửa sổ C (quản lý). Lần lượt: "Đội xe", "Báo cáo ca lái" (mở chuyến vừa xong), "Nhật ký sự kiện" (dòng tài xế báo sai), "Ngưỡng (chỉ xem)" | Xe vừa chạy trong danh sách; ba cảnh báo L2 / L2 / L3 vừa tạo; dòng có nhãn báo sai | "Phía quản lý chỉ nhận số liệu, không có hình. Tab Đội xe cho biết xe nào đang hoạt động, xe nào mất liên lạc. Báo cáo chuyến và nhật ký sự kiện có cả lần tài xế báo sai. Kỹ sư chỉnh ngưỡng theo phiên bản, áp thử vài xe rồi mới áp cho cả đội." |
+
+Nhắm mắt (L3) quay sau cùng trong ba cảnh báo. Quay trước thì sau một lần nhắm mắt 4 giây màn hình không về xanh:
+điểm buồn ngủ = 25 (vừa có microsleep) + phần PERCLOS vượt ngưỡng L1 (40), nên mức L1 "Hãy tìm chỗ dừng nghỉ"
+giữ khoảng 40 giây và nằm đè lên hai cảnh điện thoại, nhìn lệch (đo ở lượt quay đầu ngày 09/10).
 
 ## Phần 3. Kiến trúc (2:20–3:10)
 
@@ -89,15 +99,23 @@ Bắt đầu một chuyến mới ở cửa sổ A (đã đăng ký), xe chạy 
 | Thời gian | Thao tác | Màn hình phải thấy | Lời thoại |
 |---|---|---|---|
 | 3:10–3:25 | Cửa sổ B: "Dừng xe", chờ về 0. Nhắm mắt 3 s, rồi cầm điện thoại lên tai 3 s | "Xe đang đỗ · 0 km/h", vẫn L0, không tiếng | "Edge case đầu tiên: xe dừng đèn đỏ. Nhắm mắt hay cầm điện thoại đều không bị báo, vì báo lúc này chỉ làm phiền." |
-| 3:25–3:42 | "Chạy đều 50". Bật xi nhan "Trái", quay đầu sang trái vừa phải (như nhìn gương) 3 s: không báo. Bấm "Tắt", chờ 3 s, lặp lại đúng động tác | Lần một L0; lần hai L2 "Nhìn về phía trước" | "Đang chạy, bật xi nhan trái rồi nhìn gương trái: không báo. Tắt xi nhan, cùng động tác đó: mức hai. Ngữ cảnh xe quyết định, không chỉ khuôn mặt." |
-| 3:42–3:52 | Lấy tay che kín camera 5 s, bỏ tay | Thẻ xanh dương "Tạm ngưng giám sát: camera bị che", có âm báo; bỏ tay thì "Đã giám sát lại" | "Che camera: hệ thống không đoán mò mà nói rõ là đang tạm ngưng giám sát, kèm lý do." |
-| 3:52–4:08 | Nghiêng người ra khỏi khung hình khoảng 10 s, rồi quay lại và chạm màn hình | "Tạm ngưng giám sát" sau 3 s, rồi cả màn hình hỏi "Bạn còn ở đó không?" | "Tài xế rời khỏi khung hình khi xe đang chạy: sau vài giây màn hình hỏi 'Bạn còn ở đó không'. Không trả lời thì quản lý được báo." |
-| 4:08–4:20 | Đóng cửa sổ B khi xe đang 50 km/h | Dải "Mất tín hiệu xe: vẫn giám sát như đang chạy", tốc độ hiện "–" | "Mất tín hiệu tốc độ: hệ thống chọn phía an toàn, vẫn giám sát như xe đang chạy. Khi không quan sát được, DriverGuard luôn nói ra." |
+| 3:25–3:42 | "Chạy đều 50". Bật xi nhan "Trái", quay đầu sang trái vừa phải (như nhìn gương) 3 s: không báo. Bấm "Tắt", chờ 3 s, lặp lại đúng động tác | Lần một L0; lần hai L2 "Nhìn đường!" | "Đang chạy, bật xi nhan trái rồi nhìn gương trái: không báo. Tắt xi nhan, cùng động tác đó: mức hai. Ngữ cảnh xe quyết định, không chỉ khuôn mặt." |
+| 3:42–3:52 | Lấy tay che kín camera 5 s, bỏ tay | Thẻ xanh dương "Tạm ngưng theo dõi", camera bị che, có âm báo; bỏ tay thì "Đã theo dõi lại" | "Che camera: hệ thống không đoán mò mà nói rõ là đang tạm ngưng giám sát, kèm lý do." |
+| 3:52–4:08 | Nghiêng người ra khỏi khung hình khoảng 10 s, rồi quay lại và chạm màn hình | "Tạm ngưng theo dõi" sau 3 s, rồi cả màn hình hỏi "Bạn vẫn ổn chứ?" | "Tài xế rời khỏi khung hình khi xe đang chạy: sau vài giây màn hình hỏi 'Bạn còn ở đó không'. Không trả lời thì quản lý được báo." |
+| 4:08–4:20 | Đóng cửa sổ B khi xe đang 50 km/h | Dải "Mất tín hiệu tốc độ xe: vẫn theo dõi như đang chạy", tốc độ hiện "–" | "Mất tín hiệu tốc độ: hệ thống chọn phía an toàn, vẫn giám sát như xe đang chạy. Khi không quan sát được, DriverGuard luôn nói ra." |
 
 Nếu dài quá 5 phút, bỏ cảnh 4:08–4:20 trước, rồi tới cảnh che camera.
 
+Cảnh thêm ngoài bảng (clip `4-6`, 14 giây, đặt sau cảnh mất tín hiệu xe): tám trạng thái khác của HUD lấy từ trang
+xem trước `#/hud-preview` (L1 nhắc nghỉ, L3 không phản ứng, không trả lời, mặt quá tối, bị chói, mất camera, lỗi xử
+lý, mất kết nối). Đây là trạng thái chọn bằng tay, không phải camera phát hiện: lời thoại không được nói khác đi.
+Nếu dài quá 5 phút thì bỏ cảnh này trước mọi cảnh trong bảng.
+
 Lưu ý khi quay cảnh xi nhan: xi nhan chỉ nới thêm 30° về phía đang bật, nên quay đầu vừa phải, đừng quay hẳn 90°.
-Sau khi tắt xi nhan còn 2 s nới, phải chờ qua khoảng đó mới làm lại động tác.
+Sau khi tắt xi nhan còn 2 s nới, phải chờ qua khoảng đó mới làm lại động tác. Khi quay ngày 09/10 cảnh này phải
+làm ba lượt: cả hai lần quay đầu cần nằm trong khoảng 38–56° so với lúc nhìn thẳng (xem số Yaw ở "Chi tiết kỹ
+thuật" của ô tự xem), và lần đầu phải giữ ít nhất 3 giây, lâu hơn 2,5 giây mà hệ thống cần để báo khi không có xi
+nhan; quay 30° thì sát ngưỡng và không chứng minh được gì.
 
 ## Phần 5. Kết (4:20–4:45)
 

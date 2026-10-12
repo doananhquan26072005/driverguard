@@ -20,10 +20,10 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 
 | Dashboard: nhật ký sự kiện | Dashboard: timeline mệt mỏi |
 |---|---|
-| ![Nhật ký sự kiện: 5 cảnh báo L1–L3 của một chuyến](docs/screenshots/dash-events.png) | ![Timeline mệt mỏi: drowsy_score từng phút kèm các cảnh báo](docs/screenshots/dash-timeline.png) |
+| ![Nhật ký sự kiện: 5 cảnh báo L1–L3 của một ca lái](docs/screenshots/dash-events.png) | ![Timeline mệt mỏi: drowsy_score từng phút kèm các cảnh báo](docs/screenshots/dash-timeline.png) |
 
 Ảnh HUD chụp ở trang `#/hud-preview` (trạng thái cố định, đã ẩn thanh chọn kịch bản). Ảnh dashboard chụp trên một
-database tạm với một chuyến **mô phỏng** (các dòng mang nhãn "mô phỏng"), không phải số liệu lái thật. Không ảnh nào
+database tạm với một ca lái **mô phỏng** (các dòng mang nhãn "mô phỏng"), không phải số liệu lái thật. Không ảnh nào
 có khuôn mặt.
 
 ## Mục lục
@@ -53,7 +53,7 @@ không quan sát được** (mất mặt, mất camera), và nhiều giải phá
   `drowsy_score`, `distraction_score` → mức **L0–L3**.
 - **Chống cảnh báo sai** ngang với độ chính xác: lọc theo thời gian, cooldown, theo tốc độ và xi nhan
   (xe đứng yên thì không cảnh báo; xi nhan thì cho nhìn ngang lâu hơn), đăng ký khuôn mặt để có mốc riêng
-  của từng tài xế, nút "Cảnh báo sai" để kỹ sư chỉnh ngưỡng.
+  của từng tài xế, nút "Cảnh báo nhầm" để kỹ sư chỉnh ngưỡng.
 - **Trung thực khi không giám sát được**: mất mặt, mất camera, mất tín hiệu xe, lỗi / chậm xử lý đều hiện
   rõ trên HUD kèm âm báo.
 - **Riêng tư**: frame chỉ nằm trong RAM; backend từ chối mọi dữ liệu giống ảnh / base64.
@@ -68,8 +68,8 @@ không quan sát được** (mất mặt, mất camera), và nhiều giải phá
 | Quản trị (`admin`) | Dashboard / CLI | Tạo tài khoản, tạo thiết bị (khóa thiết bị) |
 
 **Một chuyến đi:** xe dừng → HUD hỏi đồng ý rồi hướng dẫn đăng ký khuôn mặt → lái, hệ thống cảnh báo
-theo mức (âm thanh luôn bật) → tài xế bấm "Kết thúc chuyến" → bảng tổng kết cho tài xế, quản lý / kỹ sư
-xem ở tab "Báo cáo chuyến đi" trên dashboard.
+theo mức (âm thanh luôn bật) → tài xế bấm "Kết thúc ca lái" → bảng tổng kết cho tài xế, quản lý / kỹ sư
+xem ở tab "Báo cáo ca lái" trên dashboard.
 
 | Mức | Khi nào (ví dụ) | Cảnh báo |
 |---|---|---|
@@ -196,6 +196,7 @@ cd frontend && npm install && npm run dev
 | HUD trong xe (đọc edge agent, có nút "Chạy mô phỏng" khi không có agent) | http://localhost:5173/#/hud |
 | Giám sát ngay trong trình duyệt (cần `npm run prepare-live` một lần) | http://localhost:5173/#/live |
 | Dashboard (đăng nhập bằng tài khoản ở bước 3) | http://localhost:5173/#/dashboard |
+| Hướng dẫn sử dụng: các màn hình có thể hiện, kèm ý nghĩa và việc nên làm | http://localhost:5173/#/guide |
 | Xem trước các trạng thái HUD | http://localhost:5173/#/hud-preview |
 
 Chỉ muốn xem camera và chỉ số, không cần backend: `python tools/debug_view.py --source 0`.
@@ -378,14 +379,14 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 |---|---|---|---|
 | 1 | Source code | `edge_agent/`, `backend/`, `frontend/`, `tools/`, `config/` | ✅ |
 | 2 | README | File này (ảnh ở [docs/screenshots/](docs/screenshots/)) + [HowToUse.md](HowToUse.md) | ✅ |
-| 3 | Architecture diagram | [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
+| 3 | Architecture diagram | [docs/architecture.md](docs/architecture.md); hình chi tiết ở [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
 | 5 | Live URL | https://driveguard-v2-production.up.railway.app | ✅ |
-| 6 | Video demo | `presentation/` | Chưa có |
-| 7 | Pitch deck | `presentation/` | Chưa có |
-| 8 | Development journal | [docs/JOURNAL.md](docs/JOURNAL.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
-| 9 | Worklog | [docs/WORKLOG.md](docs/WORKLOG.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
-| 10 | Evaluation evidence | [eval/results/](eval/results/) | ✅ |
+| 6 | Video demo | [docs/video-demo.md](docs/video-demo.md) (link YouTube) | ✅ |
+| 7 | Pitch deck | `docs/pitch-deck.pdf` | Chưa có |
+| 8 | Development journal | [docs/journal.md](docs/journal.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
+| 9 | Worklog | [docs/worklog.md](docs/worklog.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
+| 10 | Evaluation evidence | [docs/evaluation.md](docs/evaluation.md); số liệu ở [eval/results/](eval/results/) | ✅ |
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
 (thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (M32–M69, từ 05/10), [docs/release-v4.md](docs/release-v4.md) (audit 08/10 và các việc
@@ -399,7 +400,7 @@ không cảnh báo được), [docs/improvements.md](docs/improvements.md) (vi�
 
 Team DriverGuard (4 người), AI20K Build Phase Cohort 4, VinUni:
 
-| Thành viên | GitHub | Vai trò (theo [docs/WORKLOG.md](docs/WORKLOG.md)) |
+| Thành viên | GitHub | Vai trò (theo [docs/worklog.md](docs/worklog.md)) |
 |---|---|---|
 | Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent và chống báo sai, đánh giá trên dataset, bản web `#/live`, backend, audit, deploy Railway, tài liệu |
 | Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Dựng pipeline 14 khối, backend và dashboard ban đầu (M0–M7); giao diện Version 4, giọng nói tiếng Việt, deploy tự động (M57–M66) |

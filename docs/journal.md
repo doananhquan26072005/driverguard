@@ -1,7 +1,7 @@
 # Development Journal — DriverGuard
 
 > Mỗi ngày làm việc một mục, 2–3 câu: quyết định kỹ thuật và lý do, khó khăn và cách giải quyết, bài học.
-> Số liệu lấy từ nhật ký chi tiết từng ngày ở [worklog/](worklog/); lịch sử commit ở [WORKLOG.md](WORKLOG.md).
+> Số liệu lấy từ nhật ký chi tiết từng ngày ở [worklog/](worklog/); lịch sử commit ở [worklog.md](worklog.md).
 
 ## 24/09: dựng 14 khối, thử ngay trên dataset thật
 
