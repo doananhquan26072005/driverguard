@@ -4,8 +4,8 @@
 import type { RatingReason, SuggestionCode, TripDelivery, TripRating, TripSummary } from "../lib/types";
 
 export const RATING_TEXT: Record<TripRating, { title: string; detail: string }> = {
-  good: { title: "Chuyến đi an toàn", detail: "Không thấy dấu hiệu đáng lo trong chuyến này." },
-  attention: { title: "Cần chú ý", detail: "Có dấu hiệu mệt hoặc mất tập trung trong chuyến này." },
+  good: { title: "Ca lái an toàn", detail: "Không thấy dấu hiệu đáng lo trong ca lái này." },
+  attention: { title: "Cần chú ý", detail: "Có dấu hiệu mệt hoặc mất tập trung trong ca lái này." },
   risk: { title: "Có lúc rất nguy hiểm", detail: "Đã có lúc nhắm mắt ngủ gật khi đang lái." },
 };
 
@@ -13,7 +13,7 @@ export const RATING_REASON_TEXT: Record<RatingReason, string> = {
   microsleep: "Có lúc nhắm mắt ngủ gật khi đang lái",
   frequent_alerts: "Nhiều lần được nhắc nhìn đường hoặc tập trung lái",
   tired_minutes: "Nhiều phút có dấu hiệu mệt",
-  low_coverage: "Camera không thấy mặt trong một phần lớn chuyến đi, số liệu chưa đầy đủ",
+  low_coverage: "Camera không thấy rõ mặt bạn trong phần lớn ca lái nên số liệu chưa đủ",
 };
 
 /** "2 giờ 10 phút", "25 phút", "40 giây". */
@@ -31,7 +31,7 @@ export function suggestionText(code: SuggestionCode, minutes?: number | null): s
   const after = minutes != null ? formatDuration(minutes * 60) : "";
   switch (code) {
     case "rest_now":
-      return "Hãy nghỉ ngơi thật sự trước khi lái tiếp.";
+      return "Nghỉ cho lại sức rồi hãy lái tiếp.";
     case "rest_after":
       return `Lần sau nên dừng nghỉ sau khoảng ${after} lái.`;
     case "regular_breaks":
@@ -43,7 +43,7 @@ export function suggestionText(code: SuggestionCode, minutes?: number | null): s
     case "check_camera":
       return "Chỉnh camera để luôn thấy rõ mặt bạn.";
     case "enroll":
-      return "Lần sau, dừng xe vài giây để đăng ký khuôn mặt: nhận biết sẽ chính xác hơn.";
+      return "Lần sau, dừng xe khoảng 10 giây để làm quen khuôn mặt: cảnh báo sẽ chính xác hơn.";
   }
 }
 
@@ -58,7 +58,7 @@ export function driverStory(s: TripSummary): string {
   const parts: string[] = [];
   const rests = s.rests ? `, nghỉ ${s.rests} lần` : ", không nghỉ lần nào";
   const changes = s.driver_changes ? `, đổi tài ${s.driver_changes} lần` : "";
-  parts.push(`Chuyến ${formatDuration(s.duration_s)}${rests}${changes}.`);
+  parts.push(`Ca lái ${formatDuration(s.duration_s)}${rests}${changes}.`);
   if (s.first_tired_min != null) parts.push(`Bạn có dấu hiệu mệt từ phút lái thứ ${s.first_tired_min}.`);
   const nags = [
     [count(s, DROWSY_REASONS), "lần nhắc nghỉ"],
@@ -82,12 +82,12 @@ export function phoneKindText(s: TripSummary): string {
 /** Glances away from the road (M38, measured only, never an alert). */
 export function glanceText(s: TripSummary): string {
   if (s.glances == null || s.off_road_ratio_max == null) return "–";
-  return `${s.glances} lần; lúc nhiều nhất ${Math.round(s.off_road_ratio_max * 100)}% thời gian của cửa sổ đo (chỉ đo, chưa cảnh báo)`;
+  return `${s.glances} lần; lúc nhiều nhất ${Math.round(s.off_road_ratio_max * 100)}% thời gian (chỉ ghi lại, không cảnh báo)`;
 }
 
 export const DELIVERY_TEXT: Record<TripDelivery, string> = {
   sent: "Đã gửi bản tổng kết cho quản lý đội xe.",
-  failed: "Chưa gửi được (mất kết nối). Bản tổng kết chỉ còn trên màn hình này.",
+  failed: "Chưa gửi được vì mất mạng. Bản tổng kết chỉ xem được trên màn hình này.",
   local: "Chế độ dùng thử: bản tổng kết không được gửi đi.",
   device: "Thiết bị đã gửi bản tổng kết cho quản lý (mất mạng thì gửi khi có lại).",
 };
@@ -98,7 +98,7 @@ export function zoneOf(score: number, l1: number, l2: number): Zone {
   return score >= l2 ? "very_tired" : score >= l1 ? "tired" : "awake";
 }
 
-export const ZONE_TEXT: Record<Zone, string> = { awake: "Tỉnh táo", tired: "Hơi mệt", very_tired: "Mệt" };
+export const ZONE_TEXT: Record<Zone, string> = { awake: "Tỉnh táo", tired: "Hơi mệt", very_tired: "Rất mệt" };
 
 // ------------------------------------------------------------------ redesigned summary screen (M58)
 
@@ -107,7 +107,7 @@ export function suggestionTile(code: SuggestionCode, minutes?: number | null): {
   const after = minutes != null ? formatDuration(minutes * 60) : "";
   switch (code) {
     case "rest_now":
-      return { value: "Nghỉ ngơi thật sự", label: "Trước khi lái tiếp" };
+      return { value: "Nghỉ cho lại sức", label: "Trước khi lái tiếp" };
     case "rest_after":
       return { value: `Nghỉ sau ~${after}`, label: "Lần sau nên dừng nghỉ" };
     case "regular_breaks":
@@ -119,7 +119,7 @@ export function suggestionTile(code: SuggestionCode, minutes?: number | null): {
     case "check_camera":
       return { value: "Chỉnh lại camera", label: "Để luôn thấy rõ mặt bạn" };
     case "enroll":
-      return { value: "Đăng ký khuôn mặt", label: "Dừng xe vài giây ở lần sau" };
+      return { value: "Làm quen khuôn mặt", label: "Dừng xe 10 giây ở lần sau" };
   }
 }
 

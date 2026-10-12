@@ -77,7 +77,7 @@ export function TripBars({ summary: s, height = 140 }: { summary: TripSummary; h
     <div className="trip-bars">
       <div
         role="img"
-        aria-label={`Độ mệt theo thời gian của chuyến${s.first_tired_min != null ? `: có dấu hiệu mệt từ phút lái thứ ${s.first_tired_min}` : ""}`}
+        aria-label={`Độ mệt theo thời gian của ca lái${s.first_tired_min != null ? `: có dấu hiệu mệt từ phút lái thứ ${s.first_tired_min}` : ""}`}
         className="trip-bars-plot"
         style={{ height }}
       >
@@ -100,7 +100,7 @@ export function TripBars({ summary: s, height = 140 }: { summary: TripSummary; h
         {(
           [
             ["#4ade80", "Tỉnh táo"],
-            ["#fbbf24", "Mệt"],
+            ["#fbbf24", "Hơi mệt"],
             ["#f87171", "Rất mệt"],
             ["rgba(255,255,255,0.25)", "Xe dừng"],
           ] as const

@@ -260,7 +260,7 @@ export function playAlert(level: Level, reasons: readonly Reason[]): void {
 }
 
 // ------------------------------------------------------------------ recorded Vietnamese voice
-// Every spoken line is a file made once by tools/make_voice.py (Piper, voice vi_VN-vais1000) from
+// Every spoken line is a file made once by tools/make_voice.py (voice vi-VN-NamMinhNeural) from
 // hud/voice-lines.json, so the HUD speaks Vietnamese on any computer and offline. A missing file falls
 // back to the browser's Vietnamese voice (say), never to an English one.
 
@@ -276,7 +276,7 @@ function playNextLine(): void {
     voicePlaying = null;
     return;
   }
-  const audio = new Audio(`${import.meta.env.BASE_URL}voice/${key}.wav`);
+  const audio = new Audio(`${import.meta.env.BASE_URL}voice/${key}.mp3`);
   voicePlaying = audio;
   audio.onended = playNextLine;
   audio.onerror = () => {

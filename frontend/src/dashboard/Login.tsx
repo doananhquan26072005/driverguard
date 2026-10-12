@@ -1,11 +1,22 @@
 // One login for every role (M60, design "Đăng nhập chung"): the backend returns the role, the app then
 // opens that role's home page (nav.ts). The retention days come from /api/v1/policy, never hard-coded.
-import { type FormEvent, useEffect, useState } from "react";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+// The same page is the product's first page, #/live (`live`): there it also offers the try-out without
+// an account, and a driver who is already logged in starts the trip from it.
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { ArrowRight, BookOpen, Camera, LogOut, ShieldCheck } from "lucide-react";
 import { ApiError, getPolicy, login } from "../lib/api";
 import type { Session } from "../lib/types";
 
-export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
+/** What the first page (#/live) adds to the login page. */
+export interface LiveEntry {
+  session: Session | null; // already logged in: no form, "Bắt đầu ca lái"
+  onStart: () => void;
+  onGuest: () => void; // "Dùng thử không lưu"
+  onSwitch: () => void; // "Đổi tài khoản"
+  note?: ReactNode; // e.g. the camera could not be opened
+}
+
+export default function Login({ onLogin, live }: { onLogin: (s: Session) => void; live?: LiveEntry }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -26,13 +37,39 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
     try {
       onLogin(await login(username.trim(), password));
     } catch (err) {
-      setError(err instanceof ApiError && err.status === 401 ? "Sai tên đăng nhập hoặc mật khẩu" : String((err as Error).message));
+      setError(err instanceof ApiError && err.status === 401 ? "Sai tên đăng nhập hoặc mật khẩu" : "Không đăng nhập được. Kiểm tra mạng rồi thử lại.");
     } finally {
       setBusy(false);
     }
   }
 
   const keep = (n: number) => (n > 0 ? `sau ${n} ngày` : "khi quản trị viên xoá");
+
+  const alt = (
+    <div className="login-alt">
+      {live?.note}
+      {live ? (
+        <button type="button" className="dg-card login-live" onClick={live.onGuest}>
+          <span>
+            <b>Dùng thử không lưu</b>
+            <span className="muted">Không cần tài khoản, không gửi số liệu giám sát đi</span>
+          </span>
+          <ArrowRight aria-hidden size={20} />
+        </button>
+      ) : (
+        <a className="dg-card login-live" href="#/live">
+          <span>
+            <b>Chạy thử bằng camera trên máy này</b>
+            <span className="muted">Không cần tài khoản, không gửi gì đi</span>
+          </span>
+          <ArrowRight aria-hidden size={20} />
+        </a>
+      )}
+      <p className="muted small">
+        Màn hình trong xe (<a href="#/hud">HUD</a>) không cần đăng nhập: thiết bị đã gắn sẵn với xe.
+      </p>
+    </div>
+  );
 
   return (
     <div className="login-page">
@@ -46,6 +83,16 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         <div className="login-pitch">
           <h1>Mỗi chuyến đi an toàn hơn, không cần lưu một tấm ảnh nào.</h1>
           <p>Thiết bị trong xe nhận biết buồn ngủ và mất tập trung ngay trên xe. Máy chủ chỉ nhận số liệu cảnh báo: mức, lý do, thời điểm.</p>
+          <a className="login-guide" href="#/guide">
+            <span className="login-guide-icon" aria-hidden>
+              <BookOpen size={22} />
+            </span>
+            <span>
+              <b>Hướng dẫn sử dụng</b>
+              <span>Các màn hình bạn sẽ gặp và việc nên làm. Không cần tài khoản.</span>
+            </span>
+            <ArrowRight aria-hidden size={20} />
+          </a>
         </div>
         <ul className="login-facts">
           <li className="dg-card">
@@ -56,60 +103,76 @@ export default function Login({ onLogin }: { onLogin: (s: Session) => void }) {
             <b>Dữ liệu có hạn dùng</b>
             <span>
               {days
-                ? `Cảnh báo tự xoá ${keep(days.events)}, tổng kết chuyến ${keep(days.summaries)}.`
-                : "Cảnh báo và tổng kết chuyến tự xoá theo thời hạn của đội xe."}
+                ? `Cảnh báo tự xoá ${keep(days.events)}, tổng kết ca lái ${keep(days.summaries)}.`
+                : "Cảnh báo và tổng kết ca lái tự xoá theo thời hạn của đội xe."}
             </span>
           </li>
         </ul>
       </section>
 
       <section className="login-side">
-        <form className="login" onSubmit={submit}>
-          <div>
-            <h2>Đăng nhập</h2>
-            <p className="muted">Dùng chung cho tài xế, quản lý đội xe, kỹ sư và quản trị. Bạn sẽ vào đúng trang của vai trò mình.</p>
-          </div>
-          <label>
-            Tên đăng nhập
-            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
-          </label>
-          <label>
-            Mật khẩu
-            <span className="password">
-              <input
-                type={show ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-              />
-              <button type="button" className="link" onClick={() => setShow((v) => !v)} aria-pressed={show}>
-                {show ? "Ẩn" : "Hiện"}
+        {live?.session ? (
+          <div className="login">
+            <div>
+              <h2>Bắt đầu ca lái</h2>
+              <p className="muted">
+                Đăng nhập: <b>{live.session.username}</b> · cảnh báo được lưu vào tài khoản
+              </p>
+            </div>
+            <button type="button" className="primary big login-start" onClick={live.onStart}>
+              <Camera aria-hidden size={20} /> Cho phép camera và bắt đầu
+            </button>
+            <div className="login-row">
+              <a className="ghost" href="#/dashboard">
+                Mở Dashboard
+              </a>
+              <button type="button" className="ghost" onClick={live.onSwitch}>
+                <LogOut aria-hidden size={16} /> Đổi tài khoản
               </button>
-            </span>
-          </label>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <button type="submit" className="primary big" disabled={busy}>
-            {busy ? "Đang đăng nhập…" : "Đăng nhập"}
-          </button>
-          <p className="muted small">Quên mật khẩu? Liên hệ quản trị viên của đội xe.</p>
-          <div className="login-alt">
-            <a className="dg-card login-live" href="#/live">
-              <span>
-                <b>Chạy thử bằng camera trên máy này</b>
-                <span className="muted">Không cần tài khoản, không gửi gì đi</span>
-              </span>
-              <ArrowRight aria-hidden size={20} />
-            </a>
-            <p className="muted small">
-              Màn hình trong xe (<a href="#/hud">HUD</a>) không cần đăng nhập: thiết bị đã gắn sẵn với xe.
-            </p>
+            </div>
+            {alt}
           </div>
-        </form>
+        ) : (
+          <form className="login" onSubmit={submit}>
+            <div>
+              <h2>Đăng nhập</h2>
+              <p className="muted">
+                {live
+                  ? "Tài xế vào thẳng màn hình giám sát. Quản lý đội xe, kỹ sư và quản trị vào Dashboard."
+                  : "Dùng chung cho tài xế, quản lý đội xe, kỹ sư và quản trị. Bạn sẽ vào đúng trang của vai trò mình."}
+              </p>
+            </div>
+            <label>
+              Tên đăng nhập
+              <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+            </label>
+            <label>
+              Mật khẩu
+              <span className="password">
+                <input
+                  type={show ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+                <button type="button" className="link" onClick={() => setShow((v) => !v)} aria-pressed={show}>
+                  {show ? "Ẩn" : "Hiện"}
+                </button>
+              </span>
+            </label>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            <button type="submit" className="primary big" disabled={busy}>
+              {busy ? "Đang đăng nhập…" : "Đăng nhập"}
+            </button>
+            <p className="muted small">Quên mật khẩu? Liên hệ quản trị viên của đội xe.</p>
+            {alt}
+          </form>
+        )}
       </section>
     </div>
   );

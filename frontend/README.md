@@ -6,6 +6,7 @@ React + TypeScript + Vite. Two screens, hash-routed:
 |---|---|---|
 | `#/hud` | Driver, in the car | Edge agent HUD server `http://127.0.0.1:8765` (no login) |
 | `#/hud-preview` | Design review | Fixed scenarios, `?s=l0\|l1\|l1t\|l2o\|l2p\|l2f\|l3\|cam\|down&night=0` |
+| `#/guide` | User guide, from the login page (no login) | Fixed scenarios of `#/hud-preview`, drawn by the real HUD; `#/guide/<step>` opens one |
 | `#/dashboard` | Fleet manager, engineer, driver | Backend `http://localhost:8100` (login) |
 
 - **HUD** (`src/hud/`): built to be read in a 0.5 s glance. One large status stage takes the

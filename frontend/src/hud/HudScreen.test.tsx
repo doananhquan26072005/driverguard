@@ -274,7 +274,7 @@ describe("monitoring stops and comes back", () => {
   });
 });
 
-describe('"Bạn còn ở đó không?"', () => {
+describe('"Bạn vẫn ổn chứ?"', () => {
   const away = (presence: HudSnapshot["presence"]) => snap({ unavailable: true, unavailable_reason: "no_face", presence });
 
   it("the question rings at once and every presence_repeat_s; unanswered, the L3 siren takes over; it ends with the face", async () => {

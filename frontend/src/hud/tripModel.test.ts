@@ -55,11 +55,11 @@ describe("trip summary words", () => {
   it("tells the trip as a short story, no variable names", () => {
     const story = driverStory(trip());
     expect(story).toBe(
-      "Chuyến 2 giờ 10 phút, nghỉ 1 lần. Bạn có dấu hiệu mệt từ phút lái thứ 95. Có 2 lần nhắc nghỉ, 1 lần nhắc nhìn đường.",
+      "Ca lái 2 giờ 10 phút, nghỉ 1 lần. Bạn có dấu hiệu mệt từ phút lái thứ 95. Có 2 lần nhắc nghỉ, 1 lần nhắc nhìn đường.",
     );
     expect(story).not.toMatch(/drowsy|L[0-3]|EAR|PERCLOS/);
     expect(driverStory(trip({ alerts_by_reason: {}, first_tired_min: null, rests: 0 }))).toBe(
-      "Chuyến 2 giờ 10 phút, không nghỉ lần nào. Không có lần nhắc nào.",
+      "Ca lái 2 giờ 10 phút, không nghỉ lần nào. Không có lần nhắc nào.",
     );
   });
 
@@ -101,7 +101,7 @@ describe("block 8 measurements in the trip report (M38)", () => {
     const text = glanceText(trip({ glances: 14, off_road_ratio_max: 0.62 }));
     expect(text).toContain("14 lần");
     expect(text).toContain("62%");
-    expect(text).toContain("chưa cảnh báo");
+    expect(text).toContain("không cảnh báo");
   });
 
   it("shows a dash for summaries stored before M38", () => {

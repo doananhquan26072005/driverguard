@@ -40,11 +40,11 @@ describe("M58 driving screens", () => {
   });
 
   it("says what the recent minutes mean", () => {
-    expect(fatigueSummary(trip([10, 12]), [], true).text).toBe("Thấp · chưa cần nghỉ");
-    expect(fatigueSummary(trip([10, 12]), [], false).text).toBe("Thấp · xe đang đỗ");
-    expect(fatigueSummary(trip([30, 52, null]), [], true)).toEqual({ band: 1, text: "Mệt · nên nghỉ sớm" });
+    expect(fatigueSummary(trip([10, 12]), [], true).text).toBe("Tỉnh táo · chưa cần nghỉ");
+    expect(fatigueSummary(trip([10, 12]), [], false).text).toBe("Tỉnh táo · xe đang đỗ");
+    expect(fatigueSummary(trip([30, 52, null]), [], true)).toEqual({ band: 1, text: "Hơi mệt · nên nghỉ sớm" });
     expect(fatigueSummary(trip([75]), [], true).band).toBe(2);
-    expect(fatigueSummary(trip([20]), ["trend"], true)).toEqual({ band: 1, text: "Mệt · đang tăng dần" });
+    expect(fatigueSummary(trip([20]), ["trend"], true)).toEqual({ band: 1, text: "Mệt tăng dần · nên nghỉ sớm" });
   });
 
   it("splits an L3 order into the order and what to do", () => {
@@ -59,7 +59,7 @@ describe("M58 driving screens", () => {
     const n = (v: number) => String(v).replace(".", ",");
     const off = { event_id: "e", level: 2 as const, reasons: ["off_road" as const], at, feedback: null };
     expect(alertDetail({ ...off, metrics: { off_road_s: 2.3, eyes_closed_s: 0, phone_ratio: 0, turn_signal: null } }, t, n)).toBe(
-      "Phát hiện lúc 15:44 · nhìn lệch 2,3 giây · không bật xi nhan",
+      "Phát hiện lúc 15:44 · rời mắt 2,3 giây · không bật xi nhan",
     );
     expect(alertDetail({ ...off, metrics: { off_road_s: 2.3, eyes_closed_s: 0, phone_ratio: 0, turn_signal: "left" } }, t, n)).toContain(
       "xi nhan trái",
@@ -71,7 +71,7 @@ describe("M58 driving screens", () => {
   it("puts the most useful note in the bottom bar", () => {
     const snap: HudSnapshot = { connected: true, level: 0, reasons: [], alerts: [] };
     const labels = { signalLost: null, lowFps: "slow", phoneOff: "phone", enroll: null, lastAlert: null };
-    expect(footerNote(snap, labels)).toBe("Chưa có cảnh báo nào trong chuyến này");
+    expect(footerNote(snap, labels)).toBe("Chưa có cảnh báo nào trong ca lái này");
     expect(footerNote(snap, { ...labels, lastAlert: "last" })).toBe("last");
     expect(footerNote(snap, { ...labels, enroll: "enroll", lastAlert: "last" })).toBe("enroll");
     expect(footerNote({ ...snap, phone_unavailable: true }, { ...labels, enroll: "enroll" })).toBe("phone");
@@ -153,7 +153,7 @@ describe("M58 review: numbers in plain words", () => {
     expect(drowsyWord(71, 40, 70).word).toBe("Rất mệt");
     expect(attentionWord([], 0)).toEqual({ word: "Tập trung", tone: "ok" });
     expect(attentionWord(["phone", "off_road"], 2)).toEqual({ word: "Cầm điện thoại", tone: "danger" });
-    expect(attentionWord(["off_road"], 2).word).toBe("Nhìn lệch");
+    expect(attentionWord(["off_road"], 2).word).toBe("Rời mắt");
     const limits = { blink_max_s: 0.5, microsleep_l3_s: 1.5 };
     expect(eyesWord(0.2, n, limits)).toEqual({ word: "Đang mở", tone: "ok" }); // a blink
     expect(eyesWord(0.8, n, limits)).toEqual({ word: "Nhắm 0,8 giây", tone: "caution" });

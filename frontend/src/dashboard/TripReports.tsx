@@ -61,7 +61,7 @@ export default function TripReports({ session, range, refreshKey, onUnreviewed }
     <>
       <section className="card">
         <div className="card-head">
-          <h2>Báo cáo chuyến đi</h2>
+          <h2>Báo cáo ca lái</h2>
           {reviewer && (
             <label className="field-inline check">
               <input type="checkbox" checked={onlyNew} onChange={(e) => setOnlyNew(e.target.checked)} />
@@ -70,12 +70,12 @@ export default function TripReports({ session, range, refreshKey, onUnreviewed }
           )}
         </div>
         <p className="muted small">
-          Tài xế bấm “Kết thúc chuyến” trên HUD thì bản tổng kết được gửi về đây. Đánh giá mô tả chuyến đi, không
+          Tài xế bấm “Kết thúc ca lái” trên HUD thì bản tổng kết được gửi về đây. Đánh giá mô tả ca lái, không
           chấm điểm tài xế: cảnh báo có thể sai và tài xế có thể đã bấm “báo sai”.
         </p>
         {error && <p className="error">{error}</p>}
         {shown.length === 0 ? (
-          <p className="empty">{onlyNew ? "Không còn báo cáo chưa xem." : "Chưa có báo cáo chuyến đi nào trong khoảng thời gian này."}</p>
+          <p className="empty">{onlyNew ? "Không còn báo cáo chưa xem." : "Chưa có báo cáo ca lái nào trong khoảng thời gian này."}</p>
         ) : (
           <div className="table-wrap">
             <table className="data">
@@ -191,7 +191,7 @@ function ReportDetail({
     ],
     ["Đăng ký tài xế", s.enrolled ? "Có" : "Không (mốc tự học)"],
     ["Đổi tài xế", `${s.driver_changes ?? 0} lần`],
-    ["Thiết bị / chuyến", `${report.device_id} / ${s.trip_id}`],
+    ["Thiết bị / ca lái", `${report.device_id} / ${s.trip_id}`],
   ];
 
   return (

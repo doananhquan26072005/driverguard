@@ -22,14 +22,14 @@ const ms = (v: number) => v.toLocaleString("vi-VN", { maximumFractionDigits: 1 }
 export const LEVELS: Record<Level, { short: string; title: string; action: string; icon: string }> = {
   0: { short: "L0", title: "Bình thường", action: "Tỉnh táo, tiếp tục lái an toàn", icon: "✓" },
   1: { short: "L1", title: "Chú ý", action: "Bạn có vẻ mệt, nên nghỉ sớm", icon: "!" },
-  2: { short: "L2", title: "Cảnh báo", action: "Tập trung lái xe ngay", icon: "▲" },
-  3: { short: "L3", title: "Nguy hiểm", action: "Hãy dừng xe nghỉ ngơi ngay", icon: "■" },
+  2: { short: "L2", title: "Cảnh báo", action: "Tập trung lái xe", icon: "▲" },
+  3: { short: "L3", title: "Nguy hiểm", action: "Dừng xe nghỉ ngay", icon: "■" },
 };
 
 export const REASONS: Record<Reason, string> = {
   microsleep: "Nhắm mắt kéo dài",
   drowsy_score: "Dấu hiệu buồn ngủ",
-  off_road: "Nhìn lệch khỏi đường",
+  off_road: "Rời mắt khỏi đường",
   phone: "Dùng điện thoại",
   no_face: "Không thấy mặt tài xế",
   trend: "Mệt mỏi tăng dần",
@@ -37,23 +37,23 @@ export const REASONS: Record<Reason, string> = {
   repeated_l1: "Đã nhắc nhiều lần",
   unresponsive: "Nhắm mắt không phản ứng với còi",
   repeated_l3: "Ngủ gật nhiều lần",
-  no_answer: "Không trả lời “Bạn còn ở đó không?”",
+  no_answer: "Không trả lời “Bạn vẫn ổn chứ?”",
   config_applied: "Đã áp bộ ngưỡng mới",
   config_refused: "Từ chối bộ ngưỡng mới (không nhất quán, hoặc cần mở lại ứng dụng)",
   camera_lost: "Mất camera: ngừng giám sát",
   camera_restored: "Camera hoạt động lại",
-  driver_enrolled: "Đã đăng ký tài xế",
+  driver_enrolled: "Tài xế đã làm quen khuôn mặt",
   monitoring_unavailable: "Tạm ngưng giám sát",
   monitoring_restored: "Giám sát lại",
   driver_changed: "Đổi tài xế",
-  vehicle_signal_lost: "Mất tín hiệu xe",
-  vehicle_signal_restored: "Có lại tín hiệu xe",
+  vehicle_signal_lost: "Mất tín hiệu tốc độ xe",
+  vehicle_signal_restored: "Có lại tín hiệu tốc độ xe",
   agent_error: "Lỗi xử lý: ngừng giám sát",
   agent_recovered: "Xử lý hoạt động lại",
   low_fps: "Máy xử lý chậm",
   fps_restored: "Tốc độ xử lý bình thường lại",
-  phone_detection_lost: "Không phát hiện được điện thoại",
-  phone_detection_restored: "Phát hiện điện thoại hoạt động lại",
+  phone_detection_lost: "Tạm chưa nhận biết được điện thoại",
+  phone_detection_restored: "Nhận biết điện thoại hoạt động lại",
   road_pose_recalibrated: "Hiệu chuẩn lại hướng nhìn đường",
 };
 
@@ -66,7 +66,7 @@ export const REASON_SHORT: Partial<Record<Reason, string>> = {
   trend: "Mệt tăng dần",
   blink_rate: "Chớp mắt",
   repeated_l1: "Nhắc nhiều lần",
-  off_road: "Nhìn lệch",
+  off_road: "Rời mắt",
   phone: "Điện thoại",
   no_face: "Không thấy mặt",
 };
@@ -103,7 +103,7 @@ export function reasonText(reason: string): string {
 export const FLEET_STATUS: Record<FleetStatus, { title: string; badge: string }> = {
   online: { title: "Đang hoạt động", badge: "level-0" },
   offline: { title: "Mất liên lạc", badge: "level-3" },
-  ended: { title: "Đã kết thúc chuyến", badge: "" },
+  ended: { title: "Đã kết thúc ca lái", badge: "" },
   never: { title: "Chưa từng kết nối", badge: "" },
 };
 
@@ -113,7 +113,7 @@ export const MONITOR_STATES: Record<MonitorState, string> = {
   camera_lost: "Mất camera: không giám sát",
   stalled: "Không nhận khung hình: không giám sát",
   error: "Lỗi xử lý: không giám sát",
-  ended: "Đã kết thúc chuyến",
+  ended: "Đã kết thúc ca lái",
 };
 
 /** What the vehicle is doing, in words. Offline: what it last said, marked as such. */
@@ -245,12 +245,12 @@ export const REFUSAL_REASONS: Record<RefusalReason, string> = {
 const AUDIT_ACTIONS: Record<string, string> = {
   read_events: "Xem nhật ký sự kiện",
   read_timeline: "Xem timeline mệt mỏi",
-  read_trips: "Xem danh sách chuyến",
+  read_trips: "Xem danh sách ca lái",
   read_stats: "Xem thống kê",
   read_fleet: "Xem đội xe",
-  read_trip_reports: "Xem danh sách báo cáo chuyến",
-  read_trip_report: "Xem một báo cáo chuyến",
-  review_trip_report: "Đánh dấu đã xem báo cáo chuyến",
+  read_trip_reports: "Xem danh sách báo cáo ca lái",
+  read_trip_report: "Xem một báo cáo ca lái",
+  review_trip_report: "Đánh dấu đã xem báo cáo ca lái",
   read_access_log: "Xem nhật ký truy cập",
   update_thresholds: "Sửa ngưỡng",
   rollout_thresholds: "Áp phiên bản ngưỡng cho cả đội",
@@ -290,10 +290,10 @@ export const THRESHOLD_GROUPS: { title: string; keys: { key: string; label: stri
   {
     title: "Mất tập trung",
     keys: [
-      { key: "risk.distraction.off_road_s", label: "Nhìn lệch → L2" },
-      { key: "risk.distraction.off_road_high_speed_s", label: "Nhìn lệch khi chạy nhanh → L2", hint: "Không lớn hơn ngưỡng thường" },
+      { key: "risk.distraction.off_road_s", label: "Rời mắt khỏi đường → L2" },
+      { key: "risk.distraction.off_road_high_speed_s", label: "Rời mắt khi chạy nhanh → L2", hint: "Không lớn hơn ngưỡng thường" },
       { key: "risk.distraction.phone_ratio", label: "Tỉ lệ điện thoại trong 2 s → L2" },
-      { key: "distraction.yaw_off_road_deg", label: "Góc quay đầu tính là nhìn lệch" },
+      { key: "distraction.yaw_off_road_deg", label: "Góc quay đầu tính là rời mắt" },
       { key: "distraction.turn_signal_extra_yaw_deg", label: "Góc nới thêm về phía bật xi nhan", hint: "Chỉ phía xi nhan, phía kia giữ nguyên" },
     ],
   },
@@ -313,46 +313,46 @@ export const UNITS: Record<string, string> = { s: "giây", score: "điểm", rat
 // HUD headline: what the driver should do (an action is read faster than a diagnosis).
 export const REASON_ACTIONS: Record<Reason, string> = {
   microsleep: "Mở mắt! Dừng xe nghỉ ngay",
-  drowsy_score: "Hãy tìm chỗ dừng nghỉ",
-  trend: "Nên nghỉ ở trạm dừng tới",
-  blink_rate: "Nên nghỉ ngơi sớm",
-  repeated_l1: "Đã nhắc nhiều lần: hãy dừng nghỉ",
-  unresponsive: "DỪNG XE NGAY!",
-  repeated_l3: "Ngủ gật nhiều lần: dừng xe nghỉ ngay",
+  drowsy_score: "Tìm chỗ dừng nghỉ",
+  trend: "Xong cuốc này nên nghỉ",
+  blink_rate: "Nên nghỉ sớm",
+  repeated_l1: "Bạn cần nghỉ rồi. Tìm chỗ dừng xe",
+  unresponsive: "Tấp vào lề, dừng xe ngay!",
+  repeated_l3: "Dừng xe nghỉ ngay",
   no_answer: "Chạm vào màn hình nếu bạn vẫn ổn",
-  config_applied: "Đã cập nhật ngưỡng cảnh báo",
-  config_refused: "Giữ ngưỡng cảnh báo cũ",
-  off_road: "Nhìn về phía trước",
+  config_applied: "Đã cập nhật cài đặt cảnh báo",
+  config_refused: "Giữ cài đặt cảnh báo cũ",
+  off_road: "Nhìn đường!",
   phone: "Bỏ điện thoại xuống",
-  no_face: "Ngồi đúng vị trí lái",
+  no_face: "Camera chưa thấy rõ mặt bạn",
   camera_lost: "Kiểm tra camera",
   camera_restored: "Camera đã hoạt động lại",
-  driver_enrolled: "Đã đăng ký tài xế",
-  monitoring_unavailable: "Ngồi đúng vị trí lái",
-  monitoring_restored: "Đang giám sát lại",
-  driver_changed: "Người lái mới đăng ký khuôn mặt",
+  driver_enrolled: "Đã làm quen xong",
+  monitoring_unavailable: "Camera chưa thấy rõ mặt bạn",
+  monitoring_restored: "Đang theo dõi lại",
+  driver_changed: "Người lái mới làm quen khuôn mặt",
   vehicle_signal_lost: "Kiểm tra kết nối tốc độ xe",
-  vehicle_signal_restored: "Đã có lại tín hiệu xe",
+  vehicle_signal_restored: "Đã có lại tín hiệu tốc độ xe",
   agent_error: "Dừng xe an toàn nếu lỗi kéo dài",
-  agent_recovered: "Đang giám sát lại",
+  agent_recovered: "Đang theo dõi lại",
   low_fps: "Cảnh báo có thể đến trễ",
-  fps_restored: "Đang giám sát bình thường",
+  fps_restored: "Đang theo dõi bình thường",
   phone_detection_lost: "Các cảnh báo khác vẫn hoạt động",
-  phone_detection_restored: "Đang giám sát bình thường",
-  road_pose_recalibrated: "Đang giám sát bình thường",
+  phone_detection_restored: "Đang theo dõi bình thường",
+  road_pose_recalibrated: "Đang theo dõi bình thường",
 };
 
 // Top bar chip while the device is too slow for a while (M28).
 export const LOW_FPS_TEXT = "Máy chậm: cảnh báo có thể trễ";
 // ... and while the phone detector gives no fresh results (M50): the other alerts still work.
-export const PHONE_UNAVAILABLE_TEXT = "Không phát hiện được điện thoại";
+export const PHONE_UNAVAILABLE_TEXT = "Tạm chưa nhận biết được điện thoại";
 
 // Vehicle strip (HUD) while the vehicle link is lost (M26): while driving it is monitored as moving;
 // while parked it stays parked until the speed comes back.
 export const VEHICLE_SIGNAL_LOST_TEXT = {
-  driving: "Mất tín hiệu xe: vẫn giám sát như đang chạy",
-  parked: "Mất tín hiệu xe: coi như đang đỗ đến khi có lại tốc độ",
-  never: "Chưa có tín hiệu tốc độ xe: đang giám sát như xe đang chạy",
+  driving: "Mất tín hiệu tốc độ xe: vẫn theo dõi như đang chạy",
+  parked: "Mất tín hiệu tốc độ xe: tạm coi như đang đỗ",
+  never: "Chưa có tín hiệu tốc độ xe: đang theo dõi như xe đang chạy",
 };
 
 // Driver enrollment: what the HUD shows and says. Spoken too, since in steps 2 and 3 the
@@ -364,9 +364,9 @@ export const ENROLL_STEPS: Record<EnrollStep, { title: string; detail: string }>
 };
 
 export const ENROLL_HINTS: Record<EnrollHint, string> = {
-  stop_vehicle: "Dừng xe để đăng ký tài xế",
+  stop_vehicle: "Dừng xe để làm quen khuôn mặt",
   face_not_found: "Ngồi đúng vị trí, để cả khuôn mặt trong khung hình",
-  too_dark: "Hơi tối hoặc chói, bật đèn trong xe",
+  too_dark: "Mặt quá tối hoặc chói. Bật đèn trần hoặc hạ tấm che nắng",
   look_camera: "Quay mặt về phía camera",
   look_road: "Nhìn ra đường phía trước như khi lái",
   hold_still: "Giữ đầu yên",
@@ -376,11 +376,11 @@ export const ENROLL_HINTS: Record<EnrollHint, string> = {
 };
 
 export const ENROLL_TEXT = {
-  title: "Đăng ký tài xế",
-  done: "Đăng ký xong",
-  waiting: "Chưa đăng ký tài xế. Dừng xe để đăng ký, nhận diện sẽ chính xác hơn.",
-  failed: "Chưa đăng ký được. Sẽ thử lại ở lần dừng xe sau.",
-  later: "Chưa đăng ký tài xế. Sẽ hỏi lại ở lần dừng xe sau.",
+  title: "Làm quen khuôn mặt",
+  done: "Làm quen xong",
+  waiting: "Chưa làm quen khuôn mặt. Dừng xe để làm quen, cảnh báo sẽ chính xác hơn.",
+  failed: "Chưa làm quen được. Bạn cứ lái, lần dừng xe sau sẽ thử lại.",
+  later: "Chưa làm quen khuôn mặt. Sẽ hỏi lại ở lần dừng xe sau.",
 };
 
 // Shown before the steps: why the face is enrolled and what happens to the data. Must stay true to
@@ -392,17 +392,17 @@ export const ENROLL_TEXT = {
 export const RETENTION_DAYS = { events: 60, summaries: 365 };
 
 export const ENROLL_CONSENT = {
-  title: "Đăng ký khuôn mặt",
+  title: "Làm quen khuôn mặt",
   headline: "Cho hệ thống làm quen với bạn",
-  lead: "Để nhận biết buồn ngủ và mất tập trung chính xác nhất, hệ thống cần làm quen với khuôn mặt của bạn.",
+  lead: "Mất khoảng 10 giây để hệ thống làm quen với khuôn mặt bạn, giúp cảnh báo chính xác hơn.",
   privacy: [
     "Không chụp, không lưu ảnh khuôn mặt. Hình ảnh camera chỉ được xử lý ngay trên thiết bị này.",
-    "Chỉ ghi nhớ vài con số như độ mở mắt, miệng, tư thế đầu, và xoá khi kết thúc chuyến.",
-    `Không gửi khuôn mặt hay các con số đó lên máy chủ. Số liệu cảnh báo tự xoá sau ${RETENTION_DAYS.events} ngày, bản tổng kết chuyến sau ${RETENTION_DAYS.summaries} ngày.`,
+    "Chỉ ghi nhớ vài con số như độ mở mắt, miệng, tư thế đầu, và xoá khi kết thúc ca lái.",
+    `Không gửi khuôn mặt hay các con số đó lên máy chủ. Số liệu cảnh báo tự xoá sau ${RETENTION_DAYS.events} ngày, bản tổng kết ca lái sau ${RETENTION_DAYS.summaries} ngày.`,
   ],
-  agree: "Đồng ý, bắt đầu đăng ký",
+  agree: "Đồng ý, bắt đầu",
   later: "Để sau",
-  laterNote: "Chưa đăng ký vẫn được lái, nhưng nhận biết kém chính xác hơn.",
+  laterNote: "Chưa làm quen vẫn lái được, nhưng cảnh báo có thể kém chính xác hơn.",
 };
 
 // Dashboard footer (data policy): what the numbers may be used for, and how long they are kept.
@@ -415,7 +415,7 @@ export function policyNote(p: {
   const keep = (days: number) => (days > 0 ? `tự xoá sau ${days} ngày` : "chưa đặt thời hạn xoá");
   return (
     "Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế. " +
-    `Số liệu cảnh báo ${keep(p.retention_events_days)}, bản tổng kết chuyến ${keep(p.retention_summaries_days)}. ` +
+    `Số liệu cảnh báo ${keep(p.retention_events_days)}, bản tổng kết ca lái ${keep(p.retention_summaries_days)}. ` +
     "Không có ảnh hay video khuôn mặt nào được lưu." +
     (p.retention_access_log_days != null ? ` Mỗi lần xem dữ liệu tài xế đều được ghi vào nhật ký truy cập (${keep(p.retention_access_log_days)}).` : "")
   );
@@ -423,21 +423,21 @@ export function policyNote(p: {
 
 // Why monitoring is unavailable (M43): the HUD tells the driver what to fix, the dashboard what happened.
 export const UNAVAILABLE_CAUSES: Record<UnavailableCause, { short: string; detail: string }> = {
-  no_face: { short: "không thấy mặt", detail: "Không thấy mặt tài xế. Ngồi đúng vị trí lái, không che camera." },
-  camera_blocked: { short: "camera bị che", detail: "Camera bị che hoặc quá tối. Kiểm tra ống kính camera." },
-  bad_angle: { short: "camera lệch", detail: "Khuôn mặt nằm ngoài khung hình. Chỉnh camera hướng vào mặt." },
-  low_light: { short: "mặt quá tối", detail: "Khuôn mặt quá tối, không đọc được mắt. Bật đèn trần hoặc chỉnh camera." },
-  glare: { short: "mặt bị chói", detail: "Khuôn mặt bị chói nắng, không đọc được mắt. Hạ tấm che nắng hoặc chỉnh camera." },
-  blur: { short: "ảnh mờ", detail: "Ảnh camera bị mờ, không đọc được mắt. Lau ống kính camera." },
-  slow_loop: { short: "máy xử lý quá chậm", detail: "Máy xử lý chưa tới 2 khung hình mỗi giây nên không đo được nhắm mắt hay nhìn lệch. Đóng ứng dụng khác hoặc khởi động lại." },
+  no_face: { short: "không thấy mặt", detail: "Camera chưa thấy mặt bạn. Ngồi đúng vị trí lái, không che camera." },
+  camera_blocked: { short: "camera bị che", detail: "Camera bị che hoặc quá tối. Khi dừng xe, kiểm tra ống kính camera." },
+  bad_angle: { short: "camera lệch", detail: "Khuôn mặt nằm ngoài khung hình. Khi dừng xe, chỉnh camera hướng vào mặt." },
+  low_light: { short: "mặt quá tối", detail: "Khuôn mặt quá tối, không thấy rõ mắt. Bật đèn trần, hoặc chỉnh camera khi dừng xe." },
+  glare: { short: "mặt bị chói", detail: "Khuôn mặt bị chói nắng, không thấy rõ mắt. Hạ tấm che nắng, hoặc chỉnh camera khi dừng xe." },
+  blur: { short: "ảnh mờ", detail: "Ảnh camera bị mờ, không thấy rõ mắt. Khi dừng xe, lau ống kính camera." },
+  slow_loop: { short: "máy xử lý quá chậm", detail: "Máy đang quá chậm nên chưa theo dõi được. Khi dừng xe, hãy khởi động lại thiết bị." },
 };
 
-// "Bạn còn ở đó không?" (M44): the whole screen is one button, so it can be hit without aiming.
+// "Bạn vẫn ổn chứ?" (M44): the whole screen is one button, so it can be hit without aiming.
 export const PRESENCE_TEXT = {
-  title: "Bạn còn ở đó không?",
+  title: "Bạn vẫn ổn chứ?",
   tap: "Chạm vào màn hình",
   detail: "Camera không thấy bạn. Chạm bất kỳ đâu nếu bạn vẫn ổn.",
-  unanswered: "Chưa có trả lời: đã báo cho quản lý đội xe.",
+  unanswered: "Bạn chưa phản hồi nên hệ thống đã báo quản lý đội xe.",
 };
 
 // Shown while the browser still blocks sound (hud/chime.ts armAudio): one touch turns it on.
@@ -448,13 +448,13 @@ export const SYSTEM_TEXT: Record<
   "down" | "camera_lost" | "error" | "unavailable" | "stale" | "connecting",
   { title: string; detail: string }
 > = {
-  error: { title: "Lỗi xử lý", detail: "Hệ thống đang KHÔNG giám sát tài xế. Đang thử lại…" },
+  error: { title: "Hệ thống gặp lỗi", detail: "Hiện chưa theo dõi được bạn. Đang tự thử lại…" },
   unavailable: {
-    title: "Tạm ngưng giám sát",
-    detail: "Không thấy mặt tài xế. Ngồi đúng vị trí lái, không che camera.",
+    title: "Tạm ngưng theo dõi",
+    detail: "Camera chưa thấy mặt bạn. Ngồi đúng vị trí lái, không che camera.",
   },
-  down: { title: "Không kết nối được thiết bị", detail: "HUD không nhận được trạng thái từ edge agent." },
-  camera_lost: { title: "Mất camera", detail: "Hệ thống đang KHÔNG giám sát tài xế. Đang kết nối lại…" },
-  stale: { title: "Không nhận dữ liệu từ camera", detail: "Vòng xử lý camera đã ngừng cập nhật." },
-  connecting: { title: "Đang kết nối thiết bị…", detail: "Chờ khung hình đầu tiên từ camera." },
+  down: { title: "Mất kết nối với thiết bị", detail: "Hiện chưa cảnh báo được. Khi dừng xe, kiểm tra nguồn và cáp." },
+  camera_lost: { title: "Mất hình camera", detail: "Hiện chưa theo dõi được bạn. Đang kết nối lại…" },
+  stale: { title: "Camera bị đứng hình", detail: "Hiện chưa theo dõi được bạn. Đang tự thử lại…" },
+  connecting: { title: "Đang khởi động…", detail: "Sẵn sàng sau vài giây." },
 };

@@ -115,7 +115,7 @@ export interface HudViewProps {
   edgeUrl: string;
   onEnableSound: () => void; // a touch that lifts the browser's sound block
   onToggleDemo?: () => void; // absent: no demo button and no Dashboard link (a driver is watched, M72)
-  askEnd?: number; // a new number opens the "Kết thúc chuyến" question (#/live's "Dừng camera", M72)
+  askEnd?: number; // a new number opens the "Kết thúc ca lái" question (#/live's "Dừng camera", M72)
   onFalseAlarm: () => void;
   onEndTrip?: () => void; // shown when the source can end the trip (live HUD, #/live)
   ending?: boolean;
@@ -200,7 +200,7 @@ export default function HudView(props: HudViewProps) {
           {confirmDriver && props.onVehicle && (
             <ConfirmDialog
               title="Đổi tài xế?"
-              text="Xe dừng lại. Người lái mới nhìn vào camera để đăng ký khuôn mặt, xong thì tiếp tục lái."
+              text="Khi xe đang dừng, người lái mới nhìn vào camera khoảng 10 giây."
               cancel="Không đổi"
               confirm="Đổi tài xế"
               onCancel={() => setConfirmDriver(false)}
@@ -429,7 +429,7 @@ function StatusCard({ snap, level, rising }: { snap: HudSnapshot; level: Level; 
           {LEVELS[1].title}
         </span>
       ) : (
-        <span role="img" aria-label="Đang giám sát" className="absolute top-7 right-7 size-4 rounded-full bg-hud-safe shadow-[0_0_0_6px_rgba(74,222,128,0.18)]" />
+        <span role="img" aria-label="Đang theo dõi" className="absolute top-7 right-7 size-4 rounded-full bg-hud-safe shadow-[0_0_0_6px_rgba(74,222,128,0.18)]" />
       )}
 
       {/* Re-mounted on every level / reason change, so the enter animation plays once per alert. */}
@@ -499,7 +499,7 @@ function MetricsCard({ snap, level }: { snap: HudSnapshot; level: Level }) {
     <section aria-label="Chỉ số tài xế" className="dg-card flex flex-col justify-center gap-4 px-6 py-5 hud-lg:col-start-1 hud-lg:row-start-2">
       <div className="grid grid-cols-1 gap-3 hud-sm:grid-cols-3">
         <WordTile icon={Coffee} label="Buồn ngủ" {...drowsy} value={snap.drowsy_score} />
-        <WordTile icon={Navigation} label="Chú ý đường" {...attention} value={snap.distraction_score} />
+        <WordTile icon={Navigation} label="Nhìn đường" {...attention} value={snap.distraction_score} />
         <WordTile icon={eyes.tone === "ok" ? Eye : EyeOff} label="Mắt" {...eyes} />
       </div>
       {slots.length > 0 && trip && <FatigueStrip slots={slots} window={trip.window_min ?? slots.length} />}
@@ -591,7 +591,7 @@ function WarningStage({ snap, rising }: { snap: HudSnapshot; rising: boolean }) 
         <div aria-label="Thông số" className="grid grid-cols-1 gap-2.5 hud-sm:grid-cols-3">
           {[
             { label: "Buồn ngủ", ...drowsyWord(snap.drowsy_score, snap.trip?.score_l1 ?? HUD_DEFAULTS.score_l1, snap.trip?.score_l2 ?? HUD_DEFAULTS.score_l2) },
-            { label: "Chú ý đường", ...attentionWord(snap.reasons, 2) },
+            { label: "Nhìn đường", ...attentionWord(snap.reasons, 2) },
             { label: "Mắt", ...eyesWord(snap.eyes_closed_s, (v) => formatNumber(v, 1), snap.display ?? HUD_DEFAULTS) },
           ].map((m) => (
             <div key={m.label} className={tile}>
@@ -656,7 +656,7 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
         >
           <span aria-hidden className="text-[44px] leading-none font-bold">{driving ? "D" : "P"}</span>
           {/* The words for screen readers (and the e2e test); the letter says it on screen. */}
-          <span className="sr-only">{driving ? "Đang lái" : enrolling ? "Xe đang đỗ · đang đăng ký khuôn mặt" : "Đang đỗ"}</span>
+          <span className="sr-only">{driving ? "Đang lái" : enrolling ? "Xe đang đỗ · đang làm quen khuôn mặt" : "Đang đỗ"}</span>
         </div>
         <TurnTile side="right" on={turn === "right"} />
       </div>
@@ -666,11 +666,11 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
           <i />
           {lost
             ? v?.never_received
-              ? "Chưa có tín hiệu xe · giám sát như đang chạy"
+              ? "Chưa có tín hiệu tốc độ · theo dõi như đang chạy"
               : driving
-                ? "Mất tín hiệu xe · vẫn giám sát"
-                : "Mất tín hiệu xe · coi như đỗ"
-            : "Chưa có tín hiệu xe · coi như đỗ"}
+                ? "Mất tín hiệu tốc độ · vẫn theo dõi"
+                : "Mất tín hiệu tốc độ · coi như đỗ"
+            : "Chưa có tín hiệu tốc độ · coi như đỗ"}
         </span>
       ) : (
         <span role="img" aria-label="Tín hiệu xe đã kết nối" className="absolute right-5 bottom-5 grid size-9 place-items-center rounded-full bg-hud-safe/15 text-hud-safe">
@@ -749,9 +749,9 @@ function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap
       lead: `Camera vẫn chạy, nhưng ${text.short}`,
       tiles: [
         { icon: Camera, value: "Vẫn hoạt động", label: "Camera", tone: "ok" as const },
-        { icon: History, value: "Tự động", label: cause === "slow_loop" ? "Giám sát lại khi máy xử lý kịp" : "Giám sát lại khi thấy rõ mặt" },
+        { icon: History, value: "Tự động", label: cause === "slow_loop" ? "Theo dõi lại khi máy xử lý kịp" : "Theo dõi lại khi thấy rõ mặt" },
       ],
-      note: `${text.detail} Đây không tính là một cảnh báo.`,
+      note: `${text.detail} Lần này không tính là cảnh báo.`,
     };
   } else if (state === "camera_lost") {
     view = {
@@ -786,13 +786,13 @@ function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap
     view = {
       Icon: state === "connecting" ? LoaderCircle : WifiOff,
       title: SYSTEM_TEXT[state].title,
-      lead: state === "connecting" ? SYSTEM_TEXT.connecting.detail : "Màn hình không nhận được trạng thái giám sát",
+      lead: state === "connecting" ? SYSTEM_TEXT.connecting.detail : "Màn hình chưa nhận được tín hiệu từ thiết bị",
       tiles: [
-        { icon: LoaderCircle, value: "Đang thử lại", label: "Mỗi 0,3 giây" },
+        { icon: LoaderCircle, value: "Đang thử lại", label: "Tự động" },
         ...(last ? [{ icon: Clock, value: `${hourMinute(last)} · ${Math.max(0, Math.round(now - last))} giây trước`, label: "Lần cuối nhận dữ liệu" }] : []),
         { icon: Cable, value: "Nguồn và cáp", label: "Kiểm tra khi dừng xe" },
       ],
-      note: `Tốc độ và trạng thái tài xế sẽ hiện lại ngay khi có kết nối.${edgeUrl ? ` Màn hình đọc thiết bị tại ${edgeUrl}; chạy python -m edge_agent.main --source 0 hoặc bấm "Chạy mô phỏng".` : ""}`,
+      note: `Tốc độ và trạng thái của bạn sẽ hiện lại ngay khi có kết nối.${import.meta.env.DEV && edgeUrl ? ` Màn hình đọc thiết bị tại ${edgeUrl}; chạy python -m edge_agent.main --source 0 hoặc bấm "Chạy mô phỏng".` : ""}`,
     };
   }
   const deviceSide = state === "down" || state === "stale" || state === "connecting";
@@ -801,7 +801,7 @@ function IncidentPanel({ state, snap, now, edgeUrl }: { state: SystemState; snap
     <section aria-live="assertive" className={`dg-alert ${deviceSide ? "sys" : "l1"} relative flex min-h-[46dvh] flex-col justify-between gap-6 px-7 py-7 hud-lg:min-h-0 hud-tall:min-h-0`}>
       <span className="dg-chip solid-warn absolute top-6 right-6 !px-3 !py-1.5 !text-base">
         <EyeOff aria-hidden className="size-5" strokeWidth={2.25} />
-        KHÔNG giám sát
+        Chưa theo dõi
       </span>
       <div className="flex flex-1 items-center gap-8">
         <div className={`grid size-24 shrink-0 place-items-center rounded-full hud-sm:size-[124px] ${deviceSide ? "bg-hud-system/20 text-[#93c5fd]" : "bg-hud-caution/18 text-hud-caution"}`}>
@@ -903,7 +903,7 @@ function BottomBar({
         <button type="button" onClick={onAskEnd} disabled={ending} className="dg-btn dg-btn-lg whitespace-nowrap">
           <span className="flex items-center gap-3">
             <FlagTriangleRight aria-hidden className="size-7" />
-            {ending ? "Đang kết thúc…" : "Kết thúc chuyến"}
+            {ending ? "Đang kết thúc…" : "Kết thúc ca lái"}
           </span>
           <ChevronRight aria-hidden className="size-6 text-hud-ink-3" />
         </button>
@@ -919,12 +919,12 @@ function noteFor(snap: HudSnapshot): string {
   const last = snap.alerts[0];
   const lastAlert = last
     ? last.feedback
-      ? `Đã ghi nhận: cảnh báo lúc ${hourMinute(last.at)} là sai`
+      ? `Đã ghi nhận: cảnh báo lúc ${hourMinute(last.at)} là nhầm`
       : `Cảnh báo gần nhất lúc ${hourMinute(last.at)} · ${reasonText(orderedReasons(last.reasons)[0])}`
     : null;
   return footerNote(snap, {
     signalLost: v?.signal_lost ? VEHICLE_SIGNAL_LOST_TEXT[v.never_received ? "never" : v.driving ? "driving" : "parked"] : null,
-    lowFps: "Xử lý chậm hơn 15 khung hình/giây · cảnh báo có thể trễ",
+    lowFps: "Máy đang chậm · cảnh báo có thể trễ",
     phoneOff: `${PHONE_UNAVAILABLE_TEXT} · mắt và đầu vẫn được theo dõi`,
     enroll: enrollReminder(snap.enrollment),
     lastAlert,
@@ -938,7 +938,7 @@ function FalseAlarmButton({ target, level, now, windowS, onPress }: { target: Hu
     <button type="button" onClick={onPress} className={`dg-btn dg-btn-lg justify-self-start !justify-start gap-4 ring-2 hud-tall:col-span-2 hud-tall:justify-self-stretch ${ring}`}>
       <Flag aria-hidden className="size-7 shrink-0" />
       <span className="flex flex-col gap-0.5">
-        <span className="text-xl font-semibold">Cảnh báo này sai?</span>
+        <span className="text-xl font-semibold">Cảnh báo nhầm?</span>
         <span className="dg-num text-[15px] text-hud-ink-2">
           Chạm để báo · còn {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}
         </span>
@@ -963,7 +963,7 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
         </span>
         <span className="dg-chip" style={{ ["--dot" as string]: "var(--series-1)" }}>
           <i />
-          Chưa đăng ký tài xế
+          Chưa làm quen khuôn mặt
         </span>
       </div>
       <div className="flex items-center gap-6">
@@ -1085,14 +1085,14 @@ function EnrollPanel({ enrollment, camera }: { enrollment: HudEnrollment; camera
 function enrollNote(e: HudEnrollment): string {
   const i = Math.max(0, ENROLL_STEP_ORDER.indexOf(enrollStep(e) as EnrollStep));
   const first = e.attempts > 0 ? `Làm lại ${e.attempts} lần` : i === 0 ? "Bước đầu tiên" : i === ENROLL_STEP_ORDER.length - 1 ? "Bước cuối" : `Bước ${i + 1}`;
-  return `${first} · xe chạy thì việc đăng ký tạm dừng`;
+  return `${first} · tạm dừng nếu xe lăn bánh`;
 }
 
 function EndTripDialog({ ending, onCancel, onConfirm }: { ending: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
     <ConfirmDialog
-      title="Kết thúc chuyến đi?"
-      text="Hệ thống ngừng theo dõi, hiện bản tổng kết chuyến và gửi cho quản lý đội xe."
+      title="Kết thúc ca lái?"
+      text="Hệ thống ngừng theo dõi, hiện bản tổng kết ca lái và gửi cho quản lý đội xe."
       cancel="Tiếp tục lái"
       confirm="Kết thúc"
       busy={ending}

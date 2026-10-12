@@ -21,7 +21,7 @@ interface Props {
   source?: HudSource;
   onTripEnded?: () => void; // the camera stopped: e.g. #/live hides its self-view
   onDone?: () => void; // "Xong" on the trip summary
-  askEnd?: number; // a new number asks "Kết thúc chuyến?" (#/live's "Dừng camera", M72)
+  askEnd?: number; // a new number asks "Kết thúc ca lái?" (#/live's "Dừng camera", M72)
 }
 
 export default function HudScreen({ source = edgeSource, onTripEnded, onDone, askEnd }: Props) {
@@ -143,16 +143,16 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
     if (!target) return;
     if (mode === "demo") {
       demoFlags.current.add(target.event_id);
-      setToast("Đã ghi nhận cảnh báo sai (mô phỏng)");
+      setToast("Đã ghi nhận cảnh báo nhầm (mô phỏng)");
       return;
     }
     const result = await source.falseAlarm(target.event_id);
     setToast(
       {
-        recorded: "Đã ghi nhận cảnh báo sai. Cảm ơn bạn!",
-        duplicate: "Cảnh báo này đã được báo sai trước đó",
-        expired: "Đã quá thời gian để báo sai cảnh báo này",
-        unknown: "Thiết bị không còn giữ cảnh báo này",
+        recorded: "Đã ghi nhận cảnh báo nhầm. Cảm ơn bạn!",
+        duplicate: "Bạn đã báo nhầm cảnh báo này rồi",
+        expired: "Đã quá thời gian để báo nhầm cảnh báo này",
+        unknown: "Cảnh báo này đã quá cũ để báo nhầm",
         offline: "Mất kết nối với thiết bị, thử lại sau",
       }[result],
     );
@@ -267,7 +267,7 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
       setTripEnd(result);
       onTripEnded?.();
     } catch {
-      setToast("Không kết thúc được chuyến: thiết bị không trả lời");
+      setToast("Chưa kết thúc được ca lái. Thử lại sau vài giây.");
     } finally {
       setEnding(false);
     }
@@ -279,8 +279,8 @@ export default function HudScreen({ source = edgeSource, onTripEnded, onDone, as
       if (!source.vehicle) return;
       const ok = await source.vehicle(action);
       // A second tap on the consent screen finds nothing to answer: not worth a toast.
-      if (!ok && action === "change_driver") setToast("Thiết bị không nhận lệnh, thử lại");
-      else if (action === "change_driver") setToast("Người lái mới: nhìn thẳng vào camera để đăng ký");
+      if (!ok && action === "change_driver") setToast("Chưa đổi được tài xế. Thử lại.");
+      else if (action === "change_driver") setToast("Người lái mới: nhìn thẳng vào camera để làm quen");
     },
     [source],
   );
