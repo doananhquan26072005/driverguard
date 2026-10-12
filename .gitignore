@@ -84,3 +84,5 @@ models/tts/
 
 # Personal notes on the mattpocock-skills plugin (not shared)
 docs/mattpocock-skills.md
+# Local voice work kept out of git (HoaiMy .wav lines, import tool), see voice_local/README.md
+voice_local/
