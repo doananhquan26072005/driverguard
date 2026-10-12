@@ -7,8 +7,9 @@
 import { ArrowBigLeft, ArrowBigRight, ChevronDown, ChevronUp, Gauge, OctagonX, Unplug } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "../lib/api";
-import { command, DRIVE_KEYS, DRIVE_SIM, type DriveCommand, isDriveCode, PARKED, step } from "./sim";
+import { type CarState, command, DRIVE_KEYS, DRIVE_SIM, type DriveCommand, isDriveCode, PARKED, step } from "./sim";
 import { DEFAULTS } from "../lib/defaults";
+import { steadyInterval } from "../lib/ticker";
 
 // context.vehicle_send_s: below context.vehicle_signal_stale_s, after which #/live treats a reading as lost.
 const SEND_MS = DEFAULTS.vehicle.send_s * 1000;
@@ -25,22 +26,30 @@ export default function DriveScreen() {
   const [draft, setDraft] = useState(code);
   const [car, setCar] = useState(PARKED);
   const [link, setLink] = useState<Link>("idle");
-  const carRef = useRef(car);
-  carRef.current = car;
+  // The car itself lives in the ref: ticks and sends read it even while the tab is hidden and React
+  // has not rendered; the state only shows it.
+  const carRef = useRef(PARKED);
+  const update = useCallback((f: (c: CarState) => CarState) => {
+    carRef.current = f(carRef.current);
+    setCar(carRef.current);
+  }, []);
   const paired = isDriveCode(code);
 
-  // Physics at tick_hz.
+  // Physics at tick_hz, stepped by the time that really passed: a late tick does not slow the car.
   useEffect(() => {
-    const dt = 1 / DRIVE_SIM.tickHz;
-    const id = setInterval(() => setCar((c) => step(c, dt)), dt * 1000);
-    return () => clearInterval(id);
-  }, []);
+    let last = performance.now();
+    return steadyInterval(() => {
+      const now = performance.now();
+      update((c) => step(c, (now - last) / 1000));
+      last = now;
+    }, 1000 / DRIVE_SIM.tickHz);
+  }, [update]);
 
   // Send the current reading.
   useEffect(() => {
     if (!paired) return;
     let busy = false;
-    const id = setInterval(async () => {
+    return steadyInterval(async () => {
       if (busy) return;
       busy = true;
       const c = carRef.current;
@@ -58,10 +67,9 @@ export default function DriveScreen() {
         busy = false;
       }
     }, SEND_MS);
-    return () => clearInterval(id);
   }, [code, paired]);
 
-  const act = useCallback((cmd: DriveCommand) => setCar((c) => command(c, cmd)), []);
+  const act = useCallback((cmd: DriveCommand) => update((c) => command(c, cmd)), [update]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

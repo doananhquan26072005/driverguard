@@ -49,7 +49,7 @@ WORKDIR /app
 COPY --from=deps /venv /venv
 COPY backend/ backend/
 COPY edge_agent/__init__.py edge_agent/config.py edge_agent/
-COPY edge_agent/io/__init__.py edge_agent/io/remote_config.py edge_agent/io/
+COPY edge_agent/io/__init__.py edge_agent/io/remote_config.py edge_agent/io/metadata_guard.py edge_agent/io/
 COPY config/thresholds.yaml config/
 COPY deploy/railway_app.py deploy/
 COPY --from=frontend /fe/dist /app/static

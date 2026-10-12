@@ -11,6 +11,7 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId, refreshSession, postWebBatchOnLeave } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
 import { newDriveCode } from "../drive/sim";
+import { steadyInterval } from "../lib/ticker";
 import { DRIVE_SIM_URL, type FeedbackResult, type HudSource, type TripEnd } from "../hud/edge";
 import {
   bbox,
@@ -296,7 +297,7 @@ export class LiveAgent implements HudSource {
   private flushTimer: number | undefined;
   private refreshAt = 0; // ms epoch: the login token is exchanged for a new one from then on (M97)
   private configTimer: number | undefined;
-  private simTimer: number | undefined;
+  private stopSim: () => void = () => {}; // steadyInterval: hidden, the tab still reads the vehicle on time
   private simBusy = false;
   private canvas = document.createElement("canvas");
   private ctx: CanvasRenderingContext2D;
@@ -564,7 +565,7 @@ export class LiveAgent implements HudSource {
     this.stopped = true;
     window.clearInterval(this.flushTimer);
     window.clearInterval(this.configTimer);
-    window.clearInterval(this.simTimer);
+    this.stopSim();
     window.clearInterval(this.watchTimer);
     this.stopPulling();
     this.py.end_trip();
@@ -607,7 +608,7 @@ export class LiveAgent implements HudSource {
     this.flushTimer = window.setInterval(() => void this.flush(), this.settings.flush_interval_s * 1000);
     if (this.session && this.settings.config_poll_s > 0)
       this.configTimer = window.setInterval(() => void this.pollThresholds(), this.settings.config_poll_s * 1000);
-    this.simTimer = window.setInterval(() => void this.pollSim(), this.settings.vehicle.poll_s * 1000);
+    this.stopSim = steadyInterval(() => void this.pollSim(), this.settings.vehicle.poll_s * 1000);
     this.watchTimer = window.setInterval(() => {
       this.checkLoop();
       this.checkYolo();
@@ -1023,7 +1024,7 @@ export class LiveAgent implements HudSource {
     this.stopped = true;
     window.clearInterval(this.flushTimer);
     window.clearInterval(this.configTimer);
-    window.clearInterval(this.simTimer);
+    this.stopSim();
     window.clearInterval(this.watchTimer);
     this.stopPulling();
     // The camera goes first (M97): the last round waits for the backend, and a backend that hangs must
