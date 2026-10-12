@@ -28,7 +28,7 @@ describe("recorded voice", () => {
   it("has an up-to-date audio file for every line (python tools/make_voice.py)", () => {
     const manifest = JSON.parse(readFileSync(VOICE_DIR + "manifest.json", "utf-8")) as Record<string, string>;
     for (const [key, text] of Object.entries(lines)) {
-      expect(existsSync(`${VOICE_DIR}${key}.wav`), `${key}.wav`).toBe(true);
+      expect(existsSync(`${VOICE_DIR}${key}.mp3`), `${key}.mp3`).toBe(true);
       expect(manifest[key], `${key} changed: run tools/make_voice.py`).toBe(createHash("sha1").update(text, "utf8").digest("hex").slice(0, 12));
     }
   });

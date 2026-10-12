@@ -90,6 +90,7 @@ WINDOW = "DriverGuard"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the command line of the edge agent."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--source", default="0", help="camera index (e.g. 0) or video file path")
     p.add_argument("--loop", action="store_true", help="loop the video file")
@@ -117,6 +118,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the edge agent: camera, perception, decision, HUD and publisher, until the trip ends.
+    Returns the process exit code."""
     args = parse_args(argv)
     th = load_thresholds(args.config)
     if not args.hud_port and th.get("enrollment", {}).get("require_consent", True):

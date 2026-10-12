@@ -86,13 +86,17 @@ class EyeBaseline:
         self.enrolled_closed: float | None = None  # closed-eye EAR from driver enrollment
 
     def set_enrolled(self, ear_open: float, ear_closed: float | None) -> None:
+        """Set the open-eye and closed-eye EAR measured at enrollment."""
         self.enrolled = ear_open
         self.enrolled_closed = ear_closed
 
     def add(self, t: float, ear: float) -> None:
+        """Add one open-eye EAR reading."""
         self._window.add(t, ear)
 
     def value(self, t: float) -> float:
+        """The open-eye EAR at time t: the initial or enrolled value until enough data, then the
+        percentile of the window, held near the enrolled value and inside the configured bounds."""
         cfg = self.config
         enrolled = self.enrolled
         if self._window.span < cfg.eye_baseline_min_data_s:
@@ -106,6 +110,7 @@ class EyeBaseline:
         return min(max(value, cfg.eye_baseline_min), cfg.eye_baseline_max)
 
     def drop_since(self, t0: float) -> None:
+        """Forget the readings taken at or after t0."""
         self._window.drop_since(t0)
 
 
@@ -161,6 +166,7 @@ class EyeClosure:
         return self._eye_closed
 
     def end(self) -> None:
+        """The closure episode is over: its durations and flags start again."""
         self.closed_since = None
         self._count_since = None
         self._microsleep_fired = False
@@ -173,6 +179,8 @@ class EyeClosure:
         return self._episode.at_least(self.config.microsleep_deep_min_frac)
 
     def update(self, t: float, eye_closed: bool | None, head_down: bool, face_lost: bool, events: list[str]) -> None:
+        """One frame of the eye state (None = not read): times the closure, counts blinks, appends
+        "microsleep" to `events` and carries a closure through a head drop or a lost face."""
         cfg = self.config
         if eye_closed is None:
             if self.closed_since is None or self._last_eye_t is None:
@@ -273,6 +281,7 @@ class EyeClosure:
         return len(self._blinks) / max(observed, cfg.blink_rate_min_span_s) * 60.0, observed
 
     def forget_since(self, t0: float) -> None:
+        """End the running closure and forget the blinks and frames seen at or after t0."""
         self.end()
         drop_since(self._blinks, t0)
         while self._seen and self._seen[-1][0] >= t0:
@@ -313,6 +322,7 @@ class Perclos:
         return perclos, known
 
     def forget_since(self, t0: float) -> None:
+        """Forget the samples taken at or after t0."""
         while self._samples and self._samples[-1][0] >= t0:
             _, dt, closed = self._samples.pop()
             self._known -= dt

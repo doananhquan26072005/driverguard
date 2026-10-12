@@ -56,10 +56,10 @@ export default function TimelineView({ session, range, tripId, onTripChange, l1,
       <div className="card-head">
         <h2>Timeline mệt mỏi</h2>
         <label className="field-inline">
-          Chuyến đi
+          Ca lái
           <select value={tripId} onChange={(e) => onTripChange(e.target.value)}>
             {!trips.some((t) => t.trip_id === tripId) && tripId && <option value={tripId}>{tripId}</option>}
-            {trips.length === 0 && !tripId && <option value="">Chưa có chuyến nào</option>}
+            {trips.length === 0 && !tripId && <option value="">Chưa có ca lái nào</option>}
             {trips.map((t) => (
               <option key={`${t.trip_id}-${t.device_id}`} value={t.trip_id}>
                 {t.trip_id} · {t.driver_id ?? t.device_id} · {formatDateTime(t.start)}
@@ -80,7 +80,7 @@ export default function TimelineView({ session, range, tripId, onTripChange, l1,
         </p>
       )}
       {timeline && samples.length === 0 && timeline.events.length === 0 && (
-        <p className="empty">Chuyến này chưa có dữ liệu. Mỗi phút lái, thiết bị gửi 1 điểm drowsy_score.</p>
+        <p className="empty">Ca lái này chưa có dữ liệu. Mỗi phút lái, thiết bị gửi 1 điểm drowsy_score.</p>
       )}
       {timeline && (samples.length > 0 || timeline.events.length > 0) &&
         (asTable ? (

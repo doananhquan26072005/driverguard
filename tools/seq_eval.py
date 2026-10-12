@@ -143,6 +143,7 @@ class Tracer:
         self.alerts: list[tuple[int, int, tuple[str, ...]]] = []
 
     def close(self) -> None:
+        """Release the landmark model."""
         self.landmarks.close()
 
     def __enter__(self) -> Tracer:
@@ -408,6 +409,7 @@ def _trace_job(args: tuple[str, str, dict[str, Any], float, bool]) -> tuple[str,
 
 
 def dataset_videos(name: str, limit: int | None = None) -> dict[str, Path]:
+    """The videos of a dataset by key, at most `limit` of them."""
     if name == "fl3d":
         wanted = {p.name.removesuffix("_720") for p in FL3D_ROOT.iterdir() if p.is_dir()}
         found = {p.stem.removesuffix("_720"): p for p in NITYMED_ROOT.rglob("*.mp4")}
@@ -430,6 +432,7 @@ def dataset_videos(name: str, limit: int | None = None) -> dict[str, Path]:
 def run_traces(
     name: str, out: str, workers: int, speed: float, use_phone: bool, limit: int | None, sets: list[str] = ()
 ) -> None:
+    """Trace every video of the dataset in parallel and save the traces to `out`."""
     from multiprocessing import get_context
 
     from edge_agent.config import load_thresholds
@@ -692,6 +695,7 @@ def _replay_job(args: tuple[str, dict, dict[str, Any], str]) -> tuple[str, dict]
 
 
 def replay_all(traces: dict, thresholds: dict[str, Any], eye: str, workers: int) -> dict:
+    """Replay blocks 7-12 on every usable trace in parallel; results by video."""
     from multiprocessing import get_context
 
     ok = {k: v for k, v in traces.items() if not isinstance(v, str)}
@@ -723,6 +727,7 @@ def auc(pos: np.ndarray, neg: np.ndarray) -> float | None:
 
 
 def prf(pred: np.ndarray, truth: np.ndarray) -> dict[str, float | int | None]:
+    """Precision, recall, F1 and the confusion counts of boolean predictions against the truth."""
     tp = int(np.sum(pred & truth))
     fp = int(np.sum(pred & ~truth))
     fn = int(np.sum(~pred & truth))
@@ -748,6 +753,7 @@ class Run:
     end: int  # last frame (inclusive)
 
     def seconds(self, fps: float) -> float:
+        """Length of the run in seconds at this frame rate."""
         return (self.end - self.start + 1) / fps
 
 
@@ -806,6 +812,7 @@ def _f(v: float | None, d: int = 2) -> str:
 
 
 def load_fl3d_labels(root: Path = FL3D_ROOT) -> dict[str, dict[int, str]]:
+    """The FL3D frame labels: {video: {frame: label}}."""
     data = json.loads((root / "annotations_all.json").read_text(encoding="utf-8"))
     out: dict[str, dict[int, str]] = defaultdict(dict)
     for k, v in data.items():
@@ -832,6 +839,7 @@ def fl3d_frame_table(traces: dict, labels: dict[str, dict[int, str]], offset: in
 
 
 def fl3d_report(traces: dict, thresholds: dict[str, Any], tol_s: float = 1.0) -> str:
+    """The Markdown report on FL3D (frame-labelled eye closure and microsleep)."""
     labels = load_fl3d_labels()
     ok = {k: v for k, v in traces.items() if not isinstance(v, str)}
     fps = next(iter(ok.values()))["fps"]
@@ -1171,6 +1179,7 @@ LOWER_IS_DROWSY = {"ear_mean", "ear_p10"}
 
 
 def sust_report(traces: dict, thresholds: dict[str, Any]) -> str:
+    """The Markdown report on SUST (clip-labelled drowsiness)."""
     ok = {k: v for k, v in traces.items() if not isinstance(v, str) and v["n"] > 0}
     failed = [k for k, v in traces.items() if isinstance(v, str) or v["n"] == 0]
     feats = {k: sust_features(v, thresholds) for k, v in ok.items()}
@@ -1331,6 +1340,7 @@ def yawdd_report(traces: dict, thresholds: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     tr = sub.add_parser("trace", help="run the pipeline on every video and save per-frame traces")

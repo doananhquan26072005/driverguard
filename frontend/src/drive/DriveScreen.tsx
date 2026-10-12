@@ -168,7 +168,7 @@ export default function DriveScreen() {
 
             <p className="m-0 text-hud-label text-hud-ink-3">
               Phím: W / ↑ tăng, S / ↓ giảm, Space dừng, C chạy đều {DRIVE_SIM.cruiseKmh}, A / ← trái, D / → phải, X tắt
-              xi nhan. Đóng trang này khi xe đang chạy thì trang giám sát báo "Mất tín hiệu xe".
+              xi nhan. Đóng trang này khi xe đang chạy thì trang giám sát báo "Mất tín hiệu tốc độ xe".
             </p>
           </>
         )}

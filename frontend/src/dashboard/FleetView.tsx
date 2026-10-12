@@ -135,7 +135,7 @@ export default function FleetView({ session, refreshKey }: { session: Session; r
                   <th scope="col">Liên lạc</th>
                   <th scope="col">Lần cuối thấy</th>
                   <th scope="col">Giám sát</th>
-                  <th scope="col">Chuyến</th>
+                  <th scope="col">Ca lái</th>
                   <th scope="col">Phiên bản</th>
                   <th scope="col">Tốc độ xử lý</th>
                   <th scope="col">{today ? "Cảnh báo hôm nay" : "Cảnh báo trong ngày"}</th>
@@ -159,7 +159,7 @@ export default function FleetView({ session, refreshKey }: { session: Session; r
                         <div>
                           <span
                             className="badge level-2"
-                            title="Giờ của cảnh báo và mã chuyến do thiết bị ghi, có thể sai. Thứ tự, mục cần chú ý ngay và thời hạn lưu tính theo giờ máy chủ."
+                            title="Giờ của cảnh báo và mã ca lái do thiết bị ghi, có thể sai. Thứ tự, mục cần chú ý ngay và thời hạn lưu tính theo giờ máy chủ."
                           >
                             {clockSkewText(d)}
                           </span>

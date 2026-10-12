@@ -31,6 +31,7 @@ class DriveLinks:
         self._codes: OrderedDict[str, tuple[float, str | None, float]] = OrderedDict()  # code -> speed, turn, at
 
     def put(self, code: str, speed_kmh: float, turn_signal: str | None) -> None:
+        """Store the latest reading of a pairing code; the oldest code goes when `max_codes` is passed."""
         with self._lock:
             self._codes.pop(code, None)
             self._codes[code] = (speed_kmh, turn_signal, self._clock())
@@ -38,6 +39,7 @@ class DriveLinks:
                 self._codes.popitem(last=False)
 
     def get(self, code: str) -> DriveReading | None:
+        """The latest reading of a pairing code with its age, or None when unknown or older than `ttl_s`."""
         with self._lock:
             item = self._codes.get(code)
             if item is None:

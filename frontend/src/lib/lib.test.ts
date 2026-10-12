@@ -238,7 +238,7 @@ describe("fleet overview (M33)", () => {
     expect(newUrgentIds(list, new Set())).toEqual(["d:2026-10-06T08:01:00Z", "e1"]);
     expect(newUrgentIds(list, new Set(["e1", "d:2026-10-06T08:01:00Z"]))).toEqual([]);
     expect(reasonText("unresponsive")).toBe("Nhắm mắt không phản ứng với còi");
-    expect(reasonText("no_answer")).toContain("Bạn còn ở đó không?");
+    expect(reasonText("no_answer")).toContain("Bạn vẫn ổn chứ?");
   });
 
   it("names a driver's export file and says what happened to a deletion request (M48)", () => {
@@ -293,7 +293,7 @@ describe("repeated L1 raised as L2 (M32)", () => {
   it("has its own words and leads the HUD headline", () => {
     expect(reasonText("repeated_l1")).toBe("Đã nhắc nhiều lần");
     expect(primaryReason(["drowsy_score", "repeated_l1"])).toBe("repeated_l1");
-    expect(REASON_ACTIONS.repeated_l1).toContain("dừng nghỉ");
+    expect(REASON_ACTIONS.repeated_l1).toContain("cần nghỉ");
     expect(primaryReason(["microsleep", "repeated_l1"])).toBe("microsleep");
   });
 });

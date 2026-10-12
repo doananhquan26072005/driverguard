@@ -109,6 +109,7 @@ def device_numbers(rgb: np.ndarray, thresholds: dict[str, Any]) -> dict[str, Any
 
 
 def fixture(thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The fixture: synthetic images and what the device measures on each."""
     th = load_thresholds() if thresholds is None else thresholds
     return {
         "width": WIDTH,
@@ -125,6 +126,7 @@ def fixture(thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def render(thresholds: dict[str, Any] | None = None) -> str:
+    """The fixture as the JSON text of the generated file."""
     return json.dumps(fixture(thresholds), separators=(",", ":")) + "\n"
 
 

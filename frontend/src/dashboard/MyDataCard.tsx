@@ -57,7 +57,7 @@ export function MyDataCard({ session }: { session: Session }) {
     });
 
   const askDeletion = () => {
-    if (!window.confirm("Yêu cầu xoá toàn bộ cảnh báo, số đo và báo cáo chuyến của bạn? Quản trị sẽ xử lý yêu cầu này.")) return;
+    if (!window.confirm("Xoá toàn bộ cảnh báo, số đo và báo cáo ca lái của bạn? Xoá rồi không khôi phục được. Quản trị viên sẽ xử lý yêu cầu.")) return;
     void run(async () => {
       setRequest(await requestMyDeletion(session));
       setMessage({ ok: true, text: "Đã gửi yêu cầu xoá dữ liệu." });
@@ -70,8 +70,8 @@ export function MyDataCard({ session }: { session: Session }) {
         <h2>Dữ liệu của tôi</h2>
       </div>
       <p className="muted small">
-        Hệ thống chỉ lưu số đo và cảnh báo, không lưu ảnh hay video. Bạn có thể tải toàn bộ dữ liệu về mình (file JSON)
-        và yêu cầu xoá.
+        Hệ thống chỉ lưu số đo và cảnh báo, không lưu ảnh hay video. Bạn có thể tải toàn bộ dữ liệu của mình về máy
+        hoặc yêu cầu xoá.
       </p>
       {request && (
         <p className="small">

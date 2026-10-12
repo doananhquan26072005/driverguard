@@ -32,7 +32,7 @@ export default function EventLog({
             <th scope="col">Lý do</th>
             <th scope="col">Tài xế</th>
             <th scope="col">Thiết bị</th>
-            <th scope="col">Chuyến</th>
+            <th scope="col">Ca lái</th>
             <th scope="col" className="num">
               Buồn ngủ
             </th>
@@ -63,7 +63,7 @@ export default function EventLog({
               <td>{e.driver_id ?? "–"}</td>
               <td>{e.device_id}</td>
               <td>
-                <button type="button" className="link" onClick={() => onPickTrip(e.trip_id)} title="Xem timeline chuyến này">
+                <button type="button" className="link" onClick={() => onPickTrip(e.trip_id)} title="Xem timeline ca lái này">
                   {e.trip_id}
                 </button>
               </td>

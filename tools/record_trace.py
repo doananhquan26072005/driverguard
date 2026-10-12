@@ -148,6 +148,7 @@ def parse_script(text: str) -> list[Label]:
 
 
 def parse_tags(items: Sequence[str]) -> dict[str, str]:
+    """Parse key=value tags; ValueError on a malformed one."""
     tags = {}
     for item in items:
         key, sep, value = item.partition("=")
@@ -161,6 +162,7 @@ def parse_tags(items: Sequence[str]) -> dict[str, str]:
 
 
 def percentile(values: Sequence[float], q: float) -> float | None:
+    """The q-th percentile of the values, or None when there are none."""
     return float(np.percentile(np.asarray(values, dtype=float), q)) if len(values) else None
 
 
@@ -224,6 +226,7 @@ def false_alarms(trace: dict, tolerance_s: float) -> tuple[list[tuple[float, int
 
 
 def mask_of(trace: dict, start: float, end: float) -> np.ndarray:
+    """Boolean mask of the frames of this trace with start <= t < end."""
     t = trace["cols"]["t"]
     return (t >= start) & (t < end)
 
@@ -285,10 +288,12 @@ def _stats(values: np.ndarray) -> str:
 
 
 def tag_text(trace: dict) -> str:
+    """The tags of a recording as one line of text."""
     return ", ".join(f"{k}={v}" for k, v in sorted(trace.get("tags", {}).items())) or "–"
 
 
 def report(traces: dict[str, dict], thresholds: dict[str, Any], group_by: str = "mask") -> str:
+    """The Markdown report of the recordings."""
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
     tol = cfg.label_tolerance_s
     l3_s = float(thresholds["risk"]["microsleep_l3_s"])
@@ -582,6 +587,7 @@ def overlay(image: np.ndarray, t: float, level: int, on: Sequence[str], width: i
 
 
 def record(args: argparse.Namespace, thresholds: dict[str, Any]) -> dict:
+    """Record a trace from the camera with key-press labels. Numbers only: no image is stored."""
     import cv2
 
     keys = LabelKeys()
@@ -620,6 +626,7 @@ def record(args: argparse.Namespace, thresholds: dict[str, Any]) -> dict:
 
 
 def save(path: Path, name: str, trace: dict, overwrite: bool) -> None:
+    """Add the recording to the file under `name`; SystemExit when the name exists, unless `overwrite`."""
     numbers_only(trace)
     data = pickle.loads(path.read_bytes()) if path.exists() else {}
     if name in data and not overwrite:
@@ -630,6 +637,7 @@ def save(path: Path, name: str, trace: dict, overwrite: bool) -> None:
 
 
 def load(paths: Sequence[str]) -> dict[str, dict]:
+    """Load the recordings of several files, by name (prefixed with the file on a clash)."""
     out: dict[str, dict] = {}
     for p in paths:
         for name, tr in pickle.loads(Path(p).read_bytes()).items():
@@ -641,6 +649,7 @@ def load(paths: Sequence[str]) -> dict[str, dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     rec = sub.add_parser("record", help="record numbers and labels from the camera")

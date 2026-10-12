@@ -93,12 +93,15 @@ class CachedStaticFiles(StaticFiles):
     """StaticFiles + precompressed siblings + Cache-Control (see the module doc)."""
 
     def cache_control(self, full_path: str) -> str:
+        """Cache-Control of a file: immutable for the hashed files under assets/, revalidate for the rest."""
         rel = Path(os.path.relpath(full_path, str(self.directory)))
         return IMMUTABLE if rel.parts and rel.parts[0] in IMMUTABLE_DIRS else REVALIDATE
 
     def file_response(
         self, full_path: str | os.PathLike[str], stat_result: os.stat_result, scope: Scope, status_code: int = 200
     ) -> Response:
+        """Serve the file, or its .gz sibling when the client accepts gzip and it is not older,
+        with the cache and security headers; a 304 when the client's copy is current."""
         request_headers = Headers(scope=scope)
         full_path = os.fspath(full_path)
         response = FileResponse(full_path, status_code=status_code, stat_result=stat_result)

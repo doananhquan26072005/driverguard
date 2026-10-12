@@ -79,5 +79,8 @@ push ai log phoenix.txt
 # Downloaded pretrained models (python tools/download_models.py)
 models/*.task
 models/*.onnx
-# Piper voice for tools/make_voice.py (downloaded; the .wav files it makes are committed)
+# Piper voice of the earlier tools/make_voice.py (downloaded; no longer used since the voice is vi-VN-NamMinhNeural)
 models/tts/
+
+# Personal notes on the mattpocock-skills plugin (not shared)
+docs/mattpocock-skills.md

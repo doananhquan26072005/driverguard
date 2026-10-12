@@ -63,6 +63,7 @@ class MouthMask:
         self._talk_swings: deque[float] = deque()
 
     def update(self, t: float, mar: float | None, mar_open: float, mar_close: float) -> bool:
+        """One frame of MAR (None = not read); True while the yawn / talking mask holds."""
         cfg = self.config
         if mar is not None:
             if self._open_since is None:
@@ -142,8 +143,10 @@ class YawnCounter:
             self._open_since = None
 
     def count(self, t: float) -> int:
+        """Yawns within the last `yawn_window_s`."""
         expire(self._yawns, t, self.config.yawn_window_s)
         return len(self._yawns)
 
     def forget_since(self, t0: float) -> None:
+        """Forget the yawns counted at or after t0."""
         drop_since(self._yawns, t0)

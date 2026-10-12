@@ -65,6 +65,7 @@ def label(kss: int | None) -> str | None:
 
 
 def videos(root: Path = DROZY_DIR) -> list[dict[str, Any]]:
+    """The DROZY videos with their subject, test number and KSS score."""
     kss = kss_table((root / "KSS.txt").read_text(encoding="utf-8"))
     out = []
     for path in sorted((root / "videos_i8").glob("*.mp4")):
@@ -83,6 +84,7 @@ def _replay_job(args: tuple[str, str, dict[str, Any]]) -> tuple[str, dict[str, A
 
 
 def run_rows(items: list[dict[str, Any]], thresholds: dict[str, Any], pool: Any = None) -> list[dict[str, Any]]:
+    """Replay the stored trace of every video with these thresholds; one result row per video."""
     jobs = [(v["key"], str(uta_rldd.trace_file(TRACE_DIR, v["key"])), thresholds) for v in items]
     done = dict(pool.map(_replay_job, jobs, chunksize=1) if pool is not None else map(_replay_job, jobs))
     return [
@@ -152,6 +154,7 @@ def _f(v: float | None, d: int = 2) -> str:
 
 
 def report(results: dict[str, dict[int, list[dict[str, Any]]]], thresholds: dict[str, Any], source: str) -> str:
+    """The Markdown report: both values of risk.drowsy.l1 and the verdict of the pre-declared rule."""
     tallies = {p: {v: tally(rows) for v, rows in by.items()} for p, by in results.items()}
     verdict = decide(tallies[DECISION_PATH][40], tallies[DECISION_PATH][50])
     lines = [
@@ -222,6 +225,7 @@ def report(results: dict[str, dict[int, list[dict[str, Any]]]], thresholds: dict
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("study", choices=("trace", "l1"))
     p.add_argument("--workers", type=int, default=8)

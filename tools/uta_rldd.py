@@ -117,6 +117,7 @@ def probe(path: str) -> dict[str, float]:
 
 
 def write_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
+    """Write the rows as CSV, with the union of their keys as columns; nothing for no rows."""
     if not rows:
         return
     fields = list(dict.fromkeys(k for r in rows for k in r))
@@ -130,10 +131,12 @@ def write_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
 
 
 def trace_file(out_dir: str | Path, key: str) -> Path:
+    """Path of the stored trace of a video."""
     return Path(out_dir) / f"{key}.pkl.gz"
 
 
 def save_trace(path: Path, tr: dict) -> None:
+    """Write a trace as gzip pickle, atomically (a killed run leaves no half-written file)."""
     tmp = path.with_suffix(".part")
     with gzip.open(tmp, "wb", compresslevel=3) as f:
         pickle.dump(tr, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -166,6 +169,7 @@ def numpy2_pickle_shim() -> None:
 
 
 def load_trace(path: str | Path) -> dict:
+    """Load a stored trace."""
     numpy2_pickle_shim()
     with gzip.open(path, "rb") as f:
         return pickle.load(f)
@@ -550,6 +554,7 @@ def replay_rows(
 
 
 def replay_pool(workers: int) -> Any:
+    """A process pool for the replays, or None for one worker."""
     return ProcessPoolExecutor(workers, mp_context=get_context("spawn")) if workers > 1 else None
 
 
@@ -1532,6 +1537,7 @@ def fps_report(
 
 
 def video_rows(videos: list[Video]) -> list[dict[str, Any]]:
+    """The videos as plain dicts, one per row."""
     return [asdict(v) for v in videos]
 
 
@@ -1780,6 +1786,7 @@ def log_test_read(study: str, split: str, argv: list[str], log: Path | None = No
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     import argparse
 
     from edge_agent.config import load_thresholds

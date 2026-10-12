@@ -115,6 +115,7 @@ def clip_faces(path: str, max_frames: int) -> list[dict[str, Any]]:
 
 
 def summarize(ms: list[float]) -> dict[str, float]:
+    """Mean and percentiles of a list of per-call times in milliseconds."""
     a = np.sort(np.asarray(ms, dtype=float))
     return {
         "mean_ms": float(a.mean()),
@@ -158,6 +159,7 @@ def time_pyodide(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def report(runs: dict[str, dict[str, Any]]) -> str:
+    """The Markdown table of the runs, one row per label."""
     lines = [
         "# DriverGuard - speed of the in-browser agent's Python (blocks 6-14)",
         "",
@@ -196,6 +198,7 @@ def report(runs: dict[str, dict[str, Any]]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--label", required=True, help="name of this run in the table (an existing one is replaced)")
     p.add_argument("--seconds", type=float, default=60.0, help="length of the synthetic sequence")

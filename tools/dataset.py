@@ -62,6 +62,7 @@ class Preset:
 
     @property
     def is_video(self) -> bool:
+        """True for a preset whose samples are videos, not images."""
         return self.task.startswith("video_")
 
 
@@ -86,6 +87,7 @@ class Signal:
 
 
 def load_presets(path: str | Path = PRESETS_PATH) -> dict[str, Preset]:
+    """Load the dataset presets from their YAML file, by name."""
     import yaml
 
     with open(path, encoding="utf-8") as f:
@@ -156,6 +158,7 @@ def collect_samples(root: Path, preset: Preset, limit_per_class: int | None = No
 
 
 def confusion(pred: list[bool], truth: list[bool]) -> dict[str, Any]:
+    """Confusion counts of boolean predictions against the truth, with the rates derived from them."""
     tp = sum(p and t for p, t in zip(pred, truth, strict=True))
     fp = sum(p and not t for p, t in zip(pred, truth, strict=True))
     fn = sum(t and not p for p, t in zip(pred, truth, strict=True))
@@ -199,6 +202,7 @@ def youden(m: dict[str, Any]) -> float:
 
 
 def best_threshold(rows: list[tuple[float, dict[str, Any]]]) -> tuple[float, dict[str, Any]] | None:
+    """The (threshold, metrics) row with the best Youden index, F1 breaking ties; None when empty."""
     return max(rows, key=lambda r: (youden(r[1]), r[1]["f1"]), default=None)
 
 
@@ -243,6 +247,7 @@ def metric_tables(signals: list[Signal], truth: list[bool], note: str) -> list[s
 
 
 def report(preset: Preset, samples: list[Sample], signals: list[Signal], face_found: list[bool] | None) -> str:
+    """The Markdown report of an image dataset: each signal against the labels."""
     truth = [s.label == preset.positive for s in samples]
     counts = Counter(s.label for s in samples)
     lines = [
@@ -321,10 +326,12 @@ class ImageRunner:
             self.yolo = YoloPhoneModel(replace(self.phone_cfg, conf_threshold=YOLO_SWEEP_CONF))
 
     def close(self) -> None:
+        """Release the landmark model."""
         if self.landmarks is not None:
             self.landmarks.close()
 
     def measure(self, image: Any) -> dict[str, float | bool | None]:
+        """Run the perception blocks on one image and return its measurements."""
         import cv2
 
         from edge_agent.capture import Frame
@@ -359,6 +366,7 @@ class ImageRunner:
 
 
 def make_signals(preset: Preset, thresholds: dict[str, Any]) -> list[Signal]:
+    """The signals (EAR, p_closed, MAR, ...) this preset is scored on, with their thresholds."""
     d = thresholds.get("drowsiness") or {}
     eye, yawn = d.get("eye") or {}, d.get("yawn") or {}
     ear_thr = float(eye.get("baseline_init", 0.28)) * float(eye.get("close_ratio", 0.65))
@@ -384,6 +392,7 @@ def make_signals(preset: Preset, thresholds: dict[str, Any]) -> list[Signal]:
 
 
 def fill_signals(signals: list[Signal], m: dict[str, Any]) -> None:
+    """Add the measurements of one image to every signal."""
     for sig in signals:
         if sig.name.startswith("p_closed"):
             value = m.get("p_closed")
@@ -407,6 +416,7 @@ def fill_signals(signals: list[Signal], m: dict[str, Any]) -> None:
 
 
 def eval_images(preset: Preset, samples: list[Sample], thresholds: dict[str, Any]) -> str:
+    """Measure every image of the preset and return the report."""
     import cv2
 
     signals = make_signals(preset, thresholds)
@@ -431,6 +441,7 @@ def eval_images(preset: Preset, samples: list[Sample], thresholds: dict[str, Any
 
 
 def video_duration(path: Path) -> float:
+    """Length of a video in seconds."""
     import cv2
 
     cap = cv2.VideoCapture(str(path))
@@ -456,6 +467,7 @@ def clip_label_rows(preset: Preset, samples: list[Sample], root: Path, durations
 
 
 def write_labels(path: str | Path, rows: list[list[Any]]) -> None:
+    """Write the label rows (video, behavior, start_s, end_s) as CSV."""
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["video", "behavior", "start_s", "end_s"])
@@ -465,6 +477,7 @@ def write_labels(path: str | Path, rows: list[list[Any]]) -> None:
 def eval_videos(
     preset: Preset, samples: list[Sample], root: Path, thresholds: dict[str, Any], speed: float, save: str | None = None
 ) -> str:
+    """Run the pipeline on every video of the preset and return the report."""
     from tools import eval as ev
 
     predictions, durations, levels = [], {}, {}
@@ -490,6 +503,7 @@ def eval_videos(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--presets", default=str(PRESETS_PATH), help="dataset presets YAML")
     sub = p.add_subparsers(dest="cmd", required=True)

@@ -188,10 +188,12 @@ def migrate(conn: sqlite3.Connection) -> None:
 
 
 def now_iso() -> str:
+    """The current time in UTC as an ISO 8601 string."""
     return datetime.now(UTC).isoformat()
 
 
 def connect(db_path: str) -> sqlite3.Connection:
+    """Open the SQLite database (WAL, foreign keys on), creating its directory when needed."""
     if db_path != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -202,6 +204,7 @@ def connect(db_path: str) -> sqlite3.Connection:
 
 
 def init_db(db_path: str) -> None:
+    """Create the tables, apply the migrations and restrict the file to its owner."""
     with closing(db_path) as conn:
         conn.executescript(SCHEMA)
         migrate(conn)
@@ -221,6 +224,7 @@ def restrict_file(db_path: str) -> None:
 
 @contextmanager
 def closing(db_path: str) -> Iterator[sqlite3.Connection]:
+    """Context manager: a connection that is committed on success and always closed."""
     conn = connect(db_path)
     try:
         yield conn
@@ -233,6 +237,7 @@ def closing(db_path: str) -> Iterator[sqlite3.Connection]:
 
 
 def create_user(conn: sqlite3.Connection, username: str, password_hash: str, role: str, driver_id: str | None) -> None:
+    """Insert an account; sqlite3.IntegrityError when the username exists."""
     conn.execute(
         "INSERT INTO users (username, password_hash, role, driver_id, created_at) VALUES (?, ?, ?, ?, ?)",
         (username, password_hash, role, driver_id, now_iso()),
@@ -240,14 +245,17 @@ def create_user(conn: sqlite3.Connection, username: str, password_hash: str, rol
 
 
 def get_user(conn: sqlite3.Connection, username: str) -> sqlite3.Row | None:
+    """The account row of `username`, or None."""
     return conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
 
 def list_users(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Username, role and driver_id of every account, by username."""
     return conn.execute("SELECT username, role, driver_id FROM users ORDER BY username").fetchall()
 
 
 def create_device(conn: sqlite3.Connection, device_id: str, key_hash: str, driver_id: str | None) -> None:
+    """Insert a device with the hash of its key; sqlite3.IntegrityError when the device_id exists."""
     conn.execute(
         "INSERT INTO devices (device_id, key_hash, driver_id, created_at) VALUES (?, ?, ?, ?)",
         (device_id, key_hash, driver_id, now_iso()),
@@ -255,6 +263,7 @@ def create_device(conn: sqlite3.Connection, device_id: str, key_hash: str, drive
 
 
 def get_device_by_key_hash(conn: sqlite3.Connection, key_hash: str) -> sqlite3.Row | None:
+    """The device row that owns this key hash, or None."""
     return conn.execute("SELECT * FROM devices WHERE key_hash = ?", (key_hash,)).fetchone()
 
 
@@ -327,6 +336,7 @@ def fleet_alerts(conn: sqlite3.Connection, since: str | None, until: str | None)
 
 
 def last_event(conn: sqlite3.Connection, device_id: str, since: str | None, until: str | None) -> dict[str, Any] | None:
+    """The newest event of a device in [since, until] (ts, type, level, reasons), or None."""
     where, args = _where(device_id=device_id, since=since, until=until)
     row = conn.execute(
         f"SELECT ts, type, level, reasons FROM events WHERE {where} ORDER BY ts DESC LIMIT 1", args
@@ -575,6 +585,7 @@ def apply_feedback(conn: sqlite3.Connection, device_id: str, event_id: str, verd
 def insert_sample(
     conn: sqlite3.Connection, device_id: str, driver_id: str | None, s: dict[str, Any], received_at: str | None = None
 ) -> bool:
+    """Insert one per-minute fatigue sample; False when its sample_id is already stored."""
     cur = conn.execute(
         """INSERT OR IGNORE INTO fatigue_samples
                (sample_id, device_id, driver_id, trip_id, ts, drowsy_score, perclos_60s, max_level, off_road_ratio,
@@ -625,6 +636,7 @@ def query_summaries(
     unreviewed_only: bool = False,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
+    """Trip summaries, filtered by driver, device, start time or not yet reviewed."""
     where, args = ["1=1"], []
     for col, val in (("driver_id", driver_id), ("device_id", device_id)):
         if val is not None:
@@ -646,6 +658,7 @@ def query_summaries(
 def get_summary(
     conn: sqlite3.Connection, device_id: str, trip_id: str, driver_id: str | None = None
 ) -> dict[str, Any] | None:
+    """The summary of one trip, or None. With `driver_id`, only when it belongs to that driver."""
     sql = """SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, summary
              FROM trip_summaries WHERE device_id = ? AND trip_id = ?"""
     args: list[Any] = [device_id, trip_id]
@@ -657,6 +670,7 @@ def get_summary(
 
 
 def review_summary(conn: sqlite3.Connection, device_id: str, trip_id: str, username: str) -> bool:
+    """Mark a trip summary as read by `username`; False when there is no such summary."""
     cur = conn.execute(
         "UPDATE trip_summaries SET reviewed_by = ?, reviewed_at = ? WHERE device_id = ? AND trip_id = ?",
         (username, datetime.now(UTC).isoformat(), device_id, trip_id),
@@ -686,6 +700,7 @@ def _where(
 
 
 def query_samples(conn: sqlite3.Connection, limit: int = 2000, **filters: Any) -> list[dict[str, Any]]:
+    """Per-minute fatigue samples matching the filters, oldest first."""
     where, args = _where(**filters)
     rows = conn.execute(
         "SELECT ts, trip_id, device_id, driver_id, drowsy_score, perclos_60s, max_level, off_road_ratio "
@@ -713,6 +728,7 @@ def query_trips(conn: sqlite3.Connection, limit: int = 100, **filters: Any) -> l
 
 
 def event_stats(conn: sqlite3.Connection, **filters: Any) -> dict[str, Any]:
+    """Alert counts for the filters: total, false alarms, by level and by reason (no system events)."""
     where, args = _where(**filters)
     # Alerts only: system events (camera_lost / camera_restored) are listed in the log, not counted here.
     rows = conn.execute(
@@ -733,6 +749,7 @@ def event_stats(conn: sqlite3.Connection, **filters: Any) -> dict[str, Any]:
 
 
 def latest_thresholds(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """The newest thresholds version (version, values, updated_by, updated_at), or None."""
     row = conn.execute("SELECT * FROM threshold_versions ORDER BY version DESC LIMIT 1").fetchone()
     if row is None:
         return None
@@ -745,6 +762,7 @@ def latest_thresholds(conn: sqlite3.Connection) -> dict[str, Any] | None:
 
 
 def save_thresholds(conn: sqlite3.Connection, values: dict[str, float], username: str) -> int:
+    """Store the thresholds as a new version and return its number."""
     cur = conn.execute(
         "INSERT INTO threshold_versions (vals, updated_by, updated_at) VALUES (?, ?, ?)",
         (json.dumps(values, sort_keys=True), username, now_iso()),
@@ -756,6 +774,7 @@ def save_thresholds(conn: sqlite3.Connection, values: dict[str, float], username
 
 
 def get_thresholds_version(conn: sqlite3.Connection, version: int) -> dict[str, Any] | None:
+    """One thresholds version by its number, or None."""
     row = conn.execute("SELECT * FROM threshold_versions WHERE version = ?", (version,)).fetchone()
     if row is None:
         return None
@@ -777,6 +796,7 @@ def fleet_thresholds_version(conn: sqlite3.Connection) -> int:
 
 
 def set_fleet_thresholds(conn: sqlite3.Connection, version: int, username: str) -> None:
+    """Make `version` the one the whole fleet runs."""
     conn.execute(
         """INSERT INTO threshold_rollout (id, fleet_version, updated_by, updated_at) VALUES (1, ?, ?, ?)
            ON CONFLICT (id) DO UPDATE SET fleet_version = excluded.fleet_version,
@@ -786,10 +806,12 @@ def set_fleet_thresholds(conn: sqlite3.Connection, version: int, username: str) 
 
 
 def threshold_pins(conn: sqlite3.Connection) -> dict[str, int]:
+    """The thresholds version each pinned device runs: {device_id: version}."""
     return {r["device_id"]: int(r["version"]) for r in conn.execute("SELECT device_id, version FROM threshold_pins")}
 
 
 def pin_thresholds(conn: sqlite3.Connection, device_ids: list[str], version: int, username: str) -> None:
+    """Pin these devices to `version` (a trial on part of the fleet)."""
     now = now_iso()
     conn.executemany(
         """INSERT INTO threshold_pins (device_id, version, updated_by, updated_at) VALUES (?, ?, ?, ?)
@@ -800,6 +822,7 @@ def pin_thresholds(conn: sqlite3.Connection, device_ids: list[str], version: int
 
 
 def clear_threshold_pins(conn: sqlite3.Connection) -> int:
+    """Remove every pin; returns how many devices were pinned."""
     return conn.execute("DELETE FROM threshold_pins").rowcount
 
 
@@ -866,6 +889,7 @@ def query_events(
     until: str | None = None,
     feedback: str | None = None,
 ) -> list[dict[str, Any]]:
+    """Events matching the filters at `min_level` or above, newest first, JSON columns decoded."""
     where, args = _where(driver_id=driver_id, device_id=device_id, trip_id=trip_id, since=since, until=until)
     sql = f"SELECT * FROM events WHERE {where} AND level >= ?"
     args.append(min_level)

@@ -159,6 +159,7 @@ def save_traces(traces: dict[str, dict], path: Path = TRACES, columns: list[str]
 
 
 def load_traces(path: Path = TRACES, columns: list[str] = INPUT_COLUMNS) -> dict[str, dict]:
+    """Load the fixture traces from the .npz file, by video name."""
     with np.load(path) as z:
         names, lengths, fps = [str(x) for x in z["names"]], z["lengths"], z["fps"]
         cols = {c: z[f"col_{c}"].astype(np.float64) for c in columns}
@@ -209,6 +210,7 @@ def check(thresholds: dict[str, Any], paths: tuple[str, ...] = PATHS) -> list[st
 
 
 def write_expected(results: dict[str, dict[str, dict[str, Any]]], reason: str, keep_log: bool) -> None:
+    """Pin these results as the expected ones, with the reason added to the update log."""
     log = json.loads(EXPECTED.read_text(encoding="utf-8"))["updates"] if keep_log and EXPECTED.exists() else []
     log.append({"date": date.today().isoformat(), "reason": reason})
     doc = {
@@ -243,6 +245,7 @@ def build(thresholds: dict[str, Any], source_dir: Path, reason: str, extra: bool
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build", help="pick the videos from the full traces and pin their results")

@@ -11,7 +11,7 @@ import TripSummaryView from "./TripSummaryView";
 import type { HudLink } from "./hudModel";
 import { HUD_DEFAULTS } from "../lib/defaults";
 
-interface Scenario {
+export interface Scenario {
   key: string;
   label: string;
   level?: Level;
@@ -22,11 +22,11 @@ interface Scenario {
   soundBlocked?: boolean; // the browser still blocks sound: the amber touch-to-enable strip
 }
 
-const SCENARIOS: Scenario[] = [
+export const SCENARIOS: Scenario[] = [
   { key: "l0", label: "L0" },
   { key: "l1", label: "L1 buồn ngủ", level: 1, reasons: ["drowsy_score"], patch: { drowsy_score: 52 } },
   { key: "l1t", label: "L1 xu hướng", level: 1, reasons: ["trend"], patch: { drowsy_score: 41 } },
-  { key: "l2o", label: "L2 nhìn lệch", level: 2, reasons: ["off_road"], patch: { distraction_score: 100 } },
+  { key: "l2o", label: "L2 rời mắt", level: 2, reasons: ["off_road"], patch: { distraction_score: 100 } },
   { key: "l2p", label: "L2 điện thoại", level: 2, reasons: ["phone", "off_road"], patch: { distraction_score: 100 } },
   { key: "off", label: "Tạm ngưng (mất mặt)", patch: { unavailable: true, unavailable_reason: "no_face" } },
   { key: "offc", label: "Tạm ngưng (che camera)", patch: { unavailable: true, unavailable_reason: "camera_blocked" } },
@@ -35,7 +35,7 @@ const SCENARIOS: Scenario[] = [
   { key: "offb", label: "Tạm ngưng (ảnh mờ)", patch: { unavailable: true, unavailable_reason: "blur" } },
   {
     key: "ask",
-    label: "Bạn còn ở đó không?",
+    label: "Bạn vẫn ổn chứ?",
     patch: { unavailable: true, unavailable_reason: "no_face", presence: { asking: true, remaining_s: 8, unanswered: false } },
   },
   {
@@ -51,27 +51,27 @@ const SCENARIOS: Scenario[] = [
   { key: "l3", label: "L3 ngủ gật", level: 3, reasons: ["microsleep"], patch: { drowsy_score: 71 } },
   {
     key: "en0",
-    label: "Đăng ký: xác nhận",
+    label: "Làm quen: xác nhận",
     patch: { speed_kmh: 0, enrollment: { status: "consent", progress: 0, hint: null, attempts: 0 } },
   },
   {
     key: "en1",
-    label: "Đăng ký 1",
+    label: "Làm quen 1",
     patch: { speed_kmh: 0, enrollment: { status: "look_camera", progress: 0.4, hint: null, attempts: 0 } },
   },
   {
     key: "en2",
-    label: "Đăng ký 2 (giữ yên)",
+    label: "Làm quen 2 (giữ yên)",
     patch: { speed_kmh: 0, enrollment: { status: "look_road", progress: 0.2, hint: "hold_still", attempts: 1 } },
   },
   {
     key: "en3",
-    label: "Đăng ký 3",
+    label: "Làm quen 3",
     patch: { speed_kmh: 0, enrollment: { status: "close_eyes", progress: 0.7, hint: null, attempts: 0 } },
   },
   {
     key: "enw",
-    label: "Chưa đăng ký",
+    label: "Chưa làm quen",
     patch: { enrollment: { status: "waiting", progress: 0, hint: "stop_vehicle", attempts: 0 } },
   },
   {
@@ -93,11 +93,11 @@ const SCENARIOS: Scenario[] = [
     },
   },
   { key: "cam", label: "Mất camera", cameraLost: true },
-  { key: "trip", label: "Tổng kết chuyến" },
+  { key: "trip", label: "Tổng kết ca lái" },
   { key: "down", label: "Mất kết nối", link: "down" },
 ];
 
-function snapshotFor(s: Scenario, night: boolean, now: number, since: number): HudSnapshot {
+export function snapshotFor(s: Scenario, night: boolean, now: number, since: number): HudSnapshot {
   const level = s.level ?? 0;
   const alerts: HudAlert[] = level
     ? [{ event_id: `preview-${s.key}`, level, reasons: s.reasons ?? [], at: since, feedback: null, metrics: demoAlertMetrics(s.reasons ?? []) }]
@@ -188,7 +188,7 @@ export default function HudPreview() {
         edgeUrl="(xem trước)"
         onEnableSound={() => undefined}
         onToggleDemo={() => undefined}
-        onFalseAlarm={() => setToast("Đã ghi nhận cảnh báo sai (xem trước)")}
+        onFalseAlarm={() => setToast("Đã ghi nhận cảnh báo nhầm (xem trước)")}
         onEndTrip={() => pick("trip")}
         onVehicle={(action) =>
           action === "enroll_start"

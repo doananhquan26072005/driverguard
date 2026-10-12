@@ -18,6 +18,7 @@ LEVEL_COLORS = {0: (60, 160, 60), 1: (0, 200, 255), 2: (0, 120, 255), 3: (0, 0, 
 
 
 def alert_line(alert: Alert) -> str:
+    """One terminal line for a new alert: level, reasons, action and both scores."""
     reasons = ", ".join(alert.reasons) or "-"
     return (
         f"[ALERT L{alert.level}] {reasons} -> {alert.action}  "
@@ -54,6 +55,7 @@ def trip_summary_line(s: dict) -> str:
 
 
 def status_line(r: DecisionResult, fps: float) -> str:
+    """One terminal status line for the current frame: FPS, level, scores and the main metrics."""
     c = r.context
     speed = "--" if c.speed_kmh is None else f"{c.speed_kmh:3.0f}"
     trend = "--" if r.trip.trend_15min is None else f"{r.trip.trend_15min:+.1f}/min"

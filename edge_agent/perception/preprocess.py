@@ -32,6 +32,7 @@ class PreprocessConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PreprocessConfig:
+        """Build the config from the `preprocess` section of thresholds.yaml, with its numbers typed."""
         c = config_from_dict(cls, d, "preprocess")
         return cls(
             target_width=int(c.target_width),
@@ -88,6 +89,7 @@ class IrLatch:
         self._other_since: float | None = None
 
     def update(self, t: float, verdict: bool) -> bool:
+        """One frame's verdict (True = infrared); returns the camera's kind after the latch."""
         if self._is_ir is None or self._last_t is None or t <= self._last_t:
             self._is_ir, self._other_since = verdict, None
         elif verdict == self._is_ir:
@@ -121,6 +123,7 @@ class Preprocessor:
         return looks_infrared(self.config, float(diff), brightness)
 
     def resize(self, image: np.ndarray) -> tuple[np.ndarray, float]:
+        """Downscale to `target_width` keeping the aspect ratio; returns (image, scale)."""
         h, w = image.shape[:2]
         if w <= self.config.target_width:
             return image, 1.0

@@ -51,6 +51,7 @@ class TripSummaryConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> TripSummaryConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "trip_summary")
 
 
@@ -108,6 +109,7 @@ class TripSummary:
     minutes: list[MinutePoint] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        """The summary as a plain dict, ready for JSON."""
         return asdict(self)
 
 
@@ -220,6 +222,7 @@ class TripCollector:
         acc[3] += ctx.moving
 
     def minutes(self) -> list[MinutePoint]:
+        """The judged minutes of the trip, oldest first: mean drowsy_score, highest level, moving or not."""
         return [
             MinutePoint(m, round(a[0] / a[1], 1), int(a[2]), a[3] * 2 >= a[1])
             for m, a in sorted(self._minutes.items())
@@ -267,6 +270,7 @@ class TripCollector:
         speed_source: str = "simulated",
         vehicle_signal_lost_s: float = 0.0,
     ) -> TripSummary:
+        """Build the summary of the trip from what was collected (metadata only)."""
         cfg = self.config
         minutes = self.minutes()
         scores = np.array([p.drowsy_score for p in minutes]) if minutes else np.zeros(1)
@@ -347,6 +351,7 @@ def assess(s: TripSummary, cfg: TripSummaryConfig, tired_score: float) -> tuple[
 
 
 def suggest(s: TripSummary, cfg: TripSummaryConfig, long_drive_s: float) -> list[dict[str, Any]]:
+    """Advice codes for the driver from the trip summary (rest, breaks, phone, camera, enrollment)."""
     out: list[dict[str, Any]] = []
     if s.rating == "risk":
         out.append({"code": "rest_now"})

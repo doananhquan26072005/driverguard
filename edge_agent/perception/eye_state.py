@@ -80,6 +80,7 @@ class EyeStateConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EyeStateConfig:
+        """Build the config from the `eye_state` section; ConfigError for an unknown source."""
         cfg = config_from_dict(cls, d, "eye_state")
         for key in ("source", "web_source"):
             if getattr(cfg, key) not in SOURCES:
@@ -87,6 +88,7 @@ class EyeStateConfig:
         return cfg
 
     def resolved_model_path(self) -> Path:
+        """The model path, relative to the project root unless absolute."""
         p = Path(self.model_path)
         return p if p.is_absolute() else PROJECT_ROOT / p
 
@@ -100,6 +102,7 @@ class EyeState:
 
     @property
     def p_closed(self) -> float:
+        """Probability that the eyes are closed: the mean of both eyes."""
         return (self.p_closed_left + self.p_closed_right) / 2.0
 
 
@@ -203,6 +206,8 @@ class EyeStateEstimator:
         return reason
 
     def estimate(self, pre: PreprocessedFrame, lm: FaceLandmarks | None, f: FrameFeatures) -> EyeState | None:
+        """Block 5: p_closed of both eyes from the blendshapes or the CNN, only when a trigger says
+        EAR cannot be trusted on this frame. None when it did not run."""
         if not self.config.enabled or lm is None:
             return None
         cfg = self.config

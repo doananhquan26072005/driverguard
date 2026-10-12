@@ -11,7 +11,7 @@
 | **Phiên bản** | Version 4, dựa trên v3 (M32–M69). Chưa deploy. `APP_VERSION` trong `edge_agent/version.py` còn là `3.0.0`, chưa đổi |
 | **Mã nguồn** | nhánh `DAQuan`. Audit và M70–M76 đã commit và gộp `main` (PR #21, 08/10/2026); M77–M90 đã commit và gộp `main` (PR #22, 09/10/2026). Số mốc M91 và M92–M94 chưa commit (09/10) |
 | **Web đang chạy** | Chưa có bản v4. Lần gộp `main` 08/10 không tự deploy (CI trên GitHub không chạy), nên bản v3 đang chạy ở https://driveguard-production-5093.up.railway.app/#/live chưa có mốc nào của file này |
-| **Mốc trong lộ trình** | M70 (số liệu đúng phạm vi: báo sai nhánh buồn ngủ và mọi nhánh, nhóm theo FPS, luật chấm định trước, nhật ký đọc tập test, báo cáo FL3D / YawDD / SUST chạy lại), M71 (vòng lặp `#/live` tự hồi phục; khoảng hở giữa hai frame không còn bị nối thành một đợt), M72 (đóng các trạng thái ngừng giám sát mà không ai được báo: mặt lọt một phần khỏi khung, xe bò 1–5 km/h, nút một chạm trên HUD), M73 (ngữ cảnh quanh điểm buồn ngủ: "lái lâu" tắt được, dừng đèn đỏ không mang sang), M74 (khối 12 nhắc lại sau cooldown, leo thang đếm lại, câu hỏi hiện diện không lặp), M75 (đo hành vi dưới 15 FPS, không đổi hành vi), M76 (mắt díp rồi mới nhắm hẳn: còi L3 tính từ lúc nhắm), M77 (chặn số NaN / inf ở khối 3, 9, 11), M78 (nhánh điện thoại tự hồi phục: luồng YOLO sống qua exception, worker web có hạn chờ), M79 (nạp lại ngưỡng chỉ khi nghỉ, mẫu mỗi phút không đứt sau "Đổi tài xế"), M80 (khối 8 hiệu chuẩn lại mốc "nhìn đường" bị sai, mốc tư thế khối 7 chỉ học khi xe chạy), M81 (gục đầu cần mắt nhắm sâu, một lần ngáp đếm một, MAR quy về chính diện), M82 (backend không dựa vào đồng hồ thiết bị, `trip_id` có phần ngẫu nhiên), M83 (hành khách đứng một mình không còn là tài xế, camera lặp lại một ảnh là mất camera), M84 (một lớp chặn ảnh cho thiết bị, bản web và backend; server HUD kiểm ai gọi), M85 (ngưỡng về hết `thresholds.yaml`, trang web không giữ số riêng, test chặn hardcode), M86 (vệ sinh eval: giờ của video, ghim thư viện và model, fixture cho đường web), M87 (CI trên nhánh `DAQuan`, model thật, đo FPS), M88 (bù test còn thiếu: `agent.ts`, âm thanh HUD, worker YOLO, lịch chạy của khối 1 và 4 trên đồng hồ giả), M89 (khung giờ làm mờ HUD tách khỏi khung giờ nhân điểm, bố cục cho màn hình dọc), M90 (các phát hiện Low còn lại của audit: `blink_rate`, trần cho các cấu trúc, outbox, hàng đợi web), và lần sửa tài liệu theo audit (không đánh số); xem [roadmap.md](roadmap.md), M91 (tài liệu khớp lại với code theo audit), M92 (`drowsy_score` không được nhắc lại; đêm và lái lâu cùng bật nhân tối đa 1,2), M93 (ba tỉ lệ đếm theo frame thành tỉ lệ theo thời gian), M94 (số liệu sinh lại theo code sau M71–M93), M95 (chưa từng có số đọc tốc độ thì giám sát như đang chạy), M96 (vòng lặp chậm hơn 2 FPS là không giám sát), M97 (phiên đăng nhập sống qua chuyến, lô bị từ chối chỉ mất bản ghi hỏng, gửi có hạn chờ), M98 (ảnh màu tối không còn bị nhận là hồng ngoại), M99 (runtime đóng gói vào bản build, Content-Security-Policy), M100 (ô tự xem kéo và đổi cỡ được, đóng tab giữa chuyến vẫn kết thúc chuyến, âm thanh HUD), M101 (`l1` giữ 40, quyết trên DROZY bằng luật khai báo trước) |
+| **Mốc trong lộ trình** | M70 (số liệu đúng phạm vi: báo sai nhánh buồn ngủ và mọi nhánh, nhóm theo FPS, luật chấm định trước, nhật ký đọc tập test, báo cáo FL3D / YawDD / SUST chạy lại), M71 (vòng lặp `#/live` tự hồi phục; khoảng hở giữa hai frame không còn bị nối thành một đợt), M72 (đóng các trạng thái ngừng giám sát mà không ai được báo: mặt lọt một phần khỏi khung, xe bò 1–5 km/h, nút một chạm trên HUD), M73 (ngữ cảnh quanh điểm buồn ngủ: "lái lâu" tắt được, dừng đèn đỏ không mang sang), M74 (khối 12 nhắc lại sau cooldown, leo thang đếm lại, câu hỏi hiện diện không lặp), M75 (đo hành vi dưới 15 FPS, không đổi hành vi), M76 (mắt díp rồi mới nhắm hẳn: còi L3 tính từ lúc nhắm), M77 (chặn số NaN / inf ở khối 3, 9, 11), M78 (nhánh điện thoại tự hồi phục: luồng YOLO sống qua exception, worker web có hạn chờ), M79 (nạp lại ngưỡng chỉ khi nghỉ, mẫu mỗi phút không đứt sau "Đổi tài xế"), M80 (khối 8 hiệu chuẩn lại mốc "nhìn đường" bị sai, mốc tư thế khối 7 chỉ học khi xe chạy), M81 (gục đầu cần mắt nhắm sâu, một lần ngáp đếm một, MAR quy về chính diện), M82 (backend không dựa vào đồng hồ thiết bị, `trip_id` có phần ngẫu nhiên), M83 (hành khách đứng một mình không còn là tài xế, camera lặp lại một ảnh là mất camera), M84 (một lớp chặn ảnh cho thiết bị, bản web và backend; server HUD kiểm ai gọi), M85 (ngưỡng về hết `thresholds.yaml`, trang web không giữ số riêng, test chặn hardcode), M86 (vệ sinh eval: giờ của video, ghim thư viện và model, fixture cho đường web), M87 (CI trên nhánh `DAQuan`, model thật, đo FPS), M88 (bù test còn thiếu: `agent.ts`, âm thanh HUD, worker YOLO, lịch chạy của khối 1 và 4 trên đồng hồ giả), M89 (khung giờ làm mờ HUD tách khỏi khung giờ nhân điểm, bố cục cho màn hình dọc), M90 (các phát hiện Low còn lại của audit: `blink_rate`, trần cho các cấu trúc, outbox, hàng đợi web), và lần sửa tài liệu theo audit (không đánh số); xem [roadmap.md](roadmap.md), M91 (tài liệu khớp lại với code theo audit), M92 (`drowsy_score` không được nhắc lại; đêm và lái lâu cùng bật nhân tối đa 1,2), M93 (ba tỉ lệ đếm theo frame thành tỉ lệ theo thời gian), M94 (số liệu sinh lại theo code sau M71–M93), M95 (chưa từng có số đọc tốc độ thì giám sát như đang chạy), M96 (vòng lặp chậm hơn 2 FPS là không giám sát), M97 (phiên đăng nhập sống qua chuyến, lô bị từ chối chỉ mất bản ghi hỏng, gửi có hạn chờ), M98 (ảnh màu tối không còn bị nhận là hồng ngoại), M99 (runtime đóng gói vào bản build, Content-Security-Policy), M100 (ô tự xem kéo và đổi cỡ được, đóng tab giữa chuyến vẫn kết thúc chuyến, âm thanh HUD), M101 (`l1` giữ 40, quyết trên DROZY bằng luật khai báo trước), M102 (hướng dẫn sử dụng, trang `#/guide`) |
 | **Tên gọi** | Trong `roadmap.md`, tiêu đề "Version 4: thiết kế lại giao diện" là tên đợt thiết kế lại M57–M65; các mốc đó thuộc [release-v3.md](release-v3.md), không thuộc file này |
 
 ---
@@ -44,6 +44,9 @@ Phần này dành cho người dùng muốn biết ngay v4 khác v3 ở đâu. B
   lái xe, thay vì kẹt cảnh báo "nhìn về phía trước" tới hết chuyến (M80).
 - **Màn hình dọc và làm mờ buổi tối**: HUD có bố cục cho màn hình dọc, không phải cuộn; màn hình mờ từ 18 tới 6 giờ,
   tách khỏi khung giờ đêm dùng để nhân điểm buồn ngủ (M89).
+- **Câu chữ viết lại cho tài xế**: "Kết thúc ca lái" thay "Kết thúc chuyến", "Làm quen khuôn mặt" thay "Đăng ký khuôn
+  mặt", "Bạn vẫn ổn chứ?" thay "Bạn còn ở đó không?"; màn hình lỗi không còn từ kỹ thuật và nói rõ việc cần làm khi
+  dừng xe (mục 3.39, 12/10).
 - **Số liệu gọi đúng tên**: "0,98 báo sai / giờ" là riêng nhánh buồn ngủ; tính mọi nhánh trên cả video là 1,2 / giờ
   (cận trên 2,7), và chỉ con số này so được với chỉ tiêu PRD (M70).
 
@@ -105,6 +108,7 @@ Phần này dành cho người dùng muốn biết ngay v4 khác v3 ở đâu. B
 | **Sửa** | `#/live` không còn tải code từ CDN: Pyodide và wasm của MediaPipe là file của bản build (hai gói Python tải lúc build, kiểm sha256). Backend gửi Content-Security-Policy: script chỉ từ chính origin, không `eval`, chỉ nối tới chính server và máy của tài xế | [M99](roadmap.md#m99) | 09/10 |
 | **Thêm** | `#/live`: ô tự xem kéo và đổi cỡ được (trước che nút "Cảnh báo này sai?"). **Sửa:** đóng tab giữa chuyến vẫn kết thúc chuyến và gửi tổng kết; cảnh báo tới lúc bị chặn tiếng được phát với lần chạm đầu; mở HUD giữa chuyến không kêu lại cảnh báo cũ | [M100](roadmap.md#m100) | 09/10 |
 | **Thêm** | `tools/drozy.py`, luật khai báo trước `eval/splits/drozy_l1_rule.md`, báo cáo `eval/results/drozy_l1.md`: `risk.drowsy.l1` 40 hay 50 trên DROZY. Kết luận theo luật: giữ 40 (0 báo sai ở cả hai giá trị; 50 mất 1 / 7 video buồn ngủ có cảnh báo). Không ngưỡng nào đổi | [M101](roadmap.md#m101) | 09/10 |
+| **Thêm** | Trang `#/guide`: hướng dẫn sử dụng, 24 màn hình có thể hiện do chính HUD vẽ trên số liệu mẫu, mỗi màn hình kèm ý nghĩa và việc nên làm; các trang web theo vai trò. `HudStage` vẽ được trong một hộp (`StageFrame`) | [M102](roadmap.md#m102) | 12/10 |
 
 ---
 
@@ -777,6 +781,180 @@ Soát README theo checklist của khoá học. Chỉ đổi tài liệu.
 - **Sửa** bảng Team: thêm họ tên và vai trò lấy từ `docs/WORKLOG.md`; họ tên của `hddung-vinai` còn trống.
 - **Sửa** mục "Cấu trúc thư mục" thành dạng cây.
 
+### 3.35 Hình của video demo: 21 clip chưa lồng tiếng (09/10)
+
+Không đổi code chạy, không có số mốc.
+
+- **Thêm** `presentation/demo-clips/` (chưa đưa vào git): 21 clip 1920 × 1080 (20 theo từng dòng của
+  `docs/kich-ban-demo.md`, 1 cảnh thêm về các trạng thái khác của HUD lấy từ `#/hud-preview`), bản nối theo từng phần,
+  bản xem trước cả video không có và có cảnh thêm (4 phút 46 giây và 5 phút) và bảng lồng tiếng
+  `LOI-THOAI.md`. Phần 2 và 4 quay trên bản build production của nhánh `DAQuan` với camera thật, backend chạy trên
+  database tạm; phần 1, 3, 5 là slide và hình kiến trúc.
+- **Sửa** `docs/kich-ban-demo.md`: ở phần 2, cảnh nhắm mắt (L3) chuyển xuống sau cảnh điện thoại và nhìn lệch. Lý do
+  đo được khi quay: sau một lần nhắm mắt 4 giây, điểm buồn ngủ (25 của microsleep + phần PERCLOS) vượt ngưỡng L1 nên
+  màn hình giữ "Hãy tìm chỗ dừng nghỉ" khoảng 40 giây. Thêm ghi chú về góc quay đầu ở cảnh xi nhan (38–56°).
+- **Sửa** `docs/improvements.md` việc 1: phần video chỉ còn lồng tiếng và ghép.
+- **Thêm** bốn clip tuỳ chọn `6-1` … `6-4` (tối 09/10, 42,8 giây): kỹ sư chỉnh ngưỡng và áp thử một xe, trang
+  "Dữ liệu của tôi" của tài xế, nhật ký truy cập của quản trị, bốn trạng thái HUD khác từ `#/hud-preview`. Lời thoại ở
+  mục "Clip thêm" của `LOI-THOAI.md`; thêm cả bốn thì video quá 5 phút.
+
+### 3.36 Tên và vị trí file nộp theo cấu trúc của khoá học (10/10)
+
+Chỉ đổi tên và đường dẫn tài liệu, không đổi code chạy, không có số mốc.
+
+- **Sửa** tên file: `docs/JOURNAL.md` → `docs/journal.md`, `docs/WORKLOG.md` → `docs/worklog.md`, `docs/vdeo-demo.md` →
+  `docs/video-demo.md`, `ARCHITECTURE.md` (gốc repo) → `docs/architecture.md`. Ở gốc repo, `ARCHITECTURE.md`,
+  `JOURNAL.md`, `WORKLOG.md` còn một dòng trỏ sang `docs/`. Các mục cũ hơn trong file này vẫn ghi tên cũ.
+- **Thêm** `docs/evaluation.md`: trang lối vào trỏ tới `eval/results/report.md`, các file kết quả và bộ test; không chép
+  số liệu.
+- **Sửa** bảng Deliverables của README theo đường dẫn mới; video demo chuyển sang ✅.
+- **Còn thiếu:** `docs/pitch-deck.pdf`. Code vẫn ở `edge_agent/`, `backend/`, `frontend/`, không ở `src/` (`src/` là code
+  mẫu của khoá học).
+
+### 3.37 Phiên bản dependency ghim cứng; docstring cho hàm public (10/10)
+
+Theo checklist nộp bài (mục Source Code). Không đổi hành vi chạy, không có số mốc.
+
+- **Sửa** `requirements.txt`, `requirements-dev.txt`, `requirements-template.txt`, `packaging/edge/requirements.txt`:
+  mọi dòng `>=` thành `==`, lấy đúng phiên bản đang cài trong `.venv` (Python 3.12) đã chạy qua bộ test, ví dụ
+  `fastapi==0.141.1`, `pydantic==2.13.5`, `pyjwt==2.15.0`, `pytest==9.1.1`, `ruff==0.16.8`. Bốn thư viện của khối 2–6
+  (opencv, numpy, mediapipe, onnxruntime) đã ghim từ trước, giữ nguyên.
+- **Sửa** `packaging/edge/requirements.txt`: MediaPipe ghim `0.10.21`, riêng linux/arm64 ghim `1.0.1` vì `0.10.21`
+  không có wheel ở đó (cùng lý do ghi trong `Dockerfile.edge`).
+- **Thêm** docstring một dòng (tiếng Anh) cho 346 hàm public còn thiếu: `backend/` 43 % → 99 %, `edge_agent/`
+  55 % → 98 %, `tools/` 54 % → 95 %. Gồm cả các route của `backend/app.py`, nên mô tả hiện ở trang `/docs` (Swagger).
+- **Kiểm:** `ruff check`, `ruff format --check`, 1712 test qua, 6 xfail.
+- **Còn lại:** `piper-tts==1.8.0` là bản mới nhất lúc ghim, chưa chạy thử (`.venv` không cài; chỉ `tools/make_voice.py`
+  dùng). Nhánh Python 3.13 (ảnh Kaggle) chưa cài thử với các phiên bản mới ghim. `Dockerfile.edge` và
+  `Dockerfile.railway` vẫn tự ghi `>=` trong lệnh `pip install`. Hàm lồng trong hàm và vài hàm phụ chưa có docstring.
+
+### 3.38 Bằng chứng đánh giá: coverage, baseline so sánh, bảng traceability (10/10)
+
+Theo checklist nộp bài (mục Evaluation Evidence). Không đổi code của 14 khối, không đổi ngưỡng, không chạy phép đo mới
+trên dataset, không đọc lại tập giữ riêng. Không có số mốc.
+
+- **Thêm** `pytest-cov==7.1.0` vào `requirements-dev.txt` và lệnh `make coverage`. Coverage theo dòng lệnh, đo trên cả bộ
+  test: `edge_agent/` + `backend/` 93,9 % (6743 dòng), `tools/` 58,8 %, tổng 77,4 %. Bảng theo gói ở `report.md` mục 4.1.
+- **Sửa** `eval/results/report.md` mục 4: bảng kết quả theo bộ test thay cho hai dòng lệnh (số cũ 1643 Python / 67
+  frontend đã lệch; nay 1712 pass, 6 xfail và 293 pass).
+- **Thêm** `report.md` mục 2.9, so sánh với baseline từ số đã có: bốn tín hiệu đơn (AUC 0,872–0,892) so với
+  `drowsy_score` (0,924) trên 24 người giữ riêng của UTA-RLDD; baseline con người 57,8 % và HM-LSTM 65,2 % của bài báo
+  gốc, ghi rõ là không so trực tiếp được (3 lớp, 60 người).
+- **Thêm** `docs/traceability.md`: 14 khối, ràng buộc của CLAUDE.md, FR-1 đến FR-20 và NFR-1 đến NFR-6 → file test.
+- **Sửa** `docs/evaluation.md`: bảng đối chiếu checklist và lý do không dùng pass@k / RAGAS. `report.md` mục 6 có cách
+  làm và bảng để điền phản hồi người dùng.
+- **Còn lại:** phản hồi người dùng thật vẫn là 0 người. Chưa có số của sản phẩm thương mại, chưa có bảng so với "ngưỡng
+  thô" của PRD §6, chưa tính khoảng tin cậy cho AUC. `edge_agent/main.py` và `edge_agent/hud/hud.py` ở 0 % coverage;
+  FR-14 và NFR-4 không có test tự động. CI chưa chạy coverage. E2e không chạy lại.
+
+### 3.39 Câu chữ trên màn hình viết lại cho tài xế (12/10)
+
+Rà toàn bộ chữ và lời nói mà tài xế gặp theo bốn tiêu chí: rõ, ngắn, nói được việc cần làm, không trách người lái.
+Chỉ đổi chuỗi hiển thị, file giọng nói và test; không đổi logic, ngưỡng hay key gửi lên backend. Không có số mốc.
+Chưa hỏi tài xế thật nào về cách gọi mới.
+
+- **Sửa** năm cách gọi dùng chung:
+  - "chuyến" → **"ca lái"** trên HUD, bảng tổng kết, trang tài xế và trang quản lý ("Kết thúc ca lái", "Tổng kết ca
+    lái", "Báo cáo ca lái"). Với tài xế công nghệ "chuyến" là một lần chở khách, còn một phiên của hệ thống có nhiều lần
+    nghỉ. Tên biến, API và `trip_id` giữ nguyên.
+  - Với tài xế, "giám sát" → **"theo dõi"** và gọi người lái là "bạn" ("Hiện chưa theo dõi được bạn"). Trang quản lý và
+    nhật ký sự kiện vẫn dùng "giám sát".
+  - "Đăng ký tài xế" / "Đăng ký khuôn mặt" → **"Làm quen khuôn mặt"**: "đăng ký" gợi ý lưu sinh trắc học, trái với cam
+    kết không lưu ảnh.
+  - Thang độ mệt còn một bộ: **Tỉnh táo · Hơi mệt · Rất mệt** (trước có bốn bộ khác nhau giữa các màn hình).
+  - "Nhìn lệch" → **"Rời mắt (khỏi đường)"**; "báo sai" → **"báo nhầm"** ở phía tài xế.
+- **Sửa** tiêu đề cảnh báo, chỉ còn hành động: L3 "Dừng xe nghỉ ngay", `unresponsive` "Tấp vào lề, dừng xe ngay!" (bỏ chữ
+  hoa toàn bộ), `off_road` "Nhìn đường!", `trend` "Xong cuốc này nên nghỉ" (thay "trạm dừng tới"), `repeated_l1` "Bạn cần
+  nghỉ rồi. Tìm chỗ dừng xe". Câu hỏi hiện diện thành "Bạn vẫn ổn chứ?".
+- **Sửa** màn hình lỗi, bỏ từ kỹ thuật ("HUD", "edge agent", "khung hình/giây", "vòng xử lý"): "Mất kết nối với thiết bị",
+  "Camera bị đứng hình", "Hệ thống gặp lỗi", "Máy đang chậm · cảnh báo có thể trễ". Việc phải dùng tay (chỉnh camera, lau
+  ống kính, khởi động lại) ghi rõ "khi dừng xe". "Không phát hiện được điện thoại" → "Tạm chưa nhận biết được điện thoại"
+  (câu cũ đọc được thành tin tốt). "Mất tín hiệu xe" → "Mất tín hiệu tốc độ xe".
+- **Sửa** dòng ghi chú có lệnh `python -m edge_agent.main` trên màn hình mất kết nối: chỉ còn hiện ở bản dev.
+- **Sửa** lỗi đăng nhập không phải sai mật khẩu: "Không đăng nhập được. Kiểm tra mạng rồi thử lại." thay cho thông báo
+  lỗi thô. Hộp xác nhận xoá dữ liệu nói rõ "Xoá rồi không khôi phục được".
+- **Sửa** 17 trong 31 dòng của `frontend/src/hud/voice-lines.json`.
+- **Sửa** giọng đọc: từ Piper `vi_VN-vais1000-medium` sang giọng nam `vi-VN-NamMinhNeural` của Microsoft, đọc nhanh hơn 12 %
+  và trầm hơn 6 Hz so với mặc định để câu cảnh báo nghe dứt khoát. Chọn bằng tai trong 9 kiểu đọc thử (ba giọng Piper,
+  giọng Linh của macOS, HoaiMy, NamMinh, Google). `tools/make_voice.py` gọi qua gói `edge-tts` (`requirements-dev.txt`
+  thay `piper-tts`), ghi lại cả 31 câu thành `.mp3` thay cho `.wav` (thư mục `frontend/public/voice/` từ 2,1 MB còn
+  0,6 MB); `chime.ts` phát file `.mp3`. Ứng dụng vẫn chỉ phát file có sẵn, không gửi gì đi lúc chạy.
+  - `edge-tts` dùng dịch vụ đọc to của Microsoft Edge, không phải API chính thức: hôm 12/10 khoảng một nửa số yêu cầu bị
+    trả về rỗng, nên script thử lại tới 10 lần mỗi câu và chạy lại thì làm tiếp các câu còn thiếu. Lúc ghi cần mạng, và
+    chữ của 31 câu được gửi tới Microsoft. Chưa đọc điều khoản dùng audio này trong sản phẩm; đường chính thức là Azure
+    Speech (cần key).
+  - Chưa ai nghe 31 file mới trong xe, và chưa đo lại khoảng cách giữa chuông và lời nói với file mới.
+- **Sửa** chữ trích từ màn hình trong `HowToUse.md`, `README.md`, `docs/kich-ban-demo.md` theo chữ mới.
+- **Sửa** năm ảnh ở `docs/screenshots/` của README: chụp lại bằng Playwright theo cách của mục 3.34 (HUD ở
+  `#/hud-preview`, dashboard trên database tạm với một ca lái mô phỏng 5 cảnh báo, 45 mẫu theo phút).
+- **Sửa** ô "Chú ý đường" của HUD thành "Nhìn đường" (giá trị: Tập trung / Rời mắt / Cầm điện thoại).
+- **Còn lại:** pitch deck vẫn là chữ cũ; 15 clip demo có giao diện đã quay lại ([mục 3.41](#341-clip-demo-quay-lại-trên-giao-diện-và-giọng-nói-mới-1210)), 6 clip slide thì chưa. Trang `#/live` (bản
+  chạy thử) còn vài chỗ dùng "giám sát". Chú thích trong code Python và các tài liệu lịch sử (roadmap, release cũ, audit)
+  vẫn trích chữ cũ.
+- Test: vitest 293 pass (13 kỳ vọng đổi theo chữ mới), `tsc` sạch, e2e 13 pass (9 `live.e2e.ts`, 4 `portrait.e2e.ts`: chữ
+  mới vẫn vừa bố cục dọc), `test_data_policy.py` 10 pass. Cả bộ test Python không chạy lại vì không đổi file Python nào.
+
+### 3.40 Hướng dẫn sử dụng trong sản phẩm, `#/guide` (M102, 12/10)
+
+- **Thêm** trang `#/guide`, không cần đăng nhập, camera hay backend: 24 màn hình chia năm chương (bắt đầu ca lái, bốn
+  mức khi đang lái, camera không thấy rõ, thiết bị trục trặc, kết thúc ca lái). Mỗi màn hình có "nghĩa là gì" và "nên
+  làm gì", địa chỉ riêng `#/guide/<tên>`, nút "Tiếp" / "Trước" và phím mũi tên. Cuối trang là các trang web của từng
+  vai trò.
+- **Thêm** `StageFrame` cho `HudStage`: HUD vẽ được trong một hộp thay vì cả cửa sổ. Màn hình trong hướng dẫn là
+  `HudView` / `TripSummaryView` thật trên kịch bản của `#/hud-preview`, không phải ảnh chụp; hình `inert`.
+- **Thêm** một lối vào: thẻ "Hướng dẫn sử dụng" ở trang đăng nhập (trang đầu tiên của sản phẩm).
+- **Sửa** (12/10) thẻ đó chuyển từ cuối cột form (dưới nút "Đăng nhập", phải cuộn mới thấy) lên cột giới thiệu, ngay
+  dưới đoạn mô tả: viền và icon màu accent, thấy ngay không cần cuộn ở 1280 x 800 và 390 x 800.
+- **Sửa** `PAGE_LEAD` chuyển từ `Dashboard.tsx` sang `nav.ts` (chữ không đổi).
+- **Sửa** (12/10) bố cục `#/guide` từ một trang cuộn dọc thành kiểu app: khung cao bằng cửa sổ, không cuộn trang; hàng
+  tab (Giới thiệu, năm chương, Trang web), một màn hình cạnh lời giải thích, thanh dưới có "Trước" / chấm của chương /
+  "Tiếp". `#/guide` nay mở màn hình giới thiệu (trước là màn hình đầu tiên), thêm `#/guide/web`. Hình HUD thu nhỏ theo
+  cả rộng lẫn cao của ô (trước: tối đa 62 % chiều cao cửa sổ).
+- **Bỏ** danh sách 24 màn hình ở cột trái của `#/guide` và phần vai trò ở cuối trang (nay là tab "Trang web").
+- Tương thích: không đổi API, ngưỡng, code Python hay CSP. `#/hud`, `#/live`, `#/hud-preview` vẽ như trước.
+- Giới hạn: lời giải thích chưa có tài xế nào đọc; trang web sau đăng nhập mới có chữ, chưa có hình; HUD đang chạy
+  không có nút mở hướng dẫn; chưa xem trên thiết bị thật.
+- Đo: vitest 307 pass, e2e `guide.e2e.ts` 4 / 4 ở 1280 x 800, 800 x 1280, 390 x 800 (cả 24 màn hình, giới thiệu và
+  trang web không cuộn cửa sổ). Ở 360 x 640 ô chữ phải cuộn bên trong (dài nhất thừa 137 px).
+
+Chi tiết: [roadmap M102](roadmap.md#m102).
+
+### 3.41 Clip demo quay lại trên giao diện và giọng nói mới (12/10)
+
+Không đổi code chạy, không có số mốc.
+
+- **Sửa** 15 clip ở `presentation/demo-clips/` (chưa đưa vào git): 2-1 … 2-9 và 4-1 … 4-6, quay lại trên bản build
+  nhánh `DAQuan` ngày 12/10 (chữ của mục 3.39, giọng `vi-VN-NamMinhNeural`). Không quay lại khuôn mặt: hình lấy từ ô
+  "Camera tài xế" của các clip cũ (440 × 330 px, lật lại cho hết soi gương, bỏ góc bo) và đưa vào `#/live` thay cho
+  camera; pipeline thật chạy lại trên hình đó, backend trên database tạm. Độ dài từng clip giữ nguyên.
+- Kết quả trên hình cắt lại, một lượt mỗi cảnh: làm quen khuôn mặt xong ở giây 13; điện thoại L2, rời mắt L2, nhắm mắt
+  L3 đều báo; xe đỗ không báo; bật xi nhan trái thì lần nhìn trái không báo, tắt đi thì báo L2; che camera, rời khung
+  hình ("Bạn vẫn ổn chứ?"), mất tín hiệu tốc độ đều hiện. Clip 4-3 hiện "không thấy mặt" khoảng 1,5 giây rồi mới đổi
+  thành "camera bị che" (bản 09/10 hiện "camera bị che" ngay).
+- **Sửa** `phan-2.mp4`, `phan-4.mp4`, hai bản `xem-truoc-toan-bo…mp4` (ghép lại), hai file `.srt` và `LOI-THOAI.md`
+  (mốc giây, chữ trích từ màn hình, ghi chú 14). Bản 09/10 giữ ở `presentation/demo-clips/ban-cu-2026-10-09/`.
+- **Còn lại:** 6 clip slide (phần 1, 3, 5) chưa xem lại chữ; bốn clip `6-…` không còn trong thư mục nên không quay
+  lại; chưa lồng tiếng. Script quay nằm ngoài repo.
+
+### 3.42 Trang đầu tiên là trang đăng nhập, vào thẳng bước tiếp (12/10)
+
+Việc anh giao 12/10 sau khi chạy thử, chưa có số mốc.
+
+- **Sửa** màn hình đầu của `#/live`: bỏ màn hình thiết lập ba bước (M64), thay bằng chính trang đăng nhập
+  (`dashboard/Login.tsx`, có thẻ "Hướng dẫn sử dụng"). Bấm "Đăng nhập" (tài xế) hoặc "Dùng thử không lưu" là xin
+  camera và chạy các bước khởi động ngay, không còn nút "Cho phép camera và bắt đầu" ở giữa.
+- **Sửa** địa chỉ không có `#/...` nay mở trang này (trước: `#/dashboard`). `#/dashboard` giữ nguyên.
+- **Thêm** quản lý, kỹ sư, quản trị đăng nhập ở trang đầu thì sang `#/dashboard`, không mở camera. Tài xế còn phiên
+  đăng nhập thấy "Cho phép camera và bắt đầu", "Mở Dashboard", "Đổi tài khoản" thay cho form.
+- **Bỏ** ở màn hình đầu của `#/live`: ba bước làm quen khuôn mặt viết sẵn, câu "Đặt camera ngang mặt", link "Xem lại
+  lịch sử cảnh báo trên Dashboard". Màn hình đồng ý của HUD và `#/guide` vẫn nói các ý này.
+- **Sửa** màn hình "Đang khởi động" dùng khung của `#/guide`; nút "Chạy thử bằng camera" trong `#/guide` bỏ, mũi tên
+  quay lại về trang đầu.
+- Tương thích: không đổi API, ngưỡng, code Python. `bench/live.bench.mjs` bấm một nút thay vì hai.
+- Giới hạn: tài khoản không phải tài xế không còn chạy thử camera bằng tài khoản mình từ trang này (dùng "Dùng thử
+  không lưu"); trang đăng nhập trên điện thoại 390 x 800 vẫn phải cuộn (như trước); chưa xem trên màn hình xe.
+- Đo: `tsc` sạch, vitest 307 pass, Playwright 18 / 18 (1 bài mới: quản lý sang Dashboard, tài xế còn phiên).
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
@@ -829,6 +1007,11 @@ Soát README theo checklist của khoá học. Chỉ đổi tài liệu.
 - Test Python và vitest chạy lại cả bộ sau M93 (09/10), trên cây làm việc có M92, M93 chưa commit, không phiên nào khác
   đang sửa. E2e là số các phiên M88 và M89 báo sáng 09/10, chưa chạy lại sau M92, M93 (hai mốc không đổi code frontend).
 - CI trên GitHub chưa chạy lần nào với các thay đổi này (xem M87).
+- 10/10: cả bộ Python chạy lại kèm coverage (1712 pass, 6 xfail; 93,9 % dòng lệnh của `edge_agent/` + `backend/`), vitest
+  293 pass; e2e không chạy lại (mục 3.38).
+- 12/10: sau khi viết lại câu chữ (mục 3.39), vitest 293 pass, e2e 13 pass; cả bộ Python không chạy lại.
+- 12/10: sau M102 (mục 3.40), vitest **305** pass; e2e `guide.e2e.ts` 4 / 4 (mới) và `portrait.e2e.ts` 4 / 4; `live.e2e.ts`
+  không chạy lại; Python 1712 pass, 6 xfail.
 
 **Sau M70 (08/10):** 1000 test Python pass (7 test mới bằng chuỗi số giả: đếm mọi nhánh và 30 s đầu, nhóm FPS, nhật ký đọc tập test, báo cáo có bảng mới, dòng nguồn gốc); ruff sạch ở phần đã đổi; test hồi quy trace không phải chốt lại. Frontend không đổi, không chạy lại.
 

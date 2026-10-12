@@ -73,6 +73,7 @@ class EnrollmentConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EnrollmentConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "enrollment")
 
 
@@ -105,10 +106,12 @@ class EnrollmentState:
 
     @property
     def enrolled(self) -> bool:
+        """True once the driver has a profile."""
         return self.profile is not None
 
     @property
     def step_active(self) -> bool:
+        """True while one of the enrollment steps is running."""
         return self.status in STEPS
 
 
@@ -184,6 +187,8 @@ class DriverEnrollment:
 
     # ------------------------------------------------------------------ per frame
     def update(self, f: FrameFeatures, stationary: bool) -> EnrollmentState:
+        """One frame of driver enrollment. The steps only run while the vehicle is stationary;
+        driving off mid-way starts them again at the next stop."""
         cfg = self.config
         t = f.timestamp
         events: list[str] = []

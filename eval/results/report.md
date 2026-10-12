@@ -188,6 +188,37 @@ Dashboard (ô *Tài xế báo sai*, tab *Ngưỡng*) tính `false_alarms / tổn
 
 M53 đưa trọng số chớp chậm và nhướn mày về 0 và để luật `trend` chỉ ghi nhận: hai tín hiệu không phân biệt được tỉnh với buồn ngủ trên cùng một người. Đây không phải dữ liệu lái xe; kết luận về chỉ tiêu PRD vẫn cần giờ lái thật có nhãn.
 
+### 2.9 So sánh với baseline (10/10)
+
+Không chạy phép đo mới: các số dưới đây lấy từ `dataset_uta_rldd.md` (mục 2, 4, 10) và từ bài báo gốc của dataset.
+
+**Baseline nội bộ: một tín hiệu đơn so với `drowsy_score`**, cùng 24 người giữ riêng của UTA-RLDD, tách video `10` với video `0`:
+
+| Cách tách | AUC | Cùng người: đi đúng hướng / đi ngược |
+|---|---:|---:|
+| Lần nhắm mắt dài nhất (`closed_duration`) | 0,872 | 23 / 1 |
+| PERCLOS kiểu P80 (EAR < 0,48 × mốc), chỉ số kinh điển trong tài liệu | 0,873 | 22 / 2 |
+| MediaPipe `eyeBlink` ≥ 0,5 (model pretrained dùng thẳng, không mốc riêng) | 0,885 | 23 / 1 |
+| PERCLOS theo luật hiện tại (EAR < 0,65 × mốc) | 0,892 | 24 / 0 |
+| **`drowsy_score` (nhiều tín hiệu, sau M53)** | **0,924** | 22 trên 24 đi đúng hướng |
+
+**Đơn vị và mẫu dương:** một người (24 người, mỗi người một video `0` và một video `10`). Các dòng tín hiệu đơn đo ngày 06/10 và chưa chạy lại; `drowsy_score` chạy lại 09/10 (M94) cho 0,929 và 23 trên 24. Chưa tính khoảng tin cậy cho AUC: chênh 0,03–0,05 trên 24 người chưa đủ để kết luận điểm tổng hợp tốt hơn một tín hiệu đơn. Bảng này chỉ so khả năng xếp hạng video, không so số cảnh báo sai.
+
+**Baseline con người và model, từ bài báo gốc của UTA-RLDD** (Ghoddoosian và cộng sự, CVPRW 2019, [arXiv 1904.07312](https://arxiv.org/abs/1904.07312), bảng 2; trung bình 5 fold, 60 người, 3 lớp `0` / `5` / `10`):
+
+| Cách làm | Video phân loại đúng (VA) |
+|---|---:|
+| Người xem video rồi chấm điểm 0–10 (20 tình nguyện viên, 4 người mỗi fold) | 57,8 % |
+| Lớp fully connected | 57,0 % |
+| LSTM | 61,4 % |
+| HM-LSTM (model của bài báo, học trên 4 fold còn lại) | 65,2 % |
+
+**Không so trực tiếp được với DriverGuard:** bài báo chấm độ chính xác 3 lớp trên 60 người; DriverGuard không phân loại video thành 3 lớp, không học trên dataset này, và các số ở mục 2.8 là AUC 2 lớp cùng báo sai / giờ trên 24 trong 48 người của bản Kaggle. Điều rút ra được: người xem video cũng chỉ đúng dưới 60 %, nên nhãn tự đánh giá của bộ này là một bài toán khó. Độ chính xác 3 lớp của DriverGuard theo đúng cách chấm của bài báo: chưa đo.
+
+**So với mục tiêu PRD:** nằm ở cột "Nhận định" của mục 2.2 và 2.8 (báo sai ≤ 1,0 / giờ, microsleep ≥ 90 % lần) và mục 3 (FPS).
+
+**Chưa có:** số của sản phẩm DMS thương mại trên cùng dataset (không tìm được số công bố nào); bảng so với "ngưỡng thô" mà PRD §6 yêu cầu (không thấp hơn quá 5 điểm %) không có trong `eval/results/`.
+
 ## 3. Hiệu năng
 
 Mac ARM, 10 nhân, video YawDD 640×480 có mặt thật (`benchmark.md`):
@@ -205,12 +236,48 @@ Bảng tiêu chí đầy đủ để chạy thử trên xe thật: [`docs/pilot-
 
 ## 4. Test
 
-```
-pytest tests/ -q                                       # 1643 passed, 9 xfailed (09/10/2026)
-cd frontend && npm test                                # 67 passed
-```
+Chạy lại cả bộ ngày 10/10/2026 trên cây làm việc của nhánh `DAQuan` (sau commit `578cfd8`, có thay đổi chưa commit), máy dev có đủ ba file model nên không test nào bị bỏ qua.
+
+| Bộ test | Lệnh | Kết quả |
+|---|---|---|
+| Edge agent và công cụ (`tests/test_edge_agent/`, 69 file) | `pytest tests/ -q` | 1474 pass, 6 xfail có chủ ý |
+| Backend (`tests/test_backend/`, 19 file) | cùng lệnh | 233 pass |
+| Code mẫu của khoá học (`tests/test_agents/`, `tests/test_api/`) | cùng lệnh | 5 pass |
+| **Tổng Python** | | **1712 pass, 6 xfail, 0 fail** (275 s) |
+| Frontend (vitest, 25 file) | `cd frontend && npm test` | 293 pass |
+| End-to-end (Playwright: `live.e2e.ts`, `portrait.e2e.ts`) | `cd frontend && npm run e2e` | Không chạy lại hôm nay; lần gần nhất 09/10 (`docs/release-v4.md` mục 5) |
+
+Sáu xfail đều ở `test_m75_low_fps.py`: khi vòng lặp chậm hơn 15 FPS, một sự kiện chỉ vượt mốc thời lượng trong khoảng hai frame có thể bị bỏ sót. Test ghi hành vi mong muốn và đánh dấu `xfail(strict)`, nên khi sửa được thì test báo để gỡ dấu.
+
+### 4.1 Coverage (theo dòng lệnh)
+
+`make coverage` (pytest-cov 7.1.0), đo trên đúng lần chạy 1712 test ở trên. Coverage theo nhánh rẽ (branch) chưa đo; frontend chưa đo coverage.
+
+| Gói | Khối | Số file | Dòng lệnh | Coverage |
+|---|---|---:|---:|---:|
+| `edge_agent/capture` | 1 | 2 | 209 | 97,1 % |
+| `edge_agent/perception` | 2–6 | 10 | 1304 | 98,1 % |
+| `edge_agent/analysis` | 7, 8 | 11 | 1168 | 98,8 % |
+| `edge_agent/decision` | 9, 11, 12 | 7 | 836 | 98,9 % |
+| `edge_agent/context` | 10 | 3 | 264 | 97,0 % |
+| `edge_agent/hud` | 13 | 3 | 312 | 82,1 % |
+| `edge_agent/io` | 14 | 4 | 475 | 95,6 % |
+| `edge_agent/web` | bản chạy trên trình duyệt | 2 | 234 | 98,3 % |
+| `edge_agent/*.py` (`main.py`, `runtime.py`, `config.py`, ...) | vòng lặp chính | 6 | 652 | 63,8 % |
+| `backend/` | máy chủ | 9 | 1289 | 97,4 % |
+| **`edge_agent/` + `backend/`** | | **57** | **6743** | **93,9 %** |
+| `tools/` | công cụ eval, benchmark | 26 | 5934 | 58,8 % |
+| **Tổng** | | **83** | **12677** | **77,4 %** |
+
+Chỗ chưa có test nào chạm tới:
+
+- `edge_agent/main.py` (233 dòng, 0 %): điểm vào dòng lệnh của bản thiết bị, nối camera với các khối. Logic của vòng lặp nằm ở `edge_agent/runtime.py` (100 %).
+- `edge_agent/hud/hud.py` (43 dòng, 0 %): dải màu vẽ lên cửa sổ xem trước và dòng in ra terminal của bản thiết bị. HUD của tài xế là trang web, lấy dữ liệu từ `edge_agent/hud/server.py` (95,2 %).
+- `tools/`: `debug_view.py`, `make_voice.py`, `e2e_setup.py` ở 0 %; `gaze_study.py` 26 %, `seq_eval.py` 42 %, `benchmark.py` 44 %. Test của công cụ chạy phần tính toán trên số giả; phần đọc dataset và video không chạy trong test.
 
 Logic theo thời gian (khối 7–12) được test bằng chuỗi số giả, không cần video: kịch bản đỗ xe, lái đêm, microsleep liên tiếp, mất camera, v.v. (`tests/test_edge_agent/test_m4_scenarios.py`, `test_drowsiness.py`, `test_decision.py`).
+
+Bảng yêu cầu → khối → file test: [`docs/traceability.md`](../../docs/traceability.md).
 
 ## 5. Giới hạn đã biết
 
@@ -222,4 +289,12 @@ Logic theo thời gian (khối 7–12) được test bằng chuỗi số giả, 
 
 ## 6. User feedback và demo
 
-Chưa thực hiện. Điền sau buổi demo: ngày, số người tham gia, nhận xét, lỗi phát hiện. Kịch bản demo ở HowToUse.md mục 7.4.
+**Chưa thực hiện: 0 người.** Nút "Cảnh báo sai" trên HUD (mục 2.7) là kênh thu phản hồi khi vận hành, chưa có dữ liệu từ người dùng thật.
+
+Cách làm đã định ở PRD §7 bậc 3: đưa màn hình mô phỏng cho người xem khoảng 3 phút, hỏi tên 3 trạng thái (cảnh báo / bình thường / không quan sát được) **trước khi** giải thích, rồi hỏi một câu "có tiếp tục dùng không". Mục tiêu PRD là 10 người, ≥ 9 / 10 gọi đúng; ghi kết quả dạng phân số kèm N, không dùng % (NFR-1). Kịch bản demo ở HowToUse.md mục 7.4.
+
+Điền sau buổi demo, mỗi người một dòng:
+
+| Ngày | Người (vai trò, không ghi tên) | Gọi đúng 3 trạng thái (x / 3) | Tiếp tục dùng? | Nhận xét, lỗi phát hiện |
+|---|---|---:|---|---|
+| | | | | |

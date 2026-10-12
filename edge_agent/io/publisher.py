@@ -94,9 +94,11 @@ class PublisherConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PublisherConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "publisher")
 
     def resolved_outbox_path(self) -> str:
+        """The outbox path, relative to the project root unless absolute or ":memory:"."""
         if self.outbox_path == ":memory:":
             return self.outbox_path
         p = Path(self.outbox_path)
@@ -281,6 +283,7 @@ def build_heartbeat(
 
 
 def build_feedback(event_id: str, now: datetime | None = None) -> dict[str, Any]:
+    """The feedback record of a false alarm on this event."""
     return {"event_id": event_id, "verdict": "false_alarm", "ts": (now or datetime.now(UTC)).isoformat()}
 
 
@@ -338,6 +341,7 @@ class Outbox:
             return excess
 
     def peek(self, n: int) -> list[tuple[int, dict[str, Any]]]:
+        """The n oldest records with their ids, without removing them."""
         with self._lock:
             rows = self._conn.execute("SELECT id, event FROM outbox ORDER BY id LIMIT ?", (n,)).fetchall()
         out = []
@@ -349,6 +353,7 @@ class Outbox:
         return out
 
     def delete(self, ids: list[int]) -> None:
+        """Remove the records with these ids (they were sent, or refused for good)."""
         if not ids:
             return
         with self._lock:
@@ -362,6 +367,7 @@ class Outbox:
             return self._n
 
     def close(self) -> None:
+        """Close the database."""
         with self._lock:
             self._conn.close()
 
@@ -370,6 +376,7 @@ class Outbox:
 
 
 def http_transport(base_url: str, device_key: str, timeout_s: float) -> Transport:
+    """A transport that POSTs a batch to the backend and returns the HTTP status."""
     url = base_url.rstrip("/") + "/api/v1/events"
 
     def send(body: dict[str, Any]) -> int:
@@ -430,6 +437,7 @@ class MetadataPublisher:
 
     # ------------------------------------------------------------------ API for the main loop
     def publish(self, event: dict[str, Any]) -> None:
+        """Queue an alert or system event for the backend (metadata only)."""
         self._enqueue("event", event)
 
     def publish_feedback(self, event_id: str) -> None:
@@ -437,6 +445,7 @@ class MetadataPublisher:
         self._enqueue("feedback", build_feedback(event_id))
 
     def publish_sample(self, sample: dict[str, Any]) -> None:
+        """Queue a per-minute fatigue sample."""
         self._enqueue("sample", sample)
 
     def publish_summary(self, summary: dict[str, Any]) -> None:
@@ -480,17 +489,21 @@ class MetadataPublisher:
 
     @property
     def queued(self) -> int:
+        """Records still waiting to be sent."""
         if self._queued_at_stop is not None:  # outbox already closed
             return self._queued_at_stop
         return len(self._pending) + self._outbox.count()
 
     def start(self) -> MetadataPublisher:
+        """Start the sender thread."""
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="MetadataPublisher", daemon=True)
             self._thread.start()
         return self
 
     def stop(self, final_flush: bool = True) -> None:
+        """Stop the sender thread, write what is left to the outbox and, with `final_flush`, try once
+        more to send. What could not be sent stays in the outbox for the next start."""
         self._stop.set()
         self._wake.set()
         if self._thread is not None:

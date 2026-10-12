@@ -26,6 +26,7 @@ WEB_MODELS = {"landmarks": ROOT / "models" / "face_landmarker.task", "phone": RO
 
 
 def files() -> list[Path]:
+    """The files the in-browser agent needs: edge_agent/*.py, thresholds.yaml and the scenarios."""
     out = [p for p in sorted((ROOT / "edge_agent").rglob("*.py")) if "__pycache__" not in p.parts]
     out.append(ROOT / "config" / "thresholds.yaml")
     out += sorted((ROOT / "config" / "scenarios").glob("*.yaml"))
@@ -33,6 +34,7 @@ def files() -> list[Path]:
 
 
 def build(dest: Path) -> int:
+    """Write the zip for Pyodide to `dest`."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     paths = files()
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:

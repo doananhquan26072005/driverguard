@@ -78,6 +78,7 @@ class HudConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> HudConfig:
+        """Build the config from the `hud` section of thresholds.yaml; an unknown key is an error."""
         d = dict(d or {})
         if "dim_hours" in d:
             d["dim_hours"] = tuple((float(a), float(b)) for a, b in d["dim_hours"])
@@ -150,12 +151,14 @@ class HudState:
         return "queued"
 
     def take_actions(self) -> list[str]:
+        """The vehicle button presses queued since the last call, oldest first."""
         with self._lock:
             actions = list(self._actions)
             self._actions.clear()
         return actions
 
     def set_vehicle(self, state: dict[str, Any]) -> None:
+        """Set the vehicle state shown by the HUD (speed source, parked / driving)."""
         with self._lock:
             self._vehicle = dict(state)
 
@@ -200,6 +203,7 @@ class HudState:
             self._snapshot = snapshot
 
     def set_camera_lost(self, lost: bool) -> None:
+        """The camera is lost (or back): the driver is not being monitored."""
         with self._lock:
             self._camera_lost = lost
 
@@ -217,10 +221,12 @@ class HudState:
             self._too_slow = slow
 
     def set_low_fps(self, low: bool) -> None:
+        """The loop has been too slow for a while (or recovered): alerts may be late."""
         with self._lock:
             self._low_fps = low
 
     def set_phone_unavailable(self, unavailable: bool) -> None:
+        """Phones are not being detected (or are again)."""
         with self._lock:
             self._phone_unavailable = unavailable
 
@@ -237,20 +243,24 @@ class HudState:
             }
 
     def end_incident(self, kind: str) -> None:
+        """The running incident is over, when it is of this kind."""
         with self._lock:
             if self._incident is not None and self._incident["kind"] == kind:
                 self._incident = None
 
     def set_incident_attempts(self, attempts: int) -> None:
+        """Set how many times the camera was reopened during the running incident."""
         with self._lock:
             if self._incident is not None:
                 self._incident["attempts"] = attempts
 
     def incident_event_id(self) -> str | None:
+        """The id of the system event sent for the running incident, or None."""
         with self._lock:
             return None if self._incident is None else self._incident["event_id"]
 
     def set_incident_reported(self, reported: bool) -> None:
+        """Whether the backend accepted the event of the running incident."""
         with self._lock:
             if self._incident is not None:
                 self._incident["reported"] = reported
@@ -290,10 +300,12 @@ class HudState:
 
     # ------------------------------------------------------------------ end of trip
     def request_end(self) -> None:
+        """The driver pressed "end trip": the main loop builds the summary."""
         self._end_requested.set()
 
     @property
     def end_requested(self) -> bool:
+        """True once the end of the trip was requested."""
         return self._end_requested.is_set()
 
     def set_summary(self, summary: dict[str, Any]) -> None:
@@ -303,12 +315,14 @@ class HudState:
         self._summary_ready.set()
 
     def wait_summary(self, timeout: float) -> dict[str, Any] | None:
+        """Wait up to `timeout` seconds for the trip summary; None when it did not come."""
         if not self._summary_ready.wait(timeout):
             return None
         with self._lock:
             return self._summary
 
     def mark_delivered(self) -> None:
+        """The HUD has received the trip summary."""
         self._summary_delivered.set()
 
     def wait_delivered(self, timeout: float) -> bool:
@@ -316,6 +330,7 @@ class HudState:
         return self._summary_delivered.wait(timeout)
 
     def to_json(self) -> dict[str, Any]:
+        """The state the HUD polls: the last snapshot plus the health flags, the incident and the alerts."""
         with self._lock:
             return {
                 **self._snapshot,
@@ -345,10 +360,13 @@ def host_name(header: str | None) -> str:
 def make_handler(
     state: HudState, on_false_alarm: Callable[[str], None], allowed_origins: tuple[str, ...]
 ) -> type[BaseHTTPRequestHandler]:
+    """The request handler class of the HUD server, bound to this state. Local requests only."""
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "DriverGuardHUD/1"
 
         def log_message(self, fmt: str, *args: Any) -> None:  # keep the terminal for alerts
+            """Send the access log to the debug logger, not the terminal."""
             log.debug(fmt, *args)
 
         def _cors(self) -> None:
@@ -380,6 +398,7 @@ def make_handler(
             return False
 
         def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming
+            """CORS preflight."""
             if not self._local():
                 return
             self.send_response(204)
@@ -387,6 +406,7 @@ def make_handler(
             self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802
+            """GET /state: the current HUD state."""
             if not self._local():
                 return
             if self.path.split("?")[0] == "/state":
@@ -395,6 +415,7 @@ def make_handler(
                 self._json(404, {"detail": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            """POST /end-trip, /feedback (false alarm) or /vehicle (button), from an allowed origin only."""
             if not self._local():
                 return
             origin = self.headers.get("Origin")
@@ -458,13 +479,16 @@ class HudServer:
 
     @property
     def port(self) -> int:
+        """The port the server listens on."""
         return self._httpd.server_address[1]
 
     def start(self) -> HudServer:
+        """Serve on a background thread."""
         self._thread = threading.Thread(target=self._httpd.serve_forever, name="HudServer", daemon=True)
         self._thread.start()
         return self
 
     def stop(self) -> None:
+        """Stop serving and close the socket."""
         self._httpd.shutdown()
         self._httpd.server_close()

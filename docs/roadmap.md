@@ -107,7 +107,7 @@ trên `main` rồi gộp về) nằm ở mục [Vận hành](#m66) bên dưới*
 | [M68](#m68) | Đăng ký xong thì điểm buồn ngủ bắt đầu từ 0: điểm đọc 0 trong bước nhắm mắt, khối 7 bỏ mọi thứ đã gom trước đó, trip memory bỏ phần gom từ lúc xe dừng (khối 7, 9, 11, `edge_agent/decision/pipeline.py`) | Đăng ký khi đỗ: `drowsy_score` là 0 ở mọi frame (trước đó nhảy lên 25 trong bước nhắm mắt); nhắm mắt 1,5 s trước khi đăng ký không còn để lại PERCLOS hay 25 điểm trong 5 phút | ✅ Xong · 08/10 |
 | [M69](#m69) | Đọc số UTA-RLDD thêm ba cách, không đổi ngưỡng: khoảng tin cậy báo sai / giờ lấy mẫu lại theo người, một điểm làm việc cố định kèm đường đánh đổi theo `risk.drowsy.l1`, đơn vị + tỉ lệ dương ở mỗi bảng, bảng điểm → tỉ lệ phút buồn ngủ (công cụ eval: `tools/metrics.py`, `tools/uta_rldd.py`, `tools/eval.py`, `tools/dataset.py`) | `eval/results/dataset_uta_rldd.md` mục 8 và `uta_rldd_tradeoff.md`: ở ngưỡng hiện tại, 24 người giữ riêng có 0,98 báo sai / giờ (lấy mẫu lại theo người 0,00–3,02), 15 / 24 người buồn ngủ có cảnh báo, 12 / 24 đạt L3; cả 4 lần báo sai là của 1 người; mỗi bảng ghi đơn vị và tỉ lệ dương | ✅ Xong · 08/10 (không đổi ngưỡng, không đổi hành vi) |
 
-### Release v4: các việc theo audit 08/10 (M70–M101)
+### Release v4: các việc theo audit 08/10 (M70–M102)
 
 Từ M70 mọi mốc làm theo [audit 08/10](audit-2026-10-08.md) và ghi trong [release-v4.md](release-v4.md) (tách khỏi
 `release-v3.md` ngày 09/10). "Version 4" ở tiêu đề phía trên là tên đợt thiết kế lại giao diện M57–M65; các mốc M57–M69
@@ -148,6 +148,7 @@ thuộc `release-v3.md`. Lần sửa tài liệu theo audit là [M91](#m91). Cá
 | [M99](#m99) | Trang không còn tải code từ CDN, và có Content-Security-Policy, theo quyết định 09/10 (14A; audit 08/10, A4 H3 và A1 M6, top 10 việc 10): Pyodide và wasm của MediaPipe thành file của bản build (`frontend/scripts/web-runtime.mjs`: chép từ `node_modules`, tải hai gói numpy / pyyaml có kiểm sha256 theo `pyodide-lock.json`); backend gửi CSP ở mọi file tĩnh: script chỉ từ chính origin, không `eval`, không script nội tuyến, chỉ nối tới chính server và máy của tài xế (bản web, deploy: `frontend/src/live/agent.ts`, `backend/static.py`, `frontend/vite.config.ts`, `Dockerfile.railway`) | `npx vitest run scripts`: 4 pass; `pytest tests/test_backend/test_static.py`: 11 pass. Bản build thật (không phải bản e2e) phục vụ kèm CSP, mở trong Chromium với camera giả, bắt đầu chuyến ở chế độ dùng thử: Pyodide và MediaPipe chạy, 0 yêu cầu tới máy chủ ngoài, 0 lần CSP chặn. E2e 11 / 11 chạy dưới cùng CSP | Xong (09/10) |
 | [M100](#m100) | Ba việc trên `#/live` và HUD, theo quyết định 09/10 (15 theo ý của anh, 16A, 17A; các chỗ M72, M88, M89 để ngỏ): ô tự xem kéo đi chỗ khác và thu nhỏ / phóng to được, nhớ vị trí; đóng tab hoặc tải lại giữa chuyến thì trình duyệt hỏi lại, và khi trang đi thật thì chuyến được kết thúc ngay trong lượt đó (tổng kết và nhịp `ended` gửi bằng yêu cầu `keepalive`); cảnh báo và trạng thái "không giám sát" tới lúc trình duyệt còn chặn tiếng được phát khi có lần chạm đầu tiên nếu còn đúng; mở HUD giữa chuyến không kêu lại cảnh báo cũ (khối 13: `frontend/src/live/LiveScreen.tsx`, `selfView.ts`, `agent.ts`, `frontend/src/hud/HudScreen.tsx`) | E2e 13 / 13, hai kịch bản mới: đóng tab giữa chuyến, quản lý thấy "Đã kết thúc chuyến" và có thêm một báo cáo chuyến; kéo ô tự xem tới (660, 90), phóng to 264 px, thu nhỏ 112 px, quăng ra ngoài góc vẫn nằm trong cửa sổ, vị trí được lưu. `npx vitest run`: 293 pass | Xong (09/10) |
 | [M101](#m101) | `risk.drowsy.l1` 40 hay 50, quyết trên DROZY bằng luật khai báo trước khi chạy, theo quyết định 09/10 (5A; chỗ M53, M69 để ngỏ): luật viết vào `eval/splits/drozy_l1_rule.md` trước; rồi 36 video hồng ngoại của 14 người được chạy qua khối 2–12 một lần và replay ở đúng hai giá trị 40 và 50. **Kết luận theo luật: giữ 40.** Không đổi ngưỡng, không đổi code của 14 khối (công cụ eval: `tools/drozy.py`) | `eval/results/drozy_l1.md`: ba điều kiện để DROZY được quyết đều đạt (mặt tin cậy trung vị 98,5 %; 2,33 giờ tỉnh và 15 video buồn ngủ; AUC 0,809). Đường `web`: 0 báo sai trên 15 video tỉnh ở cả 40 lẫn 50; video buồn ngủ có cảnh báo 7 / 15 ở 40, 6 / 15 ở 50. 50 không bớt được báo sai nào và mất một video. `pytest tests/test_edge_agent/test_m101_drozy_rule.py`: 15 pass | Xong (09/10) |
+| [M102](#m102) | Hướng dẫn sử dụng ngay trong sản phẩm, trang `#/guide` (không cần đăng nhập, camera hay backend): 24 màn hình có thể hiện, chia năm chương (bắt đầu ca lái, bốn mức khi đang lái, camera không thấy rõ, thiết bị trục trặc, kết thúc ca lái), mỗi màn hình do chính `HudView` / `TripSummaryView` vẽ trên số liệu mẫu của `#/hud-preview`, kèm "nghĩa là gì" và "nên làm gì"; cuối trang là các trang web theo vai trò. Vào từ trang đăng nhập (trang đầu tiên của sản phẩm), không có lối vào nào khác. Việc anh giao 12/10, không thuộc audit. Không đổi code Python, không khoá mới trong `thresholds.yaml` (khối 13: `frontend/src/guide/`, `hud/HudStage.tsx`) | `npx vitest run`: 307 pass (14 mới). `npx playwright test e2e/guide.e2e.ts`: 4 / 4 trên bản build có CSP, ở 1280 x 800, 800 x 1280 và 390 x 800: cả 24 màn hình nằm trong khung, trang không cuộn ngang, không lỗi console | Xong (12/10) |
 
 <a id="ke-hoach-0910"></a>
 
@@ -2709,6 +2710,39 @@ lệch dọc 30°, M80) chưa có câu trả lời.
   - Trace DROZY nằm ở `data/eval_traces/drozy/` (không vào git, như mọi trace); muốn lặp lại phải có bộ DROZY (3,2 GB, có giấy phép riêng)
   - Chưa dùng các tín hiệu khác của DROZY (thời gian phản xạ PVT, điện não) làm nhãn theo thời gian
 - Test: 1712 Python pass, 6 xfail (15 test mới ở `test_m101_drozy_rule.py`, đều trên số bịa); ruff / format sạch. Không đổi code `edge_agent/` hay frontend, nên vitest và e2e không chạy lại (lần cuối ở M100: 293 pass, 13 / 13)
+
+<a id="m102"></a>
+
+#### M102: Hướng dẫn sử dụng trong sản phẩm, `#/guide` (khối 13)
+
+**Xong là thấy gì:** mở `http://localhost:5173/#/guide`: một khung cao bằng cửa sổ, không cuộn trang: hàng tab trên cùng (Giới thiệu, năm chương, Trang web), giữa là một màn hình (HUD thật, thu nhỏ) cạnh "Màn hình này nghĩa là gì" / "Bạn nên làm gì", dưới cùng là "Trước", các chấm của chương đang xem và "Tiếp" (hoặc phím mũi tên). `#/guide/microsleep` mở thẳng màn hình đỏ L3. `cd frontend && npx vitest run`: 305 pass; `npx playwright test e2e/guide.e2e.ts`: 4 / 4
+
+**Trạng thái:** Xong (12/10). Việc anh giao 12/10 ("một phần như hướng dẫn cho người mới ở trong sản phẩm, có các màn hình có thể hiện"); không nằm trong audit 08/10. Không đổi code Python, không khoá mới trong `thresholds.yaml`
+
+- **Trang `#/guide`** (`frontend/src/guide/GuideScreen.tsx`, `guideModel.ts`, CSS `.guide-*` trong `styles.css`):
+  - Không cần đăng nhập, camera, edge agent hay backend. Không phát tiếng
+  - Năm chương, 24 màn hình: bắt đầu ca lái (5: xin làm quen khuôn mặt, ba bước, một bước chưa đạt, chưa làm quen, chưa bật tiếng), bốn mức khi đang lái (7: L0, hai loại L1, hai loại L2, hai loại L3), camera không thấy rõ (5: ba lý do tạm ngưng, "Bạn vẫn ổn chứ?", không trả lời), thiết bị trục trặc (6: mất camera, lỗi xử lý, mất kết nối, máy chậm, mất dò điện thoại, mất tín hiệu tốc độ), kết thúc ca lái (1: bản tổng kết)
+  - Mỗi màn hình có địa chỉ riêng `#/guide/<tên>`. Đi giữa các màn hình thay địa chỉ chứ không thêm vào lịch sử, nên bấm "back" một lần là ra khỏi hướng dẫn
+  - **Bố cục kiểu app (anh yêu cầu 12/10 sau khi xem bản đầu: "không phải cứ lướt lên xuống để coi"):** khung `100dvh`, trang không cuộn; `#/guide` là màn hình giới thiệu có nút "Bắt đầu", `#/guide/<tên>` là một màn hình, `#/guide/web` là các trang web. Danh sách 24 dòng bên trái bỏ, thay bằng tab chương và các chấm ở thanh dưới. Chỉ khi chữ không vừa (đo được ở 360 x 640) thì riêng ô chữ cuộn bên trong
+  - Tab "Trang web": bốn vai trò, xem từng vai trò một, mỗi vai trò đúng các trang trong menu của nó (`nav.ts` `NAV`) kèm dòng mô tả dưới tiêu đề trang (`PAGE_LEAD`, chuyển từ `Dashboard.tsx` sang `nav.ts` để dùng chung, chữ không đổi)
+- **Màn hình là HUD thật, không phải ảnh chụp** (`guide/ScreenFrame.tsx`, `hud/HudStage.tsx`):
+  - Mỗi màn hình là một kịch bản của `#/hud-preview` (`SCENARIOS`, `snapshotFor`, nay được export), vẽ bằng `HudView` / `TripSummaryView`. Đổi HUD thì hướng dẫn đổi theo; test chặn bước nào trỏ tới kịch bản không còn
+  - `HudStage` có thêm `StageFrame`: bên trong nó, "màn hình" là một hộp cho trước chứ không phải cửa sổ. Không có `StageFrame` thì `HudStage` chạy y như trước (`portrait.e2e.ts` 4 / 4 vẫn pass)
+  - Hộp có hình của chính thiết bị đang xem: màn hình dọc (xe) thấy bố cục dọc 800 x 1280, còn lại thấy 1280 x 800; rồi cả hộp được thu nhỏ cho vừa ô dành cho nó (cả rộng lẫn cao)
+  - Hình minh hoạ `inert`: không nhận chạm, bàn phím hay trình đọc màn hình; chữ giải thích bên cạnh mới là nội dung
+  - Không dùng `iframe` vì CSP của M99 có `frame-ancestors 'none'`; em không nới CSP
+- **Lối vào:** chỉ một, thẻ "Hướng dẫn sử dụng" ở trang đăng nhập (trang đầu tiên của sản phẩm). Anh chốt 12/10: tên trang là "Hướng dẫn sử dụng" (trước là "Hướng dẫn cho người mới"), bỏ mục ở menu sau đăng nhập và dòng ở màn hình đầu của `#/live`. Cùng ngày anh thấy thẻ khó thấy: chuyển từ cuối cột form lên cột giới thiệu, dưới đoạn mô tả (`.login-guide`)
+- **Sau M102, cùng ngày (chưa có số mốc, xem `release-v4.md` mục 3.42):** trang đăng nhập này nay cũng là màn hình đầu của `#/live` và là trang mở khi không có địa chỉ; "Đăng nhập" (tài xế) hoặc "Dùng thử không lưu" vào thẳng bước khởi động camera, vai trò khác sang `#/dashboard`. Màn hình thiết lập ba bước của M64 bỏ
+- **Cố ý, cần anh biết:**
+  - Lời giải thích do em viết từ chữ trên màn hình và `labels.ts`, đã đối chiếu với ảnh chụp cả 24 màn hình; chưa tài xế nào đọc
+  - HUD đang chạy (`#/hud`, `#/live` khi đã bắt đầu) **không** có nút mở hướng dẫn: em không thêm thứ để đọc lên màn hình lúc xe có thể đang chạy. Muốn có (ví dụ chỉ hiện khi xe đỗ) thì cần anh quyết
+  - Hai hằng số bố cục của khung hình (`TICK_MS`, `MAX_SCREEN_SHARE`) được thêm vào danh sách cho phép của `test_m85_no_hardcode.py`: không phải ngưỡng quyết định
+- **Chưa làm / còn hở:**
+  - Các trang web sau đăng nhập mới có chữ (tên trang và mô tả), chưa có hình: chúng cần dữ liệu từ backend, chưa có bộ dữ liệu mẫu để vẽ
+  - Không có hình cho: xi nhan, xe đỗ, chế độ đêm, các hộp thoại xác nhận ("Kết thúc ca lái?", "Đổi tài xế?"), mặt tối và ảnh mờ (chỉ nhắc bằng chữ)
+  - Tiêu đề bản tổng kết dùng cỡ chữ theo bề rộng cửa sổ (`clamp(30px, 3.2vw, 40px)`), nên trên cửa sổ hẹp hơn 1250 px chữ đó trong hình nhỏ hơn thật tối đa 10 px
+  - Chưa xem trên thiết bị thật hay WebView của Android; mới xem trên Chromium ở ba cỡ cửa sổ
+- Test: vitest 305 pass (12 mới: 7 của `guideModel.test.ts`, 5 của `GuideScreen.test.tsx`); e2e `guide.e2e.ts` 4 / 4 và `portrait.e2e.ts` 4 / 4; `live.e2e.ts` không chạy lại (`LiveScreen.tsx` cuối cùng không đổi); `tsc` sạch; Python 1712 pass, 6 xfail
 
 ### Vận hành (M66–)
 

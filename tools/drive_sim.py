@@ -51,10 +51,12 @@ class DriveSimConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DriveSimConfig:
+        """Build the config from its section of the YAML; an unknown key is an error."""
         return config_from_dict(cls, d, "drive_sim")
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG) -> DriveSimConfig:
+    """Load the simulator's config from its YAML file."""
     with open(path, encoding="utf-8") as f:
         return DriveSimConfig.from_dict(yaml.safe_load(f))
 
@@ -71,15 +73,19 @@ class DriveSim:
 
     # ------------------------------------------------------------------ commands
     def accelerate(self) -> None:
+        """Raise the target speed by one step, up to `max_kmh`."""
         self.target_kmh = min(self.target_kmh + self.cfg.speed_step_kmh, self.cfg.max_kmh)
 
     def decelerate(self) -> None:
+        """Lower the target speed by one step, down to 0."""
         self.target_kmh = max(self.target_kmh - self.cfg.speed_step_kmh, 0.0)
 
     def stop(self) -> None:
+        """Set the target speed to 0."""
         self.target_kmh = 0.0
 
     def cruise(self, kmh: float) -> None:
+        """Set the target speed, clamped to [0, max_kmh]."""
         self.target_kmh = min(max(kmh, 0.0), self.cfg.max_kmh)
 
     def signal(self, side: str | None) -> None:
@@ -91,6 +97,7 @@ class DriveSim:
 
     # ------------------------------------------------------------------ physics
     def step(self, dt: float) -> None:
+        """Advance the simulation by dt seconds: the speed moves towards its target."""
         self.t += dt
         gap = self.target_kmh - self.speed_kmh
         rate = self.cfg.accel_kmh_per_s if gap > 0 else self.cfg.brake_kmh_per_s
@@ -98,6 +105,7 @@ class DriveSim:
         self.speed_kmh += move if gap > 0 else -move
 
     def reading(self) -> dict[str, Any]:
+        """The current reading (speed_kmh, turn_signal, t) as served on /can."""
         return {"speed_kmh": round(self.speed_kmh, 1), "turn_signal": self.turn_signal, "t": round(self.t, 2)}
 
 
@@ -110,10 +118,12 @@ class ScenarioDrive:
         self._last = self.can.sample(0.0)
 
     def step(self, dt: float) -> None:
+        """Advance the scenario by dt seconds."""
         self.t += dt
         self._last = self.can.sample(self.t)
 
     def reading(self) -> dict[str, Any]:
+        """The current reading (speed_kmh, turn_signal, t) as served on /can."""
         speed = self._last.speed_kmh or 0.0
         return {"speed_kmh": round(speed, 1), "turn_signal": self._last.turn_signal, "t": round(self.t, 2)}
 
@@ -164,6 +174,7 @@ class SimServer:
             server_version = "DriverGuardDriveSim/1"
 
             def log_message(self, fmt: str, *args: Any) -> None:  # the terminal shows the car
+                """No access log: the terminal shows the car."""
                 pass
 
             def _headers(self) -> None:
@@ -173,11 +184,13 @@ class SimServer:
                     self.send_header("Access-Control-Allow-Private-Network", "true")
 
             def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming
+                """CORS preflight."""
                 self.send_response(204)
                 self._headers()
                 self.end_headers()
 
             def do_GET(self) -> None:  # noqa: N802
+                """GET /can: the current reading as JSON."""
                 if self.path.split("?")[0] != "/can":
                     self.send_response(404)
                     self._headers()
@@ -198,10 +211,12 @@ class SimServer:
         self._thread = threading.Thread(target=self.httpd.serve_forever, name="DriveSimServer", daemon=True)
 
     def start(self) -> SimServer:
+        """Serve on a background thread."""
         self._thread.start()
         return self
 
     def stop(self) -> None:
+        """Stop serving and close the socket."""
         self.httpd.shutdown()
         self.httpd.server_close()
 
@@ -230,6 +245,7 @@ def _read_keys(fd: int) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--port", type=int, default=None, help="override the port of the config")

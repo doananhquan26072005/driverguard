@@ -63,9 +63,11 @@ class LandmarkConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> LandmarkConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "landmarks")
 
     def resolved_model_path(self) -> Path:
+        """The model path, relative to the project root unless absolute."""
         p = Path(self.model_path)
         return p if p.is_absolute() else PROJECT_ROOT / p
 
@@ -157,6 +159,7 @@ class DriverSelector:
         self._last_center: tuple[float, float] | None = None
 
     def set_anchor(self, anchor: DriverAnchor | None) -> None:
+        """Set (or clear) the driver's position that the selection is held to."""
         self.anchor = anchor
         self._last_center = None if anchor is None else anchor.center
 
@@ -191,12 +194,14 @@ class DriverSelector:
 
 
 def bbox_area(points: np.ndarray) -> float:
+    """Area of the landmarks' bounding box, in pixels squared."""
     xy = points[:, :2]
     w, h = xy.max(axis=0) - xy.min(axis=0)
     return float(w * h)
 
 
 def in_frame_ratio(points: np.ndarray, width: int, height: int) -> float:
+    """face_conf: share of the landmarks that lie inside the image."""
     x, y = points[:, 0], points[:, 1]
     inside = (x >= 0) & (x < width) & (y >= 0) & (y < height)
     return float(inside.mean())
@@ -241,6 +246,7 @@ class FaceLandmarkDetector:
         self.selector = DriverSelector(self.config)
 
     def close(self) -> None:
+        """Release the MediaPipe landmarker."""
         self._landmarker.close()
 
     def __enter__(self) -> FaceLandmarkDetector:
@@ -256,6 +262,7 @@ class FaceLandmarkDetector:
         return ts
 
     def detect(self, frame: PreprocessedFrame) -> FaceLandmarks | None:
+        """Block 3: the driver's face landmarks in pixels, or None when no usable face is found."""
         h, w = frame.image.shape[:2]
         rgb = cv2.cvtColor(frame.image, cv2.COLOR_BGR2RGB)
         mp_image = self._mp.Image(image_format=self._mp.ImageFormat.SRGB, data=rgb)

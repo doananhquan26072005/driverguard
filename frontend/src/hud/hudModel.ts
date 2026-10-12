@@ -198,10 +198,10 @@ export function trendSlots(trip: HudTrip | undefined): TrendSlot[] {
 export function fatigueSummary(trip: HudTrip | undefined, reasons: readonly Reason[], driving: boolean): { band: FatigueBand; text: string } {
   const last = trip?.recent_minutes.filter((m) => m != null).at(-1);
   const band = last && trip ? fatigueBand(last.drowsy_score, trip.score_l1, trip.score_l2) : 0;
-  if (reasons.includes("trend")) return { band: Math.max(band, 1) as FatigueBand, text: "Mệt · đang tăng dần" };
+  if (reasons.includes("trend")) return { band: Math.max(band, 1) as FatigueBand, text: "Mệt tăng dần · nên nghỉ sớm" };
   if (band === 2) return { band, text: "Rất mệt · dừng nghỉ ngay" };
-  if (band === 1) return { band, text: "Mệt · nên nghỉ sớm" };
-  return { band, text: driving ? "Thấp · chưa cần nghỉ" : "Thấp · xe đang đỗ" };
+  if (band === 1) return { band, text: "Hơi mệt · nên nghỉ sớm" };
+  return { band, text: driving ? "Tỉnh táo · chưa cần nghỉ" : "Tỉnh táo · xe đang đỗ" };
 }
 
 /** L3 action sentences are two lines: the order, then what to do ("Mở mắt!" / "Dừng xe nghỉ ngay"). */
@@ -218,7 +218,7 @@ export function alertDetail(alert: HudAlert | undefined, timeOf: (epochS: number
   if (!alert) return null;
   const parts = [`Phát hiện lúc ${timeOf(alert.at)}`];
   const m = alert.metrics;
-  if (m && m.off_road_s > 0) parts.push(`nhìn lệch ${num(m.off_road_s)} giây`);
+  if (m && m.off_road_s > 0) parts.push(`rời mắt ${num(m.off_road_s)} giây`);
   if (m && alert.reasons.includes("off_road"))
     parts.push(m.turn_signal ? `xi nhan ${m.turn_signal === "left" ? "trái" : "phải"}` : "không bật xi nhan");
   return parts.join(" · ");
@@ -230,7 +230,7 @@ export function footerNote(snap: HudSnapshot, labels: { signalLost: string | nul
   if (snap.low_fps) return labels.lowFps;
   if (snap.phone_unavailable) return labels.phoneOff;
   if (labels.enroll) return labels.enroll;
-  return labels.lastAlert ?? "Chưa có cảnh báo nào trong chuyến này";
+  return labels.lastAlert ?? "Chưa có cảnh báo nào trong ca lái này";
 }
 
 // ------------------------------------------------------------------ plain words for the numbers (M58, review 07/10)
@@ -249,7 +249,7 @@ export function drowsyWord(score: number | undefined, l1: number, l2: number): {
 export function attentionWord(reasons: readonly Reason[], level: Level): { word: string; tone: Tone } {
   const tone: Tone = level >= 2 ? "danger" : "caution";
   if (reasons.includes("phone")) return { word: "Cầm điện thoại", tone };
-  if (reasons.includes("off_road")) return { word: "Nhìn lệch", tone };
+  if (reasons.includes("off_road")) return { word: "Rời mắt", tone };
   return { word: "Tập trung", tone: "ok" };
 }
 

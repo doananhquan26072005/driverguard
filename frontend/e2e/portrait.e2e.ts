@@ -41,9 +41,9 @@ for (const size of UPRIGHT) {
     }
     // The buttons a driver needs are on the screen, side by side under the alert's own button.
     await open(page, "l1");
-    const end = await page.getByRole("button", { name: /Kết thúc chuyến/ }).boundingBox();
+    const end = await page.getByRole("button", { name: /Kết thúc ca lái/ }).boundingBox();
     const driver = await page.getByRole("button", { name: /Đổi tài xế/ }).boundingBox();
-    const wrong = await page.getByRole("button", { name: /Cảnh báo này sai/ }).boundingBox();
+    const wrong = await page.getByRole("button", { name: /Cảnh báo nhầm/ }).boundingBox();
     expect(end && driver && wrong).toBeTruthy();
     expect(end!.y + end!.height).toBeLessThanOrEqual(size.height);
     expect(Math.abs(end!.y - driver!.y)).toBeLessThan(2);

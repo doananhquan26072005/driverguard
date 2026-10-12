@@ -154,6 +154,7 @@ def phone_columns(
 
 
 def action_spans(tr: dict) -> dict[int, tuple[float, float]]:
+    """Start and end time of each labelled action of a trace: {action: (start, end)}."""
     return {int(name[2:]): (a, b) for name, a, b in tr["labels"]}
 
 
@@ -341,6 +342,7 @@ def detect_driver(args: tuple[str, dict[str, tuple[str, int]], int]) -> tuple[st
 
 
 def run_detect(out: Path, models: dict[str, tuple[str, int]], workers: int, threads: int, limit: int | None) -> None:
+    """Run YOLO on every frame of every 3MDAD driver in parallel and save the boxes to `out`."""
     from multiprocessing import Pool
 
     subjects = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda s: int(s[1:]))[:limit]
@@ -430,6 +432,7 @@ def report(
     tol_s: float,
     starts: int = 6,
 ) -> str:
+    """The Markdown report of the phone study."""
     dets = det_doc["drivers"]
     frames = sum(t["n"] for t in traces.values())
     fps = next(iter(traces.values()))["fps"]
@@ -539,6 +542,7 @@ WEB_SCHEDULES = [
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("detect", help="YOLO on every frame of 3MDAD, boxes only")

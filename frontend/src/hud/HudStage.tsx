@@ -7,7 +7,8 @@
 // - phones and near-square windows: the fluid, stacked layout, which scrolls
 // Breakpoints inside a stage follow the stage's width, not the screen's (container "hud": the
 // hud-sm / hud-md / hud-lg variants of index.css), so a stage looks the same at any scale.
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+// Inside a <StageFrame.Provider> (the guide, M102) the "screen" is that box, not the window.
+import { createContext, useContext, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
 export const STAGE_W = 1280;
 export const STAGE_H = 800;
@@ -34,6 +35,9 @@ export function stageLayout(width: number, height: number): StageLayout | null {
   if (width >= TALL_MIN_W && height / width >= MIN_RATIO) return fit("portrait", STAGE_H, STAGE_W);
   return null;
 }
+
+/** A box that stands in for the screen: the stage fits it, and nothing is sized from the window. */
+export const StageFrame = createContext<{ width: number; height: number } | null>(null);
 
 function useStageLayout(): StageLayout | null {
   const read = () => (typeof window === "undefined" ? null : stageLayout(window.innerWidth, window.innerHeight));
@@ -62,27 +66,29 @@ interface Props {
 }
 
 export default function HudStage({ className, style, underlay, rows, stageClassName = "", children, overlay }: Props) {
-  const layout = useStageLayout();
+  const frame = useContext(StageFrame);
+  const windowLayout = useStageLayout();
+  const layout = frame ? stageLayout(frame.width, frame.height) : windowLayout;
   const stage: CSSProperties = layout
     ? {
         position: "absolute",
         width: layout.width,
         height: layout.height,
-        left: `calc((100vw - ${layout.width * layout.scale}px) / 2)`,
-        top: `calc((100dvh - ${layout.height * layout.scale}px) / 2)`,
+        left: frame ? (frame.width - layout.width * layout.scale) / 2 : `calc((100vw - ${layout.width * layout.scale}px) / 2)`,
+        top: frame ? (frame.height - layout.height * layout.scale) / 2 : `calc((100dvh - ${layout.height * layout.scale}px) / 2)`,
         transform: `scale(${layout.scale})`,
         transformOrigin: "top left",
       }
     : {};
   return (
     <div
-      style={style}
-      className={`relative isolate min-h-dvh overflow-hidden font-hud antialiased [color-scheme:dark] ${layout ? "h-dvh" : ""} ${className}`}
+      style={frame ? { ...style, width: frame.width, height: frame.height } : style}
+      className={`relative isolate overflow-hidden font-hud antialiased [color-scheme:dark] ${frame ? "" : layout ? "min-h-dvh h-dvh" : "min-h-dvh"} ${className}`}
     >
       {underlay}
       <div
         style={{ ...stage, gridTemplateRows: rows.join(" ") }}
-        className={`@container/hud isolate grid grid-cols-[minmax(0,1fr)] ${layout ? "" : "min-h-dvh"} ${stageClassName}`}
+        className={`@container/hud isolate grid grid-cols-[minmax(0,1fr)] ${layout ? "" : frame ? "min-h-full" : "min-h-dvh"} ${stageClassName}`}
         data-stage={layout ? "fixed" : "fluid"}
         data-shape={layout?.shape}
       >

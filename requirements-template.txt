@@ -1,15 +1,15 @@
 # Course template only: src/ (FastAPI + LangGraph / LangChain chat agent),
 # tests/test_agents, tests/test_api and the Dockerfile. Not needed by DriverGuard.
-fastapi>=0.115.0
-uvicorn[standard]>=0.34.0
-pydantic>=2.10.0
-pydantic-settings>=2.7.0
-python-dotenv>=1.0.0
-langchain>=0.3.0
-langchain-openai>=0.3.0
-langgraph>=0.2.0
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+langchain==1.4.2
+langchain-openai==1.6.6
+langgraph==1.2.12
 
 # Tests of the template
-pytest>=8.0.0
-pytest-asyncio>=0.24.0
-httpx>=0.28.0
+pytest==9.1.1
+pytest-asyncio==1.4.0
+httpx==0.28.1

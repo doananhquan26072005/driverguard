@@ -77,7 +77,7 @@ export function ManagerOverview({ session, refreshKey }: { session: Session; ref
           value={String(byLevel["1"] + byLevel["2"] + byLevel["3"])}
           label={`Cảnh báo hôm nay · L1 ${byLevel["1"]} · L2 ${byLevel["2"]} · L3 ${byLevel["3"]}`}
         />
-        <Tile icon={FileText} value={String(unread.length)} label="Báo cáo chuyến chưa xem" accent={unread.length ? "var(--series-1)" : undefined} />
+        <Tile icon={FileText} value={String(unread.length)} label="Báo cáo ca lái chưa xem" accent={unread.length ? "var(--series-1)" : undefined} />
       </section>
 
       <section className="dg-card web-card" aria-live="polite">
@@ -106,7 +106,7 @@ export function ManagerOverview({ session, refreshKey }: { session: Session; ref
                 <span>
                   <b>Mất liên lạc</b>
                   <span className="muted">
-                    {d.device_id} · {d.driver_id ?? "chưa gắn tài xế"} · không có tín hiệu {seen(d.last_seen)}, chưa kết thúc chuyến
+                    {d.device_id} · {d.driver_id ?? "chưa gắn tài xế"} · không có tín hiệu {seen(d.last_seen)}, chưa kết thúc ca lái
                   </span>
                 </span>
                 <a className="ghost" href="#/dashboard/fleet">
@@ -120,8 +120,8 @@ export function ManagerOverview({ session, refreshKey }: { session: Session; ref
                 <span>
                   <b>Báo cáo mới</b>
                   <span className="muted">
-                    {unread.length} báo cáo chuyến chưa ai xem
-                    {unread.some((r) => r.rating === "risk") ? `, ${unread.filter((r) => r.rating === "risk").length} chuyến "Có lúc rất nguy hiểm"` : ""}
+                    {unread.length} báo cáo ca lái chưa ai xem
+                    {unread.some((r) => r.rating === "risk") ? `, ${unread.filter((r) => r.rating === "risk").length} ca lái "Có lúc rất nguy hiểm"` : ""}
                   </span>
                 </span>
                 <a className="ghost" href="#/dashboard/reports">

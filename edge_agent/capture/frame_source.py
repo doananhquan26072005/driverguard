@@ -52,6 +52,7 @@ class CaptureConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> CaptureConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "capture")
 
 
@@ -114,6 +115,7 @@ class FrameSource:
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> FrameSource:
+        """Open the camera or video and start the reader thread; FileNotFoundError for a missing video."""
         if self._thread is not None:
             return self
         if not self.is_camera and not Path(str(self.source)).exists():
@@ -134,6 +136,7 @@ class FrameSource:
         return self
 
     def stop(self) -> None:
+        """Stop the reader thread and release the capture."""
         self._stop_event.set()
         with self._cond:
             self._cond.notify_all()

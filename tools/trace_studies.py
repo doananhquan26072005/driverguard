@@ -77,6 +77,7 @@ def _share(num: float, den: float) -> float | None:
 
 
 def seconds(tr: dict) -> float:
+    """Length of a trace in seconds (0 when its frame rate is unknown)."""
     return trace_seconds(tr) if tr["fps"] else 0.0
 
 
@@ -118,11 +119,13 @@ def brightness_bin(value: float, edges: Sequence[float]) -> str:
 
 
 def bin_order(edges: Sequence[float]) -> list[str]:
+    """The bin labels for these edges, in order, with a last bin for unknown."""
     edges = sorted(edges)
     return [f"< {edges[0]:g}"] + [f"{a:g}–{b:g}" for a, b in zip(edges, edges[1:])] + [f"≥ {edges[-1]:g}", "unknown"]
 
 
 def load_traces(names: Sequence[str], limit: int | None = None) -> dict[str, dict[str, dict]]:
+    """Load the stored traces of these datasets; a dataset without its file is left out."""
     out = {}
     for name in names:
         path = TRACE_DIR / TRACE_FILES[name]
@@ -148,6 +151,7 @@ def replay_many(
     workers: int,
     profiles: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, dict]:
+    """Replay every trace with these thresholds, in parallel when `workers` > 1; results by video."""
     jobs = [(k, v, thresholds, (profiles or {}).get(k)) for k, v in traces.items()]
     if workers <= 1:
         return dict(map(_job, jobs))
@@ -158,6 +162,7 @@ def replay_many(
 
 
 def what_if(thresholds: dict[str, Any], *assignments: str) -> dict[str, Any]:
+    """A copy of the thresholds with these "key=value" assignments applied."""
     th = copy.deepcopy(thresholds)
     for a in assignments:
         set_threshold(th, a)
@@ -165,6 +170,7 @@ def what_if(thresholds: dict[str, Any], *assignments: str) -> dict[str, Any]:
 
 
 def alert_count(tr: dict, reasons: Sequence[str] | None = None) -> int:
+    """Number of alerts of a replayed trace, optionally only those with one of `reasons`."""
     return sum(1 for _, _, rs in tr["alerts"] if reasons is None or any(r in reasons for r in rs))
 
 
@@ -223,6 +229,7 @@ def clip_fractions(tr: dict, thresholds: dict[str, Any]) -> dict[str, float]:
 
 
 def perclos_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any], workers: int) -> str:
+    """The Markdown report of the PERCLOS-definitions study."""
     d = thresholds["drowsiness"]
     ref = float(d["blink_closed_ref_ratio"])
     p80_ratio = ref + float(d["perclos_p80_aperture"]) * (1.0 - ref)
@@ -477,6 +484,7 @@ def condition_rows(
 
 
 def condition_table(dataset: str, rows: dict[str, dict[str, float]], order: Sequence[str]) -> list[str]:
+    """The Markdown table of one dataset: one row per condition."""
     positive = {
         "fl3d": "microsleep runs reaching L3",
         "yawdd": "yawning clips with a yawn event",
@@ -503,6 +511,7 @@ def condition_table(dataset: str, rows: dict[str, dict[str, float]], order: Sequ
 
 
 def lighting_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any], workers: int) -> str:
+    """The Markdown report of the lighting study."""
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
     edges = list(cfg.brightness_bins)
     low_light = thresholds["eye_state"]["low_light_brightness"]
@@ -642,6 +651,7 @@ def personal_scores(run: dict[str, dict], keys: Sequence[str]) -> dict[str, floa
 
 
 def personal_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any], workers: int) -> str:
+    """The Markdown report of the personal-baseline study (YawDD)."""
     cfg = EvalConfig.from_dict(thresholds.get("eval"))
     traces = data.get("yawdd", {})
     by_subject: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -747,6 +757,7 @@ def personal_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any]
 
 
 def glance_report(data: dict[str, dict[str, dict]], thresholds: dict[str, Any], workers: int) -> str:
+    """The Markdown report on off_road_ratio for drivers who are not distracted."""
     x = thresholds["distraction"]["glance"]
     marks = (0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
     lines = [
@@ -803,6 +814,7 @@ STUDIES = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("study", choices=sorted(STUDIES))
     p.add_argument("--out", default=None)

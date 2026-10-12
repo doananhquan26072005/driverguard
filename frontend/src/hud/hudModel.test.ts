@@ -100,7 +100,7 @@ describe("hudModel", () => {
     expect(enrollCue(enroll("look_camera"), enroll("look_road"))).toEqual({ beep: true, say: "Nhìn ra đường phía trước" });
     expect(enrollCue(enroll("look_road"), enroll("close_eyes"))).toEqual({ beep: true, say: "Nhắm mắt lại" });
     // step 3 is done with the eyes shut: the beep is the signal to open them
-    expect(enrollCue(enroll("close_eyes"), enroll("done"))).toEqual({ beep: true, say: "Đăng ký xong" });
+    expect(enrollCue(enroll("close_eyes"), enroll("done"))).toEqual({ beep: true, say: "Làm quen xong" });
     expect(enrollCue(enroll("done"), enroll("done"))).toEqual({ beep: false, say: null });
     expect(enrollCue(undefined, enroll("done"))).toEqual({ beep: false, say: null }); // HUD opened mid-trip
   });

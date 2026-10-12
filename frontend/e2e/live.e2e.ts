@@ -61,20 +61,19 @@ async function startLive(page: Page, login?: string) {
     await page.getByLabel("Tên đăng nhập").fill(login);
     await page.getByLabel("Mật khẩu").fill(PASSWORD);
     await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-    await expect(page.getByText(`Đăng nhập: ${login}`)).toBeVisible();
   } else {
     await page.getByRole("button", { name: "Dùng thử không lưu" }).click();
   }
-  await page.getByRole("button", { name: "Cho phép camera và bắt đầu" }).click();
+  // No second press: logging in (a driver) or the try-out starts the camera at once.
   await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
 }
 
 /** The consent screen comes first: it says the face is not stored or sent; the driver agrees. */
 async function agree(page: Page) {
-  await expect(page.getByRole("heading", { name: "Đăng ký khuôn mặt" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Làm quen khuôn mặt" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText(/Không chụp, không lưu ảnh khuôn mặt/)).toBeVisible();
   expect((await state(page)).enrollment?.status).toBe("consent"); // nothing measured before the answer
-  await page.getByRole("button", { name: "Đồng ý, bắt đầu đăng ký" }).click();
+  await page.getByRole("button", { name: "Đồng ý, bắt đầu" }).click();
 }
 
 async function enrolled(page: Page) {
@@ -82,9 +81,9 @@ async function enrolled(page: Page) {
 }
 
 async function endTrip(page: Page) {
-  await page.getByRole("button", { name: "Kết thúc chuyến" }).click();
+  await page.getByRole("button", { name: "Kết thúc ca lái" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
-  await expect(page.getByText(/^Tổng kết chuyến đi · /)).toBeVisible();
+  await expect(page.getByText(/^Tổng kết ca lái · /)).toBeVisible();
 }
 
 test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the trip ends with a summary", async ({ page }) => {
@@ -113,7 +112,7 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await expect(page.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
   await page.getByRole("button", { name: "Dừng camera" }).click();
   const ask = page.getByRole("dialog");
-  await expect(ask.getByRole("heading", { name: "Kết thúc chuyến đi?" })).toBeVisible();
+  await expect(ask.getByRole("heading", { name: "Kết thúc ca lái?" })).toBeVisible();
   await ask.getByRole("button", { name: "Tiếp tục lái" }).click();
   await expect(ask).toHaveCount(0);
   const before = (await state(page)) as State & { updated_at?: number };
@@ -125,7 +124,7 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   // ... and "Kết thúc" there ends the trip like the HUD's own button: the summary, the camera off.
   await page.getByRole("button", { name: "Dừng camera" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
-  await expect(page.getByText(/^Tổng kết chuyến đi · /)).toBeVisible();
+  await expect(page.getByText(/^Tổng kết ca lái · /)).toBeVisible();
   await expect(page.getByText("Chế độ dùng thử: bản tổng kết không được gửi đi.")).toBeVisible();
 });
 
@@ -268,12 +267,12 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
 
   await endTrip(page);
   await expect(page.getByText("Đã gửi bản tổng kết cho quản lý đội xe.")).toBeVisible();
-  await fleetShows("Đã kết thúc chuyến"); // an ended trip, not a lost vehicle
+  await fleetShows("Đã kết thúc ca lái"); // an ended trip, not a lost vehicle
   // M49: the page timed its own loop and the heartbeat carried the numbers to the fleet overview.
   await expect(vehicle).toContainText(/p95 [\d,.]+ ms/);
 
   // M62: the manager reviews the report (list + detail), and marks it read.
-  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await manager.getByRole("link", { name: /^Báo cáo ca lái/ }).click();
   const report = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
   await expect(report).toHaveCount(1);
   await report.click();
@@ -303,7 +302,7 @@ test("web driving controls: #/drive on another page drives #/live; closing it is
 
   await remote.close(); // the remote goes quiet while driving
   await expect.poll(async () => (await state(page)).vehicle?.signal_lost, { timeout: 10_000 }).toBe(true);
-  await expect(page.getByText("Mất tín hiệu xe: vẫn giám sát như đang chạy")).toBeVisible();
+  await expect(page.getByText("Mất tín hiệu tốc độ xe: vẫn theo dõi như đang chạy")).toBeVisible();
 });
 
 test("leaving #/live with the trip running ends the trip: the manager sees it ended, with its report", async ({ page, browser }) => {
@@ -328,18 +327,18 @@ test("leaving #/live with the trip running ends the trip: the manager sees it en
       await expect(vehicle).toContainText(text, { timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
   await fleetShows("Đang hoạt động");
-  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await manager.getByRole("link", { name: /^Báo cáo ca lái/ }).click();
   const reports = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
   await expect(manager.getByRole("region", { name: "Danh sách báo cáo" })).toBeVisible();
   await manager.waitForTimeout(1_000); // the list has loaded
   const before = await reports.count(); // reports of earlier tests still listed, if any
 
   await page.evaluate(() => void (location.hash = "#/dashboard")); // the driver's page goes elsewhere
-  await expect(page.getByRole("button", { name: "Kết thúc chuyến" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Kết thúc ca lái" })).toHaveCount(0);
 
   await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
-  await fleetShows("Đã kết thúc chuyến");
-  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await fleetShows("Đã kết thúc ca lái");
+  await manager.getByRole("link", { name: /^Báo cáo ca lái/ }).click();
   await expect(reports).toHaveCount(before + 1);
 });
 
@@ -365,7 +364,7 @@ test("closing the tab with the trip running ends the trip too: the manager sees 
       await expect(vehicle).toContainText(text, { timeout: 2_000 });
     }).toPass({ timeout: 30_000 });
   await fleetShows("Đang hoạt động");
-  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await manager.getByRole("link", { name: /^Báo cáo ca lái/ }).click();
   const reports = manager.getByRole("region", { name: "Danh sách báo cáo" }).getByRole("button").filter({ hasText: "drv-001" });
   await expect(manager.getByRole("region", { name: "Danh sách báo cáo" })).toBeVisible();
   await manager.waitForTimeout(1_000); // the list has loaded
@@ -374,9 +373,32 @@ test("closing the tab with the trip running ends the trip too: the manager sees 
   await page.close({ runBeforeUnload: true }); // the browser's own "leave this page?" is accepted by Playwright
 
   await manager.getByRole("link", { name: "Đội xe", exact: true }).click();
-  await fleetShows("Đã kết thúc chuyến");
-  await manager.getByRole("link", { name: /^Báo cáo chuyến/ }).click();
+  await fleetShows("Đã kết thúc ca lái");
+  await manager.getByRole("link", { name: /^Báo cáo ca lái/ }).click();
   await expect(reports).toHaveCount(before + 1);
+});
+
+test("the first page is the login page: a manager goes to the dashboard, a driver who is logged in starts from it", async ({ page }) => {
+  await stubSimulator(page);
+  await page.goto("/"); // no address
+  await expect(page.getByRole("link", { name: /Hướng dẫn sử dụng/ })).toBeVisible();
+  await page.getByLabel("Tên đăng nhập").fill("quanly");
+  await page.getByLabel("Mật khẩu").fill(PASSWORD);
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  await expect(page).toHaveURL(/#\/dashboard/);
+  await expect(page.getByRole("link", { name: "Đội xe", exact: true })).toBeVisible();
+  expect((await state(page)).connected ?? false).toBe(false); // no camera was opened for a manager
+
+  // A driver's session from an earlier visit: no form, one press starts the trip.
+  await page.getByRole("button", { name: "Đăng xuất" }).click();
+  await page.getByLabel("Tên đăng nhập").fill("an");
+  await page.getByLabel("Mật khẩu").fill(PASSWORD);
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Đăng xuất" })).toBeVisible();
+  await page.goto("/#/live");
+  await expect(page.getByText("Đăng nhập: an")).toBeVisible();
+  await page.getByRole("button", { name: "Cho phép camera và bắt đầu" }).click();
+  await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
 });
 
 test("the self-view can be dragged off the HUD's buttons and resized, and remembers where it was put", async ({ page }) => {

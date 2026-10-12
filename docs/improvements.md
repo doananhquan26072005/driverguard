@@ -153,7 +153,11 @@ sức máy cho web; đo bản web trên điện thoại Android thay cho hub (06
   4. Kiến trúc 14 khối; phần khác biệt: tốc độ / xi nhan, mốc riêng từng tài xế, nút báo sai, FMEA.
   5. Kết quả đo kèm giờ đo và CI (`eval/results/report.md`), mỗi dòng có nhận định đạt / chưa đạt.
   6. Giới hạn: từ 08/10 không còn hub và không còn xe thật, nên mọi thứ là mô phỏng trên web và trace có sẵn; chưa có CAN thật, chưa có giờ lái thật; chưa đo FPS trên thiết bị đích (ước lượng 10–13 FPS, [phụ lục J](#phu-luc-j)). Nói thẳng điều này, không né. Lộ trình ([pilot-readiness.md](pilot-readiness.md)).
-- **Video:** quay theo kịch bản ở HowToUse mục 7.4 trên `#/live` + `#/drive` + dashboard.
+- **Video:** hình đã quay xong ngày 09/10 theo [kich-ban-demo.md](kich-ban-demo.md): 21 clip chưa lồng tiếng ở
+  `presentation/demo-clips/`, ghép nguyên là 299,9 giây, vừa chạm 5 phút (phải cắt bớt khi dựng); 15 clip có giao diện
+  đã quay lại ngày 12/10 trên giao diện và giọng nói mới. Còn lại: thu lời theo
+  [LOI-THOAI.md](../presentation/demo-clips/LOI-THOAI.md), ghép thành `presentation/video_demo.mp4`, rồi sửa dòng
+  deliverable 6 trong README.
 - Không đưa số nào chưa có trong `eval/results/`; số đo trên Mac ghi rõ là máy dev.
 - **Thêm từ hai bài báo đọc 06/10 ([phụ lục I](#phu-luc-i)):**
   - Một slide "vì sao số của chúng tôi không phải 99 %": các bài báo 98–99 % trên NTHU-DDD / UTA-RLDD chấm theo

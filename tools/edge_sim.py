@@ -74,10 +74,12 @@ def docker_command(
 
 
 def image_exists(image: str) -> bool:
+    """True when the Docker image exists locally."""
     return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--profile", required=True, help="a profile of config/edge_profiles.yaml")
     p.add_argument("--duration", default="10m")

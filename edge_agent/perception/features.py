@@ -70,6 +70,7 @@ class FeatureConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> FeatureConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "features")
 
 
@@ -143,6 +144,7 @@ def _dist(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def eye_aspect_ratio(points: np.ndarray, idx: tuple[int, ...]) -> float:
+    """EAR of one eye from its six landmarks; 0 when the eye has no width."""
     p1, p2, p3, p4, p5, p6 = (points[i, :2] for i in idx)
     width = _dist(p1, p4)
     if width < 1e-6:
@@ -151,6 +153,7 @@ def eye_aspect_ratio(points: np.ndarray, idx: tuple[int, ...]) -> float:
 
 
 def mouth_aspect_ratio(points: np.ndarray) -> float:
+    """MAR: mean lip opening over mouth width; 0 when the mouth has no width."""
     width = _dist(points[MOUTH_CORNERS[0], :2], points[MOUTH_CORNERS[1], :2])
     if width < 1e-6:
         return 0.0
@@ -159,6 +162,7 @@ def mouth_aspect_ratio(points: np.ndarray) -> float:
 
 
 def camera_matrix(width: int, height: int, focal_length_scale: float) -> np.ndarray:
+    """Pinhole camera matrix with the focal length as a multiple of the image width."""
     f = focal_length_scale * width
     return np.array([[f, 0, width / 2.0], [0, f, height / 2.0], [0, 0, 1]], dtype=np.float64)
 
@@ -183,6 +187,7 @@ class FeatureExtractor:
         self._tvec: np.ndarray | None = None
 
     def reset(self) -> None:
+        """Forget the previous pose (no initial guess for the next solvePnP)."""
         self._rvec = self._tvec = None
 
     @property
@@ -193,6 +198,8 @@ class FeatureExtractor:
         return self._rvec, self._tvec
 
     def head_pose(self, lm: FaceLandmarks) -> tuple[float, float, float] | None:
+        """(pitch, yaw, roll) in degrees from solvePnP, or None when it fails or puts the face
+        behind the camera."""
         image_points = lm.points[list(POSE_LANDMARKS), :2].astype(np.float64)
         cam = camera_matrix(lm.image_width, lm.image_height, self.config.focal_length_scale)
         use_guess = self._rvec is not None

@@ -15,7 +15,7 @@ import { DeletionRequestsCard, MyDataCard } from "./MyDataCard";
 import EventLog from "./EventLog";
 import FleetView from "./FleetView";
 import Login from "./Login";
-import { NAV, pageFromHash, pageHref, pageLabel, type PageKey } from "./nav";
+import { NAV, PAGE_LEAD, pageFromHash, pageHref, pageLabel, type PageKey } from "./nav";
 import StatsTiles from "./StatsTiles";
 import ThresholdsView from "./ThresholdsView";
 import TimelineView from "./TimelineView";
@@ -23,22 +23,6 @@ import TripReports from "./TripReports";
 import { HUD_DEFAULTS } from "../lib/defaults";
 
 const REFRESH_MS = 15_000;
-
-// What each page is for, under its title.
-const PAGE_LEAD: Partial<Record<PageKey, string>> = {
-  overview: "Tình hình hôm nay và những việc cần làm.",
-  trips: "Bản tổng kết của từng chuyến bạn đã lái.",
-  alerts: "Các lần hệ thống nhắc bạn, mới nhất trước.",
-  mydata: "Tải dữ liệu của bạn, yêu cầu xoá, xem ai đã xem dữ liệu của bạn.",
-  fleet: "Xe nào đang hoạt động, xe nào mất liên lạc, xe nào cần xử lý ngay.",
-  reports: "Tài xế gửi khi bấm “Kết thúc chuyến”. Đánh dấu đã xem để tài xế biết báo cáo đã đến tay quản lý.",
-  events: "Mọi cảnh báo và sự kiện hệ thống, mới nhất trước.",
-  timeline: "Độ mệt từng phút của một chuyến, kèm các cảnh báo.",
-  thresholds: "Ngưỡng cảnh báo đang dùng và tỉ lệ tài xế báo sai theo lý do.",
-  accounts: "Mỗi người một tài khoản. Vai trò quyết định họ thấy trang nào sau khi đăng nhập.",
-  devices: "Thiết bị trong xe và khoá của chúng.",
-  access: "Ai đã xem dữ liệu của ai, ai đã đổi ngưỡng, tài khoản hay xoá dữ liệu.",
-};
 
 export default function Dashboard() {
   const [session, setSession] = useState<Session | null>(loadSession);

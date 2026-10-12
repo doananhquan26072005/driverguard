@@ -102,11 +102,10 @@ async function main() {
   if (yolo) await page.addInitScript((y) => localStorage.setItem("dg.phone.provider", y), yolo);
 
   await page.goto(`${url}/#/live`);
-  await page.getByRole("button", { name: "Dùng thử không lưu" }).click();
   const thinkS = Number(arg("think-s", 0)); // the driver reads the screen this long before pressing start
   if (thinkS > 0) await page.waitForTimeout(thinkS * 1000);
   const pressed = Date.now();
-  await page.getByRole("button", { name: "Cho phép camera và bắt đầu" }).click();
+  await page.getByRole("button", { name: "Dùng thử không lưu" }).click(); // starts the camera at once
   const tech = page.getByRole("button", { name: /chi tiết kỹ thuật/i });
   await tech.waitFor({ timeout: Number(arg("ready-timeout", 300)) * 1000 });
   const startS = (Date.now() - pressed) / 1000; // from pressing start to the loop running

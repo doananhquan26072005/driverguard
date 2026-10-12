@@ -32,7 +32,7 @@ const ENGINEER: NavItem[] = [
   { page: "events", label: "Nhật ký sự kiện" },
   { page: "timeline", label: "Timeline mệt mỏi" },
   { page: "fleet", label: "Đội xe" },
-  { page: "reports", label: "Báo cáo chuyến" },
+  { page: "reports", label: "Báo cáo ca lái" },
 ];
 
 export const NAV: Record<Role, NavSection[]> = {
@@ -41,7 +41,7 @@ export const NAV: Record<Role, NavSection[]> = {
       title: null,
       items: [
         { page: "overview", label: "Tổng quan" },
-        { page: "trips", label: "Chuyến đi của tôi" },
+        { page: "trips", label: "Ca lái của tôi" },
         { page: "alerts", label: "Lịch sử cảnh báo" },
         { page: "mydata", label: "Dữ liệu của tôi" },
       ],
@@ -53,7 +53,7 @@ export const NAV: Record<Role, NavSection[]> = {
       items: [
         { page: "overview", label: "Tổng quan" },
         { page: "fleet", label: "Đội xe" },
-        { page: "reports", label: "Báo cáo chuyến" },
+        { page: "reports", label: "Báo cáo ca lái" },
         { page: "events", label: "Nhật ký sự kiện" },
         { page: "timeline", label: "Timeline mệt mỏi" },
         { page: "thresholds", label: "Ngưỡng (chỉ xem)" },
@@ -72,6 +72,22 @@ export const NAV: Record<Role, NavSection[]> = {
     },
     { title: "Vận hành", items: ENGINEER },
   ],
+};
+
+// What each page is for, under its title (and in the guide, M102).
+export const PAGE_LEAD: Partial<Record<PageKey, string>> = {
+  overview: "Tình hình hôm nay và những việc cần làm.",
+  trips: "Bản tổng kết của từng ca lái của bạn.",
+  alerts: "Các lần hệ thống nhắc bạn, mới nhất trước.",
+  mydata: "Tải dữ liệu của bạn, yêu cầu xoá, xem ai đã xem dữ liệu của bạn.",
+  fleet: "Xe nào đang hoạt động, xe nào mất liên lạc, xe nào cần xử lý ngay.",
+  reports: "Tài xế gửi khi bấm “Kết thúc ca lái”. Đánh dấu đã xem để tài xế biết báo cáo đã đến tay quản lý.",
+  events: "Mọi cảnh báo và sự kiện hệ thống, mới nhất trước.",
+  timeline: "Độ mệt từng phút của một ca lái, kèm các cảnh báo.",
+  thresholds: "Ngưỡng cảnh báo đang dùng và tỉ lệ tài xế báo sai theo lý do.",
+  accounts: "Mỗi người một tài khoản. Vai trò quyết định họ thấy trang nào sau khi đăng nhập.",
+  devices: "Thiết bị trong xe và khoá của chúng.",
+  access: "Ai đã xem dữ liệu của ai, ai đã đổi ngưỡng, tài khoản hay xoá dữ liệu.",
 };
 
 export const HOME: Record<Role, PageKey> = { driver: "overview", manager: "overview", engineer: "thresholds", admin: "accounts" };

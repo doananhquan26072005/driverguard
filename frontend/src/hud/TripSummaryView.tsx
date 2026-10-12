@@ -40,7 +40,7 @@ const RATING_TONE: Record<TripRating, { card: string; dot: string; icon: string;
 const ZONE_COLOR: Record<Zone, string> = { awake: "#4ade80", tired: "#fbbf24", very_tired: "#f87171" };
 const LEGEND: [string, string][] = [
   ["#4ade80", "Tỉnh táo"],
-  ["#fbbf24", "Mệt"],
+  ["#fbbf24", "Hơi mệt"],
   ["#f87171", "Rất mệt"],
   ["rgba(255,255,255,0.25)", "Xe dừng"],
 ];
@@ -80,7 +80,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
       <header className="flex items-center px-4 hud-sm:px-8">
         <span className="flex flex-col gap-0.5">
           <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
-          <span className="dg-num text-xs text-hud-ink-3">Tổng kết chuyến đi · {span}</span>
+          <span className="dg-num text-xs text-hud-ink-3">Tổng kết ca lái · {span}</span>
         </span>
       </header>
 
@@ -89,7 +89,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
           <section aria-live="polite" className={`dg-alert ${tone.card} flex flex-col gap-[18px] px-[26px] py-6`}>
             <div className="flex items-start justify-between gap-3">
               <span className="dg-card-title">
-                <b>Đánh giá chuyến</b>
+                <b>Đánh giá ca lái</b>
                 <span>{dayText(s.started_at)}</span>
               </span>
               <span className="dg-chip" style={{ ["--dot" as string]: tone.dot }}>
@@ -120,7 +120,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
             <Fact icon={Timer} value={formatDuration(s.driving_s)} label="Thời gian lái" />
             <Fact icon={Coffee} value={String(s.rests)} label="Lần nghỉ" />
             <Fact icon={Bell} value={String(reminders)} label="Lần nhắc nhở" />
-            <Fact icon={Flag} value={String(s.false_alarms)} label="Bạn đã báo sai" />
+            <Fact icon={Flag} value={String(s.false_alarms)} label="Cảnh báo bạn báo nhầm" />
           </section>
         </div>
 
@@ -130,7 +130,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
             <section className="dg-card flex min-h-0 flex-1 flex-col gap-3 px-6 py-[22px]">
               <span className="dg-card-title">
                 <b>Gợi ý cho lần sau</b>
-                <span>Từ số liệu của chuyến, không phải chẩn đoán</span>
+                <span>Dựa trên số liệu ca lái, không phải kết luận về sức khoẻ</span>
               </span>
               <div className="grid gap-2.5 hud-sm:grid-cols-2">
                 {s.suggestions.map((x, i) => {
@@ -193,7 +193,7 @@ function MinuteChart({ summary: s }: { summary: TripSummary }) {
         <span className="dg-card-title">
           <b>Độ mệt theo từng phút</b>
           <span>
-            {perBar} phút mỗi cột · cả chuyến ({formatDuration(s.duration_s)})
+            {perBar} phút mỗi cột · cả ca lái ({formatDuration(s.duration_s)})
           </span>
         </span>
         <span className="flex flex-wrap gap-3.5 text-xs text-hud-ink-2">
@@ -207,7 +207,7 @@ function MinuteChart({ summary: s }: { summary: TripSummary }) {
       </div>
       <div
         role="img"
-        aria-label={`Độ mệt theo thời gian của chuyến${s.first_tired_min != null ? `: có dấu hiệu mệt từ phút lái thứ ${s.first_tired_min}` : ""}`}
+        aria-label={`Độ mệt theo thời gian của ca lái${s.first_tired_min != null ? `: có dấu hiệu mệt từ phút lái thứ ${s.first_tired_min}` : ""}`}
         className="flex h-[150px] items-end gap-[3px] border-0 border-b border-solid border-white/8"
       >
         {bars.map((b, i) => (

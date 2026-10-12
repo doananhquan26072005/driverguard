@@ -136,6 +136,7 @@ class DistractionConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> DistractionConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "distraction")
 
 
