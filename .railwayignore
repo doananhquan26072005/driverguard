@@ -19,6 +19,8 @@ push ai log phoenix.txt
 .claude/
 .agents/
 data/
+voice_local/
+frontend/e2e/.cache/
 
 # Models the server does not serve
 models/tts/
