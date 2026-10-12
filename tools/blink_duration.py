@@ -117,6 +117,7 @@ def blendshape_aperture(blink: np.ndarray, closed_quantile: float = 99.5, min_cl
 
 
 def microsleep_runs(labels: dict[int, str]) -> list[Run]:
+    """The labelled microsleep runs of one video."""
     return [r for r in label_runs(labels, LABEL_GAP) if r.label == "microsleep"]
 
 
@@ -126,6 +127,7 @@ def seconds_to_nearest(frame: int, runs: list[Run], fps: float) -> float:
 
 
 def split_near_far(blinks: list[Blink], runs: list[Run], fps: float, near_s: float) -> tuple[list[Blink], list[Blink]]:
+    """Split the blinks into those within `near_s` of a microsleep run and the rest."""
     near = [b for b in blinks if seconds_to_nearest(b.frame, runs, fps) <= near_s]
     return near, [b for b in blinks if seconds_to_nearest(b.frame, runs, fps) > near_s]
 
@@ -151,6 +153,7 @@ def spearman(x: np.ndarray, y: np.ndarray) -> float | None:
 
 
 def durations(blinks: list[Blink]) -> np.ndarray:
+    """The blink durations as an array."""
     return np.array([b.duration for b in blinks])
 
 
@@ -170,6 +173,7 @@ def _ratio(a: np.ndarray, b: np.ndarray) -> float | None:
 
 
 def group_rows(name: str, per_video: dict[str, list[Blink]], drowsy_videos: set[str]) -> tuple[str, float | None]:
+    """One table row for a group of videos, and the AUC of blink duration (drowsy vs alert)."""
     drowsy = durations([b for v, bs in per_video.items() if v in drowsy_videos for b in bs])
     alert = durations([b for v, bs in per_video.items() if v not in drowsy_videos for b in bs])
     a = auc(drowsy, alert)
@@ -180,6 +184,7 @@ def group_rows(name: str, per_video: dict[str, list[Blink]], drowsy_videos: set[
 def report(
     traces: dict, labels: dict[str, dict[int, str]], thresholds: dict[str, Any], args: argparse.Namespace
 ) -> str:
+    """The Markdown report of the blink-duration study."""
     dcfg = thresholds["drowsiness"]
     level, closed_ref = float(dcfg["blink_open_level"]), float(dcfg["blink_closed_ref_ratio"])
     max_s = float(dcfg["blink_max_s"]) + float(dcfg["slow_blink"]["reopen_max_s"])
@@ -322,6 +327,7 @@ def report(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--traces", required=True, help="FL3D traces from tools/seq_eval.py trace")
     p.add_argument("--out", default=None)

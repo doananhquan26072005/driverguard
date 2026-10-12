@@ -27,11 +27,14 @@ class BrowRaise:
         self._raises: deque[float] = deque()
 
     def set_enrolled(self, brow_neutral: float | None) -> None:
+        """Use the neutral brow height measured at enrollment instead of the rolling median."""
         self._enrolled = brow_neutral
 
     def update(
         self, t: float, f: FrameFeatures, eyes_open: bool, masked: bool, baseline: float, events: list[str]
     ) -> None:
+        """One frame: appends "brow_raise" to `events` once the brows have stayed raised over narrowed
+        eyes for `brow_min_s`. Nothing is judged with the eyes closed, unread or `masked`."""
         cfg = self.config
         if f.brow_up is None or not eyes_open or f.ear is None:
             if self._last_t is not None and t - self._last_t > cfg.max_gap_s:
@@ -63,10 +66,12 @@ class BrowRaise:
         self._since, self._fired = None, False
 
     def count(self, t: float) -> int:
+        """Brow raises within the last `brow_window_s`."""
         expire(self._raises, t, self.config.brow_window_s)
         return len(self._raises)
 
     def forget_since(self, t0: float) -> None:
+        """Forget what was seen at or after t0."""
         drop_since(self._raises, t0)
         self._since = None
         self._window.drop_since(t0)

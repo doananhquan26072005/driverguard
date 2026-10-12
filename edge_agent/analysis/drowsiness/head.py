@@ -53,6 +53,7 @@ class HeadPose:
         self.last_t: float | None = None  # last frame with a usable pose
 
     def set_enrolled(self, road_yaw: float, road_pitch: float) -> None:
+        """Use the road-facing yaw and pitch measured at enrollment as the driver's usual pose."""
         self._enrolled = (road_yaw, road_pitch)
 
     def _enrolled_pose(self) -> tuple[float, float] | None:
@@ -89,6 +90,7 @@ class HeadPose:
         return yaw_off, pitch_off, pitch_ref
 
     def drop_since(self, t0: float) -> None:
+        """Forget the pose readings taken at or after t0."""
         self._yaw.drop_since(t0)
         self._pitch.drop_since(t0)
 
@@ -166,10 +168,12 @@ class NodDetector:
         self._dip_track = []
 
     def count(self, t: float) -> int:
+        """Nods within the last `nod_window_s`."""
         expire(self._nods, t, self.config.nod_window_s)
         return len(self._nods)
 
     def forget_since(self, t0: float) -> None:
+        """Forget the nods, and the dip under way, that started at or after t0."""
         drop_since(self._nods, t0)
         if self._dip_start is not None and self._dip_start >= t0:
             self._dip_start = None

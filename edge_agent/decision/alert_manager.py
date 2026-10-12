@@ -86,6 +86,7 @@ class AlertConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> AlertConfig:
+        """Build the config from the `alert` section of thresholds.yaml; an unknown key is an error."""
         d = d or {}
         check_keys("alert", {k: k for k in d}, cls.__dataclass_fields__)
         default = cls()
@@ -114,6 +115,7 @@ class Alert:
 
     @property
     def action(self) -> str:
+        """What the HUD does at this alert's level."""
         return LEVEL_ACTIONS[self.level]
 
 
@@ -234,6 +236,8 @@ class AlertManager:
         return self._emit(r, level, new + tuple(x for x in r.reasons if x not in new), reminder=not fresh)
 
     def update(self, r: RiskAssessment) -> AlertOutput:
+        """Block 12, one frame: apply the raise confirmation and the fall hold to the risk level.
+        The output carries a new alert only when one is emitted on this frame."""
         t, target = r.t, r.level
         if self._last_t is not None and t - self._last_t > self.config.max_gap_s:
             self._candidate = None  # not seen held across the gap: confirmed from this frame on

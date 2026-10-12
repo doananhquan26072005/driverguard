@@ -79,9 +79,11 @@ class PhoneDetectorConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PhoneDetectorConfig:
+        """Build the config from the `phone` section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "phone")
 
     def resolved_model_path(self) -> Path:
+        """The model path, relative to the project root unless absolute."""
         p = Path(self.model_path)
         return p if p.is_absolute() else PROJECT_ROOT / p
 
@@ -105,6 +107,7 @@ class PhoneResult:
 
 
 def face_bbox(points: np.ndarray) -> BBox:
+    """Bounding box (x1, y1, x2, y2) of the landmarks."""
     x1, y1 = points[:, :2].min(axis=0)
     x2, y2 = points[:, :2].max(axis=0)
     return float(x1), float(y1), float(x2), float(y2)
@@ -182,6 +185,7 @@ class FaceBoxMemory:
         self._history: deque[tuple[float, BBox | None]] = deque()  # (t, the box update() returned)
 
     def update(self, face: BBox | None, t: float) -> BBox | None:
+        """The face box of this frame: the one given, or the last seen while it is not too old."""
         if face is not None:
             self._face, self._seen_at = face, t
         elif self._seen_at is not None and t - self._seen_at <= self.max_age_s:
@@ -223,6 +227,7 @@ class PhoneHealth:
 
     @property
     def unknown_share(self) -> float:
+        """Share of the window's time without a fresh detector result, in [0, 1]."""
         return min(max(self._unknown / self._total, 0.0), 1.0) if self._total > 1e-9 else 0.0
 
     def update(self, t: float, known: bool) -> bool:
@@ -358,12 +363,14 @@ class AsyncPhoneDetector:
         self._failing = False  # the last run raised: its warning is printed once per streak
 
     def start(self) -> AsyncPhoneDetector:
+        """Start the detector thread."""
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="PhoneDetector", daemon=True)
             self._thread.start()
         return self
 
     def stop(self) -> None:
+        """Stop the detector thread and drop the frame that was waiting."""
         self._stop.set()
         with self._cond:
             self._cond.notify_all()

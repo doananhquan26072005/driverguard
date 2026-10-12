@@ -30,6 +30,7 @@ DEST = ROOT / "frontend" / "src" / "lib" / "defaults.gen.json"
 
 
 def web_defaults(thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The numbers of thresholds.yaml that the web pages need before, or without, an agent."""
     th = load_thresholds() if thresholds is None else thresholds
     cap = CaptureConfig.from_dict(th.get("capture"))
     ctx = ContextConfig.from_dict(th.get("context"))
@@ -45,6 +46,7 @@ def web_defaults(thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
 
 
 def render(thresholds: dict[str, Any] | None = None) -> str:
+    """The defaults as the JSON text of the generated file."""
     return json.dumps(web_defaults(thresholds), indent=2) + "\n"
 
 

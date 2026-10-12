@@ -40,6 +40,7 @@ class PresenceConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> PresenceConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "presence")
 
 
@@ -66,6 +67,7 @@ class PresenceCheck:
         self._answered = self._unanswered = False
 
     def reset(self) -> None:
+        """End the running loss and forget the driver's last answer."""
         self._loss_over()
         self._last_answer = None
 

@@ -64,6 +64,7 @@ def bundled_models(path: Path = BUILD_INFO) -> dict[str, str]:
 def version_info(
     thresholds_version: int = 0, models: dict[str, str] | None = None, thresholds_ignored: bool = False
 ) -> dict[str, Any]:
+    """What this device runs, as sent with its events: app version, thresholds version, models."""
     return {
         "app": APP_VERSION,
         "thresholds_version": int(thresholds_version),

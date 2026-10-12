@@ -78,6 +78,7 @@ def summarize(ms: list[float]) -> dict[str, float]:
 
 
 def iou(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """Intersection over union of two (x1, y1, x2, y2) boxes."""
     ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
     iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
     inter = ix * iy
@@ -102,6 +103,7 @@ def agreement(ref: list[tuple], other: list[tuple], iou_min: float = 0.5) -> tup
 
 
 def time_calls(fn: Callable[[Any], Any], items: list[Any], warmup: int) -> tuple[list[float], list[Any]]:
+    """Call `fn` on every item; returns the per-call times in ms and the outputs."""
     outputs, ms = [], []
     for i, item in enumerate(items):
         t0 = time.perf_counter()
@@ -114,6 +116,7 @@ def time_calls(fn: Callable[[Any], Any], items: list[Any], warmup: int) -> tuple
 
 
 def file_mb(path: Path) -> float | None:
+    """Size of a file in MB, or None when it does not exist."""
     return path.stat().st_size / 1e6 if path.exists() else None
 
 
@@ -121,6 +124,7 @@ def file_mb(path: Path) -> float | None:
 
 
 def load_frames(source: str | None, n: int) -> tuple[list[np.ndarray], str]:
+    """n frames to benchmark on and their description: from the video / camera, else synthetic noise."""
     if source:
         cap = cv2.VideoCapture(int(source) if source.isdigit() else source)
         frames = []
@@ -161,6 +165,7 @@ def quantize_yolo(fp32: Path, int8: Path, calib: list[np.ndarray], input_size: i
             self._it = iter([{name: b} for b in blobs])
 
         def get_next(self) -> dict[str, np.ndarray] | None:
+            """The next calibration batch, or None when they are used up."""
             return next(self._it, None)
 
     prepped = int8.with_suffix(".prep.onnx")
@@ -231,6 +236,7 @@ def main_loop(frames: list[np.ndarray], th: dict[str, Any], yolo_model: Any, war
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    """Run the benchmark and return its numbers (system, per-block latency, FPS, model sizes)."""
     import mediapipe
 
     from edge_agent.perception.onnx import load_ort
@@ -324,6 +330,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def report(r: dict[str, Any]) -> str:
+    """The Markdown report of a benchmark run."""
+
     def f(v: float | None, d: int = 1) -> str:
         return "–" if v is None or v != v else f"{v:.{d}f}"
 
@@ -675,6 +683,8 @@ def soak(args: argparse.Namespace, th: dict[str, Any]) -> dict[str, Any]:
 
 
 def soak_report(r: dict[str, Any], min_fps: float, max_growth: float) -> str:
+    """The Markdown report of a long (soak) run, held against the FPS and memory growth limits."""
+
     def f(v: float | None, d: int = 1) -> str:
         return "–" if v is None or v != v else f"{v:.{d}f}"
 
@@ -800,6 +810,7 @@ def combine_report(results: list[dict[str, Any]], min_fps: float, max_growth: fl
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--source", default=None, help="video file (or camera index) to benchmark on")
     p.add_argument("--frames", type=int, default=300, help="frames per measurement")

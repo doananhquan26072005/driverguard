@@ -210,6 +210,8 @@ class DecisionPipeline:
         signals: VehicleSignals,
         phone_kind: str | None = None,
     ) -> DecisionResult:
+        """One frame through blocks 7-12: context, enrollment, quality, drowsiness, distraction,
+        risk, alert, presence check and trip memory. Returns everything they decided."""
         ctx = self.context.update(signals)
         self._track_rest(ctx, features.timestamp)
         enrollment = self.enrollment.update(features, ctx.stationary)

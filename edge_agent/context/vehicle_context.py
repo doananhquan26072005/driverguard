@@ -62,6 +62,7 @@ class ContextConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> ContextConfig:
+        """Build the config from the `context` section of thresholds.yaml; an unknown key is an error."""
         d = dict(d or {})
         check_keys("context", {k: k for k in d}, cls.__dataclass_fields__)
         if "night_hours" in d:
@@ -69,6 +70,7 @@ class ContextConfig:
         return cls(**d)
 
     def is_moving(self, speed_kmh: float | None) -> bool:
+        """True at `min_speed_kmh` or above; an unknown speed follows `assume_moving_when_speed_unknown`."""
         if speed_kmh is None:
             return self.assume_moving_when_speed_unknown
         return speed_kmh >= self.min_speed_kmh
@@ -99,6 +101,7 @@ class VehicleContext:
 
 
 def in_hours(hour: float, windows: tuple[tuple[float, float], ...]) -> bool:
+    """True when `hour` falls in one of the (start, end) windows; a window may wrap midnight."""
     for start, end in windows:
         if start <= end:
             if start <= hour < end:
@@ -125,6 +128,8 @@ class ContextTracker:
         self._drive_run = 0.0
 
     def update(self, s: VehicleSignals) -> VehicleContext:
+        """Block 10, one frame: turn the raw vehicle signals into the context the risk engine reads
+        (moving, high speed, night, turning, stationary, resting, long drive)."""
         cfg = self.config
         dt = 0.0 if self._last_t is None else max(0.0, s.t - self._last_t)
         self._last_t = s.t

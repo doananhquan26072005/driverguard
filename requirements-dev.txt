@@ -1,7 +1,8 @@
 # DriverGuard runtime + lint / test tools (CI and local development).
 -r requirements.txt
 
-ruff>=0.8.0
-pytest>=8.0.0
-httpx>=0.28.0            # FastAPI TestClient (tests/test_backend)
-piper-tts>=1.3          # tools/make_voice.py only: records the HUD's Vietnamese voice lines (not needed to run)
+ruff==0.16.8
+pytest==9.1.1
+pytest-cov==7.1.0        # make coverage: line coverage of edge_agent/, backend/, tools/
+httpx==0.28.1            # FastAPI TestClient (tests/test_backend)
+edge-tts==7.2.8         # tools/make_voice.py only: records the HUD's Vietnamese voice lines (not needed to run)

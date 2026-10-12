@@ -102,6 +102,7 @@ def trace_driver(args: tuple[str, float]) -> tuple[str, dict]:
 
 
 def run_trace(out: Path, fps: float, workers: int, limit: int | None) -> None:
+    """Trace every driver of 3MDAD in parallel and save the traces to `out`."""
     from multiprocessing import Pool
 
     subjects = sorted((p.name for p in ROOT.iterdir() if p.is_dir()), key=lambda s: int(s[1:]))[:limit]
@@ -120,6 +121,7 @@ def run_trace(out: Path, fps: float, workers: int, limit: int | None) -> None:
 
 
 def action_mask(tr: dict, action: int) -> np.ndarray:
+    """Boolean mask of the frames of this trace labelled with action AC<action>."""
     t = tr["cols"]["t"]
     m = np.zeros(len(t), bool)
     for name, a, b in tr["labels"]:
@@ -185,6 +187,7 @@ def _share(n: int, d: int) -> str:
 
 
 def report(traces: dict[str, dict], thresholds: dict[str, Any]) -> str:
+    """The Markdown report of the gaze study."""
     deep_ear = thresholds["drowsiness"]["microsleep_deep"]["ear_ratio"]
     deep_blink = thresholds["drowsiness"]["microsleep_deep"]["blink"]
     frames = {name: f for name, tr in traces.items() if (f := driver_frame(tr)) is not None}
@@ -308,6 +311,7 @@ def report(traces: dict[str, dict], thresholds: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     tr = sub.add_parser("trace", help="run blocks 2-12 on every driver and save the numbers")

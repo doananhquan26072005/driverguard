@@ -28,6 +28,8 @@ CLI_USER = "cli"  # who the access log names for commands run here (whoever has 
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command line of the backend: create-user, create-device, purge, delete-driver-data,
+    delete-user. Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", default=None, help="SQLite path (default: DG_DB_PATH or data/driverguard.db)")
     sub = p.add_subparsers(dest="cmd", required=True)

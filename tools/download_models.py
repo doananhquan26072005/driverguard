@@ -52,6 +52,7 @@ EXPORTED = {"yolov8n.onnx": "26f5b8d6fb9286022a4f39aa53aeb0e794d479979e770f03404
 
 
 def sha256(path: Path) -> str:
+    """SHA-256 of a file, as hex."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -97,6 +98,7 @@ def export_yolov8n(dest: Path) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--verify", action="store_true", help="only check the files already in models/")
     p.add_argument("--strict", action="store_true", help="--verify: the exported YOLO file must match too")

@@ -58,6 +58,7 @@ class QualityConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> QualityConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "quality")
 
 
@@ -139,6 +140,7 @@ class QualityMonitor:
         self._bad_n = 0  # unusable samples in the window: none = a score of exactly 1
 
     def update(self, f: FrameFeatures) -> QualityState:
+        """One frame: the running quality issue, how long it has lasted and the usable share of the window."""
         cfg, t = self.config, f.timestamp
         issue = frame_issue(f, cfg)
         dt = 0.0 if self._last_t is None else min(max(t - self._last_t, 0.0), cfg.max_gap_s)

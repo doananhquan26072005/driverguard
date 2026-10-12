@@ -56,6 +56,7 @@ class Scenario:
 
     @property
     def duration(self) -> float:
+        """Time of the last keyframe, in seconds."""
         return self.keyframes[-1].t
 
 
@@ -76,6 +77,7 @@ def parse_clock(value: str) -> float:
 
 
 def scenario_from_dict(d: dict) -> Scenario:
+    """Build a scenario from its YAML mapping; ValueError without a timeline keyframe."""
     frames = []
     for kf in d.get("timeline") or []:
         signal = kf.get("turn_signal")
@@ -94,6 +96,7 @@ def scenario_from_dict(d: dict) -> Scenario:
 
 
 def load_scenario(path: str | Path) -> Scenario:
+    """Load a scenario from a YAML file."""
     with open(path, encoding="utf-8") as f:
         return scenario_from_dict(yaml.safe_load(f) or {})
 
@@ -118,6 +121,7 @@ class CanSimulator:
         return t
 
     def speed_at(self, t: float) -> float:
+        """Speed in km/h at time t, interpolated between the keyframes."""
         frames = self.scenario.keyframes
         st = self._scenario_time(t)
         if st <= frames[0].t:
@@ -130,6 +134,7 @@ class CanSimulator:
         return frames[-1].speed_kmh
 
     def turn_signal_at(self, t: float) -> str | None:
+        """The turn signal at time t: "left", "right" or None, as set by the latest keyframe."""
         st = self._scenario_time(t)
         state: str | None = None
         for kf in self.scenario.keyframes:
@@ -140,6 +145,7 @@ class CanSimulator:
         return state
 
     def sample(self, t: float) -> VehicleSignals:
+        """The vehicle signals at time t; also accumulates the driving time."""
         speed = self.speed_at(t)
         if self._last_t is not None and t > self._last_t and self._last_speed >= self.moving_kmh:
             self._drive_time += t - self._last_t
@@ -194,6 +200,7 @@ class ExternalVehicle:
 
     @property
     def connected(self) -> bool:
+        """True while the last reading is younger than `stale_s`."""
         return self._received is not None and self._clock() - self._received <= self.stale_s
 
     def observe(self, t: float, watching: bool) -> None:
@@ -225,6 +232,8 @@ class ExternalVehicle:
         return lost_driving or self.never_received
 
     def sample(self, t: float) -> VehicleSignals:
+        """The vehicle signals at time t: the last reading while connected, speed unknown when the
+        signal was lost while driving, parked otherwise. Also accumulates the driving time."""
         live = self.connected
         speed: float | None = self._speed if live else (None if self.signal_lost else 0.0)
         moving = speed is None or speed >= self.moving_kmh  # lost while driving: still driving
@@ -277,14 +286,17 @@ class SignalLink:
         self._thread = threading.Thread(target=self._run, name="SignalLink", daemon=True)
 
     def start(self) -> SignalLink:
+        """Start the polling thread."""
         self._thread.start()
         return self
 
     def stop(self) -> None:
+        """Stop the polling thread."""
         self._stop.set()
         self._thread.join(timeout=1.0)
 
     def poll_once(self) -> bool:
+        """Fetch one reading and hand it to the vehicle; False when the simulator does not answer."""
         import json
         import urllib.request
 

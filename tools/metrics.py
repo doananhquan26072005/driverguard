@@ -92,6 +92,7 @@ class EvalConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> EvalConfig:
+        """Build the config from its section of the YAML; an unknown key is an error."""
         return config_from_dict(cls, d, "eval")
 
 
@@ -230,6 +231,7 @@ def union_length(intervals: Iterable[Interval], lo: float, hi: float) -> float:
 
 
 def widen(intervals: Iterable[Interval], by: float) -> list[Interval]:
+    """Each interval extended by `by` seconds on both sides."""
     return [(a - by, b + by) for a, b in intervals]
 
 
@@ -257,10 +259,12 @@ class WindowCounts:
 
     @property
     def far(self) -> tuple[float | None, float | None, float | None]:
+        """False-alarm rate over the awake windows with its Wilson interval (estimate, low, high)."""
         return wilson_ci(self.false_alarms, self.awake)
 
     @property
     def mar(self) -> tuple[float | None, float | None, float | None]:
+        """Miss rate over the drowsy windows with its Wilson interval (estimate, low, high)."""
         return wilson_ci(self.misses, self.drowsy)
 
 
@@ -317,6 +321,7 @@ def branch_level(hits: Iterable[Any], reasons: Sequence[str]) -> int:
 
 
 def pct(v: float | None, digits: int = 1) -> str:
+    """A fraction as a percentage for the reports; a dash when None."""
     return "–" if v is None else f"{v * 100:.{digits}f}%"
 
 

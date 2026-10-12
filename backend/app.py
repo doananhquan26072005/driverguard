@@ -90,6 +90,7 @@ READ_ROLES = ("admin", "engineer", "manager", "driver")
 
 
 def utc_iso(value: datetime | None) -> str | None:
+    """ISO 8601 string in UTC (a naive datetime is read as UTC); None stays None."""
     if value is None:
         return None
     return (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC).isoformat()
@@ -133,6 +134,8 @@ def fleet_status(row: dict[str, Any], now: datetime, offline_after_s: int) -> st
 
 
 def store_batch(conn: sqlite3.Connection, batch: EventBatch, dev: str, drv: str | None) -> BatchResult:
+    """Store one device batch: heartbeat, events, feedback, samples and trip summaries.
+    Returns what was accepted, and how many events were duplicates or id conflicts."""
     accepted = feedback = samples = conflicts = 0
     now = datetime.now(UTC)  # M82: order, "urgent now" and retention all run on this clock, not the device's
     received_at = now.isoformat()
@@ -189,6 +192,7 @@ def safe_errors(exc: ValidationError) -> list[dict[str, Any]]:
 
 
 def get_conn(request: Request) -> Iterator[sqlite3.Connection]:
+    """FastAPI dependency: one SQLite connection per request, committed when the request succeeds."""
     conn = db.connect(request.app.state.settings.db_path)
     try:
         yield conn
@@ -203,6 +207,7 @@ Conn = Annotated[sqlite3.Connection, Depends(get_conn)]
 def current_user(
     request: Request, creds: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 ) -> dict[str, Any]:
+    """FastAPI dependency: the claims of the bearer token; 401 when it is missing or invalid."""
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated", {"WWW-Authenticate": "Bearer"})
     try:
@@ -214,6 +219,8 @@ def current_user(
 
 
 def require_roles(*roles: str) -> Callable[..., dict[str, Any]]:
+    """FastAPI dependency factory: the current user, 403 unless their role is one of `roles`."""
+
     def check(user: Annotated[dict[str, Any], Depends(current_user)]) -> dict[str, Any]:
         if user["role"] not in roles:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "role not allowed")
@@ -223,6 +230,7 @@ def require_roles(*roles: str) -> Callable[..., dict[str, Any]]:
 
 
 def current_device(conn: Conn, x_device_key: Annotated[str | None, Header()] = None) -> dict[str, Any]:
+    """FastAPI dependency: the device that owns the X-Device-Key header; 401 when missing or unknown."""
     if not x_device_key:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "missing X-Device-Key")
     row = db.get_device_by_key_hash(conn, hash_device_key(x_device_key))
@@ -232,6 +240,8 @@ def current_device(conn: Conn, x_device_key: Annotated[str | None, Header()] = N
 
 
 def create_app(settings: BackendSettings | None = None) -> FastAPI:
+    """Build the FastAPI app: database, JWT secret, middleware and every route.
+    Without DG_JWT_SECRET a random secret is used, so tokens die with the process."""
     settings = settings or BackendSettings()
     secret = settings.jwt_secret
     if not secret:
@@ -292,6 +302,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def limit_body_size(request: Request, call_next: Callable) -> Any:
+        """Refuse a request whose Content-Length is above DG_MAX_BODY_BYTES (413)."""
         length = request.headers.get("content-length")
         if length is not None and length.isdigit() and int(length) > settings.max_body_bytes:
             return JSONResponse({"detail": "payload too large"}, status_code=413)
@@ -300,15 +311,18 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     # ------------------------------------------------------------------ routes
     @app.get("/health")
     def health() -> dict[str, str]:
+        """Liveness check."""
         return {"status": "ok"}
 
     # Web driving controls (M31): no login, a pairing code shown by #/live; numbers only, in memory.
     @app.put("/api/v1/drive/{code}", status_code=status.HTTP_204_NO_CONTENT)
     def put_drive(body: DriveSignalIn, code: Annotated[str, Path(pattern=DRIVE_CODE_PATTERN)]) -> None:
+        """The remote page (#/drive) sets the simulated speed and turn signal under a pairing code."""
         drive_links.put(code, body.speed_kmh, body.turn_signal)
 
     @app.get("/api/v1/drive/{code}", response_model=DriveSignalOut)
     def get_drive(code: Annotated[str, Path(pattern=DRIVE_CODE_PATTERN)]) -> DriveSignalOut:
+        """#/live reads the latest speed and turn signal of a pairing code; 404 when none is live."""
         reading = drive_links.get(code)
         if reading is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no driving controls for this code")
@@ -327,6 +341,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.post("/auth/login", response_model=TokenOut)
     def login(body: LoginIn, conn: Conn) -> TokenOut:
+        """Check username and password and return a bearer token; 401 on a wrong pair."""
         row = db.get_user(conn, body.username)
         ok = verify_password(body.password, row["password_hash"] if row else DUMMY_HASH)
         if row is None or not ok:
@@ -348,9 +363,11 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.get("/auth/me", response_model=UserOut)
     def me(user: Annotated[dict[str, Any], Depends(current_user)]) -> UserOut:
+        """The account behind the bearer token."""
         return UserOut(username=user["sub"], role=user["role"], driver_id=user.get("driver_id"))
 
     async def read_batch(request: Request, device_id: str) -> EventBatch:
+        """Read and validate a device batch; 413 when it is too large, 422 when it is not valid."""
         raw = await request.body()
         if len(raw) > settings.max_body_bytes:  # chunked uploads have no content-length
             raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "payload too large")
@@ -370,6 +387,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     async def post_events(
         request: Request, device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn
     ) -> BatchResult:
+        """A device posts a batch of metadata (events, feedback, samples, summaries, heartbeat)."""
         batch = await read_batch(request, device["device_id"])
         purge_if_due(conn)
         return await run_in_threadpool(store_batch, conn, batch, device["device_id"], device["driver_id"])
@@ -391,6 +409,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def get_web_thresholds(
         user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))], conn: Conn
     ) -> ThresholdsOut:
+        """The thresholds the in-browser agent (#/live) of the signed-in user must run."""
         return thresholds_out(conn, web_device_id(user["sub"]), for_device=True)  # the browser is a device too
 
     @app.get("/api/v1/events", response_model=list[EventOut])
@@ -406,6 +425,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         false_alarm_only: bool = False,
         limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     ) -> list[dict[str, Any]]:
+        """Alerts and system events, newest first. A driver only gets their own."""
         audit(conn, user, "read_events", driver_id, device_id)
         return db.query_events(
             conn,
@@ -426,6 +446,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         since: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
     ) -> list[dict[str, Any]]:
+        """Trips, newest first. A driver only gets their own."""
         audit(conn, user, "read_trips", driver_id)
         return db.query_trips(conn, **scoped(user, driver_id, None), since=utc_iso(since), limit=limit)
 
@@ -456,6 +477,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         driver_id: Annotated[str | None, Query(pattern=ID_PATTERN)] = None,
         since: datetime | None = None,
     ) -> dict[str, Any]:
+        """Alert counts by level and by reason, with the false alarms. A driver only gets their own."""
         audit(conn, user, "read_stats", driver_id)
         return db.event_stats(conn, **scoped(user, driver_id, None), since=utc_iso(since))
 
@@ -525,6 +547,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         user: Annotated[dict[str, Any], Depends(require_roles(*READ_ROLES))],
         conn: Conn,
     ) -> dict[str, Any]:
+        """The summary of one trip; 404 when there is none, or it is another driver's."""
         own = scoped(user, None, None)["driver_id"]
         report = db.get_summary(conn, device_id, trip_id, own)
         if report is None:
@@ -551,6 +574,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def get_thresholds(
         _: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))], conn: Conn
     ) -> ThresholdsOut:
+        """The newest thresholds version with the allowed bounds (admin, engineer, manager)."""
         return thresholds_out(conn)
 
     @app.put("/api/v1/thresholds", response_model=ThresholdsOut)
@@ -610,6 +634,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.get("/api/v1/device/thresholds", response_model=ThresholdsOut)
     def get_device_thresholds(device: Annotated[dict[str, Any], Depends(current_device)], conn: Conn) -> ThresholdsOut:
+        """The thresholds this device must run: its pinned version, else the fleet's."""
         return thresholds_out(conn, device["device_id"], for_device=True)
 
     @app.get("/api/v1/access-log", response_model=list[AccessLogOut])
@@ -676,6 +701,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def get_deletion_requests(
         _: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
     ) -> list[dict[str, Any]]:
+        """Data deletion requests of the drivers (admin)."""
         return db.deletion_requests(conn)
 
     @app.post("/api/v1/deletion-requests/{request_id}", response_model=DeletionRequestOut)
@@ -700,12 +726,14 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
 
     @app.get("/api/v1/users", response_model=list[UserOut])
     def get_users(_: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn) -> list[dict[str, Any]]:
+        """All accounts (admin)."""
         return [dict(r) for r in db.list_users(conn)]
 
     @app.post("/api/v1/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
     def post_user(
         body: UserIn, admin: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
     ) -> UserOut:
+        """Create an account (admin); 409 when the username exists."""
         try:
             db.create_user(conn, body.username, hash_password(body.password), body.role, body.driver_id)
         except sqlite3.IntegrityError:
@@ -717,6 +745,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def post_device(
         body: DeviceIn, admin: Annotated[dict[str, Any], Depends(require_roles("admin"))], conn: Conn
     ) -> DeviceOut:
+        """Register a device and return its key, shown this one time (admin); 409 when it exists."""
         key = new_device_key()
         try:
             db.create_device(conn, body.device_id, hash_device_key(key), body.driver_id)

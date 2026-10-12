@@ -43,6 +43,7 @@ class TripMemoryConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> TripMemoryConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "trip_memory")
 
 
@@ -86,6 +87,7 @@ class TripMemory:
         self._trend = linear_slope([s for _, s in self._scores], [i for i, _ in self._scores])
 
     def record_alert(self, level: int) -> None:
+        """Count one alert of this level in the trip."""
         self._alerts[level] += 1
 
     def forget_since(self, t0: float) -> None:

@@ -263,6 +263,7 @@ JS_ALLOWED = {
     "dashboard/FatigueChart.tsx": {"HEIGHT", "EVENT_HIT_PX"},
     "dashboard/ThresholdsView.tsx": {"FALSE_ALARM_HIGH"},  # which thresholds the engineers' table highlights
     "hud/HudStage.tsx": {"STAGE_W", "STAGE_H", "WIDE_MIN_W", "TALL_MIN_W", "MIN_RATIO"},
+    "guide/ScreenFrame.tsx": {"TICK_MS"},  # the guide's drawn screens (M102): clock
     "hud/demo.ts": {"DEMO_CYCLE_S"},
     "hud/forcedLog.ts": {"FORCED_LOG_MAX"},
     "hud/HudPreview.tsx": {"?? 68", "?? 52"},  # scores of the design preview's sample screens

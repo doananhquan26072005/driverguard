@@ -105,6 +105,7 @@ class VersionInfo(StrictModel):
 
     @model_validator(mode="after")
     def models_are_short_hex(self) -> VersionInfo:
+        """Validator: every model fingerprint is a short name mapped to 8-16 hex characters."""
         for name, digest in self.models.items():
             if not re.fullmatch(r"[a-z0-9_]{1,32}", name) or not re.fullmatch(r"[0-9a-f]{8,16}", digest):
                 raise ValueError("models must map a section name to 8-16 hex characters")
@@ -267,6 +268,7 @@ class EventBatch(StrictModel):
     @model_validator(mode="before")
     @classmethod
     def reject_image_data(cls, data: Any) -> Any:
+        """Validator: refuse a batch that carries image or base64 data anywhere."""
         problem = find_image_data(data)
         if problem:
             raise ValueError(f"image or base64 data is not accepted ({problem})")
@@ -274,6 +276,7 @@ class EventBatch(StrictModel):
 
     @model_validator(mode="after")
     def not_empty(self) -> EventBatch:
+        """Validator: a batch carries at least one record or a heartbeat."""
         if not (self.events or self.feedback or self.samples or self.summaries or self.heartbeat):
             raise ValueError("batch is empty")
         return self
@@ -420,6 +423,7 @@ class DeletionDecisionIn(StrictModel):
 
     @model_validator(mode="after")
     def refusal_names_a_reason(self) -> DeletionDecisionIn:
+        """Validator: a refusal names its reason, a deletion takes none."""
         if (self.action == "refuse") != (self.reason is not None):
             raise ValueError("a refusal needs a reason, a deletion takes none")
         return self
@@ -491,6 +495,7 @@ class UserIn(StrictModel):
 
     @model_validator(mode="after")
     def driver_needs_driver_id(self) -> UserIn:
+        """Validator: a driver account is bound to a driver_id."""
         if self.role == "driver" and not self.driver_id:
             raise ValueError("a driver account needs driver_id")
         return self
@@ -544,6 +549,7 @@ class ThresholdsIn(StrictModel):
 
     @model_validator(mode="after")
     def within_bounds(self) -> ThresholdsIn:
+        """Validator: every threshold lies within the bounds of THRESHOLD_SPECS."""
         for key, value in self.values.items():
             lo, hi, _ = THRESHOLD_SPECS[key]
             if not lo <= value <= hi:

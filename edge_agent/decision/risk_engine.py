@@ -134,6 +134,7 @@ class RiskConfig:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any] | None) -> RiskConfig:
+        """Build the config from its section of thresholds.yaml; an unknown key is an error."""
         return config_from_dict(cls, d, "risk")
 
 
@@ -158,10 +159,12 @@ class RiskAssessment:
 
     @property
     def reasons(self) -> tuple[str, ...]:
+        """Reasons of the rules that hit at the assessed level; empty at level 0."""
         return tuple(h.reason for h in self.hits if h.level == self.level and self.level > 0)
 
 
 def ramp(x: float, lo: float, hi: float) -> float:
+    """Linear ramp from 0 at `lo` to 1 at `hi`, clamped; a step at `hi` when hi <= lo."""
     if hi <= lo:
         return 1.0 if x >= hi else 0.0
     return min(max((x - lo) / (hi - lo), 0.0), 1.0)
@@ -186,6 +189,8 @@ class RiskEngine:
     def drowsy_score(
         self, d: DrowsinessState, ctx: VehicleContext, trip: TripState | None
     ) -> tuple[float, tuple[float, ...]]:
+        """drowsy_score (0-100) and its terms before weighting: PERCLOS, microsleep, yawns, nods,
+        slow blinks, brow raises. Night and a long drive scale the score, up to the factor cap."""
         cfg = self.config
         perclos = 0.0
         if d.perclos_ready:  # enough eye data: drowsiness.perclos_min_coverage_s (single source)
@@ -222,6 +227,7 @@ class RiskEngine:
         return MAX_LEVEL
 
     def off_road_threshold(self, ctx: VehicleContext) -> float:
+        """Seconds off the road that count as a distraction; a shorter time at high speed."""
         cfg = self.config
         return cfg.distraction_off_road_high_speed_s if ctx.high_speed else cfg.distraction_off_road_s
 
@@ -234,6 +240,8 @@ class RiskEngine:
         drowsy_muted: bool = False,
         quality: QualityState | None = None,
     ) -> RiskAssessment:
+        """Block 9, one frame: both scores, the rules that hit and the level L0-L3 with its reasons.
+        `drowsy_muted`: the eyes are closed on request, so the drowsiness branch is off."""
         cfg = self.config
         hits: list[RuleHit] = []
         d, bad = self._finite(d, DROWSY_INPUTS)

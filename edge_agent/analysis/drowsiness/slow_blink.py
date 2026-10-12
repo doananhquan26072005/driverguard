@@ -117,6 +117,7 @@ class SlowBlinks:
         self._pending = None
 
     def forget_since(self, t0: float) -> None:
+        """Forget the blinks logged at or after t0 and the one under way."""
         while self._log and self._log[-1][0] >= t0:
             self._log.pop()
         self._aperture.clear()

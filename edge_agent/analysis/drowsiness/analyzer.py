@@ -75,6 +75,7 @@ class DrowsinessAnalyzer:
         self._mar_close = mar_closed + cfg.yawn_enrolled_close_above
 
     def ear_baseline(self, t: float) -> float:
+        """The driver's open-eye EAR at time t."""
         return self._baseline.value(t)
 
     def forget_since(self, t0: float) -> None:

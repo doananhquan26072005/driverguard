@@ -17,6 +17,7 @@ class RollingWindow:
         self._cache: dict[float, tuple[float, float]] = {}  # q -> (computed_at, value)
 
     def add(self, t: float, value: float) -> None:
+        """Add a sample and drop those older than `window_s`."""
         self._buf.append((t, value))
         while self._buf and t - self._buf[0][0] > self.window_s:
             self._buf.popleft()
@@ -29,9 +30,11 @@ class RollingWindow:
 
     @property
     def span(self) -> float:
+        """Seconds between the oldest and the newest sample kept."""
         return self._buf[-1][0] - self._buf[0][0] if len(self._buf) > 1 else 0.0
 
     def percentile(self, q: float, t: float) -> float | None:
+        """The q-th percentile of the kept values (recomputed every `recompute_s`); None when empty."""
         if not self._buf:
             return None
         cached = self._cache.get(q)
@@ -61,6 +64,7 @@ class TimeShare:
         self.reset()
 
     def reset(self) -> None:
+        """Start again with no frame read."""
         self._on_s = 0.0  # frames whose weight is final
         self._total_s = 0.0
         self._newest: tuple[bool, float] | None = None  # (reading, wait before it): weight not final yet
@@ -76,6 +80,7 @@ class TimeShare:
 
     @property
     def share(self) -> float:
+        """Share of the read time whose reading was "yes", in [0, 1]."""
         on, total = self._on_s, self._total_s
         if self._newest is not None:
             total += self._newest[1]
@@ -102,6 +107,7 @@ def drop_since(events: deque[float], t0: float) -> None:
 
 
 def ramp(x: float, lo: float, hi: float) -> float:
+    """Linear ramp from 0 at `lo` to 1 at `hi`, clamped; a step at `hi` when hi <= lo."""
     if hi <= lo:
         return 1.0 if x >= hi else 0.0
     return min(max((x - lo) / (hi - lo), 0.0), 1.0)

@@ -1,4 +1,4 @@
-.PHONY: venv run test lint format typecheck check clean frontend-test
+.PHONY: venv run test coverage lint format typecheck check clean frontend-test
 
 PY_DIRS = edge_agent/ backend/ tools/ tests/
 
@@ -13,6 +13,10 @@ run:
 
 test:
 	pytest tests/ -v
+
+# Line coverage of the three DriverGuard packages (table in eval/results/report.md section 4)
+coverage:
+	pytest tests/ -q --cov=edge_agent --cov=backend --cov=tools --cov-report=term
 
 lint:
 	ruff check $(PY_DIRS)
@@ -32,3 +36,4 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +
+	rm -f .coverage

@@ -69,6 +69,7 @@ MOUTH_POINTS = MOUTH_CORNERS + tuple(i for pair in MOUTH_VERTICAL_PAIRS for i in
 
 
 def to_bgr(image: np.ndarray) -> np.ndarray:
+    """The image as BGR (a grayscale one is converted)."""
     if image.ndim == 2 or image.shape[2] == 1:
         return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     return image
@@ -79,6 +80,7 @@ Line = str | tuple[str, tuple[int, int, int]]  # text, or (text, BGR color)
 
 
 def draw_overlay(image: np.ndarray, lines: list[Line]) -> None:
+    """Draw the text lines on the image, over a dark box."""
     # Dark box behind single-stroke text: in OpenCV 5 glyph width depends on thickness,
     # so the usual thick-outline + thin-text trick no longer lines up.
     font, scale, line_h = cv2.FONT_HERSHEY_SIMPLEX, 0.5, 20
@@ -108,6 +110,7 @@ def draw_phone(image: np.ndarray, result: PhoneResult | None, face: BBox | None,
 def distraction_lines(
     d: DistractionState, phone_flag: bool | None, phone: PhoneResult | None, speed: float | None
 ) -> list[Line]:
+    """Overlay lines for block 8: off-road time, phone ratio, speed and YOLO timing."""
     speed_txt = "unknown" if speed is None else f"{speed:.0f} km/h"
     if not d.active:
         return [(f"DISTRACTION OFF (stopped, speed {speed_txt})", GRAY)]
@@ -121,6 +124,7 @@ def distraction_lines(
 
 
 def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
+    """Overlay lines for block 7: eye state, PERCLOS, blinks, yawns, nods."""
     eyes = "--" if d.eye_closed is None else ("CLOSED" if d.eye_closed else "open")
     if d.eye_source in ("cnn", "blendshape"):  # block 5 decided: show its score and why it was called
         eyes += f" [{d.eye_source} p_closed {f.p_closed:.2f}, {f.eye_cnn_reason}]"
@@ -143,6 +147,7 @@ def drowsiness_lines(d: DrowsinessState, f: FrameFeatures) -> list[Line]:
 
 
 def draw_landmarks(image: np.ndarray, lm: FaceLandmarks, extractor: FeatureExtractor) -> None:
+    """Draw the face landmarks, the eye and mouth contours and the head axes."""
     pts = lm.points[:, :2].astype(np.int32)
     for x, y in pts:
         cv2.circle(image, (int(x), int(y)), 1, (160, 160, 160), -1)
@@ -166,6 +171,7 @@ def draw_landmarks(image: np.ndarray, lm: FaceLandmarks, extractor: FeatureExtra
 
 
 def fmt(value: float | None, spec: str = "6.3f") -> str:
+    """A number for the overlay, or a placeholder when it is None."""
     return "  --  " if value is None else format(value, spec)
 
 
@@ -181,6 +187,7 @@ class DisplaySmoother:
         self._last_t: float | None = None
 
     def update(self, f: FrameFeatures) -> dict[str, float]:
+        """The signals of this frame smoothed for display only (the pipeline reads the raw ones)."""
         if not f.face_found or self.tau <= 0:
             self.values, self._last_t = {}, None
             if f.face_found:
@@ -253,6 +260,7 @@ def draw_plots(
 
 
 def feature_lines(values: dict[str, float], f: FrameFeatures, num_faces: int) -> list[str]:
+    """Overlay lines for block 6: EAR, MAR, head pose, face_conf."""
     if not f.face_found:
         return ["NO FACE"]
     v = values.get
@@ -264,6 +272,7 @@ def feature_lines(values: dict[str, float], f: FrameFeatures, num_faces: int) ->
 
 
 def main() -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", default="0", help="camera index (e.g. 0) or video file path")
     parser.add_argument("--loop", action="store_true", help="loop the video file")

@@ -27,6 +27,7 @@ USERS = (("an", "driver", "drv-001"), ("quanly", "manager", None))
 
 
 def faces() -> dict[str, list[float]]:
+    """Landmark numbers of a synthetic face, with the eyes open and with the eyes shut."""
     return {
         "open": [round(float(v), 2) for v in synthetic_face(ear=0.30).ravel()],
         "shut": [round(float(v), 2) for v in synthetic_face(ear=0.05).ravel()],
@@ -34,6 +35,7 @@ def faces() -> dict[str, list[float]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--db", required=True)
     p.add_argument("--faces", required=True)

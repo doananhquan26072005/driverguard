@@ -118,6 +118,7 @@ class ThresholdReloader:
 
     @property
     def pending(self) -> int | None:
+        """The version waiting to be applied, or None."""
         with self._lock:
             return None if self._pending is None else self._pending[0]
 

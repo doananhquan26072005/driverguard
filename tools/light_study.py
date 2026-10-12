@@ -48,15 +48,18 @@ POSITIVE = {"fl3d": "Microsleep runs reaching L3", "yawdd": "Yawning clips with 
 
 # --------------------------------------------------------------------------- transforms (pure, in RAM)
 def gamma(image: np.ndarray, g: float) -> np.ndarray:
+    """Gamma curve on an 8-bit image (g > 1 darkens)."""
     lut = np.clip(255.0 * (np.arange(256) / 255.0) ** g, 0, 255).astype(np.uint8)
     return lut[image]
 
 
 def gain(image: np.ndarray, k: float) -> np.ndarray:
+    """Multiply the brightness by k, clipped to 0-255."""
     return np.clip(image.astype(np.float32) * k, 0, 255).astype(np.uint8)
 
 
 def grey(image: np.ndarray) -> np.ndarray:
+    """The image in grey, on three channels."""
     if image.ndim == 2:
         return np.repeat(image[..., None], 3, axis=2)
     y = (0.114 * image[..., 0] + 0.587 * image[..., 1] + 0.299 * image[..., 2]).astype(np.uint8)  # BGR
@@ -82,6 +85,7 @@ def transforms(cfg: EvalConfig) -> dict[str, tuple[str, float]]:
 
 
 def apply(image: np.ndarray, kind: str, value: float) -> np.ndarray:
+    """Apply one transform (`kind`, `value`) to a frame."""
     if kind == "gamma":
         return gamma(image, value)
     if kind == "gain":
@@ -196,6 +200,7 @@ def _n(v: float | None, d: int = 0) -> str:
 
 
 def table(dataset: str, rows: dict[str, dict[str, Any]], order: Sequence[str]) -> list[str]:
+    """The Markdown table of one dataset: one row per transform."""
     eye = dataset == "fl3d"
     head = (
         "| Transform | Face found | Face brightness | Sharpness | CNN-decided | Unavailable (why) | "
@@ -217,6 +222,7 @@ def table(dataset: str, rows: dict[str, dict[str, Any]], order: Sequence[str]) -
 
 
 def report(results: dict[str, dict[str, dict[str, dict]]], thresholds: dict[str, Any], order: Sequence[str]) -> str:
+    """The Markdown report of the light study."""
     q, u = thresholds["quality"], thresholds["risk"]["unavailable"]
     lines = [
         "# DriverGuard - the same videos in other light",
@@ -257,6 +263,7 @@ def report(results: dict[str, dict[str, dict[str, dict]]], thresholds: dict[str,
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     from multiprocessing import get_context
 
     from edge_agent.config import load_thresholds

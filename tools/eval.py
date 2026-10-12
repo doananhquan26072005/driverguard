@@ -166,6 +166,7 @@ Levels = dict[str, dict[str, list[int]]]  # video -> branch -> highest risk leve
 def save_predictions(
     path: str | Path, predictions: list[Prediction], durations: dict[str, float], levels: Levels | None = None
 ) -> None:
+    """Save the predictions, video durations and levels as JSON."""
     data = {"durations_s": durations, "predictions": [asdict(p) for p in predictions], "levels": levels or {}}
     Path(path).write_text(json.dumps(data), encoding="utf-8")
 
@@ -426,6 +427,7 @@ def report(
     cfg: EvalConfig | None = None,
     by_subject: list[SubjectRow] | None = None,
 ) -> str:
+    """The Markdown accuracy report."""
     hours = sum(durations_s.values()) / 3600.0
     lines = [
         "# DriverGuard - accuracy evaluation",
@@ -572,6 +574,7 @@ def run_video(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Command-line entry point (see the module doc). Returns the process exit code."""
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run", help="run the pipeline on the labelled videos and score")
