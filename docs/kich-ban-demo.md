@@ -1,5 +1,7 @@
 # Kịch bản video demo DriverGuard
 
+Bản rút gọn 3 phút, dựng từ chính các clip này: [kich-ban-demo-3-phut.md](kich-ban-demo-3-phut.md).
+
 Video quay màn hình, dài khoảng 4 phút 45 giây (giới hạn 5 phút của `presentation/README.md`). Gồm 5 phần: mở đầu
 và giới thiệu team, demo use case chính, kiến trúc, edge case, kết.
 
@@ -23,7 +25,8 @@ DevTools ở phần 3 thay bằng thẻ in lại request thật.
 
 **Bản để quay.** Chạy local nhánh `DAQuan` (4 terminal theo [HowToUse.md mục 7.3](../HowToUse.md#73-toàn-bộ-hệ-thống-4-terminal),
 thêm `npm run prepare-live` một lần). Bản này có các sửa lỗi M71–M101 mà bản v3 trên Railway chưa có. Nếu local
-trục trặc thì quay trên https://driveguard-production-5093.up.railway.app, mọi cảnh trong kịch bản đều có ở v3.
+trục trặc thì quay trên https://c4-app-135.up.railway.app (địa chỉ từ 12/10; địa chỉ `driveguard-production-5093` đã ngừng), mọi cảnh
+trong kịch bản đều có ở bản đó.
 
 **Tài khoản.** Một tài khoản tài xế (vd. `an`) và một tài khoản quản lý (vd. `boss`). Mở hai cửa sổ trình duyệt
 khác profile (hoặc một cửa sổ ẩn danh) để hai phiên đăng nhập không đè nhau.

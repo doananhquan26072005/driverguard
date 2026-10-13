@@ -149,6 +149,7 @@ thuộc `release-v3.md`. Lần sửa tài liệu theo audit là [M91](#m91). Cá
 | [M100](#m100) | Ba việc trên `#/live` và HUD, theo quyết định 09/10 (15 theo ý của anh, 16A, 17A; các chỗ M72, M88, M89 để ngỏ): ô tự xem kéo đi chỗ khác và thu nhỏ / phóng to được, nhớ vị trí; đóng tab hoặc tải lại giữa chuyến thì trình duyệt hỏi lại, và khi trang đi thật thì chuyến được kết thúc ngay trong lượt đó (tổng kết và nhịp `ended` gửi bằng yêu cầu `keepalive`); cảnh báo và trạng thái "không giám sát" tới lúc trình duyệt còn chặn tiếng được phát khi có lần chạm đầu tiên nếu còn đúng; mở HUD giữa chuyến không kêu lại cảnh báo cũ (khối 13: `frontend/src/live/LiveScreen.tsx`, `selfView.ts`, `agent.ts`, `frontend/src/hud/HudScreen.tsx`) | E2e 13 / 13, hai kịch bản mới: đóng tab giữa chuyến, quản lý thấy "Đã kết thúc chuyến" và có thêm một báo cáo chuyến; kéo ô tự xem tới (660, 90), phóng to 264 px, thu nhỏ 112 px, quăng ra ngoài góc vẫn nằm trong cửa sổ, vị trí được lưu. `npx vitest run`: 293 pass | Xong (09/10) |
 | [M101](#m101) | `risk.drowsy.l1` 40 hay 50, quyết trên DROZY bằng luật khai báo trước khi chạy, theo quyết định 09/10 (5A; chỗ M53, M69 để ngỏ): luật viết vào `eval/splits/drozy_l1_rule.md` trước; rồi 36 video hồng ngoại của 14 người được chạy qua khối 2–12 một lần và replay ở đúng hai giá trị 40 và 50. **Kết luận theo luật: giữ 40.** Không đổi ngưỡng, không đổi code của 14 khối (công cụ eval: `tools/drozy.py`) | `eval/results/drozy_l1.md`: ba điều kiện để DROZY được quyết đều đạt (mặt tin cậy trung vị 98,5 %; 2,33 giờ tỉnh và 15 video buồn ngủ; AUC 0,809). Đường `web`: 0 báo sai trên 15 video tỉnh ở cả 40 lẫn 50; video buồn ngủ có cảnh báo 7 / 15 ở 40, 6 / 15 ở 50. 50 không bớt được báo sai nào và mất một video. `pytest tests/test_edge_agent/test_m101_drozy_rule.py`: 15 pass | Xong (09/10) |
 | [M102](#m102) | Hướng dẫn sử dụng ngay trong sản phẩm, trang `#/guide` (không cần đăng nhập, camera hay backend): 24 màn hình có thể hiện, chia năm chương (bắt đầu ca lái, bốn mức khi đang lái, camera không thấy rõ, thiết bị trục trặc, kết thúc ca lái), mỗi màn hình do chính `HudView` / `TripSummaryView` vẽ trên số liệu mẫu của `#/hud-preview`, kèm "nghĩa là gì" và "nên làm gì"; cuối trang là các trang web theo vai trò. Vào từ trang đăng nhập (trang đầu tiên của sản phẩm), không có lối vào nào khác. Việc anh giao 12/10, không thuộc audit. Không đổi code Python, không khoá mới trong `thresholds.yaml` (khối 13: `frontend/src/guide/`, `hud/HudStage.tsx`) | `npx vitest run`: 307 pass (14 mới). `npx playwright test e2e/guide.e2e.ts`: 4 / 4 trên bản build có CSP, ở 1280 x 800, 800 x 1280 và 390 x 800: cả 24 màn hình nằm trong khung, trang không cuộn ngang, không lỗi console | Xong (12/10) |
+| [M106](#m106) | Trang quyền riêng tư ngay trong sản phẩm, `#/privacy` (không cần đăng nhập, camera hay backend): thu gì, không thu gì, giữ bao lâu, ai xem được, quyền của tài xế, giới hạn; bản rút gọn của `docs/data-policy.md`. Hai thời hạn lưu đọc từ `GET /api/v1/policy`, không có backend thì hiện mặc định của `labels.ts`. Đường dẫn `/privacy` trên bản deploy chuyển tới trang này (trước trả 404). Vào từ `#/guide`. Việc anh giao 13/10 khi đối chiếu chương 13 của Technical Book. M103–M105 là của nhánh `dungx` trên `main`, nhánh này chưa gộp. Không đổi 14 khối, không khoá mới trong `thresholds.yaml` (khối 13 và phần phục vụ file: `frontend/src/privacy/`, `App.tsx`, `guide/GuideScreen.tsx`, `backend/static.py`, `deploy/railway_app.py`) | `pytest tests/`: 1713 pass, 6 xfail (1 mới). `npx vitest run`: 310 pass (3 mới). `npm run e2e`: 21 / 21 (3 mới: trang ở 1280 × 800, 800 × 1280, 390 × 800 không cuộn ngang, không lỗi console, hiện 60 và 365 ngày của backend) | Xong (13/10), chưa deploy |
 
 <a id="ke-hoach-0910"></a>
 
@@ -2231,7 +2232,7 @@ và các mốc theo audit 08/10.
 - **Docstring và comment (không đổi code):** `risk_engine.py` (công thức, `trend`, chuông ở đèn đỏ), `alert_manager.py` ("mức cao hơn luôn được phát" sai: cooldown của chính mức đó vẫn giữ), `hud/hud.py` (không còn là "HUD tối thiểu M4"), `config/thresholds.yaml` (cài đặt camera là của bản thiết bị; tổng điểm 0..100 là trước hệ số ngữ cảnh), `tools/trace_studies.py` (`is_ir` bằng 0 chỉ đúng với các dataset đó), `main.py` (ví dụ `--hud-origin` không còn ghi địa chỉ của v1)
 - **`frontend/src/live/LiveScreen.tsx`:** "Dùng thử: không gửi gì đi" thành "không gửi số liệu giám sát"; trang vẫn hỏi máy chủ tốc độ xe mô phỏng 4 lần mỗi giây ở chế độ này
 - **`docs/safety-fmea.md`:** ba liên kết `#viec-apk` và một `#viec-do-phan-cung` trỏ về danh sách đã bỏ 08/10; dòng 14 sửa câu về mức cao hơn; dòng 15 ghi rõ bản web cần CDN và server lúc khởi động, và chưa từng có tốc độ thì là đỗ
-- **Ba địa chỉ Railway:** kiểm 09/10 bằng `/health` và `/openapi.json`, cả ba đang chạy: `driveguard-production-5093` là v3 (27 đường API, có `/api/v1/policy`, `/api/v1/fleet`), `driveguard-v2-production` là v2.2 (17), `driveguard-production-6b83` là v1.1 (13). `README.md` và `release-v3.md` ghi cả ba; `release-v3.md` bỏ câu "chưa deploy". Chưa kiểm bản v3 đang chạy gồm tới mốc nào
+- **Ba địa chỉ Railway:** kiểm 09/10 bằng `/health` và `/openapi.json`, cả ba đang chạy: `driveguard-production-5093` là v3 (27 đường API, có `/api/v1/policy`, `/api/v1/fleet`), `driveguard-v2-production` là v2.2 (17), `driveguard-production-6b83` là v1.1 (13). `README.md` và `release-v3.md` ghi cả ba; `release-v3.md` bỏ câu "chưa deploy". Chưa kiểm bản v3 đang chạy gồm tới mốc nào. **12/10:** `driveguard-production-5093` trả 404 ("Application not found"); bản chạy thử nay ở `c4-app-135.up.railway.app` (28 đường API, trùng với code hiện tại), hai địa chỉ v2.2 và v1.1 vẫn chạy
 - **APK:** `README.md`, `architecture_diagram.md`, `safety-fmea.md` ghi APK là thiết kế, đóng gói đã bỏ 08/10, đầu ra là bản web mô phỏng. `architecture_diagram.md` ghi file INT8 không dùng được
 - **`CLAUDE.md`:** khối 5 chạy sau khối 6 (trigger cần EAR từng mắt); `face_conf` là tỉ lệ landmark nằm trong ảnh
 - **Mục 6.2, bảy chỗ mâu thuẫn thứ tự trong `improvements.md`:**
@@ -2743,6 +2744,28 @@ lệch dọc 30°, M80) chưa có câu trả lời.
   - Tiêu đề bản tổng kết dùng cỡ chữ theo bề rộng cửa sổ (`clamp(30px, 3.2vw, 40px)`), nên trên cửa sổ hẹp hơn 1250 px chữ đó trong hình nhỏ hơn thật tối đa 10 px
   - Chưa xem trên thiết bị thật hay WebView của Android; mới xem trên Chromium ở ba cỡ cửa sổ
 - Test: vitest 305 pass (12 mới: 7 của `guideModel.test.ts`, 5 của `GuideScreen.test.tsx`); e2e `guide.e2e.ts` 4 / 4 và `portrait.e2e.ts` 4 / 4; `live.e2e.ts` không chạy lại (`LiveScreen.tsx` cuối cùng không đổi); `tsc` sạch; Python 1712 pass, 6 xfail
+
+<a id="m106"></a>
+
+#### M106: Trang quyền riêng tư trong sản phẩm, `#/privacy` (khối 13, phục vụ file)
+
+**Xong là thấy gì:** mở `http://localhost:5173/#/privacy`: một trang đọc được trên máy tính và điện thoại, nói ảnh khuôn mặt không rời thiết bị, cái gì được gửi lên máy chủ, cái gì không, hai thời hạn lưu (60 và 365 ngày theo cấu hình mặc định), ai xem được, quyền của tài xế và giới hạn. Trên bản deploy, `/privacy` chuyển tới trang đó.
+
+**Trạng thái:** Xong (13/10), chưa deploy, chưa commit. Việc anh giao 13/10 sau khi đối chiếu repo với chương 13 của Technical Book (tiêu chí 4: sản phẩm chạm dữ liệu cá nhân thì cần một trang privacy thật)
+
+- **Trang** (`frontend/src/privacy/PrivacyScreen.tsx`, `privacy.css`): là một tài liệu, cửa sổ cuộn dọc (khác `#/guide` là khung không cuộn). Dùng lại thanh trên cùng của hướng dẫn. Mỗi câu rút từ `docs/data-policy.md`; file đó vẫn là bản đầy đủ
+- **Thời hạn lưu:** đọc từ `GET /api/v1/policy`; không có backend thì hiện `RETENTION_DAYS` của `labels.ts`, là hai con số màn hình xin đồng ý đang ghi. Giá trị 0 hiện là "tới khi quản trị viên xoá"
+- **Địa chỉ:** `#/privacy` trong `App.tsx`; `backend/static.py` có `add_short_links`, `deploy/railway_app.py` gọi nó trước khi gắn thư mục file, nên `/privacy` trả 307 tới `/#/privacy`
+- **Lối vào:** từ `#/guide`: nút "Quyền riêng tư" trên thanh trên cùng (ẩn trên điện thoại như các nút khác của thanh) và liên kết trong thẻ "Không lưu ảnh khuôn mặt" ở phần Giới thiệu
+- **Cố ý, cần anh biết:**
+  - Trang đăng nhập **chưa** có liên kết tới trang này: `Login.tsx` trên `main` đã được Dũng viết lại (13/10), sửa ở nhánh này sẽ xung đột. Sau khi gộp `main` chỉ cần thêm một dòng cạnh liên kết "Hướng dẫn sử dụng"
+  - CSS nằm ở file riêng của trang, không thêm vào `styles.css` (file đó cũng đã đổi trên `main`)
+  - Trang ghi rõ đây là sản phẩm của một dự án học tập, chưa được rà soát pháp lý
+- **Chưa làm / còn hở:**
+  - Chưa deploy: `https://c4-app-135.up.railway.app/privacy` vẫn trả 404 tới lần deploy sau
+  - Chưa tài xế nào đọc; chưa xem trên điện thoại thật, mới là Chromium ở ba cỡ cửa sổ
+  - Trang không có bản tiếng Anh
+- Test: `pytest tests/` 1713 pass, 6 xfail (1 mới ở `test_static.py`); vitest 310 pass (3 mới ở `PrivacyScreen.test.tsx`); e2e 21 / 21 (3 mới ở `guide.e2e.ts`); `tsc`, ruff / format sạch
 
 ### Vận hành (M66–)
 

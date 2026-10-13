@@ -82,5 +82,8 @@ models/*.onnx
 # Piper voice of the earlier tools/make_voice.py (downloaded; no longer used since the voice is vi-VN-NamMinhNeural)
 models/tts/
 
+# Demo video sources (clips, voice takes, HyperFrames project: about 1.4 GB). The video is on YouTube, see docs/video-demo.md
+presentation/demo-clips/
+
 # Personal notes on the mattpocock-skills plugin (not shared)
 docs/mattpocock-skills.md

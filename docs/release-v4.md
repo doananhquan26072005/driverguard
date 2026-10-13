@@ -10,7 +10,7 @@
 |---|---|
 | **Phiên bản** | Version 4, dựa trên v3 (M32–M69). Chưa deploy. `APP_VERSION` trong `edge_agent/version.py` còn là `3.0.0`, chưa đổi |
 | **Mã nguồn** | nhánh `DAQuan`. Audit và M70–M76 đã commit và gộp `main` (PR #21, 08/10/2026); M77–M90 đã commit và gộp `main` (PR #22, 09/10/2026). Số mốc M91 và M92–M94 chưa commit (09/10) |
-| **Web đang chạy** | Chưa có bản v4. Lần gộp `main` 08/10 không tự deploy (CI trên GitHub không chạy), nên bản v3 đang chạy ở https://driveguard-production-5093.up.railway.app/#/live chưa có mốc nào của file này |
+| **Web đang chạy** | https://c4-app-135.up.railway.app/#/live (kiểm 12/10: `/health` 200; 28 đường API, trùng với code hiện tại; giao diện còn chữ cũ "Tạm ngưng giám sát" và chưa có `#/guide`, tức chưa gồm các mục 3.39–3.42; chưa kiểm gồm tới mốc nào). Địa chỉ cũ `driveguard-production-5093` đã ngừng, trả 404 |
 | **Mốc trong lộ trình** | M70 (số liệu đúng phạm vi: báo sai nhánh buồn ngủ và mọi nhánh, nhóm theo FPS, luật chấm định trước, nhật ký đọc tập test, báo cáo FL3D / YawDD / SUST chạy lại), M71 (vòng lặp `#/live` tự hồi phục; khoảng hở giữa hai frame không còn bị nối thành một đợt), M72 (đóng các trạng thái ngừng giám sát mà không ai được báo: mặt lọt một phần khỏi khung, xe bò 1–5 km/h, nút một chạm trên HUD), M73 (ngữ cảnh quanh điểm buồn ngủ: "lái lâu" tắt được, dừng đèn đỏ không mang sang), M74 (khối 12 nhắc lại sau cooldown, leo thang đếm lại, câu hỏi hiện diện không lặp), M75 (đo hành vi dưới 15 FPS, không đổi hành vi), M76 (mắt díp rồi mới nhắm hẳn: còi L3 tính từ lúc nhắm), M77 (chặn số NaN / inf ở khối 3, 9, 11), M78 (nhánh điện thoại tự hồi phục: luồng YOLO sống qua exception, worker web có hạn chờ), M79 (nạp lại ngưỡng chỉ khi nghỉ, mẫu mỗi phút không đứt sau "Đổi tài xế"), M80 (khối 8 hiệu chuẩn lại mốc "nhìn đường" bị sai, mốc tư thế khối 7 chỉ học khi xe chạy), M81 (gục đầu cần mắt nhắm sâu, một lần ngáp đếm một, MAR quy về chính diện), M82 (backend không dựa vào đồng hồ thiết bị, `trip_id` có phần ngẫu nhiên), M83 (hành khách đứng một mình không còn là tài xế, camera lặp lại một ảnh là mất camera), M84 (một lớp chặn ảnh cho thiết bị, bản web và backend; server HUD kiểm ai gọi), M85 (ngưỡng về hết `thresholds.yaml`, trang web không giữ số riêng, test chặn hardcode), M86 (vệ sinh eval: giờ của video, ghim thư viện và model, fixture cho đường web), M87 (CI trên nhánh `DAQuan`, model thật, đo FPS), M88 (bù test còn thiếu: `agent.ts`, âm thanh HUD, worker YOLO, lịch chạy của khối 1 và 4 trên đồng hồ giả), M89 (khung giờ làm mờ HUD tách khỏi khung giờ nhân điểm, bố cục cho màn hình dọc), M90 (các phát hiện Low còn lại của audit: `blink_rate`, trần cho các cấu trúc, outbox, hàng đợi web), và lần sửa tài liệu theo audit (không đánh số); xem [roadmap.md](roadmap.md), M91 (tài liệu khớp lại với code theo audit), M92 (`drowsy_score` không được nhắc lại; đêm và lái lâu cùng bật nhân tối đa 1,2), M93 (ba tỉ lệ đếm theo frame thành tỉ lệ theo thời gian), M94 (số liệu sinh lại theo code sau M71–M93), M95 (chưa từng có số đọc tốc độ thì giám sát như đang chạy), M96 (vòng lặp chậm hơn 2 FPS là không giám sát), M97 (phiên đăng nhập sống qua chuyến, lô bị từ chối chỉ mất bản ghi hỏng, gửi có hạn chờ), M98 (ảnh màu tối không còn bị nhận là hồng ngoại), M99 (runtime đóng gói vào bản build, Content-Security-Policy), M100 (ô tự xem kéo và đổi cỡ được, đóng tab giữa chuyến vẫn kết thúc chuyến, âm thanh HUD), M101 (`l1` giữ 40, quyết trên DROZY bằng luật khai báo trước), M102 (hướng dẫn sử dụng, trang `#/guide`) |
 | **Tên gọi** | Trong `roadmap.md`, tiêu đề "Version 4: thiết kế lại giao diện" là tên đợt thiết kế lại M57–M65; các mốc đó thuộc [release-v3.md](release-v3.md), không thuộc file này |
 
@@ -954,6 +954,142 @@ Việc anh giao 12/10 sau khi chạy thử, chưa có số mốc.
 - Giới hạn: tài khoản không phải tài xế không còn chạy thử camera bằng tài khoản mình từ trang này (dùng "Dùng thử
   không lưu"); trang đăng nhập trên điện thoại 390 x 800 vẫn phải cuộn (như trước); chưa xem trên màn hình xe.
 - Đo: `tsc` sạch, vitest 307 pass, Playwright 18 / 18 (1 bài mới: quản lý sang Dashboard, tài xế còn phiên).
+
+### 3.43 Tư liệu dựng video demo bản 3 phút (12/10)
+
+Không đổi code chạy, không có số mốc.
+
+- **Thêm** [kich-ban-demo-3-phut.md](kich-ban-demo-3-phut.md): bảng dựng 21 đoạn (180 giây), lời thoại, các bước dựng
+  còn lại, nguồn của số liệu trên slide vấn đề.
+- **Thêm** `presentation/demo-clips/3-phut/` (chưa đưa vào git): 21 đoạn đã cắt từ các clip của mục 3.41, bản xem
+  trước `xem-truoc-3-phut.mp4` chưa có lời, file `.srt`, một ảnh overlay, và nguồn để dựng lại (`slides.html`,
+  `cat.json`, `render.cjs`, `dung.swift`).
+- **Thêm** bảy slide nền tối: vấn đề bằng ba số (9 549; 3 200+; 6 300+), kiến trúc tổng quan, ba nguyên tắc (ảnh ở
+  lại trong xe, quyết định bằng con số, chỉ JSON rời thiết bị), thời gian từng khối, và slide kết. Năm slide kiến
+  trúc thay các clip `3-1` … `3-5` nền sáng; slide kết thay `5-1`, thêm khẩu hiệu và đổi địa chỉ bản chạy thử thành
+  `c4-app-135.up.railway.app`.
+- **Sửa** (cùng ngày, sau khi anh nghe thử) tiếng của các đoạn cắt: bản đầu xuất bằng `AVAssetExportSession` giữ
+  các điểm cắt dưới dạng edit list, phần mềm dựng bỏ qua edit list nên tiếng của đoạn 18 và 20 lệch chỗ hoặc mất.
+  Nay giải mã rồi mã hoá lại, mỗi file một track tiếng liền. Đoạn 19 dài thêm 1 giây và đoạn 20 cắt lại để không
+  cắt ngang câu nhắc.
+- **Sửa** thứ tự mở đầu: cảnh nhắm mắt L3 lên trước, rồi vấn đề, rồi mới tới team.
+- **Bỏ** khỏi bản 3 phút: `2-8`, `2-9`, `4-5`, `4-6`, tab Đội xe và tab Ngưỡng của `2-7`.
+- **Còn lại:** chưa có giọng và nhạc; slide team chưa có ảnh; số 3 275 của NHTSA chưa mở văn bản gốc.
+
+### 3.44 Bản 3 phút dựng bằng HyperFrames, slide có chuyển động (12/10)
+
+Không đổi code chạy, không có số mốc.
+
+- **Thêm** `presentation/demo-clips/3-phut/dung-hf/` (chưa đưa vào git): một composition HyperFrames 180 giây. 14
+  đoạn hình là các file đã cắt ở mục 3.43; bảy cảnh slide (02, 12–16, 21) viết lại thành HTML có timeline GSAP: khối
+  trượt vào lệch nhịp, mũi tên tự vẽ, ba số đếm lên, thanh thời gian mọc từ trái, khung sáng ở slide kiến trúc
+  chuyển mượt. Chữ, số và mốc giây giữ nguyên như `slides.html` và `cat.json`.
+- **Thêm** bản xem trước `xem-truoc-3-phut-motion.mp4` (1920 × 1080, 30 FPS, 180,0 giây). Đo: âm lượng từng đoạn
+  trùng bản cũ (tám đoạn, lệch 0,0 dB); `hyperframes check` 0 lỗi, 10 cảnh báo về cách chia file.
+- **Thêm** công cụ trên máy dựng: FFmpeg (Homebrew) và ba bộ skill ở `~/.claude/skills` (HyperFrames, GSAP,
+  motion-design). Không thêm dependency nào vào sản phẩm.
+- **Thêm** (cùng ngày, lần dựng thứ hai) vào composition:
+  - zoom và vòng khoanh trên năm đoạn quay màn hình: nút "Cảnh báo nhầm?" (08), hai tab dashboard và nhãn "Tài xế
+    báo sai" (11), số 0 km/h, ô "Mắt" và ô camera (17), đèn xi nhan bật rồi tắt (18), ô camera bị che rồi thẻ "Tạm
+    ngưng theo dõi" (19);
+  - dải chữ 108 px ở đáy mọi đoạn hình: nhãn chương và chú thích cỡ 40 px, che dòng chú thích in sẵn (cỡ khoảng
+    28 px);
+  - nhãn bốn chương (Vấn đề, Demo, Kiến trúc, Edge case) ở góc trên phải các slide; chuyển cảnh kiểu hai khối quét
+    ngang ở năm chỗ đổi chương (0:08, 0:39, 1:25, 2:04, 2:44), slide đẩy slide trong cùng một chương;
+  - mã QR trỏ tới `https://c4-app-135.up.railway.app` trên slide kết.
+- **Sửa** đoạn 03 và 04: hai clip cũ thay bằng hai cảnh HTML cùng chữ, các dòng hiện có chuyển động. Đoạn 16: sáu
+  thanh thời gian (3 giây, không đọc kịp) thay bằng một con số "≈ 7 ms" và một thanh chia ba phần (5,83 + 0,69 +
+  0,17 ms); số của YOLOv8n chuyển xuống dòng nguồn.
+- **Bỏ** các lần mờ ra ở cuối slide của lần dựng đầu (chuyển cảnh thay cho chúng).
+- Đo bản thứ hai: 180,0 giây; âm lượng 14 đoạn trùng bản không chuyển động (một đoạn lệch 0,1 dB ở đỉnh); mã QR đọc
+  được từ khung hình đã render ở 1080p và 720p; `hyperframes check` 0 lỗi, 16 cảnh báo về cách chia file. Bản đầu
+  giữ lại thành `xem-truoc-3-phut-motion-v1.mp4`.
+- **Thêm** (cùng ngày, lần dựng thứ ba) giọng và nhạc: `demo-3-phut-co-loi.mp4`. 21 file giọng trong `3-phut/ghi am`
+  cắt thành 24 mảnh, đưa về khoảng −16 LUFS; nhạc nền (Aylex, Innovating Care, freetouse.com) nối vòng một lần cho đủ
+  180 giây, nhỏ hơn giọng khoảng 18 dB và hạ thêm khi sản phẩm phát tiếng; tiếng sản phẩm hạ xuống ở bốn đoạn có lời
+  đè lên (01, 09, 19, 20). Mốc hiện của slide dời theo mốc từng từ (Whisper large-v3).
+- **Sửa** độ dài slide theo giọng: 02 dài thêm 0,5 giây, 03 ngắn đi 0,5; trong chương kiến trúc 13 còn 10,5 giây,
+  14 còn 9, 15 thành 6,5, 16 thành 6 (trước là 3). Các đoạn hình không đổi chỗ, tổng vẫn 180,0 giây.
+- **Bỏ** khỏi giọng: phần chỉ dẫn "rồi im, để giọng nhắc của sản phẩm tự nói" bị đọc thành lời ở file 7; câu "Giọng
+  đọc được tạo bởi…" ở cuối file 18.
+- Đo bản thứ ba: −15,2 LUFS, đỉnh −1,6 dBFS; phiên âm lại bản ghép: đủ 21 câu đúng thứ tự, 15 từ khoá lệch mốc dự
+  tính dưới 0,5 giây (một từ lệch 1,1 giây, nhiều khả năng do máy phiên âm). Chưa ai nghe bằng tai.
+- **Sửa** (lần dựng thứ tư) chương edge case: bốn đoạn chạy lần lượt (40 giây, có zoom và vòng khoanh) thay bằng
+  lưới 2 × 2 dài 21,5 giây: ô đang được lời thoại nói tới thì sáng và chạy, các ô khác mờ và đứng hình. Tiếng sản
+  phẩm trong chương này tắt. Bản có lời còn 161,5 giây; phần dôi ra để dành cho đoạn mở đầu sẽ quay lại. Bản tuần tự
+  giữ ở `demo-3-phut-co-loi-v2-edge-tuan-tu.mp4`.
+- **Sửa** (13/10, sau khi xem lại cả video) cho người xem lần đầu: màn xin đồng ý giữ 1,6 giây ở tốc độ thật; đoạn
+  làm quen khuôn mặt dừng trước khi màn "Tỉnh táo" hiện lại lúc mắt còn nhắm; vòng khoanh "Giả lập tín hiệu xe" ở
+  đoạn 06; chú giải bốn mức L0–L3 trong dải chữ; chú thích "Mở mắt → hạ về mức L1" cho màn vàng sau L3; slide tốc độ
+  còn 4,4 giây; địa chỉ và mã QR hiện sớm hơn 8,6 giây trên slide kết. Tổng vẫn 179,0 giây. Bản trước giữ ở
+  `demo-3-phut-co-loi-v5-truoc-gop-y.mp4`.
+- **Sửa** (13/10, theo góp ý của người xem) bố cục: vấn đề → demo → edge case → kiến trúc → kết, 169,3 giây. **Bỏ**
+  slide ba vấn đề và slide "Ba phần, ba nguyên tắc". **Thêm** dòng viền đỏ sau ba con số và slide "Bảo mật thông tin
+  người dùng: không lưu ảnh trên cloud" đặt sau sơ đồ. Khẩu hiệu trong video đổi thành "Nhắc đúng lúc, để bạn về nhà
+  an toàn." Ba câu thoại mới chưa thu (`02b`, `15`, `22`). Bản trước giữ ở `demo-3-phut-co-loi-v6-thu-tu-cu.mp4`.
+- **Thêm** (13/10) 36 hiệu ứng âm thanh nhỏ ở slide, thẻ chương và chỗ chuyển chương (`dung-hf/assets/sfx/`, CC0,
+  nguồn ở `NGUON.md`, danh sách ở `cues.json`); không có cue nào trong các đoạn sản phẩm phát tiếng. **Sửa** sáu chỗ
+  tìm được khi soát từng khung hình: zoom ở đoạn 08 và 19 không còn cắt đồng hồ tốc độ, khối 12–13 vào sớm 0,45 giây,
+  dòng phạm vi dưới ba con số và nhãn "Cảnh minh hoạ" to hơn, hai sơ đồ kiến trúc hạ xuống 110 px. Vẫn 177,4 giây,
+  −15,7 LUFS. Bản trước ở `nguon/index-truoc-sfx.html`.
+- **Còn lại:** ảnh team, dữ liệu dashboard, hình khuôn mặt nén hai lần. Vị trí zoom và
+  vòng khoanh tính theo hình hiện tại: quay lại hình thì phải đo lại. File 18 cần tạo lại bản không có câu ghi công
+  hoặc kiểm điều khoản của dịch vụ đọc; nhạc cần ghi nguồn. Anh chưa xem bản thứ ba.
+
+### 3.45 Kịch bản video sản phẩm 3 phút, quay người thật trong phòng (12/10)
+
+Không đổi code chạy, không có số mốc.
+
+- **Thêm** [kich-ban-video-san-pham.md](kich-ban-video-san-pham.md): kịch bản 23 cảnh, 2 phút 56 giây, theo kiểu
+  video giới thiệu DMS thương mại. Sáu chương: vấn đề, sản phẩm và team, một ca lái, kiến trúc, edge case, kết. Kèm
+  phân vai cho bốn người, thiết bị, bố trí bàn quay, buổi thử trước ngày quay, thứ tự quay 13 lượt, các bước dựng
+  và các nhãn bắt buộc trên hình.
+- Tham khảo: video DMS của STONKAM (video mẫu) và sáu video khác, xem bằng khung hình cắt mỗi 2–3 giây, phụ đề và
+  mô tả; chưa nghe tiếng. Chỉ mượn cấu trúc và kỹ thuật.
+- Ba loại hình: cảnh người lái, bản quay màn hình HUD của điện thoại chạy sản phẩm, và hình hệ thống lấy từ
+  `tools/debug_view.py` chạy trên camera laptop cùng lúc (không sửa công cụ).
+- Đo bằng script đọc bảng cảnh từ chính file: 23 cảnh nối liền, kết thúc ở 176 giây; lời đọc 480 âm tiết, dòng nào
+  cũng vừa cảnh của nó ở 4 âm tiết mỗi giây.
+- Dùng lại số liệu và câu chữ đã kiểm của mục 3.43, và các cảnh đồ hoạ 14, 15, 16, 21 của `dung-hf` (mục 3.44).
+- **Sửa** (cùng ngày, sau khi anh chốt): bản đầu quay trong xe đang đỗ; nay không dùng xe, vì hệ thống chưa chạy trên
+  xe thật. Quay trong phòng, cả bốn người có mặt trên hình (tài xế, người điều khiển xe, quản lý, kỹ sư). Nhãn trên
+  hình là "Quay trong phòng · tốc độ và xi nhan giả lập"; câu kết giữ "chưa chạy trên xe thật" như slide đang có.
+- **Còn lại:** chưa quay gì. Chưa kiểm trên điện thoại: bản web chạy trên điện thoại, quay màn hình có tiếng. Buổi
+  thử làm sau khi bản trong máy được deploy lên Railway. Giọng đọc chưa chốt. `dung-hf` chưa sửa theo mốc giây mới.
+
+### 3.46 File nộp Demo Day về đúng chỗ (13/10)
+
+Chỉ đổi tài liệu và đường dẫn, không đổi code chạy, không có số mốc. Đối chiếu với chương 13 của Technical Book.
+
+- **Thêm** `docs/pitch-deck.pdf` (12 slide, 3,6 MB): chuyển từ `presentation/DRIVERGUARD - Pitch Deck.pdf`.
+- **Sửa** `docs/video-demo.md`: link <https://youtu.be/dyHXOouJTM4> (2 phút 57 giây; bản tải lên chiều 13/10 có số 7 198 của 9 tháng năm 2026, thay bản `0oqCKmL8ODk` còn số 9 549) thay link cũ, kèm bảng nội
+  dung theo kịch bản 3 phút. Bảng này viết theo kịch bản, chưa đối chiếu với từng giây của video.
+- **Thêm** `presentation/demo_script.md`: một dòng trỏ sang `docs/kich-ban-demo-3-phut.md`.
+- **Sửa** `presentation/README.md`: bỏ nội dung mẫu của khoá học (`pitch_deck.pptx`, `video_demo.mp4`), trỏ tới file thật.
+- **Sửa** `.gitignore`: `presentation/demo-clips/` (khoảng 1,4 GB clip, giọng đọc, project dựng) không vào git.
+- **Sửa** README: Live URL là https://c4-app-135.up.railway.app ở cả bốn chỗ; dòng pitch deck chuyển sang ✅; số ngủ
+  gật đạt L3 trên FL3D là 77/95 (81,1 %) theo `eval/results/report.md` (trước ghi số cũ 75/95).
+- **Còn thiếu:** user feedback (0 người); CI trên GitHub không chạy vì tài khoản của tổ chức bị chặn thanh toán; số
+  liệu trong pitch deck, video và README chưa cùng một nguồn. Trang quyền riêng tư, ảnh dự phòng và ảnh mobile làm ở
+  mục 3.47.
+
+### 3.47 Trang quyền riêng tư `#/privacy`; ảnh dự phòng và ảnh mobile; kết quả kiểm tra local (M106, 13/10)
+
+- **Thêm** trang `#/privacy` trong sản phẩm (M106): thu gì, không thu gì, giữ bao lâu, ai xem được, quyền của tài xế,
+  giới hạn. Không cần đăng nhập. Hai thời hạn lưu đọc từ `GET /api/v1/policy`. Vào từ `#/guide`. Bản rút gọn của
+  `docs/data-policy.md`.
+- **Sửa** bản deploy: `/privacy` chuyển tới `/#/privacy` (trước trả 404). Có hiệu lực từ lần deploy sau.
+- **Thêm** `docs/demo-backup.md`: ba tầng dự phòng của demo; 16 ảnh từng bước có chú thích
+  (`docs/screenshots/demo-steps/`) và 8 ảnh ở cỡ điện thoại 390 × 844 (`docs/screenshots/mobile/`). HUD từ
+  `#/hud-preview`, dashboard trên database tạm với một ca lái mô phỏng; không ảnh nào có khuôn mặt. Script chụp nằm
+  ngoài repo, như ở mục 3.34.
+- **Thêm** `docs/ci-local.md` và ba ảnh ở `docs/screenshots/ci-local/`: ruff, `pytest` (1713 pass, 6 xfail), `tsc`,
+  vitest (310 pass), build, e2e (21 / 21) chạy trên máy dev ngày 13/10, vì GitHub không khởi động job nào từ 12/10.
+- **Sửa** README (trang `#/privacy`, liên kết tới hai tài liệu trên), `docs/evaluation.md`, `docs/data-policy.md`,
+  `docs/video-demo.md`.
+- Tương thích: không đổi API, ngưỡng, code của 14 khối hay CSP.
+- **Giới hạn:** trang đăng nhập chưa có liên kết tới `#/privacy` (chờ gộp `main`); ảnh mobile là Chromium giả lập,
+  chưa phải điện thoại thật; nhánh chưa gộp M103–M105 của `main` nên ảnh chưa có các thay đổi đó.
 
 ## 4. Tương thích khi nâng cấp từ v3
 
