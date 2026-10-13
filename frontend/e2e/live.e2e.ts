@@ -126,6 +126,11 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
   await expect(page.getByText(/^Tổng kết ca lái · /)).toBeVisible();
   await expect(page.getByText("Chế độ dùng thử: bản tổng kết không được gửi đi.")).toBeVisible();
+  // The summary is full screen: no camera / driving column beside it (13/10).
+  await expect(page.getByRole("complementary", { name: "Camera và điều khiển xe" })).toHaveCount(0);
+  // "Xong" goes back to the first page (13/10: it did nothing once the trip had ended).
+  await page.getByRole("button", { name: "Xong" }).click();
+  await expect(page.getByRole("button", { name: "Dùng thử không lưu" })).toBeVisible();
 });
 
 test("no face in view: the frames still run in Python, monitoring pauses, nothing fails", async ({ page }) => {
@@ -277,8 +282,13 @@ test("signed-in driver: change of driver enrolls again; the manager gets the tri
   await expect(report).toHaveCount(1);
   await report.click();
   await expect(manager.getByText(/đổi tài 1 lần/)).toBeVisible(); // report detail: the story of the trip
+  // M105: a note for the driver goes with "Đánh dấu đã xem"; the driver reads it under "Lưu ý".
+  await manager.getByRole("textbox", { name: /Lưu ý cho tài xế/ }).fill("Nghỉ giữa ca sau 2 giờ lái nhé.");
   await manager.getByRole("button", { name: "Đánh dấu đã xem" }).click();
   await expect(manager.getByText(/quanly đã xem lúc/)).toBeVisible();
+  await page.getByRole("button", { name: "Xong" }).click(); // the driver's overview, with its recent trips
+  await expect(page.getByRole("columnheader", { name: "Lưu ý" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Nghỉ giữa ca sau 2 giờ lái nhé." })).toBeVisible();
 });
 
 test("web driving controls: #/drive on another page drives #/live; closing it is a lost vehicle signal", async ({ page, context }) => {
@@ -403,6 +413,8 @@ test("the first page is the login page: a manager goes to the dashboard, a drive
 
 test("the self-view can be dragged off the HUD's buttons and resized, and remembers where it was put", async ({ page }) => {
   // M100 (the user's choice of 09/10). Before, it sat fixed over "Cảnh báo này sai?" (roadmap M89).
+  // Floating only on an upright screen since M103 (landscape: a card in the column beside the HUD).
+  await page.setViewportSize({ width: 800, height: 1280 });
   await stubSimulator(page);
   await page.addInitScript(
     (f) => void ((window as unknown as { __dgFeed: unknown }).__dgFeed = f),
@@ -415,10 +427,10 @@ test("the self-view can be dragged off the HUD's buttons and resized, and rememb
 
   await page.mouse.move(start.x + 40, start.y + 30);
   await page.mouse.down();
-  await page.mouse.move(700, 120, { steps: 5 });
+  await page.mouse.move(500, 120, { steps: 5 });
   await page.mouse.up();
   const moved = (await frame.boundingBox())!;
-  expect(Math.abs(moved.x - (700 - 40))).toBeLessThan(3);
+  expect(Math.abs(moved.x - (500 - 40))).toBeLessThan(3);
   expect(Math.abs(moved.y - (120 - 30))).toBeLessThan(3);
 
   await page.getByRole("button", { name: "Phóng to khung camera" }).click();
@@ -439,4 +451,80 @@ test("the self-view can be dragged off the HUD's buttons and resized, and rememb
 
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("dg.live.selfview") ?? "null"));
   expect(stored).toMatchObject({ size: 0, x: Math.round(cornered.x), y: Math.round(cornered.y) });
+});
+
+test("landscape: the camera and the driving panel sit beside the HUD, and the panel drives #/live", async ({ page }) => {
+  // M103. No terminal simulator and no #/drive page: the speed goes from the panel straight to the agent.
+  await obedientDriver(page);
+  await startLive(page);
+  const side = page.getByRole("complementary", { name: "Camera và điều khiển xe" });
+  await expect(side).toBeVisible();
+  await expect(page.getByTestId("self-view")).toHaveAttribute("data-docked", "true");
+  await expect(page.getByRole("button", { name: "Phóng to khung camera" })).toHaveCount(0); // not dragged or resized
+  await expect(page.getByRole("button", { name: /chi tiết kỹ thuật/i })).toHaveCount(0); // a picture, no engineers' numbers
+  await expect(side.getByRole("note")).toHaveText("Phần này chỉ hiện khi mô phỏng ứng dụng, khi lái thật sẽ không có.");
+  // M104: the driver's face drawn over the picture, on by default, switched off and on by its button.
+  const drawing = page.getByTestId("face-overlay");
+  await expect(drawing).toBeVisible();
+  await expect.poll(() => drawing.evaluate((c: HTMLCanvasElement) => {
+    const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true; // something was drawn
+    return false;
+  }), { timeout: 10_000 }).toBe(true);
+  await page.getByRole("button", { name: "Ẩn khung nhận diện mặt" }).click();
+  await expect(drawing).toHaveCount(0);
+  await page.getByRole("button", { name: "Hiện khung nhận diện mặt" }).click();
+  await expect(drawing).toBeVisible();
+
+  // The HUD is scaled into the room left of the column, the whole of it in view.
+  const hud = (await page.locator(".live-hud-screen").boundingBox())!;
+  const column = (await side.boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(hud.x + hud.width).toBeLessThanOrEqual(column.x);
+  expect(hud.y + hud.height).toBeLessThanOrEqual(view.height);
+  expect(Math.abs(hud.width / hud.height - 1280 / 800)).toBeLessThan(0.01);
+
+  await agree(page);
+  await enrolled(page);
+  const panel = page.getByRole("region", { name: "Điều khiển xe" });
+  await expect(panel.getByText("Bấm một nút để bắt đầu lái")).toBeVisible();
+  await panel.getByRole("button", { name: "Chạy đều 50" }).click();
+  await panel.getByRole("button", { name: /Trái/ }).click();
+  await expect(panel.getByText("Đang đưa vào giám sát")).toBeVisible();
+  await expect
+    .poll(async () => (await state(page)).vehicle, { timeout: 20_000 })
+    .toMatchObject({ driving: true, turn_signal: "left" });
+
+  await panel.getByRole("button", { name: /Dừng xe/ }).click();
+  await expect.poll(async () => (await state(page)).vehicle?.driving, { timeout: 20_000 }).toBe(false);
+});
+
+test("a signed-in driver: Xong on the summary opens the Dashboard, whose Bắt đầu ca lái starts the next trip from any page", async ({ page }) => {
+  // 13/10. The try-out has no account: its Xong goes back to the first page (the guest test above).
+  await stubSimulator(page);
+  await obedientDriver(page);
+  await startLive(page, "an");
+  await endTrip(page);
+  await page.getByRole("button", { name: "Xong" }).click();
+  await expect(page).toHaveURL(/#\/dashboard/);
+  // In the side menu, so on every page: here from "Ca lái của tôi", not the overview.
+  await page.getByRole("navigation", { name: "Menu" }).getByRole("link", { name: "Ca lái của tôi" }).click();
+  const next = page.getByRole("navigation", { name: "Menu" }).getByRole("link", { name: /Bắt đầu ca lái/ });
+  await expect(next).toBeVisible();
+
+  await page.evaluate(() => void ((window as unknown as { __dgState?: unknown }).__dgState = undefined));
+  await next.click(); // no second press on the first page: the camera opens at once
+  await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
+  await expect(page).toHaveURL(/#\/live$/); // `start` is gone: a reload does not start a trip by itself
+});
+
+test("the Dashboard login's try-out starts the camera at once, not the first page's login again", async ({ page }) => {
+  // 13/10: it was a plain link to #/live, which is a login page too.
+  await stubSimulator(page);
+  await obedientDriver(page);
+  await page.goto("/#/dashboard");
+  await page.getByRole("link", { name: "Dùng thử không lưu" }).click();
+  await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
+  await expect(page).toHaveURL(/#\/live$/);
+  await expect(page.getByRole("button", { name: "Đăng nhập", exact: true })).toHaveCount(0);
 });

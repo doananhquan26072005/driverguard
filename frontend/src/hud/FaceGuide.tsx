@@ -62,7 +62,7 @@ export default function FaceGuide({ step, hint, stream = null }: { step: EnrollS
     <div
       role="img"
       aria-label={`Khung căn khuôn mặt: ${hint ?? BADGE[step]}`}
-      className="relative min-h-[260px] flex-1 overflow-hidden rounded-[14px] border border-solid border-white/10 bg-[radial-gradient(70%_55%_at_50%_45%,#18202b_0%,#0b0e13_70%,#07090c_100%)]"
+      className="relative min-h-[260px] flex-1 overflow-hidden rounded-[10px] border border-solid border-white/10 bg-[radial-gradient(70%_55%_at_50%_45%,#18202b_0%,#0b0e13_70%,#07090c_100%)]"
     >
       {stream && <video ref={video} muted playsInline className="absolute inset-0 size-full -scale-x-100 object-cover" />}
       <svg aria-hidden viewBox="0 0 300 380" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 size-full">

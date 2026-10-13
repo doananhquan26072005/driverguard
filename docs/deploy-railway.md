@@ -4,6 +4,8 @@ Railway chạy **một** image: [`Dockerfile.railway`](../Dockerfile.railway). I
 HUD và các file cho `#/live`. Server không chạy model nào: trình duyệt tải model rồi tự chạy. Hai Dockerfile còn lại
 không dùng trên Railway: `Dockerfile.edge` chỉ để đo thử kiểu Jetson (M42), còn `Dockerfile` là app mẫu của khoá học.
 
+**Địa chỉ đang chạy:** https://c4-app-135.up.railway.app (service `driveguard`, project `driveguard`; deploy tay 13/10/2026). Các domain trong `release-v1.md` – `release-v3.md` là của các bản cũ.
+
 ## Luồng tự động
 
 ```
@@ -60,6 +62,27 @@ railway up --no-gitignore        # cần --no-gitignore để gửi model
 `--no-gitignore` là bắt buộc: `railway up` mặc định bỏ qua những gì trong `.gitignore`, trong đó có model.
 Vì vậy [`.railwayignore`](../.railwayignore) tự liệt kê mọi thứ không được gửi đi: `.env`, database, log, `data/`,
 `.ai-log/`, `node_modules`... Thêm loại file bí mật mới vào `.gitignore` thì phải thêm cả vào `.railwayignore`.
+
+## Tài khoản dùng thử (một lần cho mỗi database)
+
+Mọi trang đăng nhập điền sẵn tài khoản tài xế `taixe_demo` / `demo12345`; bấm vào ô "Tên đăng nhập" thì chọn được
+thêm tài khoản kỹ sư `kysu_demo` / `kysu12345` (`frontend/src/lib/demo.ts`). Đổi lúc build bằng `VITE_DEMO_USERNAME`
+/ `VITE_DEMO_PASSWORD` (`VITE_DEMO_USERNAME=""` tắt cả hai) và `VITE_DEMO_ENGINEER_USERNAME` /
+`VITE_DEMO_ENGINEER_PASSWORD` (`VITE_DEMO_ENGINEER_USERNAME=""` chỉ còn tài xế). Hai tài khoản phải có trong database
+của Railway, đúng mật khẩu đó. Database nằm trên volume `/app/data`: tạo một lần, các lần deploy sau vẫn còn.
+
+```bash
+railway ssh --service driveguard
+python -m backend.manage create-user taixe_demo --role driver --driver-id drv-demo   # hỏi mật khẩu: demo12345
+python -m backend.manage create-user kysu_demo --role engineer                       # hỏi mật khẩu: kysu12345
+exit
+```
+
+Ai mở trang cũng thấy mật khẩu của cả hai tài khoản. `taixe_demo` chỉ xem được chuyến của chính nó. `kysu_demo` là
+**tài khoản chỉ xem**: backend từ chối mọi thay đổi của nó (sửa ngưỡng, áp ngưỡng cho đội xe, đánh dấu đã xem / ghi
+lưu ý cho tài xế: 403 "demo account: read only"), giao diện khoá các nút đó. Danh sách tài khoản chỉ xem là biến
+`DG_READ_ONLY_USERS` của backend (mặc định `kysu_demo`, cách nhau bằng dấu phẩy; không cần đặt trên Railway).
+Không điền sẵn tài khoản quản lý hay quản trị.
 
 ## Kiểm tra sau khi deploy
 

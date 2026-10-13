@@ -270,7 +270,8 @@ JS_ALLOWED = {
     "lib/scale.ts": {"MINUTE", "?? 10"},
     # looks per capture.frame_timeout_s, not a time of its own; what a browser lets a closing page send
     "live/agent.ts": {"WATCH_LOOKS", "KEEPALIVE_BUDGET_BYTES"},
-    "live/LiveScreen.tsx": {"TECH_WIDTH_PX"},  # layout of the self-view
+    "live/LiveScreen.tsx": {"TECH_WIDTH_PX", "SIDE_W"},  # layout of the self-view and of the column (M103)
+    "live/FaceOverlay.tsx": {"STALE_MS", "IRIS_GAIN"},  # the face drawing on the camera card (M104): display only
     "live/selfView.ts": {"MARGIN"},
     "live/tripId.ts": {"RANDOM_BYTES"},
 }

@@ -347,7 +347,15 @@ class TripReportOut(BaseModel):
     rating: Rating
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
+    review_note: str | None = None  # M105: what the reviewer tells the driver ("Lưu ý")
     summary: dict[str, Any]
+
+
+class TripReviewIn(StrictModel):
+    """POST /api/v1/trip-reports/{device}/{trip}/review (M105): an optional note for the driver. Empty text
+    clears it; no body or no note keeps the one already there."""
+
+    note: str | None = Field(default=None, max_length=500)
 
 
 FleetStatus = Literal["online", "offline", "ended", "never"]
@@ -485,6 +493,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     role: Role
     expires_in: int
+    read_only: bool = False  # a demo account (DG_READ_ONLY_USERS): the pages show changes as locked
 
 
 class UserIn(StrictModel):

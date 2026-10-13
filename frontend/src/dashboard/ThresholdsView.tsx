@@ -19,7 +19,8 @@ interface Props {
 }
 
 export default function ThresholdsView({ session, stats, onSaved }: Props) {
-  const canEdit = session.role === "engineer" || session.role === "admin";
+  // A demo account (session.readOnly) reads like an engineer and changes nothing; the backend refuses it too.
+  const canEdit = (session.role === "engineer" || session.role === "admin") && !session.readOnly;
   const [data, setData] = useState<Thresholds | null>(null);
   const [edited, setEdited] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -100,7 +101,13 @@ export default function ThresholdsView({ session, stats, onSaved }: Props) {
               : "Chưa chỉnh: thiết bị dùng thresholds.yaml của nó"}
           </span>
         </div>
-        {!canEdit && <p className="muted">Chỉ kỹ sư được chỉnh ngưỡng. Bạn đang xem ở chế độ chỉ đọc.</p>}
+        {!canEdit && (
+          <p className="muted">
+            {session.readOnly
+              ? "Tài khoản dùng thử chỉ được xem: không chỉnh hay áp ngưỡng cho đội xe được."
+              : "Chỉ kỹ sư được chỉnh ngưỡng. Bạn đang xem ở chế độ chỉ đọc."}
+          </p>
+        )}
         {/* M63 (design "Kỹ sư · Ngưỡng và báo sai"): what is not saved yet, always in view. */}
         {canEdit && dirty && (
           <div className="unsaved" role="status">

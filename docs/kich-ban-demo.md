@@ -24,9 +24,8 @@ DevTools ở phần 3 thay bằng thẻ in lại request thật.
 ## Chuẩn bị trước khi quay
 
 **Bản để quay.** Chạy local nhánh `DAQuan` (4 terminal theo [HowToUse.md mục 7.3](../HowToUse.md#73-toàn-bộ-hệ-thống-4-terminal),
-thêm `npm run prepare-live` một lần). Bản này có các sửa lỗi M71–M101 mà bản v3 trên Railway chưa có. Nếu local
-trục trặc thì quay trên https://c4-app-135.up.railway.app (địa chỉ từ 12/10; địa chỉ `driveguard-production-5093` đã ngừng), mọi cảnh
-trong kịch bản đều có ở bản đó.
+thêm `npm run prepare-live` một lần). Nếu local trục trặc thì quay trên bản đang chạy
+https://c4-app-135.up.railway.app (deploy 13/10, gồm tới M105).
 
 **Tài khoản.** Một tài khoản tài xế (vd. `an`) và một tài khoản quản lý (vd. `boss`). Mở hai cửa sổ trình duyệt
 khác profile (hoặc một cửa sổ ẩn danh) để hai phiên đăng nhập không đè nhau.

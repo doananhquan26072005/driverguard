@@ -79,12 +79,13 @@
   --text-hud-display: clamp(40px, 6vw, 80px);
   --text-hud-display--line-height: 1.05;
 
-  /* Design system radii: chips 8, buttons / tiles 12, cards 16 (never rounder: 28 px looks like plastic) */
-  --radius-hud-xs: 8px;
-  --radius-hud-sm: 12px;
-  --radius-hud: 16px;
-  --radius-hud-lg: 16px;
-  --radius-hud-xl: 20px;
+  /* Design system radii: chips 6, buttons / tiles 8, cards 10, largest 12. 13/10: squarer, after the
+     VinFast app the user showed (was 8 / 12 / 16 / 20) */
+  --radius-hud-xs: 6px;
+  --radius-hud-sm: 8px;
+  --radius-hud: 10px;
+  --radius-hud-lg: 10px;
+  --radius-hud-xl: 12px;
 
   /* Motion: alerts appear fast, calm-down is slow. Pulse 1 Hz (WCAG 2.3.1: <= 3 flashes/s). */
   --animate-hud-in-fast: hud-in 150ms ease-out both;

@@ -406,6 +406,18 @@ describe("flush", () => {
 });
 
 // ---------------------------------------------------------------------------- block 10: the vehicle
+describe("Python's proxy is out of reach of whatever walks the agent", () => {
+  it("is not an enumerable field, so React's development build never reads it once destroyed", () => {
+    // 13/10: React (dev) diffed the old props of the camera card, read `$$typeof` on the destroyed proxy,
+    // threw mid-render, and "Xong" on the trip summary did nothing any more.
+    const { agent } = build();
+    expect(Object.keys(agent)).not.toContain("py");
+    const walked: string[] = [];
+    for (const key in agent) walked.push(key);
+    expect(walked).not.toContain("py");
+  });
+});
+
 describe("pollSim", () => {
   const reply = (body: unknown, ok = true) => ({ ok, json: async () => body });
   const isRemote = (url: unknown) => String(url).includes("/api/v1/drive/");
@@ -451,6 +463,59 @@ describe("pollSim", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(fetchMock.mock.calls.length).toBeGreaterThan(30); // asked on, vehicle.poll_s apart
     expect(py.vehicle_signal).not.toHaveBeenCalled();
+  });
+
+  // M103: the driving panel beside the HUD on #/live.
+  const panelAt = (speedKmh: number, turn: string | null = null) => () => ({ speedKmh, turn });
+
+  it("the panel, once used, drives when nothing is paired: the terminal simulator is not asked", async () => {
+    const { agent, inner, py } = build();
+    agent.usePanel(panelAt(49.96, "right"));
+    fetchMock.mockImplementation(async (url) => (isRemote(url) ? reply({}, false) : reply({ speed_kmh: 40 })));
+    await inner.pollSim();
+    expect(py.vehicle_signal.mock.calls).toEqual([[50, "right"]]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(agent.vehicleFrom).toBe("panel");
+  });
+
+  it("a panel never used leaves the terminal simulator in charge", async () => {
+    const { agent, inner, py } = build();
+    agent.usePanel(() => null);
+    fetchMock.mockImplementation(async (url) => (isRemote(url) ? reply({}, false) : reply({ speed_kmh: 40 })));
+    await inner.pollSim();
+    expect(py.vehicle_signal.mock.calls).toEqual([[40, null]]);
+    expect(agent.vehicleFrom).toBe("sim");
+  });
+
+  it("#/drive on another device that is sending wins over the panel", async () => {
+    const { agent, inner, py } = build();
+    agent.usePanel(panelAt(20));
+    fetchMock.mockImplementation(async (url) => reply({ speed_kmh: 62, turn_signal: null, age_s: 0.2 }, isRemote(url)));
+    await inner.pollSim();
+    expect(py.vehicle_signal.mock.calls).toEqual([[62, null]]);
+    expect(agent.vehicleFrom).toBe("remote");
+  });
+
+  it("the panel still drives after #/drive went quiet, and with the backend unreachable", async () => {
+    const { agent, inner, py } = build();
+    agent.usePanel(panelAt(30));
+    fetchMock.mockImplementation(async (url) => reply({ speed_kmh: 62, turn_signal: null, age_s: SETTINGS.vehicle.stale_s }, isRemote(url)));
+    await inner.pollSim();
+    fetchMock.mockImplementation(async () => {
+      throw new Error("offline");
+    });
+    await inner.pollSim();
+    expect(py.vehicle_signal.mock.calls).toEqual([
+      [30, null],
+      [30, null],
+    ]);
+  });
+
+  it("nothing passed on: the source reads none", async () => {
+    const { agent, inner } = build();
+    fetchMock.mockImplementation(async (url) => reply({ speed_kmh: 62, turn_signal: null, age_s: SETTINGS.vehicle.stale_s }, isRemote(url)));
+    await inner.pollSim();
+    expect(agent.vehicleFrom).toBe("none");
   });
 
   it("a speed that is not a number reads 0", async () => {

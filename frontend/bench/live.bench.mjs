@@ -82,12 +82,15 @@ async function main() {
   if (extra) args.push(...String(extra).split(" ").filter(Boolean));
   const headless = !process.argv.includes("--headed");
 
+  // Upright: the floating self-view with its "Chi tiết kỹ thuật" numbers. On a landscape window the camera
+  // is a card beside the HUD without them (M103).
+  const viewport = { width: 800, height: 1280 };
   let browser = null;
   let context;
-  if (profile) context = await chromium.launchPersistentContext(String(profile), { args, headless, permissions: ["camera"] });
+  if (profile) context = await chromium.launchPersistentContext(String(profile), { args, headless, permissions: ["camera"], viewport });
   else {
     browser = await chromium.launch({ args, headless });
-    context = await browser.newContext({ permissions: ["camera"] });
+    context = await browser.newContext({ permissions: ["camera"], viewport });
   }
   const page = await context.newPage();
   const problems = [];

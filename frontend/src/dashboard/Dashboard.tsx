@@ -2,7 +2,7 @@
 // right. Pages are #/dashboard/<page>. The data of every page comes from the same backend endpoints as
 // before; the backend still decides what each role may read.
 import { useCallback, useEffect, useState } from "react";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { Car, LogOut, ShieldCheck } from "lucide-react";
 import { type EventFilters, getEvents, getPolicy, getStats, getThresholds, getTripReports, loadSession, saveSession } from "../lib/api";
 import { RANGES, type RangeKey } from "../lib/format";
 import { LEVELS, policyNote, ROLES } from "../lib/labels";
@@ -132,6 +132,12 @@ export default function Dashboard() {
           </span>
           DriverGuard
         </div>
+        {/* 13/10: a driver starts the next trip from any page (the camera opens at once, #/live?start). */}
+        {session.role === "driver" && (
+          <a className="side-start" href="#/live?start">
+            <Car aria-hidden size={18} /> Bắt đầu ca lái mới
+          </a>
+        )}
         {NAV[session.role].map((section) => (
           <div key={section.title ?? "main"} className="side-group">
             {section.title && <span className="side-title">{section.title}</span>}
@@ -149,6 +155,8 @@ export default function Dashboard() {
             {ROLES[session.role]}
             {session.driverId ? ` · mã ${session.driverId}` : ""}
           </span>
+          {/* 13/10: a demo account (DG_READ_ONLY_USERS) looks at everything and changes nothing */}
+          {session.readOnly && <span className="side-readonly">Tài khoản dùng thử · chỉ xem</span>}
           <button type="button" className="link" onClick={logout}>
             <LogOut aria-hidden size={14} /> Đăng xuất
           </button>

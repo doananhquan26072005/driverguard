@@ -27,3 +27,14 @@ code. Trang này ghi lại cùng các bước của [.github/workflows/ci.yml](.
 ## End to end
 
 ![Playwright 21 / 21](screenshots/ci-local/03-e2e.png)
+
+## Chạy lại sau khi gộp `main` (13/10, chiều)
+
+Cùng các lệnh, trên nhánh `DAQuan` đã gộp M103–M105 của `main` và có thêm liên kết "Quyền riêng tư" ở trang đăng nhập.
+Ba ảnh ở trên là của lần chạy trước khi gộp.
+
+| Job của CI | Kết quả |
+|---|---|
+| `python` | ruff sạch, 182 file đúng định dạng; **1720 pass, 6 xfail** |
+| `frontend` | `tsc` sạch; **328 pass** (31 file); build xong |
+| `e2e` | **24 / 24 pass** |

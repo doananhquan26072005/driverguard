@@ -13,3 +13,5 @@
 .privacy-keep > div { padding: 16px 20px; display: grid; gap: 4px; }
 .privacy-keep dt { font-size: 14px; color: var(--ink-2); }
 .privacy-keep dd { margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+/* The login page: the privacy link sits right under the guide link (styles.css .login-guide pushes the first one down). */
+.login-guide + .login-guide { margin-top: 10px; }

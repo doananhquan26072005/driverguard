@@ -8,7 +8,7 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 | | |
 |---|---|
 | **Phiên bản** | v2.2 (deploy 02/10/2026, các mốc M0–M31) |
-| **Live URL** | **https://c4-app-135.up.railway.app** (bản mới nhất; `/health`, `/` và `/docs` trả 200 ngày 13/10/2026). Các liên kết trong README này trỏ tới bản đó: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs`. Bản cũ: v2.2 ở https://driveguard-v2-production.up.railway.app và v1.1 ở https://driveguard-production-6b83.up.railway.app còn trả lời (v1.1 chậm ở lần gọi đầu); `driveguard-production-5093` đã ngừng |
+| **Live URL** | **https://c4-app-135.up.railway.app** (bản mới nhất, deploy 13/10/2026 từ `main`, gồm tới M105; tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập; `/health`, `/` và `/docs` trả 200 ngày 13/10). Các liên kết trong README này trỏ tới bản đó: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs`. Bản cũ: v2.2 ở https://driveguard-v2-production.up.railway.app và v1.1 ở https://driveguard-production-6b83.up.railway.app còn trả lời (v1.1 chậm ở lần gọi đầu); `driveguard-production-5093` không trả lời khi kiểm 13/10 |
 | **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
@@ -345,7 +345,7 @@ tốc độ:
 | Chạy 10 phút theo nhịp camera, container 4 CPU / 4 GB (`simulated`) | 29,9 FPS, p95 11,1 ms, CPU 93 % của một nhân, RAM 597 MB | Cận trên cho bo mạch 4 nhân: cùng CPU của máy dev, chỉ ít nhân hơn. Không phải số đo thiết bị | [eval/results/benchmark_simulated.md](eval/results/benchmark_simulated.md) |
 
 CI trên GitHub không chạy được từ 12/10 (tài khoản của tổ chức bị chặn thanh toán); kết quả chạy local ngày 13/10 ở
-[docs/ci-local.md](docs/ci-local.md): 1713 test Python, 310 test frontend, e2e 21 / 21.
+[docs/ci-local.md](docs/ci-local.md): 1720 test Python, 328 test frontend, e2e 24 / 24 (sau khi gộp `main`).
 
 Toàn bộ tiêu chí để chạy thử trên xe thật và trạng thái từng tiêu chí: [docs/pilot-readiness.md](docs/pilot-readiness.md).
 

@@ -207,7 +207,13 @@ function ReportDetail({
               Đã xem bởi {report.reviewed_by}, {formatDateTime(report.reviewed_at)}
             </span>
           ) : (
-            <button type="button" className="primary" onClick={() => onReviewed(report)}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => onReviewed(report)}
+              disabled={session.readOnly}
+              title={session.readOnly ? "Tài khoản dùng thử chỉ được xem" : undefined}
+            >
               Đánh dấu đã xem
             </button>
           ))}

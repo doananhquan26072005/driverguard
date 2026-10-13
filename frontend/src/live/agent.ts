@@ -11,6 +11,7 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ApiError, API_URL, getWebThresholds, postWebBatch, webDeviceId, refreshSession, postWebBatchOnLeave } from "../lib/api";
 import type { HudEnrollment, HudSnapshot, Session, TripSummary, VehicleAction } from "../lib/types";
 import { newDriveCode } from "../drive/sim";
+import { steadyInterval } from "../lib/ticker";
 import { DRIVE_SIM_URL, type FeedbackResult, type HudSource, type TripEnd } from "../hud/edge";
 import {
   bbox,
@@ -94,6 +95,13 @@ export function loadingStep(cameraOn: boolean, done: number, parts: number): Ste
   return cameraOn ? { step: "prepare", progress: done / parts } : { step: "camera", progress: 0 };
 }
 
+/** Where the last vehicle reading came from (M103): #/drive on another device, the driving panel beside
+ *  the HUD, the terminal simulator, or nothing (parked / signal lost). */
+export type VehicleSource = "remote" | "panel" | "sim" | "none";
+
+/** The driving panel's car, read on every poll; null while it was never used. */
+export type PanelReading = () => { speedKmh: number; turn: string | null } | null;
+
 export interface LiveStats {
   level: number;
   fps: number;
@@ -135,7 +143,18 @@ export interface Measures {
   mar: number | null;
   yaw: number | null;
   pitch: number | null;
+  roll: number | null;
   phone: boolean | null;
+  driver: number | null; // which of the frame's faces Python took for the driver (M104)
+}
+
+/** The driver's face of the last frame, for the drawing on the camera card (M104): numbers only. */
+export interface DriverFace {
+  points: Float32Array; // 478 landmarks, x / y / z, in pixels of a width x height frame
+  width: number;
+  height: number;
+  measures: Measures;
+  level: number;
 }
 
 interface Settings {
@@ -296,8 +315,11 @@ export class LiveAgent implements HudSource {
   private flushTimer: number | undefined;
   private refreshAt = 0; // ms epoch: the login token is exchanged for a new one from then on (M97)
   private configTimer: number | undefined;
-  private simTimer: number | undefined;
+  private stopSim: () => void = () => {}; // steadyInterval: hidden, the tab still reads the vehicle on time
   private simBusy = false;
+  private panel: PanelReading | null = null;
+  private lastFaces: { faces: Float32Array[]; width: number; height: number; at: number } | null = null; // M104, in memory only // M103: the driving panel beside the HUD
+  private source: VehicleSource = "none";
   private canvas = document.createElement("canvas");
   private ctx: CanvasRenderingContext2D;
   private yoloCanvas = document.createElement("canvas");
@@ -328,6 +350,10 @@ export class LiveAgent implements HudSource {
     private gpu: GpuKind | null = null, // what draws WebGL here (M51)
     private startup: { t0: number; ms: StartupMs } | null = null, // M67
   ) {
+    // Python's proxy is not an enumerable field: whatever walks this object (React's development
+    // build diffs the props it was passed, devtools) must not read it once it is destroyed at the end
+    // of the trip ("Object has already been destroyed" there left the page dead after "Xong").
+    Object.defineProperty(this, "py", { enumerable: false });
     this.ctx = this.canvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloCtx = this.yoloCanvas.getContext("2d", { willReadFrequently: true })!;
     this.yoloPacer = new YoloPacer(settings.phone.target_fps);
@@ -564,7 +590,7 @@ export class LiveAgent implements HudSource {
     this.stopped = true;
     window.clearInterval(this.flushTimer);
     window.clearInterval(this.configTimer);
-    window.clearInterval(this.simTimer);
+    this.stopSim();
     window.clearInterval(this.watchTimer);
     this.stopPulling();
     this.py.end_trip();
@@ -607,7 +633,7 @@ export class LiveAgent implements HudSource {
     this.flushTimer = window.setInterval(() => void this.flush(), this.settings.flush_interval_s * 1000);
     if (this.session && this.settings.config_poll_s > 0)
       this.configTimer = window.setInterval(() => void this.pollThresholds(), this.settings.config_poll_s * 1000);
-    this.simTimer = window.setInterval(() => void this.pollSim(), this.settings.vehicle.poll_s * 1000);
+    this.stopSim = steadyInterval(() => void this.pollSim(), this.settings.vehicle.poll_s * 1000);
     this.watchTimer = window.setInterval(() => {
       this.checkLoop();
       this.checkYolo();
@@ -818,7 +844,18 @@ export class LiveAgent implements HudSource {
     this.perf.add("python", done - pythonStart);
     this.perf.add("total", done - started);
     if (this.startup && this.startup.ms.first_frame == null) this.startup.ms.first_frame = Math.round(done - this.startup.t0);
+    this.lastFaces = { faces, width: w, height: h, at: performance.now() };
     this.showFrame(state);
+  }
+
+  /** The driver's landmarks of the last frame, for the drawing on the camera card (M104, shown only,
+   *  never kept or sent). null: no driver, or no frame for longer than maxAgeMs. */
+  driverFace(maxAgeMs: number): DriverFace | null {
+    const last = this.lastFaces;
+    const m = this.stats.measures;
+    if (!last || !m?.face || m.driver == null || performance.now() - last.at > maxAgeMs) return null;
+    const points = last.faces[m.driver];
+    return points ? { points, width: last.width, height: last.height, measures: m, level: this.stats.level } : null;
   }
 
   /** What Python answered for a frame, good or failed: the numbers for the camera card, then the HUD. */
@@ -978,10 +1015,30 @@ export class LiveAgent implements HudSource {
     if (this.heartbeatBody === body) this.heartbeatBody = null;
   }
 
-  /** One reading of the vehicle: the web driving controls first (#/drive paired with driveCode),
-   *  else the terminal driving simulator. None: nothing is passed on, and the bridge reads parked /
-   *  signal lost once the last reading is stale (M26). A paired remote that went quiet is not
-   *  replaced by the local simulator: that is a lost signal. */
+  /** The driving panel beside the HUD (M103), or null when it is gone. */
+  usePanel(read: PanelReading | null): void {
+    this.panel = read;
+  }
+
+  /** Where the last vehicle reading came from. */
+  get vehicleFrom(): VehicleSource {
+    return this.source;
+  }
+
+  /** The panel's car, if the panel was used: handed to Python. */
+  private passPanel(): boolean {
+    const c = this.panel?.();
+    if (!c || this.stopped) return false;
+    this.py.vehicle_signal(Math.round(c.speedKmh * 10) / 10, c.turn);
+    this.source = "panel";
+    return true;
+  }
+
+  /** One reading of the vehicle: the web driving controls first (#/drive paired with driveCode), then
+   *  the driving panel beside the HUD once it was used (M103), else the terminal driving simulator.
+   *  None: nothing is passed on, and the bridge reads parked / signal lost once the last reading is
+   *  stale (M26). A paired remote that went quiet is not replaced by the terminal simulator: that is a
+   *  lost signal (the panel, used on this page, still drives). */
   private async pollSim() {
     if (this.simBusy || this.stopped) return;
     this.simBusy = true;
@@ -993,13 +1050,21 @@ export class LiveAgent implements HudSource {
       }).catch(() => null);
       if (remote?.ok) {
         const r = (await remote.json()) as { speed_kmh: number; turn_signal: string | null; age_s: number };
-        if (r.age_s < this.settings.vehicle.stale_s && !this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+        if (r.age_s < this.settings.vehicle.stale_s && !this.stopped) {
+          this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+          this.source = "remote";
+        } else if (!this.passPanel()) this.source = "none";
         return;
       }
+      if (this.passPanel()) return;
+      this.source = "none";
       const resp = await fetch(DRIVE_SIM_URL, { cache: "no-store", signal: AbortSignal.timeout(pollMs * 2) });
       if (resp.ok) {
         const r = (await resp.json()) as { speed_kmh?: number; turn_signal?: string | null };
-        if (!this.stopped) this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+        if (!this.stopped) {
+          this.py.vehicle_signal(Number(r.speed_kmh) || 0, r.turn_signal ?? null);
+          this.source = "sim";
+        }
       }
     } catch {
       // simulator not running
@@ -1023,7 +1088,7 @@ export class LiveAgent implements HudSource {
     this.stopped = true;
     window.clearInterval(this.flushTimer);
     window.clearInterval(this.configTimer);
-    window.clearInterval(this.simTimer);
+    this.stopSim();
     window.clearInterval(this.watchTimer);
     this.stopPulling();
     // The camera goes first (M97): the last round waits for the backend, and a backend that hangs must
