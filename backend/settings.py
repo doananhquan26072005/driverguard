@@ -36,3 +36,10 @@ class BackendSettings(BaseSettings):
     # (the dashboard refreshes every few seconds).
     retention_access_log_days: int = Field(default=365, ge=0, le=3650)
     audit_dedupe_s: int = Field(default=600, ge=0, le=24 * 3600)
+    # Accounts that may read what their role reads but change nothing (comma-separated usernames). The
+    # public demo's engineer is on it by default (13/10): its password is on the login page, and an
+    # engineer could otherwise change or roll out the fleet's thresholds, or write notes to drivers.
+    read_only_users: str = "kysu_demo"
+
+    def is_read_only(self, username: str) -> bool:
+        return username in {u.strip() for u in self.read_only_users.split(",") if u.strip()}

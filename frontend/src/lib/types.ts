@@ -39,6 +39,7 @@ export interface Session {
   role: Role;
   driverId: string | null;
   expiresAt: number; // ms epoch
+  readOnly?: boolean; // a demo account (DG_READ_ONLY_USERS, 13/10): sees everything, changes nothing
 }
 
 // What a device runs (edge_agent/version.py, M41): in every heartbeat and event.

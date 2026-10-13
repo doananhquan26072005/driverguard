@@ -98,7 +98,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
               </span>
             </div>
             <div className="flex items-center gap-[18px]">
-              <div className={`dg-tile grid size-[72px] shrink-0 place-items-center !rounded-[18px] ${tone.icon}`}>
+              <div className={`dg-tile grid size-[72px] shrink-0 place-items-center !rounded-[10px] ${tone.icon}`}>
                 <tone.Icon aria-hidden className="size-9" strokeWidth={1.75} />
               </div>
               <div className="min-w-0">
@@ -171,7 +171,7 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
 function Fact({ icon: Icon, value, label, accent }: { icon: LucideIcon; value: string; label: string; accent?: string }) {
   return (
     <div className="dg-tile flex min-w-0 items-center gap-3 p-3">
-      <span className={`dg-tile grid size-[38px] shrink-0 place-items-center !rounded-[10px] ${accent ?? "text-[#d4d4d4]"}`}>
+      <span className={`dg-tile grid size-[38px] shrink-0 place-items-center !rounded-[8px] ${accent ?? "text-[#d4d4d4]"}`}>
         <Icon aria-hidden className="size-[18px]" />
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">

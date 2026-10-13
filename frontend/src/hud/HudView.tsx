@@ -142,7 +142,7 @@ const REASON_ICONS: Partial<Record<Reason, LucideIcon>> = {
 const TOP_TILE = "dg-tile size-10 shrink-0 place-items-center text-[#bdbdbd] no-underline";
 // Amber outlined note of the top bar (slow machine, phone detector down).
 const TOP_NOTE =
-  "inline-flex h-10 items-center gap-2 rounded-[10px] border border-solid border-hud-caution/45 bg-hud-caution/12 px-3.5 text-sm font-medium whitespace-nowrap text-[#fcd34d]";
+  "inline-flex h-10 items-center gap-2 rounded-[8px] border border-solid border-hud-caution/45 bg-hud-caution/12 px-3.5 text-sm font-medium whitespace-nowrap text-[#fcd34d]";
 
 /** True when the last level change went up: alerts snap in, calming down fades slowly. */
 function useRising(level: Level): boolean {
@@ -320,7 +320,7 @@ function TopBar({
   return (
     <header className={`relative flex min-w-0 items-center gap-4 px-4 hud-sm:px-8 ${className}`}>
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
+        <span className="hud-brand text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
         <span className={`hidden text-xs hud-sm:block ${danger ? "text-white/70" : "text-hud-ink-3"}`}>Giám sát tài xế trên thiết bị</span>
       </span>
       <span className="flex-1" />
@@ -394,7 +394,7 @@ function AlarmNote({ sound }: { sound: boolean }) {
   // L3: the only thing on the top bar is that the alarm is sounding (the amber strip says it is not).
   if (!sound) return null;
   return (
-    <span className="inline-flex h-10 items-center gap-2.5 rounded-[10px] border border-solid border-white/20 bg-black/25 px-3.5 text-sm font-medium">
+    <span className="inline-flex h-10 items-center gap-2.5 rounded-[8px] border border-solid border-white/20 bg-black/25 px-3.5 text-sm font-medium">
       <Volume2 aria-hidden className="size-[18px]" />
       Còi đang kêu
     </span>
@@ -613,7 +613,7 @@ function DangerStage({ reasons }: { reasons: Reason[] }) {
   const [order, todo] = splitAction(primary ? REASON_ACTIONS[primary] : LEVELS[3].action);
   return (
     <main aria-live="assertive" aria-atomic="true" className="flex flex-col items-center justify-center gap-7 px-4 text-center hud-sm:px-8">
-      <span className="inline-flex items-center gap-2 rounded-[10px] border border-solid border-white/20 bg-black/25 px-4 py-2 text-base font-semibold tracking-[0.04em]">
+      <span className="inline-flex items-center gap-2 rounded-[8px] border border-solid border-white/20 bg-black/25 px-4 py-2 text-base font-semibold tracking-[0.04em]">
         NGUY HIỂM
       </span>
       <OctagonAlert aria-hidden className="size-28 drop-shadow-[0_8px_30px_rgba(0,0,0,0.35)] hud-sm:size-[150px]" strokeWidth={1.4} />
@@ -654,7 +654,7 @@ function SpeedCard({ snap, tall }: { snap: HudSnapshot; tall: boolean }) {
           className={`grid h-[84px] place-items-center rounded-hud-sm ${driving ? "dg-tile" : "bg-hud-system text-[#0b1b33]"}`}
           title={driving ? "Đang lái" : "Đang đỗ"}
         >
-          <span aria-hidden className="text-[44px] leading-none font-bold">{driving ? "D" : "P"}</span>
+          <span aria-hidden className="hud-gear text-[44px] leading-none font-bold">{driving ? "D" : "P"}</span>
           {/* The words for screen readers (and the e2e test); the letter says it on screen. */}
           <span className="sr-only">{driving ? "Đang lái" : enrolling ? "Xe đang đỗ · đang làm quen khuôn mặt" : "Đang đỗ"}</span>
         </div>
@@ -869,7 +869,7 @@ function BottomBar({
     return (
       <footer className="flex justify-center px-4 pb-6 hud-sm:px-8">
         {closed > 0 && (
-          <span className="dg-num inline-flex items-center gap-3 rounded-[14px] border border-solid border-white/20 bg-black/28 px-6 py-3.5 text-[26px] font-semibold">
+          <span className="dg-num inline-flex items-center gap-3 rounded-[10px] border border-solid border-white/20 bg-black/28 px-6 py-3.5 text-[26px] font-semibold">
             <EyeOff aria-hidden className="size-[26px]" />
             Mắt nhắm {formatNumber(closed, 1)} giây
           </span>
@@ -971,7 +971,7 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
           <ScanFace aria-hidden className="size-11" strokeWidth={1.75} />
         </div>
         <div className="min-w-0">
-          <p className="m-0 text-[clamp(32px,4cqw,48px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
+          <p className="hud-headline m-0 text-[clamp(32px,4cqw,48px)] leading-[1.08] font-semibold tracking-[-0.03em] text-balance">
             {ENROLL_CONSENT.headline}
           </p>
           <p className="m-0 mt-2.5 max-w-[52ch] text-[17px] leading-normal text-[#b8c2d0]">{ENROLL_CONSENT.lead}</p>
@@ -990,7 +990,7 @@ function ConsentPanel({ onAnswer }: { onAnswer?: (action: VehicleAction) => void
           <button
             type="button"
             onClick={() => onAnswer("enroll_start")}
-            className="h-[60px] cursor-pointer rounded-hud-sm border-0 bg-[linear-gradient(180deg,#93c5fd_0%,#60a5fa_100%)] text-lg font-semibold text-[#0b1b33]"
+            className="h-[60px] cursor-pointer rounded-hud-sm border-0 bg-[linear-gradient(180deg,#3d6aa8_0%,#335c94_100%)] text-lg font-semibold text-white"
           >
             {ENROLL_CONSENT.agree}
           </button>
@@ -1127,10 +1127,10 @@ function ConfirmDialog({
         </h2>
         <p className="m-0 mt-2 text-hud-body text-hud-ink-2">{text}</p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <button type="button" onClick={onCancel} className="min-h-14 rounded-full border-0 bg-hud-raised text-hud-body font-semibold text-hud-ink ring-1 ring-hud-line">
+          <button type="button" onClick={onCancel} className="min-h-14 rounded-hud-sm border-0 bg-hud-raised text-hud-body font-semibold text-hud-ink ring-1 ring-hud-line">
             {cancel}
           </button>
-          <button type="button" onClick={onConfirm} disabled={busy} className="min-h-14 rounded-full border-0 bg-hud-system text-hud-body font-semibold text-hud-on-warning disabled:opacity-50">
+          <button type="button" onClick={onConfirm} disabled={busy} className="min-h-14 rounded-hud-sm border-0 bg-[linear-gradient(180deg,#3d6aa8_0%,#335c94_100%)] text-hud-body font-semibold text-white disabled:opacity-50">
             {confirm}
           </button>
         </div>

@@ -36,15 +36,26 @@ describe("login page", () => {
     const onLogin = vi.fn();
     act(() => root.render(<Login onLogin={onLogin} live={live} />));
     expect(fields()).toEqual([DEMO_DRIVER!.username, DEMO_DRIVER!.password]);
-    expect(host.textContent).toContain(`tài khoản tài xế dùng thử ${DEMO_DRIVER!.username}`);
+    expect(host.querySelector('[role="note"]')).toBeNull(); // no note about it (13/10): the fields say it
     await act(async () => host.querySelector<HTMLButtonElement>("button[type=submit]")!.click());
     expect(onLogin).toHaveBeenCalledWith(expect.objectContaining({ username: DEMO_DRIVER!.username }));
   });
 
-  it("the Dashboard's login is filled in too, and says where it leads", () => {
+  it("a press on the username field lists the demo accounts; picking the engineer fills both fields", () => {
+    act(() => root.render(<Login onLogin={() => undefined} live={live} />));
+    const user = host.querySelector<HTMLInputElement>("input[autocomplete=username]")!;
+    expect(host.querySelector('[role="listbox"]')).toBeNull(); // closed until the field is pressed
+    act(() => user.focus());
+    const options = [...host.querySelectorAll('[role="option"]')];
+    expect(options.map((o) => o.textContent)).toEqual(["taixe_demoTài xế", "kysu_demoKỹ sư"]);
+    act(() => options[1].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true })));
+    expect(fields()).toEqual(["kysu_demo", "kysu12345"]);
+    expect(host.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it("the Dashboard's login is filled in too", () => {
     // 13/10: the demo driver on every login page, whichever way it was reached.
     act(() => root.render(<Login onLogin={() => undefined} />));
     expect(fields()).toEqual([DEMO_DRIVER!.username, DEMO_DRIVER!.password]);
-    expect(host.textContent).toContain("là vào trang của tài xế");
   });
 });

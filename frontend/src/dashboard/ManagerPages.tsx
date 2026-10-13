@@ -308,7 +308,7 @@ export function ReportReview({
               </ul>
             </section>
           )}
-          <ReviewNote key={key(current)} report={current} onSave={(note) => markReviewed(current, note)} />
+          <ReviewNote key={key(current)} report={current} readOnly={session.readOnly} onSave={(note) => markReviewed(current, note)} />
         </div>
       ) : (
         <section className="dg-card web-card">
@@ -321,7 +321,7 @@ export function ReportReview({
 
 /** M105: the manager's note for the driver ("Lưu ý" on the driver's trips) and "Đánh dấu đã xem". Once
  *  read, the note can still be changed; an emptied note is cleared. */
-function ReviewNote({ report, onSave }: { report: TripReport; onSave: (note: string) => Promise<void> }) {
+function ReviewNote({ report, onSave, readOnly = false }: { report: TripReport; onSave: (note: string) => Promise<void>; readOnly?: boolean }) {
   const saved = report.review_note ?? "";
   const [text, setText] = useState(saved);
   const [busy, setBusy] = useState(false);
@@ -335,7 +335,7 @@ function ReviewNote({ report, onSave }: { report: TripReport; onSave: (note: str
       <label>
         <b>Lưu ý cho tài xế</b>
         <span className="muted small">Tài xế thấy lưu ý này trong mục “Ca lái của tôi”. Không bắt buộc.</span>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={500} rows={3} placeholder="Ví dụ: Nghỉ giữa ca sau 2 giờ lái nhé." />
+        <textarea value={text} onChange={(e) => setText(e.target.value)} disabled={readOnly} maxLength={500} rows={3} placeholder="Ví dụ: Nghỉ giữa ca sau 2 giờ lái nhé." />
       </label>
       <div className="row-between">
         {report.reviewed_at ? (
@@ -343,12 +343,12 @@ function ReviewNote({ report, onSave }: { report: TripReport; onSave: (note: str
             <span className="muted">
               {report.reviewed_by} đã xem lúc {new Date(report.reviewed_at).toLocaleString("vi-VN")}
             </span>
-            <button type="button" className="primary" disabled={busy || text.trim() === saved.trim()} onClick={() => void save()}>
+            <button type="button" className="primary" disabled={readOnly || busy || text.trim() === saved.trim()} onClick={() => void save()}>
               Lưu lưu ý
             </button>
           </>
         ) : (
-          <button type="button" className="primary big" disabled={busy} onClick={() => void save()}>
+          <button type="button" className="primary big" disabled={readOnly || busy} onClick={() => void save()}>
             Đánh dấu đã xem
           </button>
         )}

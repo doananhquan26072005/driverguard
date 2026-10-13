@@ -89,7 +89,7 @@ export default function DriveScreen() {
                 onChange={(e) => setDraft(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && pair()}
                 maxLength={6}
-                className="min-h-14 flex-1 rounded-hud-sm border border-solid border-white/14 bg-white/4 px-4 text-hud-title font-semibold tracking-[0.3em] text-hud-ink uppercase"
+                className="min-h-14 flex-1 rounded-hud-sm border border-solid border-white/12 bg-[#0b0b0b] px-4 text-hud-title font-semibold tracking-[0.3em] text-hud-ink uppercase"
               />
               <button type="button" onClick={pair} disabled={!isDriveCode(draft.trim().toUpperCase())} className={`${btn} min-h-14 bg-[linear-gradient(180deg,#93c5fd_0%,#60a5fa_100%)] text-[#0b1b33] ring-transparent disabled:opacity-40`}>
                 Ghép

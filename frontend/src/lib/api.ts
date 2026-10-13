@@ -81,13 +81,13 @@ async function request<T>(path: string, init: RequestInit = {}, session?: Sessio
 }
 
 export async function login(username: string, password: string): Promise<Session> {
-  const t = await request<{ access_token: string; role: Role; expires_in: number }>("/auth/login", {
+  const t = await request<{ access_token: string; role: Role; expires_in: number; read_only?: boolean }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
   const partial = { token: t.access_token, username, role: t.role, driverId: null, expiresAt: 0 } as Session;
   const me = await request<{ driver_id: string | null }>("/auth/me", {}, partial);
-  return { ...partial, driverId: me.driver_id, expiresAt: Date.now() + t.expires_in * 1000 };
+  return { ...partial, driverId: me.driver_id, expiresAt: Date.now() + t.expires_in * 1000, readOnly: t.read_only ?? false };
 }
 
 export interface EventFilters {
@@ -222,10 +222,11 @@ export function postWebBatchOnLeave(s: Session, body: string): void {
  *  in place and stored, so every holder of it (the trip's agent, the dashboard) goes on with the new
  *  token. Throws ApiError: 401 when the token has already expired, 0 when the backend is not reached. */
 export async function refreshSession(s: Session, timeoutMs?: number): Promise<number> {
-  const t = await request<{ access_token: string; role: Role; expires_in: number }>("/auth/refresh", { method: "POST" }, s, timeoutMs);
+  const t = await request<{ access_token: string; role: Role; expires_in: number; read_only?: boolean }>("/auth/refresh", { method: "POST" }, s, timeoutMs);
   s.token = t.access_token;
   s.role = t.role;
   s.expiresAt = Date.now() + t.expires_in * 1000;
+  s.readOnly = t.read_only ?? false;
   if (loadSession()?.username === s.username) saveSession(s); // not for a session nobody stored (tests, guests)
   return t.expires_in;
 }
