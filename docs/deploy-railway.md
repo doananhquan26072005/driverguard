@@ -4,6 +4,8 @@ Railway chạy **một** image: [`Dockerfile.railway`](../Dockerfile.railway). I
 HUD và các file cho `#/live`. Server không chạy model nào: trình duyệt tải model rồi tự chạy. Hai Dockerfile còn lại
 không dùng trên Railway: `Dockerfile.edge` chỉ để đo thử kiểu Jetson (M42), còn `Dockerfile` là app mẫu của khoá học.
 
+**Địa chỉ đang chạy:** https://c4-app-135.up.railway.app (service `driveguard`, project `driveguard`; deploy tay 13/10/2026). Các domain trong `release-v1.md` – `release-v3.md` là của các bản cũ.
+
 ## Luồng tự động
 
 ```

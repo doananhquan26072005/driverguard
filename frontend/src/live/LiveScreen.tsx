@@ -321,7 +321,9 @@ export default function LiveScreen() {
   }
 
   const ready = agent != null;
-  const docked = wide && ready; // M103: the HUD, the camera and the driving panel side by side
+  // M103: the HUD, the camera and the driving panel side by side while driving; the trip summary is
+  // full screen again, as before (13/10: no camera column beside it).
+  const docked = wide && ready && !ended;
   return (
     // The same elements in both layouts (only their classes change): the <video> holds the camera
     // stream and must never be mounted again.
@@ -556,7 +558,6 @@ function SelfView({
       />
       {/* M104: the driver's face drawn over the picture, beside the HUD only (the simulation). */}
       {docked && agent && faceOn && <FaceOverlay agent={agent} />}
-      {docked && !agent && <p className="m-0 p-3 text-[13px] text-white/70">Đã kết thúc chuyến · camera tắt</p>}
       {agent && compact && (
         <button type="button" onClick={onStop} className="inline-flex min-h-10 items-center gap-1 rounded-full border-0 bg-transparent px-4 text-[13px] font-semibold text-white">
           <Square aria-hidden className="size-3.5" /> Dừng camera
