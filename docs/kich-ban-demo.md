@@ -1,5 +1,7 @@
 # Kịch bản video demo DriverGuard
 
+Bản rút gọn 3 phút, dựng từ chính các clip này: [kich-ban-demo-3-phut.md](kich-ban-demo-3-phut.md).
+
 Video quay màn hình, dài khoảng 4 phút 45 giây (giới hạn 5 phút của `presentation/README.md`). Gồm 5 phần: mở đầu
 và giới thiệu team, demo use case chính, kiến trúc, edge case, kết.
 

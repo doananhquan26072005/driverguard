@@ -1,26 +1,10 @@
 # Pitch Deck & Demo Materials
 
-## Files
+| Gì | Ở đâu |
+|---|---|
+| Pitch deck (PDF, 12 slide) | [docs/pitch-deck.pdf](../docs/pitch-deck.pdf) |
+| Video demo (YouTube, 2 phút 57 giây) | [docs/video-demo.md](../docs/video-demo.md) |
+| Script demo | [demo_script.md](demo_script.md) |
+| Nội dung và số liệu của pitch | [docs/noi-dung-pitch.md](../docs/noi-dung-pitch.md), [docs/pitch-deck-so-lieu.md](../docs/pitch-deck-so-lieu.md), hình ở [docs/pitch-deck-charts/](../docs/pitch-deck-charts/) |
 
-- `pitch_deck.pptx` — Slide thuyết trình Demo Day
-- `video_demo.mp4` — Video demo sản phẩm (tối đa 5 phút)
-
-## Pitch Deck Structure (10 slides)
-
-1. **Title** — Tên dự án + Team
-2. **Problem** — Vấn đề là gì? Có bao nhiêu người gặp?
-3. **Solution** — Giải pháp AI của bạn
-4. **Demo** — Screenshot/Video ngắn
-5. **Architecture** — System diagram đơn giản
-6. **Tech Stack** — Technologies used
-7. **Traction** — Metrics, users, feedback
-8. **Market** — Quy mô thị trường
-9. **Team** — Ai làm gì
-10. **Ask** — Bạn cần gì tiếp theo?
-
-## Video Demo Checklist
-
-- [ ] Giới thiệu problem (< 30 giây)
-- [ ] Demo live feature chính (2-3 phút)
-- [ ] Hiển thị kết quả AI (1 phút)
-- [ ] Tóm tắt impact (< 30 giây)
+`demo-clips/` (clip gốc, giọng đọc, project dựng video; khoảng 1,4 GB) chỉ nằm trên máy của team, không đưa vào git.

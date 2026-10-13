@@ -58,7 +58,7 @@ Thư mục [eval/results/](../eval/results/), mỗi file một lần đo:
 
 - Python: [tests/](../tests/) (`pytest`), gồm edge agent, backend và tools.
 - Frontend: vitest và Playwright ở [frontend/](../frontend/) (`frontend/e2e/`).
-- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml).
+- CI: [.github/workflows/ci.yml](../.github/workflows/ci.yml). Từ 12/10 GitHub không khởi động job (lỗi thanh toán của tổ chức); kết quả chạy local 13/10 ở [ci-local.md](ci-local.md).
 - Coverage: `make coverage` (pytest-cov); bảng theo gói ở [report.md mục 4.1](../eval/results/report.md#41-coverage-theo-dòng-lệnh).
 - Yêu cầu → khối → file test: [traceability.md](traceability.md).
 
