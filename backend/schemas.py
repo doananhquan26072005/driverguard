@@ -493,6 +493,7 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     role: Role
     expires_in: int
+    read_only: bool = False  # a demo account (DG_READ_ONLY_USERS): the pages show changes as locked
 
 
 class UserIn(StrictModel):

@@ -517,3 +517,14 @@ test("a signed-in driver: Xong on the summary opens the Dashboard, whose Bắt �
   await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
   await expect(page).toHaveURL(/#\/live$/); // `start` is gone: a reload does not start a trip by itself
 });
+
+test("the Dashboard login's try-out starts the camera at once, not the first page's login again", async ({ page }) => {
+  // 13/10: it was a plain link to #/live, which is a login page too.
+  await stubSimulator(page);
+  await obedientDriver(page);
+  await page.goto("/#/dashboard");
+  await page.getByRole("link", { name: "Dùng thử không lưu" }).click();
+  await expect.poll(async () => (await state(page)).connected, { timeout: READY_MS }).toBe(true);
+  await expect(page).toHaveURL(/#\/live$/);
+  await expect(page.getByRole("button", { name: "Đăng nhập", exact: true })).toHaveCount(0);
+});

@@ -230,6 +230,21 @@ def require_roles(*roles: str) -> Callable[..., dict[str, Any]]:
     return check
 
 
+def require_writer(*roles: str) -> Callable[..., dict[str, Any]]:
+    """FastAPI dependency factory: as require_roles, and 403 for a read-only account (DG_READ_ONLY_USERS,
+    the public demo's accounts: they see everything their role sees and change nothing)."""
+    allowed = require_roles(*roles)
+
+    # Depends() as the default, not in Annotated: annotations are strings here (from __future__) and
+    # `allowed` is local, so FastAPI could not resolve it from the module and took `user` for a query.
+    def check(request: Request, user: dict[str, Any] = Depends(allowed)) -> dict[str, Any]:
+        if request.app.state.settings.is_read_only(user["sub"]):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "demo account: read only")
+        return user
+
+    return check
+
+
 def current_device(conn: Conn, x_device_key: Annotated[str | None, Header()] = None) -> dict[str, Any]:
     """FastAPI dependency: the device that owns the X-Device-Key header; 401 when missing or unknown."""
     if not x_device_key:
@@ -348,7 +363,12 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         if row is None or not ok:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "wrong username or password")
         token = create_token(secret, row["username"], row["role"], row["driver_id"], settings.token_ttl_min)
-        return TokenOut(access_token=token, role=row["role"], expires_in=settings.token_ttl_min * 60)
+        return TokenOut(
+            access_token=token,
+            role=row["role"],
+            expires_in=settings.token_ttl_min * 60,
+            read_only=settings.is_read_only(row["username"]),
+        )
 
     @app.post("/auth/refresh", response_model=TokenOut)
     def refresh(user: Annotated[dict[str, Any], Depends(current_user)], conn: Conn) -> TokenOut:
@@ -360,7 +380,12 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         if row is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "account no longer exists")
         token = create_token(secret, row["username"], row["role"], row["driver_id"], settings.token_ttl_min)
-        return TokenOut(access_token=token, role=row["role"], expires_in=settings.token_ttl_min * 60)
+        return TokenOut(
+            access_token=token,
+            role=row["role"],
+            expires_in=settings.token_ttl_min * 60,
+            read_only=settings.is_read_only(row["username"]),
+        )
 
     @app.get("/auth/me", response_model=UserOut)
     def me(user: Annotated[dict[str, Any], Depends(current_user)]) -> UserOut:
@@ -560,7 +585,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     def review_trip_report(
         device_id: Annotated[str, Path(pattern=ID_PATTERN)],
         trip_id: Annotated[str, Path(pattern=ID_PATTERN)],
-        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))],
+        user: Annotated[dict[str, Any], Depends(require_writer("admin", "engineer", "manager"))],
         conn: Conn,
         body: TripReviewIn | None = None,
     ) -> dict[str, Any]:
@@ -584,7 +609,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     @app.put("/api/v1/thresholds", response_model=ThresholdsOut)
     def put_thresholds(
         body: ThresholdsIn,
-        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer"))],
+        user: Annotated[dict[str, Any], Depends(require_writer("admin", "engineer"))],
         conn: Conn,
     ) -> ThresholdsOut:
         """Store a new version: the previous overrides updated with the given keys."""
@@ -619,7 +644,7 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
     @app.post("/api/v1/thresholds/rollout", response_model=ThresholdsOut)
     def rollout_thresholds(
         body: RolloutIn,
-        user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer"))],
+        user: Annotated[dict[str, Any], Depends(require_writer("admin", "engineer"))],
         conn: Conn,
     ) -> ThresholdsOut:
         """Give a stored version to the whole fleet: a trial that went well, or an older version (roll

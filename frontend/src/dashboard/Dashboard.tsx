@@ -155,6 +155,8 @@ export default function Dashboard() {
             {ROLES[session.role]}
             {session.driverId ? ` · mã ${session.driverId}` : ""}
           </span>
+          {/* 13/10: a demo account (DG_READ_ONLY_USERS) looks at everything and changes nothing */}
+          {session.readOnly && <span className="side-readonly">Tài khoản dùng thử · chỉ xem</span>}
           <button type="button" className="link" onClick={logout}>
             <LogOut aria-hidden size={14} /> Đăng xuất
           </button>

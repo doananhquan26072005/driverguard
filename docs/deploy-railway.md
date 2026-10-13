@@ -65,19 +65,24 @@ Vì vậy [`.railwayignore`](../.railwayignore) tự liệt kê mọi thứ khô
 
 ## Tài khoản dùng thử (một lần cho mỗi database)
 
-Trang đầu (`#/live`) điền sẵn tài khoản tài xế `taixe_demo` / `demo12345` (`frontend/src/lib/demo.ts`; đổi bằng
-`VITE_DEMO_USERNAME` / `VITE_DEMO_PASSWORD` lúc build, `VITE_DEMO_USERNAME=""` để tắt), nên tài khoản này phải có
-trong database của Railway. Database nằm trên volume `/app/data`: tạo một lần, các lần deploy sau vẫn còn.
+Mọi trang đăng nhập điền sẵn tài khoản tài xế `taixe_demo` / `demo12345`; bấm vào ô "Tên đăng nhập" thì chọn được
+thêm tài khoản kỹ sư `kysu_demo` / `kysu12345` (`frontend/src/lib/demo.ts`). Đổi lúc build bằng `VITE_DEMO_USERNAME`
+/ `VITE_DEMO_PASSWORD` (`VITE_DEMO_USERNAME=""` tắt cả hai) và `VITE_DEMO_ENGINEER_USERNAME` /
+`VITE_DEMO_ENGINEER_PASSWORD` (`VITE_DEMO_ENGINEER_USERNAME=""` chỉ còn tài xế). Hai tài khoản phải có trong database
+của Railway, đúng mật khẩu đó. Database nằm trên volume `/app/data`: tạo một lần, các lần deploy sau vẫn còn.
 
 ```bash
 railway ssh --service driveguard
 python -m backend.manage create-user taixe_demo --role driver --driver-id drv-demo   # hỏi mật khẩu: demo12345
-python -m backend.manage create-user kysu_demo --role engineer                       # mật khẩu riêng, không hiện trên trang
+python -m backend.manage create-user kysu_demo --role engineer                       # hỏi mật khẩu: kysu12345
 exit
 ```
 
-Ai mở trang cũng thấy mật khẩu của `taixe_demo`: tài khoản này chỉ xem được chuyến của chính nó. Không điền sẵn
-tài khoản kỹ sư hay quản lý.
+Ai mở trang cũng thấy mật khẩu của cả hai tài khoản. `taixe_demo` chỉ xem được chuyến của chính nó. `kysu_demo` là
+**tài khoản chỉ xem**: backend từ chối mọi thay đổi của nó (sửa ngưỡng, áp ngưỡng cho đội xe, đánh dấu đã xem / ghi
+lưu ý cho tài xế: 403 "demo account: read only"), giao diện khoá các nút đó. Danh sách tài khoản chỉ xem là biến
+`DG_READ_ONLY_USERS` của backend (mặc định `kysu_demo`, cách nhau bằng dấu phẩy; không cần đặt trên Railway).
+Không điền sẵn tài khoản quản lý hay quản trị.
 
 ## Kiểm tra sau khi deploy
 

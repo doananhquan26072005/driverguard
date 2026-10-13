@@ -74,7 +74,7 @@ export default function FaceOverlay({ agent }: { agent: LiveAgent }) {
       ctx.lineWidth = 2;
       ctx.strokeRect(left, top, Math.abs(bx - ax), Math.abs(by - ay));
       ctx.fillStyle = color;
-      ctx.font = "600 13px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.font = "400 13px ui-monospace, SFMono-Regular, Menlo, monospace"; // not bold (13/10)
       ctx.textBaseline = "bottom";
       const m = face.measures;
       ctx.fillText(angleText(m.yaw, m.pitch, m.roll), left, Math.max(14, top - 4));

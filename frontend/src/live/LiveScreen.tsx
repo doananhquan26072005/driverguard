@@ -198,7 +198,7 @@ function SidePanel({ agent }: { agent: LiveAgent }) {
     return () => clearInterval(id);
   }, [agent]);
   return (
-    <section aria-label="Điều khiển xe" className="grid shrink-0 gap-3 rounded-hud-sm border border-solid border-white/10 bg-white/[0.03] p-3">
+    <section aria-label="Điều khiển xe" className="grid shrink-0 gap-3 rounded-hud-sm border border-solid border-white/10 bg-transparent p-3">
       <header className="flex items-center gap-2 px-1">
         <Gauge aria-hidden className="size-5 text-hud-system" />
         <h2 className="m-0 text-[19px] font-semibold">Điều khiển xe</h2>
@@ -305,12 +305,15 @@ export default function LiveScreen() {
     if (session && !guest) window.location.hash = "#/dashboard";
   }
 
-  // #/live?start (the Dashboard's "Bắt đầu ca lái"): a driver who is logged in starts at once, without
-  // the first page's button. The address loses `start`, so a reload does not start a trip by itself.
+  // #/live?start (the Dashboard's "Bắt đầu ca lái mới"): a driver who is logged in starts at once,
+  // without the first page's button. #/live?guest (the Dashboard login's "Dùng thử không lưu", 13/10):
+  // the try-out starts at once. The address loses the word, so a reload does not start a trip by itself.
   useEffect(() => {
-    if (!new URLSearchParams(window.location.hash.split("?")[1] ?? "").has("start")) return;
+    const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+    if (!q.has("start") && !q.has("guest")) return;
     window.history.replaceState(null, "", "#/live");
-    if (session?.role === "driver") void start(session);
+    if (q.has("guest")) void start(null);
+    else if (session?.role === "driver") void start(session);
     // once, on arrival: the address is read before anything else changes it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -385,7 +388,7 @@ export default function LiveScreen() {
             <span className="brand-mark" aria-hidden>
               <ShieldCheck size={20} strokeWidth={2.25} />
             </span>
-            <h1>DriverGuard</h1>
+            <h1 className="brand-name">DriverGuard</h1>
           </header>
           <main className="guide-main live-loading">
             <section className="live-panel dg-card">

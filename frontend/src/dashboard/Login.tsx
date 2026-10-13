@@ -6,7 +6,7 @@
 import { type FormEvent, type ReactNode, useState } from "react";
 import { ArrowRight, BookOpen, Camera, LogOut, ShieldCheck } from "lucide-react";
 import { ApiError, login } from "../lib/api";
-import { DEMO_DRIVER } from "../lib/demo";
+import { DEMO_ACCOUNTS, DEMO_DRIVER, type DemoAccount } from "../lib/demo";
 import type { Session } from "../lib/types";
 
 /** What the first page (#/live) adds to the login page. */
@@ -27,6 +27,14 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 13/10: a press on the username field lists the demo accounts (driver, engineer); one tap fills both fields.
+  const [picking, setPicking] = useState(false);
+  const pick = (a: DemoAccount) => {
+    setUsername(a.username);
+    setPassword(a.password);
+    setPicking(false);
+  };
+  const picked = DEMO_ACCOUNTS.find((a) => a.username === username.trim());
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -52,10 +60,10 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
           <ArrowRight aria-hidden size={20} />
         </button>
       ) : (
-        <a className="dg-card login-live" href="#/live">
+        // Straight into the try-out (#/live?guest), not the first page's login again (13/10).
+        <a className="dg-card login-live" href="#/live?guest">
           <span>
-            <b>Chạy thử bằng camera trên máy này</b>
-            <span className="muted">Không cần tài khoản, không gửi gì đi</span>
+            <b>Dùng thử không lưu</b>
           </span>
           <ArrowRight aria-hidden size={20} />
         </a>
@@ -74,7 +82,7 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
         </div>
         <div className="login-pitch">
           <h1>Giúp mỗi chuyến đi của bạn an toàn hơn.</h1>
-          <p>Thiết bị trong xe nhận biết buồn ngủ và mất tập trung ngay trên xe.</p>
+          <p>Thiết bị nhận biết buồn ngủ và mất tập trung ngay trên xe.</p>
         </div>
         {/* 13/10: a small link at the bottom, not a card (the user's choice). */}
         <a className="login-guide" href="#/guide" title="Các màn hình bạn sẽ gặp và việc nên làm. Không cần tài khoản.">
@@ -108,17 +116,40 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
         ) : (
           <form className="login" onSubmit={submit}>
             <div>
+              {/* 13/10: no note about the filled-in demo account (the user's choice); the fields say it. */}
               <h2>Đăng nhập</h2>
-              {demo && (
-                <p className="form-note login-demo" role="note">
-                  Đã điền sẵn tài khoản tài xế dùng thử <b>{demo.username}</b>: bấm <b>Đăng nhập</b> là vào{" "}
-                  {live ? "màn hình giám sát" : "trang của tài xế"}.
-                </p>
-              )}
             </div>
-            <label>
+            <label className="login-user">
               Tên đăng nhập
-              <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onFocus={() => setPicking(DEMO_ACCOUNTS.length > 1)}
+                onBlur={() => setPicking(false)}
+                autoComplete="username"
+                aria-controls={picking ? "demo-accounts" : undefined}
+                aria-expanded={DEMO_ACCOUNTS.length > 1 ? picking : undefined}
+                required
+              />
+              {picking && (
+                <ul id="demo-accounts" role="listbox" aria-label="Tài khoản dùng thử" className="login-accounts">
+                  {DEMO_ACCOUNTS.map((a) => (
+                    <li
+                      key={a.username}
+                      role="option"
+                      aria-selected={picked?.username === a.username}
+                      // mousedown, not click: the field's blur would close the list before the click lands
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pick(a);
+                      }}
+                    >
+                      <span>{a.username}</span>
+                      <span className="muted">{a.role}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </label>
             <label>
               Mật khẩu
