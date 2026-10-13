@@ -129,9 +129,11 @@ export function getTripReports(s: Session, range: RangeKey, unreviewedOnly = fal
   );
 }
 
-export function reviewTripReport(s: Session, r: Pick<TripReport, "device_id" | "trip_id">): Promise<TripReport> {
+/** Marks a trip report read; `note` (M105) is the reviewer's "Lưu ý" for the driver ("" clears it). */
+export function reviewTripReport(s: Session, r: Pick<TripReport, "device_id" | "trip_id">, note?: string): Promise<TripReport> {
   const path = `/api/v1/trip-reports/${encodeURIComponent(r.device_id)}/${encodeURIComponent(r.trip_id)}/review`;
-  return request(path, { method: "POST" }, s);
+  const init: RequestInit = note === undefined ? { method: "POST" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }) };
+  return request(path, init, s);
 }
 
 // Fleet overview (M33): every vehicle, online or quiet, with its alerts of one local day.

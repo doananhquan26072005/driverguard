@@ -34,6 +34,11 @@ export function RatingChip({ rating }: { rating: TripRating }) {
 }
 
 /** "quanly đã xem lúc 10:42" / "Chưa có ai xem": the driver knows the report reached a manager. */
+/** The reviewer's note for the driver (M105), or null when there is none. */
+export function reviewNote(r: TripReport): string | null {
+  return r.review_note?.trim() || null;
+}
+
 export function reviewedText(r: TripReport): string {
   return r.reviewed_at ? `${r.reviewed_by ?? "Quản lý"} đã xem lúc ${formatDateTime(r.reviewed_at)}` : "Quản lý chưa xem";
 }

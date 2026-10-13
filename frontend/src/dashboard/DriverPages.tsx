@@ -9,7 +9,7 @@ import { LEVELS, reasonText } from "../lib/labels";
 import type { EventRecord, Session, TripReport } from "../lib/types";
 import { formatDuration, suggestionText } from "../hud/tripModel";
 import { driverMonth, newestFirst, tripFromHash, tripHref } from "./driverModel";
-import { RatingCard, RatingChip, Tile, TripBars, dayText, hm, reviewedText, span } from "./TripParts";
+import { RatingCard, RatingChip, Tile, TripBars, dayText, hm, reviewNote, reviewedText, span } from "./TripParts";
 
 function useReports(session: Session, refreshKey: number) {
   const [reports, setReports] = useState<TripReport[] | null>(null);
@@ -100,7 +100,7 @@ function TripTable({ reports, title, more }: { reports: TripReport[]; title: str
               <th className="num">Thời gian lái</th>
               <th>Đánh giá</th>
               <th className="num">Lần nhắc</th>
-              <th>Quản lý đã xem?</th>
+              <th>Lưu ý</th>
               <th />
             </tr>
           </thead>
@@ -114,7 +114,10 @@ function TripTable({ reports, title, more }: { reports: TripReport[]; title: str
                   <RatingChip rating={r.rating} />
                 </td>
                 <td className="num">{Object.values(r.summary.alerts_by_level).reduce((a, b) => a + (b ?? 0), 0)}</td>
-                <td className="muted">{r.reviewed_at ? "Đã xem" : "Chưa xem"}</td>
+                {/* M105: what the manager wrote for this trip; nothing written: a dash */}
+                <td className={reviewNote(r) ? "trip-note" : "muted"} title={reviewNote(r) ?? undefined}>
+                  {reviewNote(r) ?? "–"}
+                </td>
                 <td>
                   <a href={tripHref("trips", r)}>Xem</a>
                 </td>
@@ -193,6 +196,13 @@ function DriverTrip({ session, report }: { session: Session; report: TripReport 
           )}
         </section>
       </div>
+      {reviewNote(report) && (
+        <section className="dg-card web-card note-card" aria-label="Lưu ý của quản lý">
+          <h2>Lưu ý của quản lý</h2>
+          <p className="note-text">{reviewNote(report)}</p>
+          <p className="muted small">{reviewedText(report)}</p>
+        </section>
+      )}
       {s.suggestions.length > 0 && (
         <section className="dg-card web-card">
           <h2>Gợi ý cho lần sau</h2>

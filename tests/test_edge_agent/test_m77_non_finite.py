@@ -159,7 +159,16 @@ def test_web_control_without_the_guard_the_same_sequence_raises_nothing(monkeypa
 def test_web_a_nan_face_is_a_frame_without_a_face():
     agent = WebAgent("web-an", "trip-web-1", scenario="highway_night")
     state = web_frame(agent, 0.0, broken(synthetic_face()))
-    assert state["measures"] == {"face": False, "ear": None, "mar": None, "yaw": None, "pitch": None, "phone": None}
+    assert state["measures"] == {
+        "face": False,
+        "ear": None,
+        "mar": None,
+        "yaw": None,
+        "pitch": None,
+        "roll": None,
+        "phone": None,
+        "driver": None,
+    }
     assert "error" not in state  # not a failed frame: it is measured as "no face"
 
 

@@ -4,12 +4,14 @@
 // tools/drive_sim.py) and its speed / turn signal go to the backend under the pairing code #/live
 // shows; #/live reads them. Numbers only. Closing this page while driving reads as a lost vehicle
 // signal on #/live (M26).
-import { ArrowBigLeft, ArrowBigRight, ChevronDown, ChevronUp, Gauge, OctagonX, Unplug } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Gauge, Unplug } from "lucide-react";
+import { useEffect, useState } from "react";
 import { API_URL } from "../lib/api";
-import { type CarState, command, DRIVE_KEYS, DRIVE_SIM, type DriveCommand, isDriveCode, PARKED, step } from "./sim";
+import { DRIVE_SIM, isDriveCode } from "./sim";
 import { DEFAULTS } from "../lib/defaults";
 import { steadyInterval } from "../lib/ticker";
+import DrivePanel from "./DrivePanel";
+import { useCar } from "./useCar";
 
 // context.vehicle_send_s: below context.vehicle_signal_stale_s, after which #/live treats a reading as lost.
 const SEND_MS = DEFAULTS.vehicle.send_s * 1000;
@@ -24,26 +26,9 @@ type Link = "idle" | "ok" | "error";
 export default function DriveScreen() {
   const [code, setCode] = useState(codeFromHash);
   const [draft, setDraft] = useState(code);
-  const [car, setCar] = useState(PARKED);
+  const { car, carRef, act } = useCar({ keys: true });
   const [link, setLink] = useState<Link>("idle");
-  // The car itself lives in the ref: ticks and sends read it even while the tab is hidden and React
-  // has not rendered; the state only shows it.
-  const carRef = useRef(PARKED);
-  const update = useCallback((f: (c: CarState) => CarState) => {
-    carRef.current = f(carRef.current);
-    setCar(carRef.current);
-  }, []);
   const paired = isDriveCode(code);
-
-  // Physics at tick_hz, stepped by the time that really passed: a late tick does not slow the car.
-  useEffect(() => {
-    let last = performance.now();
-    return steadyInterval(() => {
-      const now = performance.now();
-      update((c) => step(c, (now - last) / 1000));
-      last = now;
-    }, 1000 / DRIVE_SIM.tickHz);
-  }, [update]);
 
   // Send the current reading.
   useEffect(() => {
@@ -67,21 +52,7 @@ export default function DriveScreen() {
         busy = false;
       }
     }, SEND_MS);
-  }, [code, paired]);
-
-  const act = useCallback((cmd: DriveCommand) => update((c) => command(c, cmd)), [update]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-      const cmd = DRIVE_KEYS[e.key];
-      if (!cmd) return;
-      e.preventDefault();
-      act(cmd);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [act]);
+  }, [code, paired, carRef]);
 
   const pair = () => {
     const c = draft.trim().toUpperCase();
@@ -127,52 +98,23 @@ export default function DriveScreen() {
           </section>
         ) : (
           <>
-            <section aria-label="Tốc độ" className="grid justify-items-center gap-1 dg-card p-5">
-              <div className="flex items-center gap-6">
-                <ArrowBigLeft aria-label={`Xi nhan trái: ${car.turn === "left" ? "bật" : "tắt"}`} role="img" className={`size-14 ${car.turn === "left" ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3 opacity-40"}`} />
-                <span className="text-[clamp(56px,14vw,96px)] leading-none font-semibold tracking-[-0.03em] tabular-nums">{Math.round(car.speedKmh)}</span>
-                <ArrowBigRight aria-label={`Xi nhan phải: ${car.turn === "right" ? "bật" : "tắt"}`} role="img" className={`size-14 ${car.turn === "right" ? "fill-hud-turn text-hud-turn animate-hud-blink motion-reduce:animate-none" : "text-hud-ink-3 opacity-40"}`} />
-              </div>
-              <span className="text-hud-body text-hud-ink-2">km/h · mục tiêu {car.targetKmh}</span>
-              <span role="status" className={`text-hud-label ${link === "error" ? "text-hud-caution" : "text-hud-ink-3"}`}>
-                {link === "error" ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Unplug aria-hidden className="size-4" /> Không gửi được tới máy chủ, đang thử lại
-                  </span>
-                ) : link === "ok" ? (
-                  "Đang gửi cho trang giám sát"
-                ) : (
-                  "Đang kết nối…"
-                )}
-              </span>
-            </section>
-
-            <section aria-label="Tốc độ" className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => act("accelerate")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
-                <ChevronUp aria-hidden className="size-7" /> Tăng tốc
-              </button>
-              <button type="button" onClick={() => act("decelerate")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
-                <ChevronDown aria-hidden className="size-7" /> Giảm tốc
-              </button>
-              <button type="button" onClick={() => act("cruise")} className={`${btn} dg-tile text-hud-ink ring-transparent`}>
-                Chạy đều {DRIVE_SIM.cruiseKmh}
-              </button>
-              <button type="button" onClick={() => act("stop")} className={`${btn} bg-hud-danger text-white ring-transparent`}>
-                <OctagonX aria-hidden className="size-7" /> Dừng xe
-              </button>
-            </section>
-
-            <section aria-label="Xi nhan" className="grid grid-cols-3 gap-3">
-              <button type="button" aria-pressed={car.turn === "left"} onClick={() => act("left")} className={`${btn} ${car.turn === "left" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "dg-tile text-hud-ink ring-transparent"}`}>
-                <ArrowBigLeft aria-hidden className="size-7" /> Trái
-              </button>
-              <button type="button" onClick={() => act("signal_off")} className={`${btn} dg-tile text-hud-ink-2 ring-transparent`}>
-                Tắt
-              </button>
-              <button type="button" aria-pressed={car.turn === "right"} onClick={() => act("right")} className={`${btn} ${car.turn === "right" ? "bg-hud-turn text-hud-on-warning ring-transparent" : "dg-tile text-hud-ink ring-transparent"}`}>
-                Phải <ArrowBigRight aria-hidden className="size-7" />
-              </button>
-            </section>
+            <DrivePanel
+              car={car}
+              act={act}
+              status={
+                <span role="status" className={`text-hud-label ${link === "error" ? "text-hud-caution" : "text-hud-ink-3"}`}>
+                  {link === "error" ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Unplug aria-hidden className="size-4" /> Không gửi được tới máy chủ, đang thử lại
+                    </span>
+                  ) : link === "ok" ? (
+                    "Đang gửi cho trang giám sát"
+                  ) : (
+                    "Đang kết nối…"
+                  )}
+                </span>
+              }
+            />
 
             <p className="m-0 text-hud-label text-hud-ink-3">
               Phím: W / ↑ tăng, S / ↓ giảm, Space dừng, C chạy đều {DRIVE_SIM.cruiseKmh}, A / ← trái, D / → phải, X tắt

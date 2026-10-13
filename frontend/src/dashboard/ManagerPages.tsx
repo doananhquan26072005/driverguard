@@ -232,9 +232,9 @@ export function ReportReview({
   const shown = onlyNew ? unread : (reports ?? []);
   const current = (reports ?? []).find((r) => key(r) === picked) ?? shown[0] ?? null;
 
-  async function markReviewed(r: TripReport) {
+  async function markReviewed(r: TripReport, note: string) {
     try {
-      const updated = await reviewTripReport(session, r);
+      const updated = await reviewTripReport(session, r, note);
       setReports((list) => (list ?? []).map((x) => (key(x) === key(updated) ? updated : x)));
     } catch (e) {
       setError((e as Error).message);
@@ -308,18 +308,7 @@ export function ReportReview({
               </ul>
             </section>
           )}
-          <div className="row-between">
-            {current.reviewed_at ? (
-              <span className="muted">
-                {current.reviewed_by} đã xem lúc {new Date(current.reviewed_at).toLocaleString("vi-VN")}
-              </span>
-            ) : (
-              <button type="button" className="primary big" onClick={() => void markReviewed(current)}>
-                Đánh dấu đã xem
-              </button>
-            )}
-            <span className="muted small">Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế.</span>
-          </div>
+          <ReviewNote key={key(current)} report={current} onSave={(note) => markReviewed(current, note)} />
         </div>
       ) : (
         <section className="dg-card web-card">
@@ -327,5 +316,44 @@ export function ReportReview({
         </section>
       )}
     </div>
+  );
+}
+
+/** M105: the manager's note for the driver ("Lưu ý" on the driver's trips) and "Đánh dấu đã xem". Once
+ *  read, the note can still be changed; an emptied note is cleared. */
+function ReviewNote({ report, onSave }: { report: TripReport; onSave: (note: string) => Promise<void> }) {
+  const saved = report.review_note ?? "";
+  const [text, setText] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    await onSave(text.trim());
+    setBusy(false);
+  };
+  return (
+    <section className="dg-card web-card review-note" aria-label="Lưu ý cho tài xế">
+      <label>
+        <b>Lưu ý cho tài xế</b>
+        <span className="muted small">Tài xế thấy lưu ý này trong mục “Ca lái của tôi”. Không bắt buộc.</span>
+        <textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={500} rows={3} placeholder="Ví dụ: Nghỉ giữa ca sau 2 giờ lái nhé." />
+      </label>
+      <div className="row-between">
+        {report.reviewed_at ? (
+          <>
+            <span className="muted">
+              {report.reviewed_by} đã xem lúc {new Date(report.reviewed_at).toLocaleString("vi-VN")}
+            </span>
+            <button type="button" className="primary" disabled={busy || text.trim() === saved.trim()} onClick={() => void save()}>
+              Lưu lưu ý
+            </button>
+          </>
+        ) : (
+          <button type="button" className="primary big" disabled={busy} onClick={() => void save()}>
+            Đánh dấu đã xem
+          </button>
+        )}
+      </div>
+      <span className="muted small">Cảnh báo có thể sai: không dùng một cảnh báo đơn lẻ để kỷ luật tài xế.</span>
+    </section>
   );
 }
