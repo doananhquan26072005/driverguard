@@ -126,6 +126,8 @@ test("guest: agrees, enrolls while parked, eyes shut while driving is L3, the tr
   await page.getByRole("dialog").getByRole("button", { name: "Kết thúc", exact: true }).click();
   await expect(page.getByText(/^Tổng kết ca lái · /)).toBeVisible();
   await expect(page.getByText("Chế độ dùng thử: bản tổng kết không được gửi đi.")).toBeVisible();
+  // The summary is full screen: no camera / driving column beside it (13/10).
+  await expect(page.getByRole("complementary", { name: "Camera và điều khiển xe" })).toHaveCount(0);
   // "Xong" goes back to the first page (13/10: it did nothing once the trip had ended).
   await page.getByRole("button", { name: "Xong" }).click();
   await expect(page.getByRole("button", { name: "Dùng thử không lưu" })).toBeVisible();

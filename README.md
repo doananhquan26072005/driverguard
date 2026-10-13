@@ -8,7 +8,7 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 | | |
 |---|---|
 | **Phiên bản** | v2.2 (deploy 02/10/2026, các mốc M0–M31) |
-| **Live URL** | Ba service đang chạy song song trên Railway (kiểm 09/10/2026 bằng `/openapi.json`): v3 (deploy M66, 08/10) ở https://driveguard-production-5093.up.railway.app; v2.2 ở https://driveguard-v2-production.up.railway.app; v1.1 ở https://driveguard-production-6b83.up.railway.app. Các liên kết trong README này trỏ tới bản v2.2: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs` |
+| **Live URL** | **https://c4-app-135.up.railway.app** (bản mới nhất, deploy 13/10/2026 từ `main`, gồm tới M105; tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập). Các bản cũ vẫn chạy song song trên Railway: v3 ở https://driveguard-production-5093.up.railway.app; v2.2 ở https://driveguard-v2-production.up.railway.app; v1.1 ở https://driveguard-production-6b83.up.railway.app. Các liên kết trong README này trỏ tới bản mới nhất: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs` |
 | **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
@@ -141,7 +141,7 @@ DriverGuard **không dùng LLM**: phần LangGraph / OpenAI trong `src/` là cod
 **Cần:** Python ≥ 3.11 (khuyên 3.12), Node.js ≥ 20.19, [uv](https://docs.astral.sh/uv/) (hoặc pip),
 một webcam. Lệnh dưới đây cho macOS / Linux; Windows (PowerShell) xem [HowToUse.md mục 6–7](HowToUse.md#6-cài-đặt).
 
-Chỉ muốn xem thử: mở [Live URL](https://driveguard-v2-production.up.railway.app/#/live), không cần cài gì.
+Chỉ muốn xem thử: mở [Live URL](https://c4-app-135.up.railway.app/#/live), không cần cài gì.
 
 ### 1. Cài môi trường và model
 
@@ -253,7 +253,7 @@ Tùy chọn dòng lệnh của edge agent (`--scenario`, `--sim-url`, `--hud-por
 
 ## API và ví dụ gọi
 
-Swagger đầy đủ: http://localhost:8100/docs (local) hoặc https://driveguard-v2-production.up.railway.app/docs.
+Swagger đầy đủ: http://localhost:8100/docs (local) hoặc https://c4-app-135.up.railway.app/docs.
 
 | Endpoint | Ai gọi | Mục đích |
 |---|---|---|
@@ -381,7 +381,7 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 2 | README | File này (ảnh ở [docs/screenshots/](docs/screenshots/)) + [HowToUse.md](HowToUse.md) | ✅ |
 | 3 | Architecture diagram | [docs/architecture.md](docs/architecture.md); hình chi tiết ở [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
-| 5 | Live URL | https://driveguard-v2-production.up.railway.app | ✅ |
+| 5 | Live URL | https://c4-app-135.up.railway.app | ✅ |
 | 6 | Video demo | [docs/video-demo.md](docs/video-demo.md) (link YouTube) | ✅ |
 | 7 | Pitch deck | `docs/pitch-deck.pdf` | Chưa có |
 | 8 | Development journal | [docs/journal.md](docs/journal.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
