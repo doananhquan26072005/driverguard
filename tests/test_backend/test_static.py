@@ -7,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.static import IMMUTABLE, ISOLATION_HEADERS, REVALIDATE, CachedStaticFiles, precompress
+from backend.static import IMMUTABLE, ISOLATION_HEADERS, REVALIDATE, CachedStaticFiles, add_short_links, precompress
 
 JS = b"export const answer = 42;\n" * 200
 WASM = bytes(range(256)) * 64  # compressible
@@ -37,6 +37,7 @@ def client(site):
     def ping() -> dict[str, bool]:
         return {"ok": True}
 
+    add_short_links(app)
     app.mount("/", CachedStaticFiles(directory=site, html=True), name="web")
     return TestClient(app)
 
@@ -158,3 +159,10 @@ def test_the_page_names_no_cdn():
         if host in p.read_text(encoding="utf-8")
     ]
     assert hits == []
+
+
+def test_privacy_path_opens_the_privacy_page(client):
+    """M106: /privacy is a real address, not a 404: it leads to the page #/privacy of the web app."""
+    r = client.get("/privacy", follow_redirects=False)
+    assert r.status_code == 307 and r.headers["location"] == "/#/privacy"
+    assert client.get("/privacy").status_code == 200  # followed: index.html
