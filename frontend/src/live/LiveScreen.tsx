@@ -5,16 +5,23 @@
 // M72: nothing here stops the monitoring with one touch. "Dừng camera" asks the HUD's "Kết thúc
 // chuyến?" and ends the trip like that button; leaving the page with the trip running ends it too
 // (summary and "ended" sent) and says aloud that the driver is no longer watched.
-import { useEffect, useRef, useState } from "react";
-import { Check, Gauge, Info, LoaderCircle, Minus, Plus, ShieldCheck, Square } from "lucide-react";
+// M103: on a landscape screen the HUD sits scaled on the left and a column on the right holds the
+// driver's camera and the driving panel (speed, turn signals), so the whole simulation is one page.
+// Phones and upright screens keep the HUD full screen with the small floating camera.
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Check, Gauge, Info, LoaderCircle, Minus, Plus, ScanFace, ShieldCheck, Square } from "lucide-react";
 import { play, speak, systemSound } from "../hud/chime";
 import HudScreen from "../hud/HudScreen";
+import { STAGE_H, STAGE_W, StageFrame, stageLayout } from "../hud/HudStage";
+import DrivePanel from "../drive/DrivePanel";
+import { useCar } from "../drive/useCar";
+import FaceOverlay from "./FaceOverlay";
 import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "../hud/voice";
 import Login from "../dashboard/Login";
 import { loadSession, saveSession } from "../lib/api";
 import { perfDetail, perfLines, recoveryText, startupText } from "../lib/labels";
 import type { HudEnrollment, Session } from "../lib/types";
-import { LiveAgent, STEPS, type LiveStats, type Step } from "./agent";
+import { LiveAgent, STEPS, type LiveStats, type Step, type VehicleSource } from "./agent";
 import { HUD_DEFAULTS } from "../lib/defaults";
 import { SELF_VIEW_WIDTHS, clampCorner, readPlace, resized, writePlace, type SelfViewPlace } from "./selfView";
 
@@ -46,6 +53,24 @@ function writeTech(on: boolean): void {
   }
 }
 
+const FACE_KEY = "driverguard.live.face"; // M104: the face drawing on the camera card, on unless switched off
+
+function readFace(): boolean {
+  try {
+    return localStorage.getItem(FACE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function writeFace(on: boolean): void {
+  try {
+    localStorage.setItem(FACE_KEY, on ? "1" : "0");
+  } catch {
+    // storage unavailable: the choice just won't be remembered
+  }
+}
+
 // Self-view line: how long enrollment took and how many steps were redone (to judge it in a test).
 function enrollText(e: HudEnrollment): string {
   const redo = e.attempts ? ` · làm lại ${e.attempts}` : "";
@@ -54,6 +79,152 @@ function enrollText(e: HudEnrollment): string {
   if (e.status === "waiting") return "Chưa làm quen (xe đang chạy)";
   const step = ["look_camera", "look_road", "close_eyes"].indexOf(e.status) + 1;
   return `Làm quen bước ${step}/3 · ${Math.round(e.progress * 100)}%${redo}`;
+}
+
+/** A landscape screen (the HUD's 1280 x 800 stage): room for the column beside the HUD. */
+function useWide(): boolean {
+  const read = () => typeof window !== "undefined" && stageLayout(window.innerWidth, window.innerHeight)?.shape === "landscape";
+  const [wide, setWide] = useState(read);
+  useEffect(() => {
+    const onResize = () => setWide(read());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return wide;
+}
+
+/** Docked: the HUD drawn on its 1280 x 800 stage and scaled into the room left of the column (as the
+ *  guide's screens, M102). Not docked: no box at all, the HUD is the screen. Always the same elements,
+ *  so the HUD is not mounted again when the window changes shape. */
+function HudBox({ docked, children }: { docked: boolean; children: ReactNode }) {
+  const room = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0);
+  useEffect(() => {
+    if (!docked) return;
+    const fit = () => {
+      const r = room.current;
+      setScale(r ? Math.min(r.clientWidth / STAGE_W, r.clientHeight / STAGE_H) : 0);
+    };
+    fit();
+    const seen = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    if (seen && room.current) seen.observe(room.current);
+    window.addEventListener("resize", fit);
+    return () => {
+      seen?.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [docked]);
+  // transform: also the containing block of the HUD's `fixed` dialogs. The two type sizes that follow
+  // the window's width (index.css) are pinned to what a 1280 px screen gives.
+  const screen: CSSProperties | undefined = docked
+    ? {
+        width: STAGE_W,
+        height: STAGE_H,
+        transform: `scale(${scale})`,
+        transformOrigin: "top left",
+        ["--text-hud-title" as string]: "30px",
+        ["--text-hud-display" as string]: "76.8px",
+      }
+    : undefined;
+  return (
+    <div ref={room} className={docked ? "live-hud" : "contents"}>
+      <div className={docked ? "live-hud-screen" : "contents"} style={docked ? { width: STAGE_W * scale, height: STAGE_H * scale } : undefined}>
+        <div style={screen} className={docked ? "" : "contents"}>
+          <StageFrame.Provider value={docked ? { width: STAGE_W, height: STAGE_H } : null}>{children}</StageFrame.Provider>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const SIDE_W = 380; // px of the column's design, before it is scaled
+
+/** The column beside the HUD, laid out at SIDE_W and scaled down as a whole when the window is too
+ *  short for it (the camera keeps its 4:3 picture, as in the user's design of 12/10). Not docked: no
+ *  box at all. Always the same elements: the self-view's <video> inside must not be mounted again. */
+function SideColumn({ docked, children }: { docked: boolean; children: ReactNode }) {
+  const room = useRef<HTMLElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    if (!docked) return;
+    const fit = () => {
+      const r = room.current;
+      const c = content.current;
+      if (r && c && c.offsetHeight > 0) setScale(Math.min(1, r.clientHeight / c.offsetHeight));
+    };
+    fit();
+    const seen = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    if (seen && room.current) seen.observe(room.current);
+    if (seen && content.current) seen.observe(content.current);
+    window.addEventListener("resize", fit);
+    return () => {
+      seen?.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [docked]);
+  return (
+    <aside ref={room} aria-label={docked ? "Camera và điều khiển xe" : undefined} className={docked ? "live-side" : "contents"} style={docked ? { width: SIDE_W * scale } : undefined}>
+      <div
+        ref={content}
+        className={docked ? "live-side-content" : "contents"}
+        style={docked ? { width: SIDE_W, transform: `scale(${scale})`, transformOrigin: "top left" } : undefined}
+      >
+        {children}
+      </div>
+    </aside>
+  );
+}
+
+const SOURCE_TEXT: Record<VehicleSource, string> = {
+  panel: "Đang đưa vào giám sát",
+  remote: "Đang nhận từ #/drive trên thiết bị khác",
+  sim: "Đang dùng trình mô phỏng ở terminal · bấm để lái ở đây",
+  none: "Bấm một nút để bắt đầu lái",
+};
+
+/** The driving panel beside the HUD (M103): its car goes straight to this page's agent, no backend in
+ *  between (works offline and in the try-out). #/drive on another device, paired by the code, still
+ *  works and wins while it is sending. */
+function SidePanel({ agent }: { agent: LiveAgent }) {
+  const { car, carRef, act, touched } = useCar();
+  useEffect(() => {
+    agent.usePanel(() => (touched ? carRef.current : null));
+    return () => agent.usePanel(null);
+  }, [agent, touched, carRef]);
+  const [from, setFrom] = useState<VehicleSource>(agent.vehicleFrom);
+  useEffect(() => {
+    const id = setInterval(() => setFrom(agent.vehicleFrom), 500);
+    return () => clearInterval(id);
+  }, [agent]);
+  return (
+    <section aria-label="Điều khiển xe" className="grid shrink-0 gap-3 rounded-hud-sm border border-solid border-white/10 bg-white/[0.03] p-3">
+      <header className="flex items-center gap-2 px-1">
+        <Gauge aria-hidden className="size-5 text-hud-system" />
+        <h2 className="m-0 text-[19px] font-semibold">Điều khiển xe</h2>
+        <a
+          href={`#/drive?code=${agent.driveCode}`}
+          target="_blank"
+          rel="noopener"
+          aria-label={`Điều khiển xe · mã ${agent.driveCode}`}
+          title="Mở trang điều khiển xe trên thiết bị khác (điện thoại) với mã này"
+          className="ml-auto dg-chip !text-[14px] tabular-nums text-hud-ink no-underline"
+        >
+          Mã {agent.driveCode}
+        </a>
+      </header>
+      <DrivePanel
+        side
+        car={car}
+        act={act}
+        status={
+          <span role="status" className={`text-[14px] ${from === "remote" ? "text-hud-system" : "text-hud-ink-3"}`}>
+            {SOURCE_TEXT[from]}
+          </span>
+        }
+      />
+    </section>
+  );
 }
 
 export default function LiveScreen() {
@@ -66,6 +237,7 @@ export default function LiveScreen() {
   const [ended, setEnded] = useState(false); // trip ended: the summary is on screen, the camera is off
   const [askEnd, setAskEnd] = useState(0); // "Dừng camera": each press asks the HUD's end-of-trip question
   const voice = useVietnameseVoice();
+  const wide = useWide();
 
   useEffect(
     () => () => {
@@ -124,11 +296,24 @@ export default function LiveScreen() {
     void start(s);
   }
 
+  // "Xong" on the trip summary. A driver who is logged in goes on to the Dashboard (its overview has
+  // "Bắt đầu ca lái" for the next trip, 13/10); the try-out has no account, so back to the first page.
   async function stop() {
     await agent?.stop();
     setAgent(null);
     setStep(null);
+    if (session && !guest) window.location.hash = "#/dashboard";
   }
+
+  // #/live?start (the Dashboard's "Bắt đầu ca lái"): a driver who is logged in starts at once, without
+  // the first page's button. The address loses `start`, so a reload does not start a trip by itself.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.hash.split("?")[1] ?? "").has("start")) return;
+    window.history.replaceState(null, "", "#/live");
+    if (session?.role === "driver") void start(session);
+    // once, on arrival: the address is read before anything else changes it
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function logout() {
     saveSession(null);
@@ -136,10 +321,35 @@ export default function LiveScreen() {
   }
 
   const ready = agent != null;
+  const docked = wide && ready; // M103: the HUD, the camera and the driving panel side by side
   return (
-    <>
-      {ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} askEnd={askEnd} />}
-      <SelfView videoRef={videoRef} agent={ended ? null : agent} onStop={() => setAskEnd((n) => n + 1)} />
+    // The same elements in both layouts (only their classes change): the <video> holds the camera
+    // stream and must never be mounted again.
+    <div className={docked ? "live-shell font-hud text-hud-ink antialiased [color-scheme:dark]" : "contents"}>
+      {docked && (
+        <header className="live-bar">
+          <span className="brand-mark" aria-hidden>
+            <ShieldCheck size={20} strokeWidth={2.25} />
+          </span>
+          {/* Not an h1: the HUD's alert is the page's heading. */}
+          <strong className="live-title">DriverGuard</strong>
+          <p>Màn hình tài xế · bản chạy trong trình duyệt (#/live)</p>
+        </header>
+      )}
+      <div className={docked ? "live-body" : "contents"}>
+        <HudBox docked={docked}>{ready && <HudScreen source={agent} onTripEnded={() => setEnded(true)} onDone={stop} askEnd={askEnd} />}</HudBox>
+        <SideColumn docked={docked}>
+          {docked && (
+            <p role="note" className="live-side-note">
+              <Info aria-hidden className="size-4 shrink-0" />
+              Phần này chỉ hiện khi mô phỏng ứng dụng, khi lái thật sẽ không có.
+            </p>
+          )}
+          {docked && <p className="live-side-label">Camera tài xế</p>}
+          <SelfView videoRef={videoRef} agent={ended ? null : agent} docked={docked} onStop={() => setAskEnd((n) => n + 1)} />
+          {docked && !ended && <SidePanel agent={agent} />}
+        </SideColumn>
+      </div>
       {!ready && !step && (
         // The product's first page: the one login page (dashboard/Login.tsx). Logging in or "Dùng thử
         // không lưu" goes straight on: the camera is asked for and the loading steps start.
@@ -189,7 +399,7 @@ export default function LiveScreen() {
           </main>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -243,10 +453,12 @@ function Progress({ step }: { step: Step }) {
 function SelfView({
   videoRef,
   agent,
+  docked,
   onStop,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   agent: LiveAgent | null;
+  docked: boolean; // M103: a card in the column beside the HUD, not a floating frame
   onStop: () => void;
 }) {
   const [stats, setStats] = useState<LiveStats | null>(null);
@@ -257,8 +469,13 @@ function SelfView({
   }, [agent]);
   const m = stats?.measures;
   const fmt = (v: number | null | undefined, d = 2) => (v == null ? "–" : v.toFixed(d));
-  const compact = stats?.level === 3;
+  const compact = !docked && stats?.level === 3; // docked, it does not sit over the HUD
   const [tech, setTech] = useState(readTech);
+  const [faceOn, setFaceOn] = useState(readFace);
+  const toggleFace = () => {
+    setFaceOn(!faceOn);
+    writeFace(!faceOn);
+  };
   const toggleTech = () => {
     setTech(!tech);
     writeTech(!tech);
@@ -302,42 +519,53 @@ function SelfView({
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, [place.size, tech, compact]);
-  const width = Math.max(SELF_VIEW_WIDTHS[place.size], tech ? TECH_WIDTH_PX : 0);
-  const placed = place.x != null && place.y != null;
+  const width = Math.max(SELF_VIEW_WIDTHS[place.size], tech && !docked ? TECH_WIDTH_PX : 0);
+  const placed = !docked && place.x != null && place.y != null;
+  const faceLine = (
+    <span className={`inline-flex items-center gap-1.5 ${m?.face ? "" : "text-hud-caution"}`}>
+      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[#f87171]" />
+      {m?.face ? "Chỉ xem, không lưu" : "Không thấy mặt"}
+    </span>
+  );
+  const floating: React.CSSProperties = docked ? {} : { ...(compact ? {} : { width }), ...(placed ? { left: place.x!, top: place.y!, bottom: "auto" } : {}) };
 
   return (
     <div
       ref={box}
       data-testid="self-view"
-      style={{ ...(compact ? {} : { width }), ...(placed ? { left: place.x!, top: place.y!, bottom: "auto" } : {}) }}
-      className={`fixed bottom-4 left-4 z-40 overflow-hidden rounded-hud-sm border border-solid border-white/15 bg-black/85 font-hud text-white shadow-[0_24px_48px_rgba(0,0,0,0.45)] backdrop-blur ${
-        compact ? "w-auto" : ""
-      } ${agent ? "" : "pointer-events-none opacity-0"}`}
+      data-docked={docked || undefined}
+      style={floating}
+      className={`${
+        docked ? "relative w-full" : "fixed bottom-4 left-4 z-40 shadow-[0_24px_48px_rgba(0,0,0,0.45)] backdrop-blur"
+      } overflow-hidden rounded-hud-sm border border-solid border-white/15 bg-black/85 font-hud text-white ${compact ? "w-auto" : ""} ${
+        agent || docked ? "" : "pointer-events-none opacity-0"
+      }`}
     >
-      {/* Kept mounted (it holds the stream), only hidden at L3. Small (M64): it sits over the HUD. */}
+      {/* Kept mounted (it holds the stream), only hidden at L3. Small (M64): it sits over the HUD.
+          Docked (M103), it is a card beside the HUD and is neither dragged nor resized. */}
       <video
         ref={videoRef}
-        onPointerDown={onGrab}
-        onPointerMove={onDrag}
-        onPointerUp={onDrop}
-        onPointerCancel={onDrop}
-        title="Kéo để dời khung camera"
-        className={`aspect-[4/3] w-full -scale-x-100 cursor-grab touch-none object-cover active:cursor-grabbing ${compact ? "hidden" : "block"}`}
+        onPointerDown={docked ? undefined : onGrab}
+        onPointerMove={docked ? undefined : onDrag}
+        onPointerUp={docked ? undefined : onDrop}
+        onPointerCancel={docked ? undefined : onDrop}
+        title={docked ? undefined : "Kéo để dời khung camera"}
+        className={`aspect-[4/3] w-full -scale-x-100 object-cover ${docked ? "" : "cursor-grab touch-none active:cursor-grabbing"} ${compact ? "hidden" : "block"}`}
         muted
         playsInline
       />
+      {/* M104: the driver's face drawn over the picture, beside the HUD only (the simulation). */}
+      {docked && agent && faceOn && <FaceOverlay agent={agent} />}
+      {docked && !agent && <p className="m-0 p-3 text-[13px] text-white/70">Đã kết thúc chuyến · camera tắt</p>}
       {agent && compact && (
         <button type="button" onClick={onStop} className="inline-flex min-h-10 items-center gap-1 rounded-full border-0 bg-transparent px-4 text-[13px] font-semibold text-white">
           <Square aria-hidden className="size-3.5" /> Dừng camera
         </button>
       )}
       {agent && !compact && (
-        <div className="grid gap-1.5 p-2 text-[12px] leading-tight tabular-nums">
-          <span className={`inline-flex items-center gap-1.5 ${m?.face ? "" : "text-hud-caution"}`}>
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[#f87171]" />
-            {m?.face ? "Chỉ xem, không lưu" : "Không thấy mặt"}
-          </span>
-          {tech && (
+        <div className={`grid shrink-0 gap-1.5 tabular-nums ${docked ? "absolute inset-x-0 bottom-0 bg-[linear-gradient(0deg,rgba(0,0,0,0.75),rgba(0,0,0,0))] px-3 pt-6 pb-2 text-[13px] leading-snug" : "p-2 text-[12px] leading-tight"}`}>
+          {!docked && faceLine}
+          {tech && !docked && (
             <>
               <span className="text-white/70">
                 EAR {fmt(m?.ear)} · {fmt(stats?.fps, 0)} FPS
@@ -366,46 +594,71 @@ function SelfView({
           )}
           {stats?.sendError && <span className="text-hud-caution">{stats.sendError}</span>}
           <div className="flex flex-wrap items-center gap-1">
-            <a
-              href={`#/drive?code=${agent.driveCode}`}
-              target="_blank"
-              rel="noopener"
-              aria-label={`Điều khiển xe · mã ${agent.driveCode}`}
-              title="Mở trang điều khiển xe (tốc độ, xi nhan) cho phiên này"
-              className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-full bg-hud-system/25 px-2 text-[12px] font-semibold text-white no-underline"
-            >
-              <Gauge aria-hidden className="size-3.5" /> {agent.driveCode}
-            </a>
-            <button
-              type="button"
-              onClick={() => resize(-1)}
-              disabled={place.size === 0}
-              aria-label="Thu nhỏ khung camera"
-              title="Thu nhỏ khung camera"
-              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
-            >
-              <Minus aria-hidden className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => resize(1)}
-              disabled={place.size === SELF_VIEW_WIDTHS.length - 1}
-              aria-label="Phóng to khung camera"
-              title="Phóng to khung camera"
-              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
-            >
-              <Plus aria-hidden className="size-4" />
-            </button>
-            <button
-              type="button"
-              onClick={toggleTech}
-              aria-pressed={tech}
-              aria-label={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
-              title={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
-              className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white"
-            >
-              <Info aria-hidden className="size-4" />
-            </button>
+            {docked ? (
+              // One row with the buttons; the pairing code is on the driving panel below.
+              <span className="flex-1">{faceLine}</span>
+            ) : (
+              <a
+                href={`#/drive?code=${agent.driveCode}`}
+                target="_blank"
+                rel="noopener"
+                aria-label={`Điều khiển xe · mã ${agent.driveCode}`}
+                title="Mở trang điều khiển xe (tốc độ, xi nhan) cho phiên này"
+                className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-full bg-hud-system/25 px-2 text-[12px] font-semibold text-white no-underline"
+              >
+                <Gauge aria-hidden className="size-3.5" /> {agent.driveCode}
+              </a>
+            )}
+            {!docked && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => resize(-1)}
+                  disabled={place.size === 0}
+                  aria-label="Thu nhỏ khung camera"
+                  title="Thu nhỏ khung camera"
+                  className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
+                >
+                  <Minus aria-hidden className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resize(1)}
+                  disabled={place.size === SELF_VIEW_WIDTHS.length - 1}
+                  aria-label="Phóng to khung camera"
+                  title="Phóng to khung camera"
+                  className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white disabled:opacity-40"
+                >
+                  <Plus aria-hidden className="size-4" />
+                </button>
+              </>
+            )}
+            {/* The engineers' numbers only on the floating frame: beside the HUD the camera is a
+                picture to place the face by (the user's choice, 12/10). */}
+            {!docked && (
+              <button
+                type="button"
+                onClick={toggleTech}
+                aria-pressed={tech}
+                aria-label={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
+                title={tech ? "Ẩn chi tiết kỹ thuật" : "Chi tiết kỹ thuật"}
+                className="grid size-9 place-items-center rounded-full border-0 bg-white/10 text-white"
+              >
+                <Info aria-hidden className="size-4" />
+              </button>
+            )}
+            {docked && (
+              <button
+                type="button"
+                onClick={toggleFace}
+                aria-pressed={faceOn}
+                aria-label={faceOn ? "Ẩn khung nhận diện mặt" : "Hiện khung nhận diện mặt"}
+                title={faceOn ? "Ẩn khung nhận diện mặt" : "Hiện khung nhận diện mặt"}
+                className={`grid size-9 place-items-center rounded-full border-0 text-white ${faceOn ? "bg-hud-system/45" : "bg-white/10"}`}
+              >
+                <ScanFace aria-hidden className="size-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={onStop}

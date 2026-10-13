@@ -313,7 +313,16 @@ class WebAgent:
     def _failed(self, t: float, error: str, where: str) -> str:
         self.runtime.frame_failed(t, error)
         state = self.hud.to_json()
-        state["measures"] = {"face": False, "ear": None, "mar": None, "yaw": None, "pitch": None, "phone": None}
+        state["measures"] = {
+            "face": False,
+            "ear": None,
+            "mar": None,
+            "yaw": None,
+            "pitch": None,
+            "roll": None,
+            "phone": None,
+            "driver": None,
+        }
         state["error"] = f"{error} · {where}"  # for "Chi tiết kỹ thuật" of #/live
         return json.dumps(state)
 
@@ -409,7 +418,9 @@ class WebAgent:
             "mar": None if features.mar is None else round(features.mar, 3),
             "yaw": None if features.yaw is None else round(features.yaw, 1),
             "pitch": None if features.pitch is None else round(features.pitch, 1),
+            "roll": None if features.roll is None else round(features.roll, 1),
             "phone": phone_flag,
+            "driver": k if lm is not None else None,  # which of the page's faces is the driver (M104 drawing)
         }
         state["flush"], self._urgent = self._urgent, False  # true: post the pending records now
         return json.dumps(state)

@@ -61,6 +61,22 @@ railway up --no-gitignore        # cần --no-gitignore để gửi model
 Vì vậy [`.railwayignore`](../.railwayignore) tự liệt kê mọi thứ không được gửi đi: `.env`, database, log, `data/`,
 `.ai-log/`, `node_modules`... Thêm loại file bí mật mới vào `.gitignore` thì phải thêm cả vào `.railwayignore`.
 
+## Tài khoản dùng thử (một lần cho mỗi database)
+
+Trang đầu (`#/live`) điền sẵn tài khoản tài xế `taixe_demo` / `demo12345` (`frontend/src/lib/demo.ts`; đổi bằng
+`VITE_DEMO_USERNAME` / `VITE_DEMO_PASSWORD` lúc build, `VITE_DEMO_USERNAME=""` để tắt), nên tài khoản này phải có
+trong database của Railway. Database nằm trên volume `/app/data`: tạo một lần, các lần deploy sau vẫn còn.
+
+```bash
+railway ssh --service driveguard
+python -m backend.manage create-user taixe_demo --role driver --driver-id drv-demo   # hỏi mật khẩu: demo12345
+python -m backend.manage create-user kysu_demo --role engineer                       # mật khẩu riêng, không hiện trên trang
+exit
+```
+
+Ai mở trang cũng thấy mật khẩu của `taixe_demo`: tài khoản này chỉ xem được chuyến của chính nó. Không điền sẵn
+tài khoản kỹ sư hay quản lý.
+
 ## Kiểm tra sau khi deploy
 
 - `https://<domain>/health` trả 200.

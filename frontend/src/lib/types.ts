@@ -351,6 +351,7 @@ export interface TripReport {
   rating: TripRating;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  review_note?: string | null; // M105: what the reviewer tells the driver ("Lưu ý")
   summary: TripSummary;
 }
 

@@ -149,6 +149,9 @@ thuộc `release-v3.md`. Lần sửa tài liệu theo audit là [M91](#m91). Cá
 | [M100](#m100) | Ba việc trên `#/live` và HUD, theo quyết định 09/10 (15 theo ý của anh, 16A, 17A; các chỗ M72, M88, M89 để ngỏ): ô tự xem kéo đi chỗ khác và thu nhỏ / phóng to được, nhớ vị trí; đóng tab hoặc tải lại giữa chuyến thì trình duyệt hỏi lại, và khi trang đi thật thì chuyến được kết thúc ngay trong lượt đó (tổng kết và nhịp `ended` gửi bằng yêu cầu `keepalive`); cảnh báo và trạng thái "không giám sát" tới lúc trình duyệt còn chặn tiếng được phát khi có lần chạm đầu tiên nếu còn đúng; mở HUD giữa chuyến không kêu lại cảnh báo cũ (khối 13: `frontend/src/live/LiveScreen.tsx`, `selfView.ts`, `agent.ts`, `frontend/src/hud/HudScreen.tsx`) | E2e 13 / 13, hai kịch bản mới: đóng tab giữa chuyến, quản lý thấy "Đã kết thúc chuyến" và có thêm một báo cáo chuyến; kéo ô tự xem tới (660, 90), phóng to 264 px, thu nhỏ 112 px, quăng ra ngoài góc vẫn nằm trong cửa sổ, vị trí được lưu. `npx vitest run`: 293 pass | Xong (09/10) |
 | [M101](#m101) | `risk.drowsy.l1` 40 hay 50, quyết trên DROZY bằng luật khai báo trước khi chạy, theo quyết định 09/10 (5A; chỗ M53, M69 để ngỏ): luật viết vào `eval/splits/drozy_l1_rule.md` trước; rồi 36 video hồng ngoại của 14 người được chạy qua khối 2–12 một lần và replay ở đúng hai giá trị 40 và 50. **Kết luận theo luật: giữ 40.** Không đổi ngưỡng, không đổi code của 14 khối (công cụ eval: `tools/drozy.py`) | `eval/results/drozy_l1.md`: ba điều kiện để DROZY được quyết đều đạt (mặt tin cậy trung vị 98,5 %; 2,33 giờ tỉnh và 15 video buồn ngủ; AUC 0,809). Đường `web`: 0 báo sai trên 15 video tỉnh ở cả 40 lẫn 50; video buồn ngủ có cảnh báo 7 / 15 ở 40, 6 / 15 ở 50. 50 không bớt được báo sai nào và mất một video. `pytest tests/test_edge_agent/test_m101_drozy_rule.py`: 15 pass | Xong (09/10) |
 | [M102](#m102) | Hướng dẫn sử dụng ngay trong sản phẩm, trang `#/guide` (không cần đăng nhập, camera hay backend): 24 màn hình có thể hiện, chia năm chương (bắt đầu ca lái, bốn mức khi đang lái, camera không thấy rõ, thiết bị trục trặc, kết thúc ca lái), mỗi màn hình do chính `HudView` / `TripSummaryView` vẽ trên số liệu mẫu của `#/hud-preview`, kèm "nghĩa là gì" và "nên làm gì"; cuối trang là các trang web theo vai trò. Vào từ trang đăng nhập (trang đầu tiên của sản phẩm), không có lối vào nào khác. Việc anh giao 12/10, không thuộc audit. Không đổi code Python, không khoá mới trong `thresholds.yaml` (khối 13: `frontend/src/guide/`, `hud/HudStage.tsx`) | `npx vitest run`: 307 pass (14 mới). `npx playwright test e2e/guide.e2e.ts`: 4 / 4 trên bản build có CSP, ở 1280 x 800, 800 x 1280 và 390 x 800: cả 24 màn hình nằm trong khung, trang không cuộn ngang, không lỗi console | Xong (12/10) |
+| [M103](#m103) | `#/live` mô phỏng trên một trang, theo ảnh mẫu 12/10: trên màn hình ngang HUD thu nhỏ bên trái, cột phải có camera tài xế và bảng điều khiển xe (tốc độ, xi nhan) đưa thẳng vào agent, không qua backend; điện thoại và màn hình dọc giữ như cũ (khối 13: `frontend/src/live/LiveScreen.tsx`, `agent.ts`, `drive/useCar.ts`, `drive/DrivePanel.tsx`) | Bấm "Chạy đều 50" ở cột phải thì HUD chạy 50 km/h; e2e 19 / 19, vitest 315 pass | Xong (12/10) |
+| [M104](#m104) | Vẽ khuôn mặt tài xế lên camera ở cột phải của `#/live`, theo ảnh mẫu DMS 13/10: khung quanh mặt (màu theo mức cảnh báo), các đường nối điểm mốc (viền mặt, lông mày, mắt, mũi, môi), góc đầu (yaw, pitch, roll) và vạch hướng mống mắt gần đúng; bật mặc định, có nút tắt (khối 13: `frontend/src/live/FaceOverlay.tsx`, `faceDrawing.ts`; khối 6 trả thêm `roll` và khuôn mặt nào là tài xế) | Khung và đường vẽ theo mặt tài xế trên camera; e2e 19 / 19, vitest 321 pass | Xong (13/10) |
+| [M105](#m105) | Lưu ý của quản lý cho tài xế, theo yêu cầu 13/10: khi duyệt báo cáo ca lái, quản lý ghi một lưu ý (không bắt buộc, tối đa 500 ký tự, sửa được); cột "Quản lý đã xem?" trong bảng ca lái của tài xế đổi thành "Lưu ý" và hiện lưu ý đó (backend: cột `review_note`, `POST .../review` nhận `note`; dashboard) | Quản lý ghi lưu ý → tài xế thấy trong "Lưu ý"; backend 234 pass, e2e 20 / 20 | Xong (13/10) |
 
 <a id="ke-hoach-0910"></a>
 
@@ -157,6 +160,39 @@ thuộc `release-v3.md`. Lần sửa tài liệu theo audit là [M91](#m91). Cá
 Mười mốc anh chọn ở [Quyết định 09/10](#quyet-dinh-0910), [M92](#m92) đến [M101](#m101), đều xong ngày 09/10 và nằm ở bảng
 trên. Còn mở theo chính bảng quyết định: chỗ 9 và 10 (tốc độ từ GPS, nguồn nào thắng), 18 (tài khoản cho người chấm), 25
 (file YOLO trên release), 26, 27, 30 là các chỗ anh bỏ qua; chỗ 29 chưa có câu trả lời.
+
+<a id="m104"></a>
+
+#### M104: Vẽ khuôn mặt tài xế lên camera ở cột phải của `#/live` (khối 13)
+
+**Xong là thấy gì:** ở chế độ mô phỏng (màn hình ngang, M103), camera tài xế có khung quanh mặt, đường nối các điểm mốc, góc đầu `(yaw°, pitch°, roll°)` phía trên khung và vạch xanh dương ở mỗi mống mắt, như ảnh mẫu DMS anh gửi 13/10. Nút có biểu tượng khuôn mặt cạnh nút dừng camera để ẩn / hiện
+
+**Trạng thái:** Xong (13/10)
+
+- **Vẽ từ số, không từ ảnh:** `FaceOverlay.tsx` là một `<canvas>` đè lên video, vẽ lại theo nhịp vẽ của trình duyệt từ 478 điểm mốc của frame gần nhất (`LiveAgent.driverFace`), **ngoài vòng lặp xử lý**: không thêm model, không đụng 15 FPS. Không tạo, không lưu, không gửi ảnh nào; điểm mốc chỉ giữ của frame gần nhất trong bộ nhớ. Quá 0,5 s không có frame mới thì không vẽ gì
+- **Mặt nào:** khuôn mặt Python chọn là tài xế (khối 3: lớn nhất trước khi làm quen, sau đó mặt đã làm quen), không phải hành khách. `bridge.py` trả thêm trong `measures` (chỉ cho trang, không gửi backend): `driver` (thứ tự khuôn mặt đó trong danh sách của trang) và `roll`
+- **Hình** (`faceDrawing.ts`, hình học thuần có test): các nhóm đường của chính MediaPipe (viền mặt, hai lông mày, hai mắt, môi) cộng sống mũi; khung vàng khi tỉnh, cam ở L1 / L2, đỏ ở L3; chữ góc đầu không bị lật như video; video `object-fit: cover` được tính đúng khi khung không cùng tỉ lệ với frame
+- **Cố ý, cần anh biết:**
+  - Vạch xanh dương **chỉ là hướng mống mắt gần đúng** (lệch của mống mắt so với giữa mắt, kéo dài; ngắn nhất 1/3, dài nhất bằng bề ngang mắt). Hệ thống không đo hướng nhìn; khối 8 dùng góc đầu
+  - Chỉ vẽ ở cột phải (mô phỏng). Ô camera nổi trên màn hình dọc (màn trong xe) không vẽ
+  - `STALE_MS`, `IRIS_GAIN` (vẽ) và `SIDE_W` (bề rộng cột, M103) được thêm vào danh sách cho phép của `test_m85_no_hardcode.py`: không phải ngưỡng quyết định
+  - Đổi Python (`bridge.py`) nên gói web phải build lại: `python tools/build_web_py.py frontend/public/py/edge_agent.zip` (hoặc `npm run prepare-live`)
+- **Chưa làm / còn hở:**
+  - Mới xem trên mặt tổng hợp của e2e (điểm mốc rải ngẫu nhiên); với mặt thật cần anh xem trên `#/live`
+- Test: `test_m104_face_drawing.py` 2 mới (Python chỉ đúng mặt tài xế giữa hai mặt; không mặt thì không có); `test_m77_non_finite.py` cập nhật `measures`; vitest 321 pass (6 mới ở `faceDrawing.test.ts`); e2e 19 / 19 (kịch bản landscape kiểm thêm: canvas có vẽ, nút ẩn / hiện)
+
+<a id="m105"></a>
+
+#### M105: Lưu ý của quản lý cho tài xế (backend, dashboard)
+
+**Xong là thấy gì:** ở "Báo cáo ca lái", quản lý có ô "Lưu ý cho tài xế" cạnh nút "Đánh dấu đã xem"; tài xế thấy lưu ý đó ở cột "Lưu ý" (trước là "Quản lý đã xem?") trong bảng ca lái và ở trang chi tiết ca lái ("Lưu ý của quản lý")
+
+**Trạng thái:** Xong (13/10)
+
+- **Backend:** bảng `trip_summaries` thêm cột `review_note` (`migrate` tự thêm vào database cũ, giữ dữ liệu; Railway cũng tự thêm lúc khởi động). `POST /api/v1/trip-reports/{device}/{trip}/review` nhận thân `{"note": "..."}` không bắt buộc (`TripReviewIn`, tối đa 500 ký tự, trường lạ bị từ chối): có `note` thì lưu (chuỗi rỗng = xoá), không có thì giữ lưu ý cũ, như trước khi có mốc này. Gửi lại bản tổng kết (hàng đợi offline) không làm mất lưu ý. `TripReportOut` có `review_note`; tài xế đọc được lưu ý của chính mình (phạm vi đọc không đổi)
+- **Dashboard:** màn duyệt của quản lý có ô nhập; đã xem rồi vẫn sửa được ("Lưu lưu ý"). Bảng ca lái của tài xế: cột "Lưu ý", không có lưu ý thì "–". Trang chi tiết ca lái: thẻ "Lưu ý của quản lý" khi có
+- **Cố ý, cần anh biết:** lưu ý là chữ do quản lý viết về một ca lái, nằm cùng bản tổng kết nên bị xoá theo cùng thời hạn và cùng lệnh `delete-driver-data`. Màn báo cáo của kỹ sư / quản trị (`TripReports.tsx`) chưa có ô nhập lưu ý; chỉ màn duyệt của quản lý có
+- Test: `test_trip_reports.py` 2 mới (ghi, đọc, sửa, xoá, giữ khi gửi lại, quá dài / trường lạ bị từ chối; database cũ có thêm cột); backend 234 pass; e2e: quản lý ghi lưu ý rồi tài xế thấy trong "Lưu ý" (20 / 20); vitest 324 pass
 
 ### Vận hành (M66–)
 
@@ -2743,6 +2779,30 @@ lệch dọc 30°, M80) chưa có câu trả lời.
   - Tiêu đề bản tổng kết dùng cỡ chữ theo bề rộng cửa sổ (`clamp(30px, 3.2vw, 40px)`), nên trên cửa sổ hẹp hơn 1250 px chữ đó trong hình nhỏ hơn thật tối đa 10 px
   - Chưa xem trên thiết bị thật hay WebView của Android; mới xem trên Chromium ở ba cỡ cửa sổ
 - Test: vitest 305 pass (12 mới: 7 của `guideModel.test.ts`, 5 của `GuideScreen.test.tsx`); e2e `guide.e2e.ts` 4 / 4 và `portrait.e2e.ts` 4 / 4; `live.e2e.ts` không chạy lại (`LiveScreen.tsx` cuối cùng không đổi); `tsc` sạch; Python 1712 pass, 6 xfail
+
+<a id="m103"></a>
+
+#### M103: `#/live` mô phỏng trên một trang: HUD, camera tài xế và bảng điều khiển xe cạnh nhau (khối 13)
+
+**Xong là thấy gì:** trên màn hình ngang, `#/live` có thanh tiêu đề "DriverGuard · Màn hình tài xế · bản chạy trong trình duyệt (#/live)", HUD thu nhỏ bên trái, cột bên phải có "Camera tài xế" và "Điều khiển xe" (tốc độ, tăng / giảm, chạy đều 50, dừng xe, xi nhan). Bấm "Chạy đều 50" là HUD chạy 50 km/h, không cần mở `#/drive` hay trình mô phỏng ở terminal
+
+**Trạng thái:** Xong (12/10), theo ảnh mẫu của anh ngày 12/10
+
+- **Bố cục** (`frontend/src/live/LiveScreen.tsx`, `styles.css` `.live-*`): màn hình ngang (cùng điều kiện với sân khấu 1280 × 800 của `HudStage`) thì HUD được vẽ đúng 1280 × 800 rồi thu nhỏ vào ô bên trái (như khung hình của `#/guide`, M102), cột phải rộng 380 px. Cột phải được dựng ở 380 px rồi thu nhỏ cả cột khi cửa sổ thấp (camera luôn đủ hình 4:3, dòng "Chỉ xem, không lưu" và nút dừng nằm đè lên mép dưới hình), nên không phải cuộn: đã chụp kiểm ở 1663 × 854, 1440 × 758 và 1366 × 768. Điện thoại và màn hình dọc (màn 800 × 1280 của xe) **giữ nguyên** như trước: HUD toàn màn hình, ô camera nổi kéo được (M100)
+- **Camera:** cùng một thẻ `<video>` ở cả hai bố cục, chỉ đổi lớp CSS, nên đổi cỡ cửa sổ không làm mất luồng camera. Ở cột phải ô camera không kéo, không phóng to / thu nhỏ và **không hiện thông số kỹ thuật** (EAR, FPS, thời gian từng khâu: theo ý anh 12/10, đó là chỗ để tài xế căn mặt); chỉ còn "Chỉ xem, không lưu" và "Dừng camera" (hỏi trước, M72). Thông số vẫn xem được ở ô camera nổi (màn hình dọc), nên `bench/live.bench.mjs` (M67) nay mở trang ở 800 × 1280. Hình vẫn chỉ hiển thị trong RAM, không lưu, không gửi
+- **Sửa sau khi dùng thử (13/10): "Xong" ở bản tổng kết không chạy.** Ở bản dev, React diff props cũ của ô camera (`agent` → `null` khi hết chuyến), đọc `$$typeof` trên đối tượng Python đã huỷ (`Object has already been destroyed`), lỗi giữa lúc render làm React hỏng (`Should not already be working`) và trang không nhận nút nào nữa. Bản build không có bước diff này nên e2e không thấy. Nay `LiveAgent` giữ proxy của Python ở trường không duyệt được (`enumerable: false`); test `agent.test.ts` (đỏ khi bỏ sửa), và e2e của khách bấm "Xong" rồi thấy lại trang đầu
+- **Tài khoản dùng thử (13/10):** trang đầu điền sẵn tài khoản tài xế `taixe_demo` (`frontend/src/lib/demo.ts`, đổi / tắt bằng `VITE_DEMO_USERNAME` / `VITE_DEMO_PASSWORD`), bấm "Đăng nhập" là vào camera; trang đăng nhập của Dashboard (và sau khi đăng xuất) cũng điền sẵn, khi đó vào trang của tài xế. Bỏ dòng giới thiệu dưới "Đăng nhập" ở cả hai trang. Đã tạo trên máy: `taixe_demo` (tài xế, `drv-demo`) và `kysu_demo` (kỹ sư). Trên Railway phải tạo lại một lần (`docs/deploy-railway.md`, mục "Tài khoản dùng thử"). Bỏ dòng "Màn hình trong xe (HUD) không cần đăng nhập" ở trang đăng nhập. Test: `Login.test.tsx` (2)
+- **Sau "Xong" (13/10):** tài xế đã đăng nhập bấm "Xong" ở bản tổng kết thì sang `#/dashboard` (trang Tổng quan); dùng thử (không tài khoản) vẫn về trang đầu. Nút "Bắt đầu ca lái mới" (xanh lá) ở thanh menu bên trái của Dashboard, ngay dưới logo, nên có ở mọi trang của tài xế (chỉ vai trò tài xế), mở `#/live?start`: camera bật ngay, không phải bấm thêm ở trang đầu; `start` được bỏ khỏi địa chỉ nên tải lại trang không tự bắt đầu ca. Trang đầu: bỏ hai ô "Không lưu ảnh khuôn mặt" / "Dữ liệu có hạn dùng", tiêu đề thành "Giúp mỗi chuyến đi của bạn an toàn hơn.", chữ nằm ngay dưới logo. E2e mới: tài xế kết thúc ca → "Xong" → Dashboard → sang "Ca lái của tôi" → "Bắt đầu ca lái" ở menu → camera chạy
+- **Ghi chú ở đầu cột phải:** "Phần này chỉ hiện khi mô phỏng ứng dụng, khi lái thật sẽ không có."
+- **Điều khiển xe:** `drive/useCar.ts` (vật lý của xe, tách từ `DriveScreen`) và `drive/DrivePanel.tsx` (các nút) dùng chung cho `#/drive` và cột phải. Xe của cột phải đưa thẳng vào agent (`LiveAgent.usePanel`), không qua backend: không trễ, chạy cả khi dùng thử và khi mất mạng. Thứ tự nguồn tốc độ trong `pollSim`: `#/drive` trên thiết bị khác khi còn mới → bảng cạnh HUD **khi đã được bấm ít nhất một lần** → trình mô phỏng ở terminal. Chip "Mã XXXXXX" mở `#/drive` cho điện thoại như trước. Dòng trạng thái dưới tốc độ nói nguồn đang dùng (`LiveAgent.vehicleFrom`)
+- **Cố ý, cần anh biết:**
+  - Thanh tiêu đề không dùng `<h1>`: câu cảnh báo của HUD vẫn là tiêu đề chính của trang (trình đọc màn hình, và e2e tìm nó như vậy)
+  - Bảng cạnh HUD không nhận phím tắt W / S / Space (khác `#/drive`): Space trên một nút đang được chọn của HUD sẽ vừa bấm nút vừa dừng xe
+  - Bảng chưa được bấm thì không đưa gì vào: xe đọc là đỗ như trước, và trình mô phỏng ở terminal vẫn dùng được
+- **Chưa làm / còn hở:**
+  - Màn hình ngang rất thấp: cả cột thu nhỏ theo, chữ và nút nhỏ lại cùng tỉ lệ
+  - Chưa xem trên thiết bị thật; mới xem trên Chromium ở ba cỡ cửa sổ
+- Test: vitest 315 pass (5 mới ở `agent.test.ts`: thứ tự nguồn tốc độ); e2e 19 / 19 (mới: "landscape: the camera and the driving panel sit beside the HUD, and the panel drives #/live"; test kéo thả ô camera của M100 nay chạy ở 800 × 1280); `tsc` sạch; `vite build` chạy được
 
 ### Vận hành (M66–)
 

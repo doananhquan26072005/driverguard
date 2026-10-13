@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS trip_summaries (
     summary     TEXT NOT NULL,
     reviewed_by TEXT,
     reviewed_at TEXT,
+    review_note TEXT,
     UNIQUE (device_id, trip_id)
 );
 CREATE INDEX IF NOT EXISTS idx_summaries_driver ON trip_summaries (driver_id, started_at);
@@ -183,6 +184,8 @@ def migrate(conn: sqlite3.Connection) -> None:
     ):
         if col not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
+    if "review_note" not in {r[1] for r in conn.execute("PRAGMA table_info(trip_summaries)")}:  # M105
+        conn.execute("ALTER TABLE trip_summaries ADD COLUMN review_note TEXT")
     # Samples stored before M82 have no arrival time: their own, but never one in the future.
     conn.execute("UPDATE fatigue_samples SET received_at = MIN(ts, ?) WHERE received_at IS NULL", (now_iso(),))
 
@@ -648,7 +651,7 @@ def query_summaries(
     if unreviewed_only:
         where.append("reviewed_at IS NULL")
     rows = conn.execute(
-        f"""SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, summary
+        f"""SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, review_note, summary
             FROM trip_summaries WHERE {" AND ".join(where)} ORDER BY started_at DESC LIMIT ?""",
         [*args, limit],
     ).fetchall()
@@ -659,7 +662,7 @@ def get_summary(
     conn: sqlite3.Connection, device_id: str, trip_id: str, driver_id: str | None = None
 ) -> dict[str, Any] | None:
     """The summary of one trip, or None. With `driver_id`, only when it belongs to that driver."""
-    sql = """SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, summary
+    sql = """SELECT trip_id, device_id, driver_id, received_at, rating, reviewed_by, reviewed_at, review_note, summary
              FROM trip_summaries WHERE device_id = ? AND trip_id = ?"""
     args: list[Any] = [device_id, trip_id]
     if driver_id is not None:
@@ -669,11 +672,15 @@ def get_summary(
     return None if row is None else _summary_row(row)
 
 
-def review_summary(conn: sqlite3.Connection, device_id: str, trip_id: str, username: str) -> bool:
-    """Mark a trip summary as read by `username`; False when there is no such summary."""
+def review_summary(
+    conn: sqlite3.Connection, device_id: str, trip_id: str, username: str, note: str | None = None
+) -> bool:
+    """Mark a trip summary as read by `username`; False when there is no such summary. `note`: what the
+    reviewer tells the driver (M105), stored when given; None keeps the one already there."""
     cur = conn.execute(
-        "UPDATE trip_summaries SET reviewed_by = ?, reviewed_at = ? WHERE device_id = ? AND trip_id = ?",
-        (username, datetime.now(UTC).isoformat(), device_id, trip_id),
+        """UPDATE trip_summaries SET reviewed_by = ?, reviewed_at = ?, review_note = COALESCE(?, review_note)
+           WHERE device_id = ? AND trip_id = ?""",
+        (username, datetime.now(UTC).isoformat(), note, device_id, trip_id),
     )
     return cur.rowcount > 0
 

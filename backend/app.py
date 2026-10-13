@@ -64,6 +64,7 @@ from backend.schemas import (
     TokenOut,
     TripOut,
     TripReportOut,
+    TripReviewIn,
     UserIn,
     UserOut,
 )
@@ -561,9 +562,12 @@ def create_app(settings: BackendSettings | None = None) -> FastAPI:
         trip_id: Annotated[str, Path(pattern=ID_PATTERN)],
         user: Annotated[dict[str, Any], Depends(require_roles("admin", "engineer", "manager"))],
         conn: Conn,
+        body: TripReviewIn | None = None,
     ) -> dict[str, Any]:
-        """A higher role has read the report (the driver's report reached someone)."""
-        if not db.review_summary(conn, device_id, trip_id, user["sub"]):
+        """A higher role has read the report (the driver's report reached someone), and may leave the
+        driver a note (M105: the driver's "Lưu ý"). Sent again, it updates the note."""
+        note = None if body is None or body.note is None else body.note.strip()
+        if not db.review_summary(conn, device_id, trip_id, user["sub"], note):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such trip report")
         report = db.get_summary(conn, device_id, trip_id)
         assert report is not None
