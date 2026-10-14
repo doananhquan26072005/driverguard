@@ -7,16 +7,15 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 
 | | |
 |---|---|
-| **Phiên bản** | v2.2 (deploy 02/10/2026, các mốc M0–M31) |
-| **Live URL** | **https://c4-app-135.up.railway.app** (bản mới nhất, deploy 13/10/2026 từ `main`, gồm tới M105; tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập). Các bản cũ vẫn chạy song song trên Railway: v3 ở https://driveguard-production-5093.up.railway.app; v2.2 ở https://driveguard-v2-production.up.railway.app; v1.1 ở https://driveguard-production-6b83.up.railway.app. Các liên kết trong README này trỏ tới bản mới nhất: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs` |
-| **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
+| **Phiên bản** | v4 (deploy 13/10/2026 từ `main`, gồm tới M105) |
+| **Live URL** | **v4: https://c4-app-135.up.railway.app** (tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập). Các liên kết trong README này trỏ tới bản đó: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs`. Bản cũ: v3 ở https://driveguard-production-5093.up.railway.app/#/live, v2.2 ở https://driveguard-v2-production.up.railway.app, v1.1 ở https://driveguard-production-6b83.up.railway.app |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
 ## Ảnh chụp màn hình
 
-| HUD: bình thường (L0) | HUD: cầm điện thoại (L2) | HUD: ngủ gật (L3) |
-|---|---|---|
-| ![HUD mức L0: Tỉnh táo, tốc độ 68 km/h](docs/screenshots/hud-l0.png) | ![HUD mức L2: Bỏ điện thoại xuống](docs/screenshots/hud-l2-phone.png) | ![HUD mức L3: Mở mắt, dừng xe nghỉ ngay](docs/screenshots/hud-l3.png) |
+| HUD: bình thường (L0) | HUD: dấu hiệu buồn ngủ (L1) | HUD: cầm điện thoại (L2) | HUD: ngủ gật (L3) |
+|---|---|---|---|
+| ![HUD mức L0: Tỉnh táo, tốc độ 68 km/h](docs/screenshots/hud-l0.png) | ![HUD mức L1: Tìm chỗ dừng nghỉ, dấu hiệu buồn ngủ](docs/screenshots/hud-l1.png) | ![HUD mức L2: Bỏ điện thoại xuống](docs/screenshots/hud-l2-phone.png) | ![HUD mức L3: Mở mắt, dừng xe nghỉ ngay](docs/screenshots/hud-l3.png) |
 
 | Dashboard: nhật ký sự kiện | Dashboard: timeline mệt mỏi |
 |---|---|
@@ -25,6 +24,8 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 Ảnh HUD chụp ở trang `#/hud-preview` (trạng thái cố định, đã ẩn thanh chọn kịch bản). Ảnh dashboard chụp trên một
 database tạm với một ca lái **mô phỏng** (các dòng mang nhãn "mô phỏng"), không phải số liệu lái thật. Không ảnh nào
 có khuôn mặt.
+
+Ảnh từng bước của demo (16 ảnh có chú thích) và ảnh trên cỡ màn hình điện thoại: [docs/demo-backup.md](docs/demo-backup.md).
 
 ## Mục lục
 
@@ -197,6 +198,7 @@ cd frontend && npm install && npm run dev
 | Giám sát ngay trong trình duyệt (cần `npm run prepare-live` một lần) | http://localhost:5173/#/live |
 | Dashboard (đăng nhập bằng tài khoản ở bước 3) | http://localhost:5173/#/dashboard |
 | Hướng dẫn sử dụng: các màn hình có thể hiện, kèm ý nghĩa và việc nên làm | http://localhost:5173/#/guide |
+| Quyền riêng tư: thu gì, không thu gì, giữ bao lâu (không cần đăng nhập; `/privacy` cũng mở trang này) | http://localhost:5173/#/privacy |
 | Xem trước các trạng thái HUD | http://localhost:5173/#/hud-preview |
 
 Chỉ muốn xem camera và chỉ số, không cần backend: `python tools/debug_view.py --source 0`.
@@ -335,10 +337,14 @@ tốc độ:
 |---|---|---|---|
 | CNN mắt nhắm (MRL Eye, 4000 ảnh) | Accuracy 99,4%, FPR 0,2% | Lạc quan: CNN được học trên chính MRL Eye. Trên ảnh khác (yawn-eye) accuracy 88,1% | [eval/results/report.md](eval/results/report.md) |
 | Ngáp theo MAR (yawn-eye, test) | Accuracy 91,6%, precision 100% | Đo trên ảnh đơn, 215 ảnh. Trên video (FL3D) bắt được 76/99 lần ngáp | [eval/results/report.md](eval/results/report.md) |
-| Ngủ gật ≥ 1,5 s đạt L3 (FL3D, video lái đêm, diễn) | 75/95 (78,9%) | **Chưa đạt** mục tiêu ≥ 90% của PRD | [eval/results/report.md](eval/results/report.md) |
-| Cảnh báo sai mỗi giờ (FL3D / YawDD / SUST) | 2,3–8,5 / giờ tuỳ bộ và mức, CI 95% rộng | **Chưa đạt** mục tiêu ≤ 1,0 / giờ; chưa có giờ lái thật có nhãn | [eval/results/report.md](eval/results/report.md) |
+| Ngủ gật ≥ 1,5 s đạt L3 (FL3D, video lái đêm, diễn) | 77/95 (81,1%) | **Chưa đạt** mục tiêu ≥ 90% của PRD | [eval/results/report.md](eval/results/report.md) |
+| Cảnh báo sai mỗi giờ, mọi nhánh (UTA-RLDD, 24 người giữ riêng, 4,08 giờ tỉnh táo) | 1,2 / giờ (CI 95% 0,38–2,7) | **Chưa đạt** mục tiêu ≤ 1,0 / giờ. Người ngồi trước laptop, không phải lái xe; chưa có giờ lái thật có nhãn |
+| Cảnh báo sai mỗi giờ trên ba bộ khác (FL3D / YawDD / SUST-DDD) | 2,3–8,8 / giờ tuỳ bộ và mức, CI 95% rộng | **Chưa đạt**; FL3D chỉ có 26 phút nhãn tỉnh táo | [eval/results/report.md](eval/results/report.md) |
 | Tốc độ vòng lặp chính (Mac ARM, CPU) | ~146 FPS, MediaPipe ~5,7 ms/frame | Đạt ≥ 15 FPS **trên máy dev**; chưa đo trên hub gắn trên xe | [eval/results/benchmark.md](eval/results/benchmark.md) |
 | Chạy 10 phút theo nhịp camera, container 4 CPU / 4 GB (`simulated`) | 29,9 FPS, p95 11,1 ms, CPU 93 % của một nhân, RAM 597 MB | Cận trên cho bo mạch 4 nhân: cùng CPU của máy dev, chỉ ít nhân hơn. Không phải số đo thiết bị | [eval/results/benchmark_simulated.md](eval/results/benchmark_simulated.md) |
+
+CI trên GitHub không chạy được từ 12/10 (tài khoản của tổ chức bị chặn thanh toán); kết quả chạy local ngày 13/10 ở
+[docs/ci-local.md](docs/ci-local.md): 1720 test Python, 328 test frontend, e2e 24 / 24 (sau khi gộp `main`).
 
 Toàn bộ tiêu chí để chạy thử trên xe thật và trạng thái từng tiêu chí: [docs/pilot-readiness.md](docs/pilot-readiness.md).
 
@@ -382,15 +388,15 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 3 | Architecture diagram | [docs/architecture.md](docs/architecture.md); hình chi tiết ở [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
 | 5 | Live URL | https://c4-app-135.up.railway.app | ✅ |
-| 6 | Video demo | [docs/video-demo.md](docs/video-demo.md) (link YouTube) | ✅ |
-| 7 | Pitch deck | `docs/pitch-deck.pdf` | Chưa có |
+| 6 | Video demo | <https://youtu.be/dyHXOouJTM4> (2 phút 57 giây); mô tả ở [docs/video-demo.md](docs/video-demo.md), script ở [presentation/demo_script.md](presentation/demo_script.md) | ✅ |
+| 7 | Pitch deck | [docs/pitch-deck.pdf](docs/pitch-deck.pdf) (14 slide, bản 14/10) | ✅ |
 | 8 | Development journal | [docs/journal.md](docs/journal.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
 | 9 | Worklog | [docs/worklog.md](docs/worklog.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
 | 10 | Evaluation evidence | [docs/evaluation.md](docs/evaluation.md); số liệu ở [eval/results/](eval/results/) | ✅ |
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
 (thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (M32–M69, từ 05/10), [docs/release-v4.md](docs/release-v4.md) (audit 08/10 và các việc
-làm theo nó, từ M70, chưa deploy),
+làm theo nó, từ M70),
 [docs/pilot-readiness.md](docs/pilot-readiness.md) (còn thiếu gì để chạy thử trên xe thật),
 [docs/data-policy.md](docs/data-policy.md) (thu dữ liệu gì, ai xem, giữ bao lâu), [docs/safety-fmea.md](docs/safety-fmea.md) (những lúc hệ thống
 không cảnh báo được), [docs/improvements.md](docs/improvements.md) (việc chưa làm),
@@ -400,12 +406,12 @@ không cảnh báo được), [docs/improvements.md](docs/improvements.md) (vi�
 
 Team DriverGuard (4 người), AI20K Build Phase Cohort 4, VinUni:
 
-| Thành viên | GitHub | Vai trò (theo [docs/worklog.md](docs/worklog.md)) |
+| Thành viên | GitHub | Vai trò |
 |---|---|---|
-| Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent và chống báo sai, đánh giá trên dataset, bản web `#/live`, backend, audit, deploy Railway, tài liệu |
-| Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Dựng pipeline 14 khối, backend và dashboard ban đầu (M0–M7); giao diện Version 4, giọng nói tiếng Việt, deploy tự động (M57–M66) |
-| Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | PRD, sơ đồ Use Case và User Flow |
-| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | PRD gate 1 |
+| Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent · Đánh giá · Bản web · Frontend · Backend · Deploy · Kiểm thử và audit · Tài liệu · Demo |
+| Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Research · Frontend · Backend · Đánh giá · Deploy · Tester · Demo |
+| Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | Lập kế hoạch · Điều phối nhóm · Theo dõi tiến độ · Quản lý yêu cầu · Rà soát sản phẩm · Báo cáo · Demo |
+| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | Mô tả sản phẩm · Pitch Deck · Tester · Research · Draft PRD |
 
 ## AI usage logging
 

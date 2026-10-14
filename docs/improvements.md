@@ -18,36 +18,35 @@ làm**: nhóm trên làm trước. Trong mỗi nhóm cũng theo thứ tự đó.
 **Thời gian dự kiến** là ước lượng của tôi (08/10), chưa đo bằng việc đã làm. Chỉ tính **thời gian Claude làm và chạy**
 (viết code, chạy test và số đo, viết tài liệu), **không tính công của người**: ngồi ghi trước webcam, quay và dựng video,
 tuyển và hỏi 10 người, đọc duyệt, quyết định. Tính bằng giờ làm việc của Claude; mỗi mốc roadmap thường là một việc nên
-thời gian của nhóm là tổng, không làm song song. Việc phải đo trước khi biết kết quả (việc 6–8) có thể dài hơn.
+thời gian của nhóm là tổng, không làm song song. Việc phải đo trước khi biết kết quả (việc 5–7) có thể dài hơn.
 
 **Thứ tự sau audit 08/10** ([audit-2026-10-08.md](audit-2026-10-08.md) mục 6.2, sửa 09/10): tốc độ xe từ GPS lên thành
-việc 4, nhóm riêng ngay sau nộp bài; các việc sau nó lùi một số. Ba chỗ khác của mục 6.2 đã hết mâu thuẫn nhờ mốc đã làm:
+việc 3, nhóm riêng ngay sau nộp bài; các việc sau nó lùi một số. Ba chỗ khác của mục 6.2 đã hết mâu thuẫn nhờ mốc đã làm:
 tên gọi số báo sai (M70), đồng hồ canh trước đường đi của frame (M71), khoảng hở giữa hai frame trước khi thử rút ngắn
-`rise_confirm_s` (M71). Việc 11 có thêm điều kiện về phiên đăng nhập; mục hoãn `l1` 40 → 50 có điều kiện về dữ liệu.
+`rise_confirm_s` (M71). Việc 10 có thêm điều kiện về phiên đăng nhập; mục hoãn `l1` 40 → 50 có điều kiện về dữ liệu.
 
 **Quyết định 09/10** ([bảng đầy đủ](roadmap.md#quyet-dinh-0910)): anh chốt 31 chỗ còn ngỏ. Các chỗ được chọn làm là mốc
 M92–M101 của roadmap, **đều xong ngày 09/10** ([tóm tắt](roadmap.md#ke-hoach-0910)), và không còn nằm trong file này. Bốn việc chuyển sang
 [Đã bỏ](#bo-0910): YOLO bản web với ảnh nhỏ hơn, lấy frame thẳng từ camera, SLM giải thích mức cảnh báo, hỏi tài xế bằng
-giọng nói. Hàng đợi offline từ việc 13 thành việc 11; nhóm 5 không còn.
+giọng nói. Hàng đợi offline từ việc 13 thành việc 11 (nay là việc 10, sau khi pitch deck và video xong 14/10); nhóm 5 không còn.
 
 | Nhóm | Việc | Độ nên làm | Thời gian dự kiến | Thứ cần có | Vì sao xếp ở đây |
 |---|---|---|---|---|---|
-| 1. Nộp bài | 1–3 | Cao | 2–3,5 giờ | Không chờ gì (dùng số của M69 và M70, gọi đủ tên: "nhánh buồn ngủ" hay "mọi nhánh") | Bản web mô phỏng là đầu ra; có hạn nộp |
-| 2. Tốc độ xe | 4 | Cao | 2–3 giờ | Quyết định về quyền vị trí (09/10: chưa quyết). Hành vi khi chưa từng có tốc độ đã làm ở M95 | Từ M95, chưa có nguồn tốc độ thì sau 30 s thấy tài xế hệ thống giám sát như đang chạy; nhưng các luật cần tốc độ thật (trên 80 km/h, nghỉ khi dừng, đèn đỏ, xi nhan) vẫn không hoạt động |
-| 3. Một đợt tự ghi trước camera | 5–9 | Cao đến trung bình | 4–6 giờ | Người ngồi trước webcam | Cách duy nhất còn lại để giảm báo sai và bỏ sót bằng dữ liệu mới |
-| 4. Kỹ thuật bản web | 10–11 | Trung bình đến thấp | 2–2,5 giờ | Không chờ gì | Cải tiến thật nhưng lợi nhỏ, không đo được trên máy đích |
+| 1. Nộp bài | 1–2 | Cao | 1–1,5 giờ | Không chờ gì (dùng số của M69 và M70, gọi đủ tên: "nhánh buồn ngủ" hay "mọi nhánh") | Bản web mô phỏng là đầu ra; có hạn nộp |
+| 2. Tốc độ xe | 3 | Cao | 2–3 giờ | Quyết định về quyền vị trí (09/10: chưa quyết). Hành vi khi chưa từng có tốc độ đã làm ở M95 | Từ M95, chưa có nguồn tốc độ thì sau 30 s thấy tài xế hệ thống giám sát như đang chạy; nhưng các luật cần tốc độ thật (trên 80 km/h, nghỉ khi dừng, đèn đỏ, xi nhan) vẫn không hoạt động |
+| 3. Một đợt tự ghi trước camera | 4–8 | Cao đến trung bình | 4–6 giờ | Người ngồi trước webcam | Cách duy nhất còn lại để giảm báo sai và bỏ sót bằng dữ liệu mới |
+| 4. Kỹ thuật bản web | 9–10 | Trung bình đến thấp | 2–2,5 giờ | Không chờ gì | Cải tiến thật nhưng lợi nhỏ, không đo được trên máy đích |
 
 ### Nhóm 1: nộp bài
-Ba việc cùng phục vụ một buổi nộp: slide và video, phần PRD còn thiếu, tài khoản cho người chấm. Việc 1 và 3 lấy ý từ so
+Hai việc còn lại của buổi nộp (slide và video đã xong 14/10): phần PRD còn thiếu, tài khoản cho người chấm. Việc 2 lấy ý từ so
 sánh với nhóm P-196 (03/10). Không còn hub nên slide phải ghi rõ "mô phỏng trên web, chưa đo trên thiết bị đích".
 
-**Thời gian dự kiến:** 2–3,5 giờ. Việc 1: 1–2 giờ (nội dung slide và kịch bản video; người quay và dựng); việc 2: khoảng 1 giờ (kiểm tra lại `report.md`, tài liệu buổi kiểm tra; người tổ chức buổi 10 người); việc 3: khoảng 30 phút. Không tính công của người.
+**Thời gian dự kiến:** 1–1,5 giờ. Việc 1: khoảng 1 giờ (kiểm tra lại `report.md`, tài liệu buổi kiểm tra; người tổ chức buổi 10 người); việc 2: khoảng 30 phút. Không tính công của người.
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 1 | [Pitch deck và video demo](#viec-pitch) | Deliverable 6, 7 còn thiếu. Khung: vấn đề có nguồn → 3 rào cản → giải pháp → người dùng → tính năng → kiến trúc → kết quả đo → giới hạn → lộ trình |  |
-| 2 | [Phần PRD còn lại](#viec-prd-con-lai) | Buổi kiểm tra hiểu cảnh báo 10 người; nộp bài (`presentation/`, kiểm tra lại `report.md`). Tag `simulated` / `forced` đã xong ở M41 |  |
-| 3 | [Tài khoản demo theo vai trò](#viec-tk-demo) | Tài khoản chỉ đọc cho người chấm trên bản deploy, có dữ liệu mẫu |  |
+| 1 | [Phần PRD còn lại](#viec-prd-con-lai) | Buổi kiểm tra hiểu cảnh báo 10 người; nộp bài (`presentation/`, kiểm tra lại `report.md`). Tag `simulated` / `forced` đã xong ở M41 |  |
+| 2 | [Tài khoản demo theo vai trò](#viec-tk-demo) | Tài khoản chỉ đọc cho người chấm trên bản deploy, có dữ liệu mẫu |  |
 
 ### Nhóm 2: tốc độ xe
 Một việc, đứng riêng. Trước [M95](roadmap.md#m95) bản web không có bộ giả lập thì đứng "đỗ" cả chuyến, không cảnh báo nào; nay sau
@@ -58,36 +57,36 @@ một nguồn tốc độ thật, để các luật theo tốc độ hoạt đ�
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 4 | [Tốc độ xe từ GPS của thiết bị](#viec-gps) | Tốc độ từ `navigator.geolocation`, làm mượt. Hai chiều hỏng phải xử lý riêng: **chưa từng có tốc độ** đã xử lý ở M95 (sau 30 s thấy tài xế thì coi là không rõ, giám sát như đang chạy, báo tài xế); **mất GPS sau khi đã có số đọc lúc đang chạy** thì coi là đang chạy (M26, đã có). Chỉ dùng tốc độ, không lưu và không gửi toạ độ. Làm và thử bằng chuỗi tốc độ giả trên web |  |
+| 3 | [Tốc độ xe từ GPS của thiết bị](#viec-gps) | Tốc độ từ `navigator.geolocation`, làm mượt. Hai chiều hỏng phải xử lý riêng: **chưa từng có tốc độ** đã xử lý ở M95 (sau 30 s thấy tài xế thì coi là không rõ, giám sát như đang chạy, báo tài xế); **mất GPS sau khi đã có số đọc lúc đang chạy** thì coi là đang chạy (M26, đã có). Chỉ dùng tốc độ, không lưu và không gửi toạ độ. Làm và thử bằng chuỗi tốc độ giả trên web |  |
 
 ### Nhóm 3: một đợt tự ghi trước camera
 Phần làm được trên 13 phiên của một người và trên trace sẵn có đã làm ở [M54](roadmap.md#m54), [M55](roadmap.md#m55),
 [M56](roadmap.md#m56). Việc còn lại đều chờ một thứ ngoài code: người thứ hai, vài phiên ghi bổ sung, hoặc một quyết định.
-Việc 5 là việc ghi; việc 6–8 là nhìn xuống và mất tập trung (ghi xong mới làm được); việc 9 là mắt và ánh sáng.
+Việc 4 là việc ghi; việc 5–7 là nhìn xuống và mất tập trung (ghi xong mới làm được); việc 8 là mắt và ánh sáng.
 
-**Thời gian dự kiến:** 4–6 giờ. Việc 5: khoảng 15 phút chạy báo cáo sau khi có bản ghi (người ghi thì không tính); việc 6: 1–2 giờ; việc 7: khoảng 1 giờ; việc 8: khoảng 1 giờ; việc 9: khoảng 1 giờ. Việc 6–8 chỉ bắt đầu được sau khi người ghi xong dữ liệu của việc 5.
+**Thời gian dự kiến:** 4–6 giờ. Việc 4: khoảng 15 phút chạy báo cáo sau khi có bản ghi (người ghi thì không tính); việc 5: 1–2 giờ; việc 6: khoảng 1 giờ; việc 7: khoảng 1 giờ; việc 8: khoảng 1 giờ. Việc 5–7 chỉ bắt đầu được sau khi người ghi xong dữ liệu của việc 4.
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 5 | [Ghi số trực tiếp từ camera: phần còn thiếu](#viec-prd) | 13 phiên của một người đã ghi (khoảng 80 phút). Còn thiếu: người thứ hai; liếc bằng mắt mà đầu đứng yên; cúi nhẹ kèm nhắm mắt thật. Chỉ người ngồi trước camera làm được |  |
-| 6 | [Nhìn xuống hay nhắm mắt](#viec-nhin-xuong) | Nhìn xuống lâu bị báo L3 ngủ gật: 7 / 30 lần ở bản tự ghi, 0 / 100 lần nhắn tin 3–5 s của 50 tài xế 3MDAD. Đã thử bốn đường, không đường nào bật được: ngưỡng chung, ngưỡng eyeBlink theo tài xế (có sẵn, tắt), hướng mắt (bật cả trong microsleep thật), ngữ cảnh điện thoại (chỉ 3 / 7 lần có điện thoại trong khung hình). Còn lại: cúi nhẹ kèm nhắm mắt; người thứ hai; đường CNN |  |
-| 7 | [Tách gọi điện với nhắn tin](#viec-goi-nhan) | Một người: `phone_kind` đúng ở mọi frame có điện thoại; gọi 9 / 9, nhắn tin 6 / 11 và chậm (p50 3,15 s). Còn lại: người thứ hai. Chốt 09/10: không báo nhắn tin sớm hơn, không nới vùng tài xế, cho tới khi có người thứ hai |  |
-| 8 | [Theo dõi hướng mắt](#viec-huong-nhin) | Đã có ở chế độ chỉ đo (M55): góc nhìn xuống = góc cúi đầu + mống mắt. Giữ 2 s ở 12°: bắt 14–26 % số lần nhắn tin của 50 tài xế 3MDAD (hệ thống hiện tại 2–8 % bằng góc đầu), 0 lần khi lái bình thường và khi nhắm mắt; FL3D khoảng 2,6 lần sai mỗi giờ. Trên 6 người UTA-RLDD (2,8 giờ, không lái xe) tín hiệu bật 32 lần, 20 lần của một người. Chưa đủ để thành cảnh báo. Còn lại: dữ liệu có nhãn nhìn xuống; liếc ngang bằng mắt. Chốt 09/10: không thêm bước "nhìn xuống" vào đăng ký |  |
-| 9 | [Khối 5 khi mặt tối, ngưỡng `eyeBlink` trên `#/live`](#viec-cnn-toi) | Phần mặt tối (M54) và ngưỡng `eyeBlink` của bản web (M56) đã sửa. Còn lại: ngưỡng `eyeBlink` mới là tạm và chưa đo trên `#/live` (đo được bằng webcam); chưa có phiên mặt sáng 12–32. Ảnh xám / IR thật không còn nguồn đo (08/10) |  |
+| 4 | [Ghi số trực tiếp từ camera: phần còn thiếu](#viec-prd) | 13 phiên của một người đã ghi (khoảng 80 phút). Còn thiếu: người thứ hai; liếc bằng mắt mà đầu đứng yên; cúi nhẹ kèm nhắm mắt thật. Chỉ người ngồi trước camera làm được |  |
+| 5 | [Nhìn xuống hay nhắm mắt](#viec-nhin-xuong) | Nhìn xuống lâu bị báo L3 ngủ gật: 7 / 30 lần ở bản tự ghi, 0 / 100 lần nhắn tin 3–5 s của 50 tài xế 3MDAD. Đã thử bốn đường, không đường nào bật được: ngưỡng chung, ngưỡng eyeBlink theo tài xế (có sẵn, tắt), hướng mắt (bật cả trong microsleep thật), ngữ cảnh điện thoại (chỉ 3 / 7 lần có điện thoại trong khung hình). Còn lại: cúi nhẹ kèm nhắm mắt; người thứ hai; đường CNN |  |
+| 6 | [Tách gọi điện với nhắn tin](#viec-goi-nhan) | Một người: `phone_kind` đúng ở mọi frame có điện thoại; gọi 9 / 9, nhắn tin 6 / 11 và chậm (p50 3,15 s). Còn lại: người thứ hai. Chốt 09/10: không báo nhắn tin sớm hơn, không nới vùng tài xế, cho tới khi có người thứ hai |  |
+| 7 | [Theo dõi hướng mắt](#viec-huong-nhin) | Đã có ở chế độ chỉ đo (M55): góc nhìn xuống = góc cúi đầu + mống mắt. Giữ 2 s ở 12°: bắt 14–26 % số lần nhắn tin của 50 tài xế 3MDAD (hệ thống hiện tại 2–8 % bằng góc đầu), 0 lần khi lái bình thường và khi nhắm mắt; FL3D khoảng 2,6 lần sai mỗi giờ. Trên 6 người UTA-RLDD (2,8 giờ, không lái xe) tín hiệu bật 32 lần, 20 lần của một người. Chưa đủ để thành cảnh báo. Còn lại: dữ liệu có nhãn nhìn xuống; liếc ngang bằng mắt. Chốt 09/10: không thêm bước "nhìn xuống" vào đăng ký |  |
+| 8 | [Khối 5 khi mặt tối, ngưỡng `eyeBlink` trên `#/live`](#viec-cnn-toi) | Phần mặt tối (M54) và ngưỡng `eyeBlink` của bản web (M56) đã sửa. Còn lại: ngưỡng `eyeBlink` mới là tạm và chưa đo trên `#/live` (đo được bằng webcam); chưa có phiên mặt sáng 12–32. Ảnh xám / IR thật không còn nguồn đo (08/10) |  |
 
 ### Nhóm 4: kỹ thuật bản web
 Phần còn lại sau M49–M51 và M67 ([M49](roadmap.md#m49), [M50](roadmap.md#m50), [M51](roadmap.md#m51),
 [M67](roadmap.md#m67)). Đo và thử được trên Chromium của máy dev, không đo được trên máy đích. Không việc nào bỏ frame hay
-thêm model. Việc 11 giữ cho sản phẩm chịu được mất mạng. Khối 12 đã đếm lại sau khoảng hở giữa hai frame (M71) trước khi
-việc 10 thử rút ngắn `rise_confirm_s`. Hai việc cũ của nhóm (YOLO với ảnh nhỏ hơn, lấy frame thẳng từ camera) đã
+thêm model. Việc 10 giữ cho sản phẩm chịu được mất mạng. Khối 12 đã đếm lại sau khoảng hở giữa hai frame (M71) trước khi
+việc 9 thử rút ngắn `rise_confirm_s`. Hai việc cũ của nhóm (YOLO với ảnh nhỏ hơn, lấy frame thẳng từ camera) đã
 [bỏ ngày 09/10](#bo-0910).
 
-**Thời gian dự kiến:** 2–2,5 giờ. Việc 10: 45–60 phút; việc 11: 1–1,5 giờ (mốc M97 về phiên đăng nhập đã xong).
+**Thời gian dự kiến:** 2–2,5 giờ. Việc 9: 45–60 phút; việc 10: 1–1,5 giờ (mốc M97 về phiên đăng nhập đã xong).
 
 | # | Task | Solution | Người thực hiện |
 |---:|---|---|---|
-| 10 | [Độ trễ cảnh báo: phần còn lại](#viec-tre-canh-bao) | `#/live` đã đẩy cảnh báo ngay và dùng giờ chụp của frame (M50). Bản ghi M52: ngủ gật p95 1,67 s, điện thoại 2,30–2,77 s, nhìn sang bên / ra sau 2,83–3,04 s (sát mốc 3 s của PRD). Còn lại: thử `rise_confirm_s` 0,5 / 0,25 / 0 s trên bản ghi và trên chuỗi có khoảng hở giữa hai frame, đếm cảnh báo ngoài nhãn; HUD của bản thiết bị vẫn hỏi 300 ms một lần (ưu tiên thấp) |  |
-| 11 | [Hàng đợi offline cho app](#viec-outbox-web) | Mất mạng: lưu sự kiện / tổng kết trong IndexedDB, gửi lại khi có mạng; thử bằng cách tắt mạng trong DevTools. Phiên đăng nhập đã được gia hạn trong chuyến (M97) |  |
+| 9 | [Độ trễ cảnh báo: phần còn lại](#viec-tre-canh-bao) | `#/live` đã đẩy cảnh báo ngay và dùng giờ chụp của frame (M50). Bản ghi M52: ngủ gật p95 1,67 s, điện thoại 2,30–2,77 s, nhìn sang bên / ra sau 2,83–3,04 s (sát mốc 3 s của PRD). Còn lại: thử `rise_confirm_s` 0,5 / 0,25 / 0 s trên bản ghi và trên chuỗi có khoảng hở giữa hai frame, đếm cảnh báo ngoài nhãn; HUD của bản thiết bị vẫn hỏi 300 ms một lần (ưu tiên thấp) |  |
+| 10 | [Hàng đợi offline cho app](#viec-outbox-web) | Mất mạng: lưu sự kiện / tổng kết trong IndexedDB, gửi lại khi có mạng; thử bằng cách tắt mạng trong DevTools. Phiên đăng nhập đã được gia hạn trong chuyến (M97) |  |
 
 ### Hoãn
 Chưa đủ dữ liệu hoặc lý do để làm; xem lại khi có chuyến thật. Lý do ở [phần hoãn](#phan-hoan).
@@ -136,47 +135,9 @@ sức máy cho web; đo bản web trên điện thoại Android thay cho hub (06
 
 ## Chi tiết từng việc
 
-<a id="viec-pitch"></a>
-
-### Việc 1: pitch deck và video demo
-
-**Độ nên làm: cao.** Sản phẩm giờ là bản web mô phỏng, nên pitch và video là đầu ra chính. Dùng số của M69 và M70 (`eval/results/uta_rldd_tradeoff.md`, mục 8 và 9 của `dataset_uta_rldd.md`), gọi đủ tên: 0,98 là báo sai **nhánh buồn ngủ** sau 30 s đầu; mọi nhánh cả video là 1,2 / giờ (cận trên 2,7). Luật đếm: `eval/splits/README.md`.
-
-- **Vì sao:** README ghi deliverable 6 (video demo) và 7 (pitch deck) là "Chưa có"; `presentation/` mới
-  có README ([việc 2](#viec-prd-con-lai)). Nhóm P-196 đã có slide 13 trang, video và trang tóm tắt.
-- **Khung slide (mượn của P-196, sửa chỗ yếu):**
-  1. Vấn đề: số liệu tai nạn do mệt mỏi / mất tập trung, **mỗi số kèm nguồn và năm** (slide của họ
-     thiếu, chính họ tự ghi chú).
-  2. Rào cản của giải pháp hiện có: báo sai nhiều nên tài xế tắt, không nói khi không giám sát được,
-     gửi video khuôn mặt lên cloud.
-  3. Giải pháp và người dùng (4 vai trò), một chuyến đi từ đăng ký đến bảng tổng kết.
-  4. Kiến trúc 14 khối; phần khác biệt: tốc độ / xi nhan, mốc riêng từng tài xế, nút báo sai, FMEA.
-  5. Kết quả đo kèm giờ đo và CI (`eval/results/report.md`), mỗi dòng có nhận định đạt / chưa đạt.
-  6. Giới hạn: từ 08/10 không còn hub và không còn xe thật, nên mọi thứ là mô phỏng trên web và trace có sẵn; chưa có CAN thật, chưa có giờ lái thật; chưa đo FPS trên thiết bị đích (ước lượng 10–13 FPS, [phụ lục J](#phu-luc-j)). Nói thẳng điều này, không né. Lộ trình ([pilot-readiness.md](pilot-readiness.md)).
-- **Video:** hình đã quay xong ngày 09/10 theo [kich-ban-demo.md](kich-ban-demo.md): 21 clip chưa lồng tiếng ở
-  `presentation/demo-clips/`, ghép nguyên là 299,9 giây, vừa chạm 5 phút (phải cắt bớt khi dựng); 15 clip có giao diện
-  đã quay lại ngày 12/10 trên giao diện và giọng nói mới. Còn lại: thu lời theo
-  [LOI-THOAI.md](../presentation/demo-clips/LOI-THOAI.md), ghép thành `presentation/video_demo.mp4`, rồi sửa dòng
-  deliverable 6 trong README.
-- Không đưa số nào chưa có trong `eval/results/`; số đo trên Mac ghi rõ là máy dev.
-- **Thêm từ hai bài báo đọc 06/10 ([phụ lục I](#phu-luc-i)):**
-  - Một slide "vì sao số của chúng tôi không phải 99 %": các bài báo 98–99 % trên NTHU-DDD / UTA-RLDD chấm theo
-    frame, trong cùng dataset; [P2] ghi nhận số đó thường tụt 10–20 % khi chấm trên người chưa thấy. Số của
-    DriverGuard chia theo người, có tập giữ riêng, đơn vị là báo sai / giờ và số người có cảnh báo. Bảng so
-    phải có cột giao thức (chia theo người?, đơn vị, nhãn từ đâu), không đặt hai con số cạnh nhau trần trụi.
-  - Mốc tham khảo trên UTA-RLDD, dẫn lại qua bảng 6 của [P1]: người chấm 57,8 %, model của nhóm làm dataset
-    65,2 %. *Chưa đọc bài gốc* để biết mấy lớp và đơn vị tính, nên chưa đưa lên slide.
-  - Phần "giới hạn" trình bày theo ba trục của [P2] (kỹ thuật, triển khai, con người): bài tổng quan nhận xét
-    đa số nghiên cứu chỉ có trục đầu; dự án có số cho cả ba (eval; FPS / tài nguyên / on-device; FMEA, nút báo
-    sai, buổi kiểm tra hiểu cảnh báo của [việc 2](#viec-prd-con-lai) khi làm xong).
-  - [P2] mục 7.3, 8.2, 8.4 khuyến nghị đúng những gì kiến trúc đã chọn: xử lý trên thiết bị, chỉ lưu sự kiện,
-    có thời hạn xoá, cảnh báo leo thang theo mức, mỗi cảnh báo nêu lý do. Dùng làm nguồn dẫn cho slide kiến trúc.
-
----
-
 <a id="viec-prd-con-lai"></a>
 
-### Việc 2: phần PRD còn lại
+### Việc 1: phần PRD còn lại
 
 **Độ nên làm: cao.** Có hạn nộp bài. Buổi kiểm tra 10 người cần người tham gia, phần còn lại làm một mình được.
 
@@ -197,7 +158,7 @@ Tách từ việc "làm nốt yêu cầu PRD" (02/10):
 
 <a id="viec-tk-demo"></a>
 
-### Việc 3: tài khoản demo theo vai trò
+### Việc 2: tài khoản demo theo vai trò
 
 **Độ nên làm: cao, việc nhỏ.** Người chấm không xem được dashboard nếu không có tài khoản.
 
@@ -213,7 +174,7 @@ Tách từ việc "làm nốt yêu cầu PRD" (02/10):
 
 <a id="viec-gps"></a>
 
-### Việc 4: tốc độ xe từ GPS của thiết bị
+### Việc 3: tốc độ xe từ GPS của thiết bị
 
 **Độ nên làm: cao** (sửa 09/10 theo audit 08/10, phát hiện 1; trước đó "trung bình đến thấp"). Ngày 09/10 anh chưa quyết về quyền vị trí và về nguồn nào thắng giữa GPS và `#/drive`, nên phần GPS vẫn mở. Đây là điều kiện để sản phẩm có cảnh báo khi không ai bấm bộ giả lập. Chỉ thử được bằng chuỗi giả.
 
@@ -259,9 +220,9 @@ chứng*), GPS của thiết bị là nguồn tốc độ duy nhất chứ khôn
 
 <a id="viec-prd"></a>
 
-### Việc 5: ghi số trực tiếp từ camera, phần còn thiếu
+### Việc 4: ghi số trực tiếp từ camera, phần còn thiếu
 
-**Độ nên làm: cao, nếu còn ngồi ghi được.** Là cách duy nhất còn lại để cải thiện độ chính xác và báo sai bằng dữ liệu mới; chỉ cần webcam và người ngồi trước. Việc 6–9 chờ dữ liệu của việc này.
+**Độ nên làm: cao, nếu còn ngồi ghi được.** Là cách duy nhất còn lại để cải thiện độ chính xác và báo sai bằng dữ liệu mới; chỉ cần webcam và người ngồi trước. Việc 5–8 chờ dữ liệu của việc này.
 
 **Đã có ([M52](roadmap.md#m52), [M54](roadmap.md#m54)):** 13 phiên của một người, không kính, một ngày, khoảng 80 phút.
 `data/own_traces/quan_v2.pkl` (12 phiên; thư mục `data/` không vào git) và `quan_int8.pkl`; báo cáo
@@ -272,10 +233,10 @@ kèm nhãn bấm phím, không lưu ảnh (HowToUse mục 9.5).
 glasses=no --tag light=day --name <tên phiên>`; mọi phiên bắt đầu bằng 20 s ngồi yên không bấm):
 1. **Người thứ hai** (đeo kính thường nếu có), khoảng 40 phút: `day_eyes`, `phone_holds`, `look_down`, `glances`. Mọi ngưỡng
    và kết luận của nhóm này đang dựa trên một người.
-2. **`eyes_only2`** (cho [việc 8](#viec-huong-nhin)): tựa đầu vào ghế để đầu không xoay; liếc xuống bàn phím ngay dưới camera
+2. **`eyes_only2`** (cho [việc 7](#viec-huong-nhin)): tựa đầu vào ghế để đầu không xoay; liếc xuống bàn phím ngay dưới camera
    (`j`) 5 lần, liếc tới mép màn hình (`k`) 5 lần, giữ 5 s, cách nhau 40 s. Phiên `eyes_only` đầu tiên ghi ra thành quay đầu
    17–70°, đã đổi tên `head_turn`.
-3. **`bow_light`** (cho [việc 6](#viec-nhin-xuong)): cúi nhẹ đúng như khi nhìn điện thoại trên đùi rồi nhắm mắt (`w`) 5 lần, 3 s
+3. **`bow_light`** (cho [việc 5](#viec-nhin-xuong)): cúi nhẹ đúng như khi nhìn điện thoại trên đùi rồi nhắm mắt (`w`) 5 lần, 3 s
    mỗi lần, nghỉ 5 s. Ở phiên `look_down`, lúc nhắm mắt đầu cúi 14–22°, lúc nhìn điện thoại chỉ 7–10°.
 4. Chạy lại `python tools/record_trace.py report --traces data/own_traces/quan_v2.pkl --out
    eval/results/own_recordings.md`.
@@ -305,9 +266,9 @@ dataset có nhãn hay chuyến lái thật. Nhãn là lúc người bấm phím,
 
 <a id="viec-nhin-xuong"></a>
 
-### Việc 6: nhìn xuống hay nhắm mắt
+### Việc 5: nhìn xuống hay nhắm mắt
 
-**Độ nên làm: cao.** Lỗi báo sai lớn nhất còn mở (nhìn xuống bị báo ngủ gật L3). Chờ phiên `bow_light` và người thứ hai của việc 4.
+**Độ nên làm: cao.** Lỗi báo sai lớn nhất còn mở (nhìn xuống bị báo ngủ gật L3). Chờ phiên `bow_light` và người thứ hai của [việc 4](#viec-prd).
 
 **Lỗi còn nguyên:** nhìn xuống (điện thoại trên đùi, nhắn tin) bị khối 7 coi là nhắm sâu và ra còi L3 "Mở mắt!" thay cho L2
 "Nhìn về phía trước": 7 / 30 lần trên bản tự ghi của một người. Quy tắc "đầu cúi" của M25 không được áp vì người ghi nhìn
@@ -332,7 +293,7 @@ xuống chủ yếu bằng mắt (đầu chỉ cúi 7–10°, ngưỡng `bowed_p
   FL3D của nó dùng lần microsleep đầu của mỗi video thay cho bước đăng ký, và đếm theo cách khác hai dòng trên.
 - So sánh lẫn khác biệt người và camera: FL3D ban đêm, bản tự ghi là laptop ban ngày.
 
-- **Hướng mắt cũng không gỡ được ([M55](roadmap.md#m55)):** góc nhìn xuống (việc 8) bật cả trong 6 lần microsleep thật của
+- **Hướng mắt cũng không gỡ được ([M55](roadmap.md#m55)):** góc nhìn xuống (việc 7) bật cả trong 6 lần microsleep thật của
   FL3D, nên dùng nó để đổi L3 thành "nhìn xuống" sẽ che mất ngủ gật.
 - **Trên 50 tài xế 3MDAD lỗi này hiếm hơn nhiều so với bản tự ghi:** nhắn tin 0 / 100 lần ra L3 `microsleep`, dù 12–37 % số
   frame nhắn tin đạt điều kiện "nhắm sâu". Các đoạn đó chỉ dài 3–5 s; ở bản tự ghi người ghi nhìn xuống 5–10 s liền.
@@ -348,7 +309,7 @@ xuống chủ yếu bằng mắt (đầu chỉ cúi 7–10°, ngưỡng `bowed_p
   thêm được gì, vẫn tắt.
 
 **Còn lại:**
-1. Ca cúi nhẹ mà nhắm mắt chưa có dữ liệu (phiên `bow_light` của [việc 5](#viec-prd)).
+1. Ca cúi nhẹ mà nhắm mắt chưa có dữ liệu (phiên `bow_light` của [việc 4](#viec-prd)).
 2. Người thứ hai: khoảng cách eyeBlink giữa nhắm thật và nhìn xuống mới đo trên một người.
 3. Ca EAR rất thấp khi nhìn xuống: SUST `n_368` (đầu cúi 17°, EAR 0,26 lần mốc, eyeBlink 0,7) vẫn lọt ngưỡng 0,35.
 4. Đường CNN: frame do CNN mắt quyết định (ảnh xám / IR, hai mắt lệch) chưa có quy tắc "đầu cúi".
@@ -357,7 +318,7 @@ xuống chủ yếu bằng mắt (đầu chỉ cúi 7–10°, ngưỡng `bowed_p
 
 <a id="viec-goi-nhan"></a>
 
-### Việc 7: tách gọi điện với nhắn tin
+### Việc 6: tách gọi điện với nhắn tin
 
 **Độ nên làm: trung bình.** Gọi điện đã đúng 9 / 9; còn lại là nhắn tin chậm (p50 3,15 s), chờ người thứ hai.
 
@@ -370,7 +331,7 @@ dashboard. Lý do và mức cảnh báo giữ nguyên (`phone`, L2).
 - Gọi, tay trái và tay phải: 9 / 9 có cảnh báo, p95 2,75 s.
 - Nhắn tin: 6 / 11, p50 3,15 s, p95 4,71 s (PRD: 3 s). Model chỉ thấy điện thoại cầm thấp ở 19–80 % số frame, nên
   `phone_ratio_2s` chậm đạt 0,6 hoặc không đạt.
-- Ba lần nhắn tin ra L3 `microsleep` trước khi `phone` kịp đủ 2 s ([việc 6](#viec-nhin-xuong)).
+- Ba lần nhắn tin ra L3 `microsleep` trước khi `phone` kịp đủ 2 s ([việc 5](#viec-nhin-xuong)).
 - Một lần model thấy điện thoại ở 92 % số frame nhưng chỉ 7 % nằm trong vùng tài xế: tâm lệch 1,7 lần bề rộng mặt sang bên,
   vùng chỉ rộng 1,5 (`phone.zone_expand_x` 1,0).
 
@@ -378,14 +339,14 @@ dashboard. Lý do và mức cảnh báo giữ nguyên (`phone`, L2).
 1. Người thứ hai và các cách cầm có ghi lại thứ tự (phiên `phone_holds` không ghi kiểu cầm của từng lần).
 2. Chốt 09/10: giữ nguyên cả hai cho tới khi có người thứ hai. Không báo nhắn tin sớm hơn hay nâng mức; `phone.zone_expand_x`
    giữ 1,0 (1,3 bắt được lần cầm lệch, đổi lại dễ tính cả điện thoại của hành khách).
-3. Giới hạn đã biết: điện thoại trên đùi nằm ngoài khung hình, là phần của [việc 8](#viec-huong-nhin); YOLO thấy kém khi tay
+3. Giới hạn đã biết: điện thoại trên đùi nằm ngoài khung hình, là phần của [việc 7](#viec-huong-nhin); YOLO thấy kém khi tay
    che điện thoại.
 
 ---
 
 <a id="viec-huong-nhin"></a>
 
-### Việc 8: theo dõi hướng mắt
+### Việc 7: theo dõi hướng mắt
 
 **Độ nên làm: trung bình đến thấp.** Đang ở chế độ chỉ đo, chưa đủ chính xác để thành cảnh báo; chờ dữ liệu có nhãn nhìn xuống.
 
@@ -412,7 +373,7 @@ camera hướng mặt, diễn, mỗi hành động 3–5 s; bản tự ghi một
 | FL3D, 47 phút | 2 lần ngoài microsleep, 6 lần trong microsleep thật | – |
 
 - **Chưa đủ để thành cảnh báo:** bắt 14–26 % số lần nhắn tin; trên FL3D khoảng 2,6 lần mỗi giờ ngoài nhãn microsleep.
-- **Không dùng được để gỡ [việc 6](#viec-nhin-xuong):** tín hiệu bật cả trong 6 lần microsleep thật của FL3D (mắt lim dim
+- **Không dùng được để gỡ [việc 5](#viec-nhin-xuong):** tín hiệu bật cả trong 6 lần microsleep thật của FL3D (mắt lim dim
   trước khi nhắm), nên lấy nó để đổi L3 thành "nhìn xuống" sẽ che mất ngủ gật.
 - Từng tín hiệu riêng, tách nhắn tin với lái bình thường theo từng tài xế (AUC trung vị, 47 người): góc cúi đầu 0,82,
   `iris_y` 0,75, blendshape `eyeLookDown` 0,68. Mống mắt không hơn góc đầu; cộng hai thứ thì đặc hiệu hơn từng thứ.
@@ -432,7 +393,7 @@ camera hướng mặt, diễn, mỗi hành động 3–5 s; bản tự ghi một
   cách đổi ảnh 16 bit sang 8 bit).
 
 **Còn lại:**
-1. Dữ liệu lái thật có nhãn lúc nhìn xuống (chuyến thật, hoặc người thứ hai ở [việc 5](#viec-prd)) trước khi nghĩ tới luật.
+1. Dữ liệu lái thật có nhãn lúc nhìn xuống (chuyến thật, hoặc người thứ hai ở [việc 4](#viec-prd)) trước khi nghĩ tới luật.
 2. Hệ số `iris_gain` theo từng tài xế: bước nhìn đường không cho được, cần thêm một bước "nhìn xuống" vào đăng ký. Chốt
    09/10: không thêm, đăng ký giữ nguyên; `iris_gain` vẫn là một hệ số chung.
 3. Liếc ngang chỉ bằng mắt (màn hình giải trí): chưa có dữ liệu và chưa có tín hiệu.
@@ -472,7 +433,7 @@ Nguồn: [V1], đọc README và code ngày 05/10, không chạy thử.
 
 <a id="viec-cnn-toi"></a>
 
-### Việc 9: khối 5 khi mặt tối, ngưỡng `eyeBlink` trên `#/live`
+### Việc 8: khối 5 khi mặt tối, ngưỡng `eyeBlink` trên `#/live`
 
 **Đã sửa ([M54](roadmap.md#m54)):** `eye_state.low_light_brightness` 60 → 0. Mặt tối thì EAR (kèm phiếu `eyeBlink`) quyết
 định, không giao cho CNN. Bản tự ghi ở mặt 32–35: 8 lần L3 sai → 0, nhắm mắt đạt L3 27 / 27; FL3D làm tối nhẹ trong RAM:
@@ -495,14 +456,14 @@ microsleep đạt L3 0 / 24 → 12 / 24. Một người, một webcam: ngưỡng
 
 <a id="nhom-hieu-nang"></a>
 
-### Hiệu năng bản web (việc 10): số đo và cách đọc
+### Hiệu năng bản web (việc 9): số đo và cách đọc
 
 **Hai loại độ trễ, tối ưu theo hai cách khác nhau:**
 - **Độ trễ xử lý một frame** (PRD NFR-2: p95 ≤ 200 ms; CLAUDE.md: ≥ 15 FPS): do model và code.
 - **Độ trễ cảnh báo** (PRD: time-to-alert p95 ≤ 3 s): gần hết là thời gian chờ có chủ ý của luật để chống
   báo sai (nhắm mắt 1,5 s, nhìn lệch 2,0 s + xác nhận 0,5 s). Xử lý nhanh hơn 10 ms không làm cảnh báo đến
   sớm hơn đáng kể; phần cắt được mà không đụng tới báo sai là các khoảng chờ nằm ngoài luật
-  ([việc 10](#viec-tre-canh-bao)).
+  ([việc 9](#viec-tre-canh-bao)).
 
 **Thời gian mỗi chặng, trên cùng một máy Mac ARM:**
 
@@ -541,7 +502,7 @@ microsleep đạt L3 0 / 24 → 12 / 24. Một người, một webcam: ngưỡng
 
 <a id="viec-tre-canh-bao"></a>
 
-### Việc 10: độ trễ cảnh báo, phần còn lại
+### Việc 9: độ trễ cảnh báo, phần còn lại
 
 **Độ nên làm: trung bình.** Số đo sát mốc 3 s của PRD; thử `rise_confirm_s` làm được ngay trên bản ghi có sẵn.
 
@@ -565,7 +526,7 @@ microsleep đạt L3 0 / 24 → 12 / 24. Một người, một webcam: ngưỡng
    là APK.
 2. **`rise_confirm_s` của L2, chỉ thử nghiệm:** luật `off_road` đã đòi 2,0 s liên tục (có `on_road_confirm_s`
    0,3 s), rồi khối 12 đòi thêm 0,5 s: 20 % độ trễ là lớp lọc thứ hai. Chạy lại bản ghi của
-   [việc 5](#viec-prd) bằng `seq_eval --replay --set` với 0,5 / 0,25 / 0 s, đếm cảnh báo ngoài nhãn. Chỉ đổi
+   [việc 4](#viec-prd) bằng `seq_eval --replay --set` với 0,5 / 0,25 / 0 s, đếm cảnh báo ngoài nhãn. Chỉ đổi
    nếu số báo sai không tăng; CLAUDE.md đặt chống báo sai ngang độ chính xác. Xác nhận tăng đo bằng dấu thời gian:
    trước [M71](roadmap.md#m71) hai frame ở hai bên một lần vòng lặp đứng đã đủ xác nhận, nên rút ngắn khi đó sẽ tăng
    báo sai. Từ M71 khối 12 đếm lại sau khoảng hở quá `max_gap_s`; khi thử phải chạy cả các chuỗi có khoảng hở và
@@ -573,13 +534,13 @@ microsleep đạt L3 0 / 24 → 12 / 24. Một người, một webcam: ngưỡng
 **Không còn làm (08/10):** đo độ trễ từ lúc có cảnh báo tới lúc loa của hub kêu, và cột "tới tai tài xế" trong báo cáo của `tools/record_trace.py` (cả hai cần thiết bị thật).
 
 **Không đề xuất:** hạ `microsleep_l3_s`, `off_road_s`, `phone_ratio`. Đó là quyết định về báo sai, cần dữ
-liệu của [UTA-RLDD (M53)](#viec-toi-uu-nguong) và [việc 5](#viec-prd), không phải việc tối ưu tốc độ.
+liệu của [UTA-RLDD (M53)](#viec-toi-uu-nguong) và [việc 4](#viec-prd), không phải việc tối ưu tốc độ.
 
 ---
 
 <a id="viec-outbox-web"></a>
 
-### Việc 11: hàng đợi offline cho app
+### Việc 10: hàng đợi offline cho app
 
 **Độ nên làm: thấp.** Chỉ có ý nghĩa khi app thật chạy trên xe; trên web làm để đóng nốt FMEA mất mạng.
 
@@ -831,7 +792,7 @@ tại chưa đủ để kết luận đạt hay chưa đạt:**
    thật, có thể là cảnh báo đúng hoặc chỉ ngưỡng hơi chặt.
 4. **Đứng một mình thì dễ bị lừa:** hệ thống không bao giờ cảnh báo đạt 0 / giờ. Phải đi cùng MAR
    ([M18](#viec-far-mar), đã có), tỉ lệ bắt sự kiện và time-to-alert (PRD p95 ≤ 3 s, công cụ đo là `tools/record_trace.py`,
-   xem [việc 10](#viec-tre-canh-bao)).
+   xem [việc 9](#viec-tre-canh-bao)).
 5. **Số HITL trên dashboard không cùng loại:** `false_alarms / tổng cảnh báo` là precision, không phải
    / giờ, và phụ thuộc tài xế có bấm nút hay không.
 
@@ -1425,7 +1386,7 @@ https://doi.org/10.3389/frai.2026.1871926 (PMC13572618)
 - **Phiên tự ghi chói / ngược sáng và phiên kính râm:** bỏ theo quyết định 06/10. Phần chói chỉ có số nhân tạo
   của M46; yêu cầu đầu vào vẫn là camera IR của hub. Việc phát hiện mắt bị che chuyển sang [hoãn](#viec-mat-bi-che).
 - **Khẩu trang (miệng bị che):** bỏ theo quyết định 06/10.
-- **Tốc độ GPS khi chưa có CAN:** bỏ rồi thêm lại trong ngày 06/10 thành [việc 4](#viec-gps), sau khi chốt thiết bị
+- **Tốc độ GPS khi chưa có CAN:** bỏ rồi thêm lại trong ngày 06/10 thành [việc 3](#viec-gps), sau khi chốt thiết bị
   đích là Android box của VF e34 (không có CAN).
 
 <a id="bo-hub"></a>
@@ -1446,7 +1407,7 @@ của file này, trước ngày 08/10). Phần đã làm được thì vẫn n�
 | Ghi nhãn trực tiếp khi chạy thử (24), so sánh nhiều chuyến (25) | Xe, người ngồi cạnh, nhiều giờ lái | Chỉ tiêu PRD ≤ 1,0 báo sai / giờ vẫn **chưa kết luận được**: dựa vào trace UTA-RLDD, FL3D, 3MDAD và bản tự ghi, kèm CI của việc 1 |
 
 **Hệ quả:** thiết bị đích còn lại ở [phụ lục J](#phu-luc-j) như danh sách rủi ro chưa kiểm chứng (ước lượng 10–13 FPS, YOLO có
-thể quá hạn, camera USB, chạy nền). Slide và báo cáo nộp bài phải nói thẳng điều này ([việc 1](#viec-pitch)). Các tiêu chí
+thể quá hạn, camera USB, chạy nền). Slide và báo cáo nộp bài phải nói thẳng điều này ([pitch deck](pitch-deck.pdf), slide 12). Các tiêu chí
 cần thiết bị trong [pilot-readiness.md](pilot-readiness.md) giữ nguyên trạng "Chưa đạt".
 
 #### Khác (xem `docs/release-v2.md`, mục 4)
@@ -1495,7 +1456,7 @@ không cho đủ chi tiết để kiểm.* [P2] xếp chính bài này vào nhó
 
 **Lấy được gì:**
 - Bằng chứng ngoài cho rủi ro kính râm → ghi ở [mắt bị che](#viec-mat-bi-che).
-- Mốc tham khảo trên UTA-RLDD (người chấm 57,8 %, HM-LSTM 65,2 %) → ghi ở [việc 1](#viec-pitch), còn phải
+- Mốc tham khảo trên UTA-RLDD (người chấm 57,8 %, HM-LSTM 65,2 %) → chưa đưa lên slide, còn phải
   đọc bài gốc.
 - Cảm biến tay trên vô lăng → [hoãn](#viec-vo-lang).
 
@@ -1513,13 +1474,13 @@ tắc thiết kế), không phải các bảng liệt kê model.
   khoảng tin cậy, tách theo ánh sáng / kính, chia theo người. Dự án đã có gần hết (M17, M18, M40, M53); phần
   thiếu đã làm ở M69.
 - Thiết kế: xử lý trên thiết bị, chỉ lưu sự kiện, cảnh báo leo thang, nêu lý do, cá nhân hoá phần âm lượng /
-  kiểu nhắc chứ không nới ngưỡng an toàn. Đã có; dùng làm nguồn dẫn ở [việc 1](#viec-pitch).
+  kiểu nhắc chứ không nới ngưỡng an toàn. Đã có; dùng làm nguồn dẫn cho phần kiến trúc khi trình bày.
 - Phương pháp luật / logic mờ dễ giải thích và ít báo sai hơn: bảng 5 dẫn Magán 2022 trên UTA-RLDD, bản CNN +
   GRU báo sai 40 %, bản logic mờ 7 %, độ chính xác hai bản ngang nhau (55–65 %). Ủng hộ việc giữ risk engine
   dạng luật; *chưa đọc bài gốc*.
 
 **Đã ghi vào việc có sẵn:** κ ≥ 0,70 cho người ghi nhãn và mốc KSS ≥ 7 ([việc đã bỏ 08/10](#bo-hub)); câu hỏi
-khó chịu và SUS ([việc 2](#viec-prd-con-lai)); ràng buộc cho hỏi đáp bằng giọng nói ([bỏ ngày 09/10](#viec-hoi-giong-noi)).
+khó chịu và SUS ([việc 1](#viec-prd-con-lai)); ràng buộc cho hỏi đáp bằng giọng nói ([bỏ ngày 09/10](#viec-hoi-giong-noi)).
 
 **Đã xem, không đề xuất (anh quyết định nếu muốn khác):**
 
@@ -1533,7 +1494,7 @@ khó chịu và SUS ([việc 2](#viec-prd-con-lai)); ràng buộc cho hỏi đá
 | Hệ số theo nhịp sinh học (mô hình hai quá trình) | Bài chỉ nêu là câu hỏi mở, không có số; [mục hoãn](#viec-nhip-sinh-hoc) giữ nguyên |
 | Ngưỡng siết dần theo thời gian lái (Essel 2024) | Bảng 5: độ chính xác 98,2 % nhưng độ nhạy 64,3 %. Hệ số 1,2 sau 2 giờ lái hiện có là đủ cho tới khi có chuyến dài |
 | Hệ thống giành quyền lái, tự dừng xe | DriverGuard chỉ đọc tín hiệu xe (M44) |
-| Nhắn SMS kèm vị trí GPS cho chủ xe ([P1]) | M44 đã báo quản lý qua backend; mất mạng là phần của [việc 11](#viec-outbox-web). Vị trí là loại dữ liệu mới, chưa có trong `docs/data-policy.md` |
+| Nhắn SMS kèm vị trí GPS cho chủ xe ([P1]) | M44 đã báo quản lý qua backend; mất mạng là phần của [việc 10](#viec-outbox-web). Vị trí là loại dữ liệu mới, chưa có trong `docs/data-policy.md` |
 | PR-AUC, Brier / ECE đúng nghĩa | Lý do ở M69 (`dataset_uta_rldd.md` mục 8): trên UTA-RLDD hai lớp cân bằng theo cách dựng |
 | Dataset mới | Không có: các bộ dùng được (UTA-RLDD, YawDD, NITYMED, DROZY, DMD) đều đã ở [phụ lục B](#phu-luc-b); SEED-VIG là điện não |
 
@@ -1577,7 +1538,7 @@ xem thử. Từ 08/10 không còn thiết bị, nên bản web mô phỏng là p
 | WebGPU | GPU Adreno 6xx phần lớn chạy được WebGPU trong trình duyệt Android [J7] | Chưa tìm được yêu cầu về phiên bản WebView và Android; chưa biết onnxruntime-web chạy YOLO trên Adreno 610 nhanh tới đâu |
 
 **Từ 08/10 không còn thiết bị** nên phụ lục này không còn đi kèm phép đo nào; nó là danh sách rủi ro chưa kiểm chứng và
-phải được nói thẳng khi nộp bài ([việc 1](#viec-pitch)).
+phải được nói thẳng khi nộp bài ([pitch deck](pitch-deck.pdf), slide 12).
 
 **Hệ quả với các việc (đã sửa vào từng việc):**
 - Ước lượng 10–13 FPS nếu model mặt chạy trên CPU, dưới mốc 15 FPS của CLAUDE.md, là *suy luận từ số của Mac*, không còn
@@ -1587,12 +1548,12 @@ phải được nói thẳng khi nộp bài ([việc 1](#viec-pitch)).
 - YOLO bản web (việc [bỏ ngày 09/10](#viec-yolo-web)): YOLO một luồng, ước lượng khoảng 1,2 s mỗi lần, quá hạn 0,6 s: nhánh điện thoại có thể không
   hoạt động trong APK nếu không cắt vùng hay không có WebGPU. Trang vẫn báo khi model không còn cho kết quả (M50).
 - Đóng gói APK, chạy khi không ở trước (foreground service), màn hình dọc, phiên bản WebView, camera USB, tốc độ xe: đã
-  bỏ cùng việc APK; tốc độ xe còn [việc 4](#viec-gps) bằng GPS, thử bằng chuỗi giả.
+  bỏ cùng việc APK; tốc độ xe còn [việc 3](#viec-gps) bằng GPS, thử bằng chuỗi giả.
 - Bản Python không chạy trên Android (đã nêu), nên không có phép đo tài nguyên nào thay thế.
 
 **Anh đã trả lời (06/10):**
 1. Giữ xe nguyên bản nhất: giữ màn hình zin, thêm Android box (không thay màn hình).
-2. Tốc độ xe: thêm lại tốc độ GPS, thành [việc 4](#viec-gps).
+2. Tốc độ xe: thêm lại tốc độ GPS, thành [việc 3](#viec-gps).
 3. Plugin native cho model: để sau; nay không còn cách đo để xét lại.
 
 **Câu hỏi còn mở, chỉ thiết bị thật trả lời được (và sẽ không có câu trả lời):**

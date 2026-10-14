@@ -21,7 +21,7 @@ models). Two things the plain StaticFiles mount did not do (docs/improvements.md
   (frontend/scripts/web-runtime.mjs), and the policy keeps it that way: a script from anywhere else,
   an inline script or `eval` is refused by the browser. See CSP below for each directive.
 
-Only files are served here; nothing in this module reads a request body.
+Only files are served here (plus the redirect of add_short_links); nothing in this module reads a request body.
 """
 
 from __future__ import annotations
@@ -32,8 +32,9 @@ import os
 import sys
 from pathlib import Path
 
+from fastapi import FastAPI
 from starlette.datastructures import Headers
-from starlette.responses import FileResponse, Response
+from starlette.responses import FileResponse, RedirectResponse, Response
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 from starlette.types import Scope
 
@@ -87,6 +88,15 @@ def precompress(directory: str | Path, level: int = 9) -> list[tuple[Path, int, 
         gz.write_bytes(packed)
         done.append((path, len(raw), len(packed)))
     return done
+
+
+def add_short_links(app: FastAPI) -> None:
+    """Paths that open a page of the web app (hash routes). Register before mounting the static files."""
+
+    @app.get("/privacy", include_in_schema=False)
+    def privacy() -> RedirectResponse:
+        """/privacy -> #/privacy (M106): the address a visitor types, or a link from outside the app."""
+        return RedirectResponse("/#/privacy", status_code=307)
 
 
 class CachedStaticFiles(StaticFiles):

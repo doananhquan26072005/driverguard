@@ -152,6 +152,7 @@ thuộc `release-v3.md`. Lần sửa tài liệu theo audit là [M91](#m91). Cá
 | [M103](#m103) | `#/live` mô phỏng trên một trang, theo ảnh mẫu 12/10: trên màn hình ngang HUD thu nhỏ bên trái, cột phải có camera tài xế và bảng điều khiển xe (tốc độ, xi nhan) đưa thẳng vào agent, không qua backend; điện thoại và màn hình dọc giữ như cũ (khối 13: `frontend/src/live/LiveScreen.tsx`, `agent.ts`, `drive/useCar.ts`, `drive/DrivePanel.tsx`) | Bấm "Chạy đều 50" ở cột phải thì HUD chạy 50 km/h; e2e 19 / 19, vitest 315 pass | Xong (12/10) |
 | [M104](#m104) | Vẽ khuôn mặt tài xế lên camera ở cột phải của `#/live`, theo ảnh mẫu DMS 13/10: khung quanh mặt (màu theo mức cảnh báo), các đường nối điểm mốc (viền mặt, lông mày, mắt, mũi, môi), góc đầu (yaw, pitch, roll) và vạch hướng mống mắt gần đúng; bật mặc định, có nút tắt (khối 13: `frontend/src/live/FaceOverlay.tsx`, `faceDrawing.ts`; khối 6 trả thêm `roll` và khuôn mặt nào là tài xế) | Khung và đường vẽ theo mặt tài xế trên camera; e2e 19 / 19, vitest 321 pass | Xong (13/10) |
 | [M105](#m105) | Lưu ý của quản lý cho tài xế, theo yêu cầu 13/10: khi duyệt báo cáo ca lái, quản lý ghi một lưu ý (không bắt buộc, tối đa 500 ký tự, sửa được); cột "Quản lý đã xem?" trong bảng ca lái của tài xế đổi thành "Lưu ý" và hiện lưu ý đó (backend: cột `review_note`, `POST .../review` nhận `note`; dashboard) | Quản lý ghi lưu ý → tài xế thấy trong "Lưu ý"; backend 234 pass, e2e 20 / 20 | Xong (13/10) |
+| [M106](#m106) | Trang quyền riêng tư ngay trong sản phẩm, `#/privacy` (không cần đăng nhập, camera hay backend): thu gì, không thu gì, giữ bao lâu, ai xem được, quyền của tài xế, giới hạn; bản rút gọn của `docs/data-policy.md`. Hai thời hạn lưu đọc từ `GET /api/v1/policy`, không có backend thì hiện mặc định của `labels.ts`. Đường dẫn `/privacy` trên bản deploy chuyển tới trang này (trước trả 404). Vào từ `#/guide` và từ trang đăng nhập. Việc anh giao 13/10 khi đối chiếu chương 13 của Technical Book. Không đổi 14 khối, không khoá mới trong `thresholds.yaml` (khối 13 và phần phục vụ file: `frontend/src/privacy/`, `App.tsx`, `guide/GuideScreen.tsx`, `backend/static.py`, `deploy/railway_app.py`) | `pytest tests/`: 1713 pass, 6 xfail (1 mới). `npx vitest run`: 310 pass (3 mới). `npm run e2e`: 21 / 21 (3 mới: trang ở 1280 × 800, 800 × 1280, 390 × 800 không cuộn ngang, không lỗi console, hiện 60 và 365 ngày của backend) | Xong (13/10), chưa deploy |
 
 <a id="ke-hoach-0910"></a>
 
@@ -2267,7 +2268,7 @@ và các mốc theo audit 08/10.
 - **Docstring và comment (không đổi code):** `risk_engine.py` (công thức, `trend`, chuông ở đèn đỏ), `alert_manager.py` ("mức cao hơn luôn được phát" sai: cooldown của chính mức đó vẫn giữ), `hud/hud.py` (không còn là "HUD tối thiểu M4"), `config/thresholds.yaml` (cài đặt camera là của bản thiết bị; tổng điểm 0..100 là trước hệ số ngữ cảnh), `tools/trace_studies.py` (`is_ir` bằng 0 chỉ đúng với các dataset đó), `main.py` (ví dụ `--hud-origin` không còn ghi địa chỉ của v1)
 - **`frontend/src/live/LiveScreen.tsx`:** "Dùng thử: không gửi gì đi" thành "không gửi số liệu giám sát"; trang vẫn hỏi máy chủ tốc độ xe mô phỏng 4 lần mỗi giây ở chế độ này
 - **`docs/safety-fmea.md`:** ba liên kết `#viec-apk` và một `#viec-do-phan-cung` trỏ về danh sách đã bỏ 08/10; dòng 14 sửa câu về mức cao hơn; dòng 15 ghi rõ bản web cần CDN và server lúc khởi động, và chưa từng có tốc độ thì là đỗ
-- **Ba địa chỉ Railway:** kiểm 09/10 bằng `/health` và `/openapi.json`, cả ba đang chạy: `driveguard-production-5093` là v3 (27 đường API, có `/api/v1/policy`, `/api/v1/fleet`), `driveguard-v2-production` là v2.2 (17), `driveguard-production-6b83` là v1.1 (13). `README.md` và `release-v3.md` ghi cả ba; `release-v3.md` bỏ câu "chưa deploy". Chưa kiểm bản v3 đang chạy gồm tới mốc nào
+- **Ba địa chỉ Railway:** kiểm 09/10 bằng `/health` và `/openapi.json`, cả ba đang chạy: `driveguard-production-5093` là v3 (27 đường API, có `/api/v1/policy`, `/api/v1/fleet`), `driveguard-v2-production` là v2.2 (17), `driveguard-production-6b83` là v1.1 (13). `README.md` và `release-v3.md` ghi cả ba; `release-v3.md` bỏ câu "chưa deploy". Chưa kiểm bản v3 đang chạy gồm tới mốc nào. **12/10:** `driveguard-production-5093` trả 404 ("Application not found"); bản chạy thử nay ở `c4-app-135.up.railway.app` (28 đường API, trùng với code hiện tại), hai địa chỉ v2.2 và v1.1 vẫn chạy
 - **APK:** `README.md`, `architecture_diagram.md`, `safety-fmea.md` ghi APK là thiết kế, đóng gói đã bỏ 08/10, đầu ra là bản web mô phỏng. `architecture_diagram.md` ghi file INT8 không dùng được
 - **`CLAUDE.md`:** khối 5 chạy sau khối 6 (trigger cần EAR từng mắt); `face_conf` là tỉ lệ landmark nằm trong ảnh
 - **Mục 6.2, bảy chỗ mâu thuẫn thứ tự trong `improvements.md`:**
@@ -2810,6 +2811,27 @@ lệch dọc 30°, M80) chưa có câu trả lời.
   - Màn hình ngang rất thấp: cả cột thu nhỏ theo, chữ và nút nhỏ lại cùng tỉ lệ
   - Chưa xem trên thiết bị thật; mới xem trên Chromium ở ba cỡ cửa sổ
 - Test: vitest 315 pass (5 mới ở `agent.test.ts`: thứ tự nguồn tốc độ); e2e 19 / 19 (mới: "landscape: the camera and the driving panel sit beside the HUD, and the panel drives #/live"; test kéo thả ô camera của M100 nay chạy ở 800 × 1280); `tsc` sạch; `vite build` chạy được
+
+<a id="m106"></a>
+
+#### M106: Trang quyền riêng tư trong sản phẩm, `#/privacy` (khối 13, phục vụ file)
+
+**Xong là thấy gì:** mở `http://localhost:5173/#/privacy`: một trang đọc được trên máy tính và điện thoại, nói ảnh khuôn mặt không rời thiết bị, cái gì được gửi lên máy chủ, cái gì không, hai thời hạn lưu (60 và 365 ngày theo cấu hình mặc định), ai xem được, quyền của tài xế và giới hạn. Trên bản deploy, `/privacy` chuyển tới trang đó.
+
+**Trạng thái:** Xong (13/10), chưa deploy. Việc anh giao 13/10 sau khi đối chiếu repo với chương 13 của Technical Book (tiêu chí 4: sản phẩm chạm dữ liệu cá nhân thì cần một trang privacy thật)
+
+- **Trang** (`frontend/src/privacy/PrivacyScreen.tsx`, `privacy.css`): là một tài liệu, cửa sổ cuộn dọc (khác `#/guide` là khung không cuộn). Dùng lại thanh trên cùng của hướng dẫn. Mỗi câu rút từ `docs/data-policy.md`; file đó vẫn là bản đầy đủ
+- **Thời hạn lưu:** đọc từ `GET /api/v1/policy`; không có backend thì hiện `RETENTION_DAYS` của `labels.ts`, là hai con số màn hình xin đồng ý đang ghi. Giá trị 0 hiện là "tới khi quản trị viên xoá"
+- **Địa chỉ:** `#/privacy` trong `App.tsx`; `backend/static.py` có `add_short_links`, `deploy/railway_app.py` gọi nó trước khi gắn thư mục file, nên `/privacy` trả 307 tới `/#/privacy`
+- **Lối vào:** liên kết "Quyền riêng tư" ở trang đăng nhập, cạnh "Hướng dẫn sử dụng" (thêm sau khi gộp `main`); từ `#/guide`: nút "Quyền riêng tư" trên thanh trên cùng (ẩn trên điện thoại như các nút khác của thanh) và liên kết trong thẻ "Không lưu ảnh khuôn mặt" ở phần Giới thiệu
+- **Cố ý, cần anh biết:**
+  - CSS nằm ở file riêng của trang, không thêm vào `styles.css` (file đó cũng đã đổi trên `main`)
+  - Trang ghi rõ đây là sản phẩm của một dự án học tập, chưa được rà soát pháp lý
+- **Chưa làm / còn hở:**
+  - Chưa deploy: `https://c4-app-135.up.railway.app/privacy` vẫn trả 404 tới lần deploy sau
+  - Chưa tài xế nào đọc; chưa xem trên điện thoại thật, mới là Chromium ở ba cỡ cửa sổ
+  - Trang không có bản tiếng Anh
+- Test: `pytest tests/` 1713 pass, 6 xfail (1 mới ở `test_static.py`); vitest 310 pass (3 mới ở `PrivacyScreen.test.tsx`); e2e 21 / 21 (3 mới ở `guide.e2e.ts`); `tsc`, ruff / format sạch
 
 ### Vận hành (M66–)
 

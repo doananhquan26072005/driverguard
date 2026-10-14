@@ -126,7 +126,7 @@ Thời hạn tính từ lúc máy chủ nhận được bản ghi, không theo g
 
 | Quyền | DriverGuard đáp ứng thế nào |
 |---|---|
-| Được biết | Màn hình "Đăng ký khuôn mặt" nói rõ trước khi bắt đầu: không lưu ảnh, không gửi khuôn mặt, số liệu giữ bao lâu. Tài liệu này |
+| Được biết | Màn hình "Đăng ký khuôn mặt" nói rõ trước khi bắt đầu: không lưu ảnh, không gửi khuôn mặt, số liệu giữ bao lâu. Trang `#/privacy` trong sản phẩm (M106, bản rút gọn của tài liệu này, không cần đăng nhập). Tài liệu này |
 | Xem dữ liệu của mình | Đăng nhập dashboard bằng tài khoản tài xế: cảnh báo, timeline, báo cáo chuyến |
 | Biết ai đã xem dữ liệu của mình | Tab "Dữ liệu của tôi", bảng "Ai đã xem dữ liệu của tôi" (nhật ký truy cập, mục 4) |
 | Nhận bản sao dữ liệu của mình | Nút "Tải dữ liệu của tôi" (M48): một file JSON gồm mọi cảnh báo, sự kiện, mẫu theo phút, báo cáo chuyến, lượt người khác xem và các yêu cầu xoá của chính tài xế đó (`GET /api/v1/me/data`). Chỉ tài khoản tài xế gọi được, và chỉ ra dữ liệu của chính mình |

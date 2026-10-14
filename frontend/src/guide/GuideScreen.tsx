@@ -59,6 +59,9 @@ export default function GuideScreen() {
           <ShieldCheck size={20} strokeWidth={2.25} />
         </span>
         <h1>Hướng dẫn sử dụng</h1>
+        <a className="ghost" href="#/privacy">
+          Quyền riêng tư
+        </a>
       </header>
 
       <nav ref={tabs} className="guide-tabs" aria-label="Các phần của hướng dẫn">
@@ -96,7 +99,9 @@ export default function GuideScreen() {
           <ul className="guide-facts">
             <li className="dg-card">
               <b>Không lưu ảnh khuôn mặt</b>
-              <span>Hình camera chỉ được xử lý ngay trong xe. Máy chủ chỉ nhận con số: mức, lý do, thời điểm.</span>
+              <span>
+                Hình camera chỉ được xử lý ngay trong xe. Máy chủ chỉ nhận con số: mức, lý do, thời điểm. <a href="#/privacy">Quyền riêng tư</a>
+              </span>
             </li>
             <li className="dg-card">
               <b>Nghe là đủ</b>

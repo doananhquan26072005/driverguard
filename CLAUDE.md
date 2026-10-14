@@ -1,11 +1,11 @@
 # DriverGuard — hệ thống giám sát tài xế on-device
 
 ## Ràng buộc bắt buộc
-- Toàn bộ xử lý chạy on-device. KHÔNG gửi hoặc lưu ảnh khuôn mặt.
+- Toàn bộ xử lý chạy on-device. Không gửi hoặc lưu ảnh khuôn mặt (xem docs/data-policy.md).
   Frame chỉ tồn tại trong RAM, không bao giờ ghi ra đĩa.
 - Chỉ gửi metadata JSON lên backend.
 - Phải đạt tối thiểu 15 FPS. Không thêm model nặng vào vòng lặp chính.
-- Chỉ dùng model pretrained, KHÔNG train model mới.
+- Chỉ dùng model pretrained, không train model mới.
 - Ưu tiên chống false positive ngang với độ chính xác.
 
 ## Kiến trúc: 14 khối, chạy theo thứ tự
@@ -17,7 +17,10 @@
 
 ## Quy ước code
 - Mỗi khối là một module riêng trong edge_agent/, giao tiếp qua dataclass.
-- Tất cả ngưỡng nằm trong config/thresholds.yaml, KHÔNG hardcode trong logic.
+  Bản chạy trong trình duyệt/APK (#/live) làm khối 1–4, 13, 14 bằng TypeScript
+  trong frontend/src/live; khối 6–12 vẫn là Python edge_agent chạy qua Pyodide
+  (edge_agent/web/bridge.py). Sửa logic một khối thì kiểm tra cả hai phía.
+- Tất cả ngưỡng nằm trong config/thresholds.yaml, không hardcode trong logic.
 - Logic theo thời gian phải test được bằng chuỗi số giả, không cần video.
 - Comment và tên biến bằng tiếng Anh, giải thích cho tôi bằng tiếng Việt.
 
@@ -30,6 +33,6 @@ face_conf (tỉ lệ landmark nằm trong ảnh, không phải độ tin cậy c
 
 ## Cách làm việc
 - Workflow nằm ở docs/workflow
-- Lộ trình ở docs/roadmap.md. Mỗi lần CHỈ làm đúng một mốc tôi yêu cầu.
+- Lộ trình ở docs/roadmap.md. Mỗi lần chỉ làm đúng một mốc tôi yêu cầu.
 - Làm xong thì cập nhật trạng thái mốc đó trong docs/roadmap.md.
 - Không làm trước các mốc sau, kể cả khi thấy cần thiết. Cứ nói ra để tôi quyết định.

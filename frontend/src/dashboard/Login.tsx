@@ -89,6 +89,10 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
           <BookOpen aria-hidden size={18} />
           Hướng dẫn sử dụng
         </a>
+        <a className="login-guide" href="#/privacy" title="Thu gì, không thu gì, giữ bao lâu. Không cần tài khoản.">
+          <ShieldCheck aria-hidden size={18} />
+          Quyền riêng tư
+        </a>
       </section>
 
       <section className="login-side">

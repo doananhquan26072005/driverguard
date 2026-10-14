@@ -70,3 +70,24 @@ test("the login page leads to the guide, and a screen in it takes no touch", asy
   await expect(page.locator(".guide-screen [inert]")).toHaveCount(1);
   await expect(page.locator("[role=dialog]")).toHaveCount(0);
 });
+
+// M106: the privacy page is a document (it scrolls down, never sideways) and is reached from the guide.
+for (const size of SIZES) {
+  test(`privacy ${size.width} x ${size.height}: readable, no sideways scroll, reached from the guide`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    await page.setViewportSize(size);
+    await page.goto("/#/guide");
+    await page.reload();
+    await page.locator(".guide-facts").getByRole("link", { name: "Quyền riêng tư" }).click();
+    await expect(page.getByRole("heading", { name: "Quyền riêng tư", level: 1 })).toBeVisible();
+    await expect(page.locator('[data-keep="events"]')).toHaveText("60 ngày");
+    await expect(page.locator('[data-keep="summaries"]')).toHaveText("365 ngày");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.getByRole("link", { name: "Về trang đăng nhập" }).click();
+    await expect(page).toHaveURL(/#\/live/);
+    expect(errors).toEqual([]);
+  });
+}
+
