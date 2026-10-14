@@ -1132,6 +1132,17 @@ Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
   README: YouTube demo (`https://youtu.be/dyHXOouJTM4`), slide trên Google Drive, live URL `https://c4-app-135.up.railway.app`.
 - **Sửa** tiêu đề README thành "DriverGuard: Hệ thống cảnh báo buồn ngủ & mất tập trung on-device"; phần còn lại giữ nguyên.
 
+### 3.52 Video demo: giọng đọc mới cho ba câu, link YouTube mới (14/10)
+
+Chỉ đổi tài liệu và video, không đổi code chạy, không có số mốc.
+
+- **Sửa** video demo 3 phút: ba câu 03 (giới thiệu DriverGuard), 15 (quyền riêng tư), 21 (câu kết) thay bằng bản thu
+  lại 14/10, lời giữ nguyên theo `docs/kich-ban-demo-3-phut.md`. Câu 03 rút hai chỗ ngắt để không đè câu giới thiệu
+  team; slide kết dời dòng "báo nhầm" và slogan theo nhịp đọc mới. Project dựng ở `presentation/demo-clips/` (không vào git).
+- **Sửa** README (badge và dòng deliverable 6), `docs/video-demo.md`: link <https://youtu.be/V75TaUnJaug> (công khai,
+  177 giây, 1080p) thay `dyHXOouJTM4`.
+- **Còn lại:** mã QR video ở slide 13 của `docs/pitch-deck.pdf` vẫn trỏ tới link cũ `dyHXOouJTM4`; cần sửa trong Canva.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu

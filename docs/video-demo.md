@@ -1,6 +1,6 @@
 # Video Demo — DriverGuard
 
-**YouTube:** <https://youtu.be/dyHXOouJTM4> ("DriverGuard demo", công khai, 2 phút 57 giây, tới 1080p)
+**YouTube:** <https://youtu.be/V75TaUnJaug> ("DRIVERGUARD demo", công khai, 2 phút 57 giây, tới 1080p; bản tải lên 14/10 với giọng đọc mới cho câu giới thiệu, câu quyền riêng tư và câu kết)
 
 | Phần | Nội dung |
 |---|---|
