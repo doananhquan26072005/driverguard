@@ -411,7 +411,7 @@ Team DriverGuard (4 người), AI20K Build Phase Cohort 4, VinUni:
 | Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent · Đánh giá · Bản web · Frontend · Backend · Deploy · Kiểm thử và audit · Tài liệu · Demo |
 | Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Research · Frontend · Backend · Đánh giá · Deploy · Tester · Demo |
 | Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | Lập kế hoạch · Điều phối nhóm · Theo dõi tiến độ · Quản lý yêu cầu · Rà soát sản phẩm · Báo cáo · Demo |
-| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | Mô tả sản phẩm · Pitch Deck · Tester · Research |
+| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | Mô tả sản phẩm · Pitch Deck · Tester · Research · Draft PRD |
 
 ## AI usage logging
 
