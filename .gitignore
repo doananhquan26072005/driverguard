@@ -85,6 +85,9 @@ models/tts/
 # Demo video sources (clips, voice takes, HyperFrames project: about 1.4 GB). The video is on YouTube, see docs/video-demo.md
 presentation/demo-clips/
 
+# Knowledge graph written by the graphify tool (local cache, rebuilt on demand)
+graphify-out/
+
 # Personal notes on the mattpocock-skills plugin (not shared)
 docs/mattpocock-skills.md
 # Local voice work kept out of git (HoaiMy .wav lines, import tool), see voice_local/README.md

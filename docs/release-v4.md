@@ -1091,6 +1091,21 @@ Chỉ đổi tài liệu và đường dẫn, không đổi code chạy, không 
 - **Giới hạn:** ảnh mobile là Chromium giả lập,
   chưa phải điện thoại thật; ảnh chụp trước khi gộp M103–M105 của `main`, nên chưa có giao diện của các mốc đó.
 
+### 3.48 Pitch deck bản cuối; file nộp cập nhật theo (14/10)
+
+Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
+
+- **Sửa** `docs/pitch-deck.pdf`: bản 14 slide (9,1 MB) thay bản 12 slide của mục 3.46. Số Mỹ năm 2024 theo NHTSA
+  (3.208 người chết, 315.167 người bị thương do mất tập trung); tỉ lệ buồn ngủ (AAA, 17,6 %) và mất tập trung (NHTSA,
+  8 %) tách thành hai thanh có nguồn; kết quả trên dữ liệu công khai (slide 9: nhắm ≥ 1,5 s → L3 77/95, báo L3 đúng 83/85, nhắm ≥ 3 s 11/11, AUC 0,93,
+  ngáp 79,8 % trên YawDD, báo sai 1,2 / giờ CI 0,38–2,7, DROZY 0/15 video tỉnh bị báo) tách khỏi thử nghiệm nội bộ
+  (slide 10: 38/59, 7/7, trễ trung vị 1,9 s, 9/9, 8/8, 6/11, 0/13); thêm ~152 FPS, 30 FPS, 1.712 test; slide cuối có mã QR tới video và bản deploy (đã giải mã, đúng địa chỉ).
+- **Sửa** README: deliverable 7 ghi 14 slide; hàng ảnh HUD thêm mức L1 (`docs/screenshots/hud-l1.png`).
+- **Sửa** `presentation/README.md` (14 slide), `.gitignore` (`graphify-out/`).
+- **Sửa** `docs/worklog.md` (10–14/10, commit tới `ae0c9e8`), `docs/journal.md` (10, 12, 13, 14/10).
+- **Bỏ** việc "Pitch deck và video demo" khỏi `docs/improvements.md`, đánh số lại các việc còn lại.
+- **Còn lại:** logo Xanh SM trên nhân vật minh hoạ; slide 4 chưa có bảng đối thủ; user feedback vẫn 0 người.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
