@@ -1106,6 +1106,24 @@ Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
 - **Bỏ** việc "Pitch deck và video demo" khỏi `docs/improvements.md`, đánh số lại các việc còn lại.
 - **Còn lại:** logo Xanh SM trên nhân vật minh hoạ; slide 4 chưa có bảng đối thủ; user feedback vẫn 0 người.
 
+### 3.49 Audit `CLAUDE.md` theo model hiện tại (14/10)
+
+Chỉ đổi hướng dẫn cho agent, không đổi code chạy, không có số mốc.
+
+- **Sửa** `CLAUDE.md`: mục quy ước code ghi rõ bản `#/live` / APK làm khối 1–4, 13, 14 bằng TypeScript
+  (`frontend/src/live`), khối 6–12 là Python qua Pyodide; các chữ `KHÔNG` / `CHỈ` viết hoa hạ về chữ thường, giữ
+  nguyên ràng buộc; ràng buộc ảnh khuôn mặt trỏ tới `docs/data-policy.md`.
+- **Còn lại:** 11 skill trùng tên giữa `.claude/skills` (`skills-lock.json`) và plugin `mattpocock-skills` 1.3.1,
+  6 cái khác nội dung (`pr`, `domain-modeling` dùng `CONTEXT.md` thay vì `GLOSSARY.md`); chưa chọn giữ bản nào.
+
+### 3.50 Vai trò Khuê thêm "Draft PRD" ở slide 13 và README (14/10)
+
+Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
+
+- **Sửa** `docs/pitch-deck.pdf`: bản mới (9,3 MB) thay bản của mục 3.48. So chữ từng slide với bản cũ: chỉ slide 13
+  khác, vai trò Ngô Hoàng Thụy Khuê thêm "Draft PRD"; số liệu và QR không đổi.
+- **Sửa** README, bảng team: vai trò Khuê thêm "Draft PRD", khớp slide 13.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
