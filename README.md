@@ -1,4 +1,12 @@
-# DriverGuard
+# DriverGuard: Hệ thống cảnh báo buồn ngủ & mất tập trung on-device
+
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo-red?logo=youtube)](https://youtu.be/dyHXOouJTM4)
+[![Slides](https://img.shields.io/badge/Slides-Pitch%20Deck-blue?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1IXICIgwW3DVxeUi-wH9_W8KM-91e-8lc/view?usp=drive_link)
+[![Live](https://img.shields.io/badge/Live-c4--app--135.up.railway.app-brightgreen?logo=railway)](https://c4-app-135.up.railway.app)
+
+<p align="center">
+  <img src="docs/screenshots/thumbnail.jpg" alt="DriverGuard: hệ thống cảnh báo buồn ngủ và mất tập trung, AI vision, real-time, on-device" width="720">
+</p>
 
 Hệ thống giám sát tài xế (Driver Monitoring System) chạy **ngay trên thiết bị**: camera nhìn tài xế,
 phát hiện **buồn ngủ** (nhắm mắt lâu, PERCLOS, ngáp, gục đầu, chớp chậm) và **mất tập trung** (nhìn khỏi

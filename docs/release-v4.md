@@ -1124,6 +1124,14 @@ Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
   khác, vai trò Ngô Hoàng Thụy Khuê thêm "Draft PRD"; số liệu và QR không đổi.
 - **Sửa** README, bảng team: vai trò Khuê thêm "Draft PRD", khớp slide 13.
 
+### 3.51 README: tiêu đề kiểu repo nghiên cứu, badge và ảnh thumbnail (14/10)
+
+Chỉ đổi tài liệu, không đổi code chạy, không có số mốc.
+
+- **Thêm** `docs/screenshots/thumbnail.jpg` (ảnh bìa DriverGuard của nhóm, thu về 1600 px, 318 KB) và ba badge ở đầu
+  README: YouTube demo (`https://youtu.be/dyHXOouJTM4`), slide trên Google Drive, live URL `https://c4-app-135.up.railway.app`.
+- **Sửa** tiêu đề README thành "DriverGuard: Hệ thống cảnh báo buồn ngủ & mất tập trung on-device"; phần còn lại giữ nguyên.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
