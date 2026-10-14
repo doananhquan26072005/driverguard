@@ -3,8 +3,12 @@
 // there it also offers the try-out without an account, and a driver who is already logged in starts the
 // trip from it. 13/10: the two cards "Không lưu ảnh khuôn mặt" / "Dữ liệu có hạn dùng" are gone (the
 // user's choice); the guide (#/guide) still says how faces and data are kept.
+// 14/10: the first column follows option 6 of the background mock-up: a green glow, the shield mascot
+// as the logo, the thinking mascot on the guide link, and three strengths with an icon and a short line.
 import { type FormEvent, type ReactNode, useState } from "react";
-import { ArrowRight, BookOpen, Camera, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowRight, Camera, LogOut } from "lucide-react";
+import { BrandMark, BrandName } from "../brand/Brand";
+import mascotThink from "../assets/mascot-think.png";
 import { ApiError, login } from "../lib/api";
 import { DEMO_ACCOUNTS, DEMO_DRIVER, type DemoAccount } from "../lib/demo";
 import type { Session } from "../lib/types";
@@ -17,6 +21,37 @@ export interface LiveEntry {
   onSwitch: () => void; // "Đổi tài khoản"
   note?: ReactNode; // e.g. the camera could not be opened
 }
+
+// The three strengths under the pitch (option 6): icon paths (24 × 24, stroked), title, one short line.
+const FEATURES: { icon: ReactNode; title: string; line: string }[] = [
+  {
+    icon: (
+      <>
+        <rect x="6" y="6" width="12" height="12" rx="2" />
+        <rect x="9.5" y="9.5" width="5" height="5" rx="1" />
+        <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
+      </>
+    ),
+    title: "Xử lý ngay trên xe",
+    line: "Không cần mạng, phản hồi tức thì",
+  },
+  {
+    icon: (
+      <>
+        <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
+        <path d="M9 15c.8.6 1.8 1 3 1s2.2-.4 3-1M9 10h.01M15 10h.01" />
+        <path d="M3 3l18 18" />
+      </>
+    ),
+    title: "Không lưu ảnh khuôn mặt",
+    line: "Chỉ gửi số liệu, ảnh không rời khỏi máy",
+  },
+  {
+    icon: <path d="M5 20v-3M10 20v-7M15 20v-11M20 20V5" />,
+    title: "Cảnh báo theo 4 mức",
+    line: "Từ nhắc nhẹ đến báo động, hạn chế báo nhầm",
+  },
+];
 
 export default function Login({ onLogin, live }: { onLogin: (s: Session) => void; live?: LiveEntry }) {
   // The demo driver is filled in (lib/demo.ts): one press logs in.
@@ -74,24 +109,34 @@ export default function Login({ onLogin, live }: { onLogin: (s: Session) => void
   return (
     <div className="login-page">
       <section className="login-intro">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <ShieldCheck size={22} strokeWidth={2.25} />
+        <div className="brand login-brand">
+          <BrandMark />
+          <span>
+            <BrandName />
           </span>
-          DriverGuard
         </div>
         <div className="login-pitch">
           <h1>Giúp mỗi chuyến đi của bạn an toàn hơn.</h1>
-          <p>Thiết bị nhận biết buồn ngủ và mất tập trung ngay trên xe.</p>
+          <p>Thiết bị nhận biết buồn ngủ và mất tập trung.</p>
+          <ul className="login-features">
+            {FEATURES.map((f) => (
+              <li key={f.title}>
+                <i aria-hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    {f.icon}
+                  </svg>
+                </i>
+                <span className="login-feature-title">{f.title}</span>
+                <span className="login-feature-line">{f.line}</span>
+              </li>
+            ))}
+          </ul>
         </div>
-        {/* 13/10: a small link at the bottom, not a card (the user's choice). */}
-        <a className="login-guide" href="#/guide" title="Các màn hình bạn sẽ gặp và việc nên làm. Không cần tài khoản.">
-          <BookOpen aria-hidden size={18} />
+        {/* 13/10: a small link at the bottom, not a card (the user's choice). 14/10: no "Quyền riêng tư"
+            link here (the user's choice); #/privacy is still reached from #/guide. */}
+        <a className="login-guide login-guide-mascot" href="#/guide" title="Các màn hình bạn sẽ gặp và việc nên làm. Không cần tài khoản.">
+          <img src={mascotThink} alt="" />
           Hướng dẫn sử dụng
-        </a>
-        <a className="login-guide" href="#/privacy" title="Thu gì, không thu gì, giữ bao lâu. Không cần tài khoản.">
-          <ShieldCheck aria-hidden size={18} />
-          Quyền riêng tư
         </a>
       </section>
 
