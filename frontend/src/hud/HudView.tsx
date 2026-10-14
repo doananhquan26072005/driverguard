@@ -295,8 +295,9 @@ export default function HudView(props: HudViewProps) {
         now={now}
         target={danger || enrolling ? null : feedbackTarget}
         onFalseAlarm={onFalseAlarm}
-        onAskDriver={props.onVehicle && !danger && !enrolling ? () => setConfirmDriver(true) : undefined}
-        onAskEnd={props.onEndTrip && !danger && !enrolling ? () => setConfirmEnd(true) : undefined}
+        // 13/10: also while enrolling (the user's choice); never at L3 (danger)
+        onAskDriver={props.onVehicle && !danger ? () => setConfirmDriver(true) : undefined}
+        onAskEnd={props.onEndTrip && !danger ? () => setConfirmEnd(true) : undefined}
         note={enrolling && snap?.enrollment ? enrollNote(snap.enrollment) : consent ? "Hướng dẫn sẽ được đọc to bằng giọng nói" : null}
         ending={!!props.ending}
         className={`transition-opacity duration-700 ${dim}`}
