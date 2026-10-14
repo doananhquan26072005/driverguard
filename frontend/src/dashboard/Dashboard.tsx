@@ -2,7 +2,8 @@
 // right. Pages are #/dashboard/<page>. The data of every page comes from the same backend endpoints as
 // before; the backend still decides what each role may read.
 import { useCallback, useEffect, useState } from "react";
-import { Car, LogOut, ShieldCheck } from "lucide-react";
+import { Car, LogOut } from "lucide-react";
+import { BrandMark, BrandName } from "../brand/Brand";
 import { type EventFilters, getEvents, getPolicy, getStats, getThresholds, getTripReports, loadSession, saveSession } from "../lib/api";
 import { RANGES, type RangeKey } from "../lib/format";
 import { LEVELS, policyNote, ROLES } from "../lib/labels";
@@ -127,10 +128,10 @@ export default function Dashboard() {
     <div className="app">
       <nav className="side" aria-label="Menu">
         <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <ShieldCheck size={18} strokeWidth={2.25} />
+          <BrandMark />
+          <span>
+            <BrandName />
           </span>
-          DriverGuard
         </div>
         {/* 13/10: a driver starts the next trip from any page (the camera opens at once, #/live?start). */}
         {session.role === "driver" && (

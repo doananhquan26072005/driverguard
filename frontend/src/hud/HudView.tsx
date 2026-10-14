@@ -79,6 +79,7 @@ import type { EnrollStep, HudAlert, HudEnrollment, HudSnapshot, Level, Reason, V
 import { NO_VIETNAMESE_VOICE_TEXT, useVietnameseVoice } from "./voice";
 import FaceGuide from "./FaceGuide";
 import HudStage from "./HudStage";
+import { BrandMark, BrandName } from "../brand/Brand";
 import {
   ENROLL_STEP_ORDER,
   alertDetail,
@@ -320,8 +321,12 @@ function TopBar({
 }: HudViewProps & { danger: boolean; className: string }) {
   return (
     <header className={`relative flex min-w-0 items-center gap-4 px-4 hud-sm:px-8 ${className}`}>
+      {/* 14/10: the shield mascot and the two-colour name, as on every other page (the user's choice). */}
+      <BrandMark className="hud-mascot" />
       <span className="flex min-w-0 flex-col gap-0.5">
-        <span className="hud-brand text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
+        <span className="hud-brand text-[19px] font-semibold">
+          <BrandName plain={danger} />
+        </span>
         <span className={`hidden text-xs hud-sm:block ${danger ? "text-white/70" : "text-hud-ink-3"}`}>Giám sát tài xế trên thiết bị</span>
       </span>
       <span className="flex-1" />

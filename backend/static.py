@@ -52,7 +52,7 @@ CSP = {
     "script-src": "'self' 'wasm-unsafe-eval'",
     "worker-src": "'self' blob:",  # the phone detector's worker and the wasm thread workers it starts
     "style-src": "'self' 'unsafe-inline'",  # React writes style attributes (sizes of the HUD stage, chart bars)
-    "img-src": "'self' data: blob:",  # the icon of index.html is a data: URL
+    "img-src": "'self' data: blob:",  # data: for images Vite inlines (under 4 KB); the tab icon is /favicon.png (14/10)
     "font-src": "'self' data:",
     "media-src": "'self' blob: mediastream:",  # the camera stream of #/live, the recorded voice lines
     # the API on this origin; on the driver's own machine: the driving simulator (tools/drive_sim.py), the

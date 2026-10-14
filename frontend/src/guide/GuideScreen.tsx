@@ -5,7 +5,8 @@
 // and "Trước" / "Tiếp" at the bottom. #/guide/<step> opens one step, so a screen can be linked. Moving
 // inside the guide replaces the address instead of adding to the history: "back" leaves it in one press.
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { BrandMark } from "../brand/Brand";
 import type { Role } from "../lib/types";
 import { GUIDE, GUIDE_STEPS, guideHref, locate, ROLE_PAGES, stepFromHash, viewFromHash, WEB_KEY } from "./guideModel";
 import ScreenFrame from "./ScreenFrame";
@@ -55,9 +56,7 @@ export default function GuideScreen() {
         <a className="guide-back" href="#/live" aria-label="Về trang đăng nhập">
           <ArrowLeft aria-hidden size={20} />
         </a>
-        <span className="brand-mark" aria-hidden>
-          <ShieldCheck size={20} strokeWidth={2.25} />
-        </span>
+        <BrandMark />
         <h1>Hướng dẫn sử dụng</h1>
         <a className="ghost" href="#/privacy">
           Quyền riêng tư

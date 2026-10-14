@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { hourMinute } from "../lib/format";
+import { BrandMark, BrandName } from "../brand/Brand";
 import type { SuggestionCode, TripDelivery, TripRating, TripSummary } from "../lib/types";
 import HudStage from "./HudStage";
 import {
@@ -77,9 +78,13 @@ export default function TripSummaryView({ summary: s, delivery, onDone }: Props)
 
   return (
     <HudStage rows={["72px", "minmax(0,1fr)", "auto"]} className="bg-hud-bg text-hud-ink">
-      <header className="flex items-center px-4 hud-sm:px-8">
+      <header className="flex items-center gap-4 px-4 hud-sm:px-8">
+        {/* 14/10: the shield mascot and the two-colour name, as on the HUD (the user's choice). */}
+        <BrandMark className="hud-mascot" />
         <span className="flex flex-col gap-0.5">
-          <span className="text-[17px] font-semibold tracking-[0.12em]">DRIVERGUARD</span>
+          <span className="hud-brand text-[19px] font-semibold">
+            <BrandName />
+          </span>
           <span className="dg-num text-xs text-hud-ink-3">Tổng kết ca lái · {span}</span>
         </span>
       </header>

@@ -4,7 +4,8 @@
 // page shows the defaults of labels.ts (RETENTION_DAYS, the numbers the consent screen states).
 // Unlike #/guide this is a document: the window scrolls.
 import { useEffect, useState } from "react";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { BrandMark } from "../brand/Brand";
 import { getPolicy } from "../lib/api";
 import { RETENTION_DAYS } from "../lib/labels";
 import "./privacy.css";
@@ -26,9 +27,7 @@ export default function PrivacyScreen() {
         <a className="guide-back" href="#/live" aria-label="Về trang đăng nhập">
           <ArrowLeft aria-hidden size={20} />
         </a>
-        <span className="brand-mark" aria-hidden>
-          <ShieldCheck size={20} strokeWidth={2.25} />
-        </span>
+        <BrandMark />
         <h1>Quyền riêng tư</h1>
       </header>
 

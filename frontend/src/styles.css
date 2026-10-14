@@ -439,8 +439,6 @@ tr.row-urgent td {
    with the driver's camera and the driving panel, so the whole simulation is on one page. */
 .live-shell { height: 100vh; height: 100dvh; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; background: var(--page-light), #050608; }
 .live-bar { flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 20px; }
-.live-bar .brand-mark { width: 32px; height: 32px; flex: none; }
-.live-bar .live-title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
 .live-bar p { margin: 0; min-width: 0; color: var(--ink-2, #b8c2d0); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; padding: 0 16px 16px; }
 .live-hud { position: relative; min-width: 0; min-height: 0; display: grid; place-items: center; }
@@ -557,3 +555,36 @@ input:focus, select:focus, textarea:focus { border-color: rgba(255, 255, 255, 0.
 
 /* 13/10: under the account name of a read-only demo account. */
 .side-readonly { justify-self: start; margin: 2px 0; padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(251, 191, 36, 0.4); color: #fde68a; font-size: 12px; }
+
+/* 14/10: the login page's first column, option 6 of the background mock-up (Login.tsx): the green glow of
+   option 1 behind the whole page (both columns transparent on it), the shield mascot as the logo with the
+   name in two colours, the thinking mascot on the guide link, three strengths with an icon and a line. */
+.login-page {
+  background:
+    radial-gradient(32% 50% at 10% 30%, rgba(52, 211, 120, 0.2), transparent 70%),
+    radial-gradient(28% 45% at 46% 95%, rgba(91, 188, 189, 0.12), transparent 70%),
+    var(--page);
+}
+.login-intro { background: transparent; }
+.login-brand { gap: 12px; font-size: 26px; font-weight: 700 !important; }
+.login-brand .brand-mascot { width: 72px; filter: drop-shadow(0 0 14px rgba(76, 175, 80, 0.35)); }
+.login-features { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 18px; }
+.login-features li { display: grid; grid-template-columns: auto 1fr; column-gap: 14px; row-gap: 2px; align-items: center; }
+.login-features i {
+  grid-row: span 2; width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center; color: #5fd068;
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.26), rgba(76, 175, 80, 0.12));
+  border: 1px solid rgba(92, 200, 98, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 18px rgba(76, 175, 80, 0.18);
+}
+.login-features svg { width: 55%; height: 55%; }
+.login-feature-title { font-size: 16px; color: var(--ink); }
+.login-feature-line { font-size: 14px; color: var(--ink-2); }
+.login-guide-mascot { gap: 10px; color: #c9ccca; }
+.login-guide-mascot img { width: 44px; height: auto; filter: drop-shadow(0 0 10px rgba(76, 175, 80, 0.3)); }
+
+/* 14/10: the same logo on every page (brand/Brand.tsx): the shield mascot in place of the green tile with
+   a shield icon, and "Guard" in green. The login page makes the mascot bigger (.login-brand above). */
+.brand-mascot { flex: none; width: 40px; height: auto; filter: drop-shadow(0 0 8px rgba(76, 175, 80, 0.3)); }
+.side .brand .brand-mascot { width: 36px; }
+.hud-mascot { width: 46px; }
+.brand-name-2 { color: #4caf50; }

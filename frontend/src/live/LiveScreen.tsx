@@ -9,7 +9,7 @@
 // driver's camera and the driving panel (speed, turn signals), so the whole simulation is one page.
 // Phones and upright screens keep the HUD full screen with the small floating camera.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Check, Gauge, Info, LoaderCircle, Minus, Plus, ScanFace, ShieldCheck, Square } from "lucide-react";
+import { Check, Gauge, Info, LoaderCircle, Minus, Plus, ScanFace, Square } from "lucide-react";
 import { play, speak, systemSound } from "../hud/chime";
 import HudScreen from "../hud/HudScreen";
 import { STAGE_H, STAGE_W, StageFrame, stageLayout } from "../hud/HudStage";
@@ -24,6 +24,7 @@ import type { HudEnrollment, Session } from "../lib/types";
 import { LiveAgent, STEPS, type LiveStats, type Step, type VehicleSource } from "./agent";
 import { HUD_DEFAULTS } from "../lib/defaults";
 import { SELF_VIEW_WIDTHS, clampCorner, readPlace, resized, writePlace, type SelfViewPlace } from "./selfView";
+import { BrandMark, BrandName } from "../brand/Brand";
 
 function cameraError(err: unknown): string {
   const name = (err as DOMException)?.name;
@@ -333,11 +334,8 @@ export default function LiveScreen() {
     <div className={docked ? "live-shell font-hud text-hud-ink antialiased [color-scheme:dark]" : "contents"}>
       {docked && (
         <header className="live-bar">
-          <span className="brand-mark" aria-hidden>
-            <ShieldCheck size={20} strokeWidth={2.25} />
-          </span>
-          {/* Not an h1: the HUD's alert is the page's heading. */}
-          <strong className="live-title">DriverGuard</strong>
+          {/* 14/10: no logo or name here (the user's choice): the HUD just below shows both. Not an h1:
+              the HUD's alert is the page's heading. */}
           <p>Màn hình tài xế · bản chạy trong trình duyệt (#/live)</p>
         </header>
       )}
@@ -385,10 +383,10 @@ export default function LiveScreen() {
       {!ready && step && (
         <div className="guide live-setup font-hud text-hud-ink antialiased [color-scheme:dark]">
           <header className="guide-bar">
-            <span className="brand-mark" aria-hidden>
-              <ShieldCheck size={20} strokeWidth={2.25} />
-            </span>
-            <h1 className="brand-name">DriverGuard</h1>
+            <BrandMark />
+            <h1 className="brand-name">
+              <BrandName />
+            </h1>
           </header>
           <main className="guide-main live-loading">
             <section className="live-panel dg-card">
