@@ -7,9 +7,8 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 
 | | |
 |---|---|
-| **Phiên bản** | v2.2 (deploy 02/10/2026, các mốc M0–M31) |
-| **Live URL** | **https://c4-app-135.up.railway.app** (bản mới nhất, deploy 13/10/2026 từ `main`, gồm tới M105; tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập; `/health`, `/` và `/docs` trả 200 ngày 13/10). Các liên kết trong README này trỏ tới bản đó: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs`. Bản cũ: v2.2 ở https://driveguard-v2-production.up.railway.app và v1.1 ở https://driveguard-production-6b83.up.railway.app còn trả lời (v1.1 chậm ở lần gọi đầu); `driveguard-production-5093` không trả lời khi kiểm 13/10 |
-| **Sản phẩm cuối** | Thiết kế: app APK chạy trên hub gắn trên xe, bọc chính code web. Chưa có code APK; đóng gói APK đã bỏ ngày 08/10 (không còn hub và xe thật, [danh sách](docs/improvements.md#bo-hub)). Đầu ra hiện tại là bản web mô phỏng |
+| **Phiên bản** | v4 (deploy 13/10/2026 từ `main`, gồm tới M105) |
+| **Live URL** | **v4: https://c4-app-135.up.railway.app** (tài khoản dùng thử tài xế `taixe_demo` được điền sẵn ở trang đăng nhập). Các liên kết trong README này trỏ tới bản đó: dashboard `/#/dashboard`, giám sát trên trình duyệt `/#/live`, điều khiển xe `/#/drive?code=…`, API `/health`, Swagger `/docs`. Bản cũ: v3 ở https://driveguard-production-5093.up.railway.app/#/live, v2.2 ở https://driveguard-v2-production.up.railway.app, v1.1 ở https://driveguard-production-6b83.up.railway.app |
 | **Khoá học** | AI20K Build Phase, VinUni (repo sinh từ template của khoá, xem [mục Template](#template-khoá-ai20k)) |
 
 ## Ảnh chụp màn hình
@@ -397,7 +396,7 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 
 Tài liệu khác: [docs/PRD.md](docs/PRD.md) (yêu cầu sản phẩm), [docs/release-v2.md](docs/release-v2.md)
 (thêm / sửa / bỏ ở v2, giới hạn đã biết), [docs/release-v3.md](docs/release-v3.md) (M32–M69, từ 05/10), [docs/release-v4.md](docs/release-v4.md) (audit 08/10 và các việc
-làm theo nó, từ M70, chưa deploy),
+làm theo nó, từ M70),
 [docs/pilot-readiness.md](docs/pilot-readiness.md) (còn thiếu gì để chạy thử trên xe thật),
 [docs/data-policy.md](docs/data-policy.md) (thu dữ liệu gì, ai xem, giữ bao lâu), [docs/safety-fmea.md](docs/safety-fmea.md) (những lúc hệ thống
 không cảnh báo được), [docs/improvements.md](docs/improvements.md) (việc chưa làm),
@@ -407,12 +406,12 @@ không cảnh báo được), [docs/improvements.md](docs/improvements.md) (vi�
 
 Team DriverGuard (4 người), AI20K Build Phase Cohort 4, VinUni:
 
-| Thành viên | GitHub | Vai trò (theo [docs/worklog.md](docs/worklog.md)) |
+| Thành viên | GitHub | Vai trò |
 |---|---|---|
-| Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent và chống báo sai, đánh giá trên dataset, bản web `#/live`, backend, audit, deploy Railway, tài liệu |
-| Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Dựng pipeline 14 khối, backend và dashboard ban đầu (M0–M7); giao diện Version 4, giọng nói tiếng Việt, deploy tự động (M57–M66) |
-| Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | PRD, sơ đồ Use Case và User Flow |
-| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | PRD gate 1 |
+| Đoàn Anh Quân | [@DQQuan-VinAI](https://github.com/DQQuan-VinAI) | Edge agent · Đánh giá · Bản web · Frontend · Backend · Deploy · Kiểm thử và audit · Tài liệu · Demo |
+| Hoàng Đức Dũng | [@hddung-vinai](https://github.com/hddung-vinai) | Research · Frontend · Backend · Đánh giá · Deploy · Tester · Demo |
+| Nguyễn Phúc Huy | [@Yuhnguyn](https://github.com/Yuhnguyn) | Lập kế hoạch · Điều phối nhóm · Theo dõi tiến độ · Quản lý yêu cầu · Rà soát sản phẩm · Báo cáo · Demo |
+| Ngô Hoàng Thụy Khuê | [@kelsingo](https://github.com/kelsingo) | Mô tả sản phẩm · Pitch Deck · Tester · Research |
 
 ## AI usage logging
 
