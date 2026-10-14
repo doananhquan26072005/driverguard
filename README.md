@@ -14,9 +14,9 @@ không bao giờ được ghi ra đĩa hay gửi đi; chỉ dùng model pretrain
 
 ## Ảnh chụp màn hình
 
-| HUD: bình thường (L0) | HUD: cầm điện thoại (L2) | HUD: ngủ gật (L3) |
-|---|---|---|
-| ![HUD mức L0: Tỉnh táo, tốc độ 68 km/h](docs/screenshots/hud-l0.png) | ![HUD mức L2: Bỏ điện thoại xuống](docs/screenshots/hud-l2-phone.png) | ![HUD mức L3: Mở mắt, dừng xe nghỉ ngay](docs/screenshots/hud-l3.png) |
+| HUD: bình thường (L0) | HUD: dấu hiệu buồn ngủ (L1) | HUD: cầm điện thoại (L2) | HUD: ngủ gật (L3) |
+|---|---|---|---|
+| ![HUD mức L0: Tỉnh táo, tốc độ 68 km/h](docs/screenshots/hud-l0.png) | ![HUD mức L1: Tìm chỗ dừng nghỉ, dấu hiệu buồn ngủ](docs/screenshots/hud-l1.png) | ![HUD mức L2: Bỏ điện thoại xuống](docs/screenshots/hud-l2-phone.png) | ![HUD mức L3: Mở mắt, dừng xe nghỉ ngay](docs/screenshots/hud-l3.png) |
 
 | Dashboard: nhật ký sự kiện | Dashboard: timeline mệt mỏi |
 |---|---|
@@ -390,7 +390,7 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
 | 5 | Live URL | https://c4-app-135.up.railway.app | ✅ |
 | 6 | Video demo | <https://youtu.be/dyHXOouJTM4> (2 phút 57 giây); mô tả ở [docs/video-demo.md](docs/video-demo.md), script ở [presentation/demo_script.md](presentation/demo_script.md) | ✅ |
-| 7 | Pitch deck | [docs/pitch-deck.pdf](docs/pitch-deck.pdf) (12 slide) | ✅ |
+| 7 | Pitch deck | [docs/pitch-deck.pdf](docs/pitch-deck.pdf) (14 slide, bản 14/10) | ✅ |
 | 8 | Development journal | [docs/journal.md](docs/journal.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
 | 9 | Worklog | [docs/worklog.md](docs/worklog.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
 | 10 | Evaluation evidence | [docs/evaluation.md](docs/evaluation.md); số liệu ở [eval/results/](eval/results/) | ✅ |

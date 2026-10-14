@@ -80,6 +80,32 @@ sai / giờ" đang được dẫn như của cả hệ thống trong khi chỉ l
 phiên làm việc sửa cùng một cây thư mục nên test đỏ có lúc là của việc khác; cách xử lý là mỗi phiên một mốc và ghi rõ
 trạng thái commit từng mốc.
 
+## 10/10: đối chiếu với checklist nộp bài
+
+Đọc từng mục checklist của khoá học rồi kiểm repo: ghim phiên bản mọi dependency, thêm docstring, đo coverage (93,9 %
+cho `edge_agent/` + `backend/`) và viết bảng traceability test → yêu cầu. Chỗ chưa làm được thì ghi rõ: phản hồi của
+người dùng thật vẫn là 0 người, và kết quả không so trực tiếp được với baseline của bài báo UTA-RLDD vì khác đơn vị.
+
+## 12/10: viết cho tài xế, không cho kỹ sư
+
+Rà lại chữ và giọng nói trên màn hình theo một câu hỏi: tài xế đọc trong nửa giây có biết phải làm gì không. Kết quả là
+năm cách gọi thống nhất ("ca lái", "làm quen khuôn mặt", "báo nhầm"...), tiêu đề cảnh báo chỉ còn hành động, và trang
+hướng dẫn `#/guide` vẽ bằng chính HUD thật. Clip demo được quay lại trên giao diện mới mà không cần quay lại khuôn mặt.
+
+## 13/10: một con số, một nguồn
+
+Video demo 3 phút lên YouTube, kèm trang `#/privacy` và bộ ảnh dự phòng. Khi soát số trên slide, video và README thấy
+cùng một ý mà ba nơi dùng ba số khác kỳ hoặc khác bộ dữ liệu (9 549 so với 7 198, 324.810 so với 324 819). Cách xử lý:
+mỗi số ghi kèm kỳ và nguồn, mọi bề mặt lấy từ `docs/pitch-deck-so-lieu.md`. CI trên GitHub không chạy vì lỗi thanh
+toán của tổ chức, nên kết quả test được chạy và chụp lại trên máy (`docs/ci-local.md`).
+
+## 14/10: pitch deck bản cuối
+
+Pitch deck 14 slide thay bản 12 slide: số liệu Mỹ cập nhật sang năm 2024 (NHTSA), hai tỉ lệ khác nguồn được tách thành
+hai thanh riêng, nhãn "nhắm ≥ 1,5 s → L3" thay cho "cảnh báo L3" để không bị đọc thành độ chính xác, thêm FPS và số test;
+kết quả trên dữ liệu công khai và thử nghiệm nội bộ (tự diễn trước camera) tách thành hai slide.
+Bài học: soát slide theo nguồn số liệu chứ không chỉ theo bố cục; một nhãn ngắn quá có thể làm sai nghĩa một con số đúng.
+
 ## Tổng hợp cho slide "Challenges & Learnings"
 
 | Khó khăn | Cách giải quyết | Bài học |

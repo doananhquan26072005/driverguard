@@ -28,10 +28,16 @@ hai tài khoản `DAQuan-VinAI` / `DQQuan-VinAI`).
 | 08/10 | DAQuan | M67–M86: tốc độ `#/live`, audit 14 khối, các việc theo audit | YOLO WebGPU 94 → 17 ms; 15 phát hiện High, 0 Critical | #19, #21 | [08/10](worklog/2026-10-08-DAQuan.md) |
 | 08/10 | hddung-vinai | Sửa Dockerfile Railway (M66) | Bản deploy build được | #20 | |
 | 09/10 | DAQuan | M87–M101: CI với model thật, bù test, quyết định 09/10, CSP, kiểm `l1` trên DROZY | 1712 test Python, vitest 293, e2e 13 / 13 | #22 | [09/10](worklog/2026-10-09-DAQuan.md) |
+| 10/10 | DAQuan | Đối chiếu file nộp với cấu trúc khoá học, ghim phiên bản dependency, docstring, coverage, bảng traceability | Coverage 93,9 % (`edge_agent/` + `backend/`); 346 docstring; `docs/evaluation.md`, `docs/traceability.md` | #25 | [10/10](worklog/2026-10-10-DAQuan.md) |
+| 12/10 | DAQuan | Câu chữ cho tài xế, M102 hướng dẫn `#/guide`, trang đăng nhập là trang đầu, quay lại 15 clip demo, tư liệu video 3 phút | vitest 307, e2e `guide.e2e.ts` 4 / 4; 31 câu giọng nói ghi lại | #25 | [12/10](worklog/2026-10-12-DAQuan.md) |
+| 12/10 | hddung-vinai | Bộ đếm giờ ổn định khi tab ẩn, `metadata_guard` trong image Railway | Bản deploy chạy đúng khi tab ẩn | #26 | |
+| 13/10 | hddung-vinai | M103–M105: mô phỏng một trang trên `#/live`, ghi chú của quản lý, tài xế demo; tài khoản kỹ sư chỉ đọc, chọn tài khoản demo | Deploy ở https://c4-app-135.up.railway.app | #27–#29 | |
+| 13/10 | DAQuan | Video demo 3 phút, file nộp Demo Day về đúng chỗ, M106 trang `#/privacy`, ảnh dự phòng và ảnh mobile, kiểm tra local | Video 2 phút 57 giây trên YouTube; sau khi gộp `main`: pytest 1720 pass, vitest 328, e2e 24 / 24 | | [13/10](worklog/2026-10-13-DAQuan.md) |
+| 14/10 | DAQuan | Pitch deck bản cuối, dọn file nộp | `docs/pitch-deck.pdf` 14 slide, số liệu đối chiếu với nguồn | | [14/10](worklog/2026-10-14-DAQuan.md) |
 
 ## 2. Lịch sử commit
 
-135 commit trên `main` + `DAQuan` tới `217d43e` (09/10), gồm 27 commit gộp (PR #1–#22 và các lần gộp `main`) không liệt
+155 commit trên `main` + `DAQuan` tới `4cad70d` (13/10), gồm 36 commit gộp (PR #1–#29 và các lần gộp `main`) không liệt
 kê dưới đây. Sinh lại bằng:
 
 ```bash
@@ -148,3 +154,14 @@ git log --reverse --no-merges --date=short --format='| %ad | %an | `%h` | %s |'
 | 09/10 | DAQuan | `d69b69e` | feat(live): token refresh and bounded uploads, runtime served from the build, movable self view, keepalive trip end (M97, M99, M100) |
 | 09/10 | DAQuan | `f697714` | chore(eval): regenerate results after M71-M93, DROZY check of risk.drowsy.l1 with a pre-declared rule (M94, M101) |
 | 09/10 | DAQuan | `217d43e` | docs: M91-M101 roadmap, 09/10 decisions, release v4 notes, audit doc fixes, improvements, worklog |
+| 09/10 | DAQuan | `8c4455e` | docs: README screenshots, Docker run steps and team roles; architecture overview diagram, journal, worklog, demo script and pitch deck figures |
+| 12/10 | DAQuan | `3d9369f` | chore: docstrings for edge_agent, backend and tools, pinned requirements, coverage target, voice tool on the new voice |
+| 12/10 | DAQuan | `39ac8a5` | feat(frontend): driver wording and re-recorded voice lines, user guide #/guide as an app shell, login page as the first page (login or try-out starts the camera at once) |
+| 12/10 | DAQuan | `926830e` | docs: M102 guide, first page, driver wording and demo re-recording in roadmap, release v4 and worklog; evaluation, traceability, pitch and video notes; root stubs for architecture, journal, worklog |
+| 12/10 | hddung-vinai | `3272d9a` | fix(live, drive): steady timers in a hidden tab; ship metadata_guard in the Railway image |
+| 12/10 | hddung-vinai | `c7e2ad5` | chore(deploy): keep voice_local/ and the e2e build cache out of railway up |
+| 13/10 | hddung-vinai | `2fe8508` | feat: one-page simulation on #/live, face drawing, manager notes, demo driver (M103-M105) |
+| 13/10 | hddung-vinai | `9bfb102` | fix(live): trip summary full screen again; docs: current Railway address |
+| 13/10 | hddung-vinai | `b6d0c04` | feat: read-only demo engineer, demo account picker, flatter black UI (13/10) |
+| 13/10 | DAQuan | `bbe269b` | feat(frontend): privacy page #/privacy (M106), /privacy on the deploy redirects to it, reached from the guide |
+| 13/10 | DAQuan | `ae0c9e8` | docs: Demo Day deliverables in place (pitch deck, video link, demo script), backup screenshots and phone screenshots, local check results, M106 in roadmap and release v4, one source for the headline numbers; ignore presentation/demo-clips |
