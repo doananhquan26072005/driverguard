@@ -1161,6 +1161,7 @@ chuyển động; hình vẫn là clip quay thật, lời đọc giữ nguyên, 
   180 giây, 1080p) thay `V75TaUnJaug`.
 - **Sửa** `docs/pitch-deck.pdf` bản 15/10 (14 slide): mã QR video ở slide 14 trỏ link mới; chữ slide 2, 3, 5, 8 sửa
   lại (số liệu tai nạn viết gọn, tiêu đề slide 5, "Tài xế bấm “báo sai”" ở slide 8). Badge Slides trong README trỏ bản Google Drive mới.
+- **Sửa** badge Slides trong README trỏ bản Google Drive mới (`1VNYH5vy…`) thay `1Vhwiv5e…`.
 
 ## 4. Tương thích khi nâng cấp từ v3
 
