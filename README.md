@@ -1,7 +1,7 @@
 # DriverGuard: Hệ thống cảnh báo buồn ngủ & mất tập trung on-device
 
-[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo-red?logo=youtube)](https://youtu.be/V75TaUnJaug)
-[![Slides](https://img.shields.io/badge/Slides-Pitch%20Deck-blue?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1IXICIgwW3DVxeUi-wH9_W8KM-91e-8lc/view?usp=drive_link)
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Demo-red?logo=youtube)](https://youtu.be/3y0aOBudGyk)
+[![Slides](https://img.shields.io/badge/Slides-Pitch%20Deck-blue?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1Vhwiv5elbQaDdj4c4PuVpUim5VWgniXT/view?usp=sharing)
 [![Live](https://img.shields.io/badge/Live-c4--app--135.up.railway.app-brightgreen?logo=railway)](https://c4-app-135.up.railway.app)
 
 <p align="center">
@@ -396,8 +396,8 @@ Bảng khối ↔ file: [HowToUse.md mục 3.2](HowToUse.md#32-khối--file).
 | 3 | Architecture diagram | [docs/architecture.md](docs/architecture.md); hình chi tiết ở [docs/architecture_diagram.md](docs/architecture_diagram.md) | ✅ |
 | 4 | AI logs | `.ai-log/`, gửi tự động lên server chấm khi `git push` | ✅ |
 | 5 | Live URL | https://c4-app-135.up.railway.app | ✅ |
-| 6 | Video demo | <https://youtu.be/V75TaUnJaug> (2 phút 57 giây); mô tả ở [docs/video-demo.md](docs/video-demo.md), script ở [presentation/demo_script.md](presentation/demo_script.md) | ✅ |
-| 7 | Pitch deck | [docs/pitch-deck.pdf](docs/pitch-deck.pdf) (14 slide, bản 14/10) | ✅ |
+| 6 | Video demo | <https://youtu.be/3y0aOBudGyk> (3 phút); mô tả ở [docs/video-demo.md](docs/video-demo.md), script ở [presentation/demo_script.md](presentation/demo_script.md) | ✅ |
+| 7 | Pitch deck | [docs/pitch-deck.pdf](docs/pitch-deck.pdf) (14 slide, bản 15/10) | ✅ |
 | 8 | Development journal | [docs/journal.md](docs/journal.md): mỗi ngày một mục (quyết định, khó khăn, bài học) | ✅ |
 | 9 | Worklog | [docs/worklog.md](docs/worklog.md): bảng theo ngày và lịch sử commit; chi tiết ở [docs/worklog/](docs/worklog/) | ✅ |
 | 10 | Evaluation evidence | [docs/evaluation.md](docs/evaluation.md); số liệu ở [eval/results/](eval/results/) | ✅ |

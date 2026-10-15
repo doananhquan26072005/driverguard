@@ -1143,6 +1143,25 @@ Chỉ đổi tài liệu và video, không đổi code chạy, không có số m
   177 giây, 1080p) thay `dyHXOouJTM4`.
 - **Còn lại:** mã QR video ở slide 13 của `docs/pitch-deck.pdf` vẫn trỏ tới link cũ `dyHXOouJTM4`; cần sửa trong Canva.
 
+### 3.53 Video demo v9: khoảng lặng trước còi L3, tường 20 trạng thái HUD (15/10)
+
+Chỉ đổi video, không đổi code chạy, không có số mốc. Học theo một video giới thiệu sản phẩm được đánh giá cao về
+chuyển động; hình vẫn là clip quay thật, lời đọc giữ nguyên, không thu lại câu nào.
+
+- **Sửa** câu 09 tách sau "giây rưỡi" (chỗ ngắt có sẵn trong bản thu): nhạc và lời dừng 0,5 giây, còi L3 kêu một mình,
+  rồi "mức ba. Đỏ toàn màn hình…". Còi chỉ hạ âm lượng dưới nửa sau của câu.
+- **Thêm** đoạn 3,7 giây trước slide kết: tường 5 × 4 gồm 20 trạng thái HUD, đều là khung hình cắt từ clip thật (thêm
+  `4-6-cac-trang-thai-hud.mp4`), mở ở "Mở mắt!" rồi lùi ra, dòng "Mỗi tình huống, một lời nhắc rõ ràng.", không lời.
+- **Sửa** độ dài 177,4 → 180,0 giây: đoạn tường vào ngay khi câu 16 dứt, slide kết giữ 1,05 giây sau chữ cuối (trước là 1,95).
+- Đã thử rồi bỏ: caption dạng hỏi–đáp và zoom vào thẻ cảnh báo lúc nó bật; caption và zoom giữ như v8 (bản thử ở
+  `3-phut/nguon/index-truoc-bo-hoi-dap.html`).
+- File: `presentation/demo-clips/3-phut/demo-3-phut-co-loi-v9-tuong-hud.mp4`; bản v8 giữ ở
+  `demo-3-phut-co-loi-v8-giong-14-10.mp4`, composition v8 ở `3-phut/nguon/index-truoc-v9.html` (không vào git).
+- **Sửa** README (badge và dòng deliverable 6), `docs/video-demo.md`: link <https://youtu.be/3y0aOBudGyk> (công khai,
+  180 giây, 1080p) thay `V75TaUnJaug`.
+- **Sửa** `docs/pitch-deck.pdf` bản 15/10 (14 slide): mã QR video ở slide 14 trỏ link mới; chữ slide 2, 3, 5, 8 sửa
+  lại (số liệu tai nạn viết gọn, tiêu đề slide 5, "Tài xế bấm “báo sai”" ở slide 8). Badge Slides trong README trỏ bản Google Drive mới.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
