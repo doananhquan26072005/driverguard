@@ -34,6 +34,7 @@ hai tài khoản `DAQuan-VinAI` / `DQQuan-VinAI`).
 | 13/10 | hddung-vinai | M103–M105: mô phỏng một trang trên `#/live`, ghi chú của quản lý, tài xế demo; tài khoản kỹ sư chỉ đọc, chọn tài khoản demo | Deploy ở https://c4-app-135.up.railway.app | #27–#29 | |
 | 13/10 | DAQuan | Video demo 3 phút, file nộp Demo Day về đúng chỗ, M106 trang `#/privacy`, ảnh dự phòng và ảnh mobile, kiểm tra local | Video 2 phút 57 giây trên YouTube; sau khi gộp `main`: pytest 1720 pass, vitest 328, e2e 24 / 24 | | [13/10](worklog/2026-10-13-DAQuan.md) |
 | 14/10 | DAQuan | Pitch deck bản cuối, dọn file nộp | `docs/pitch-deck.pdf` 14 slide, số liệu đối chiếu với nguồn | | [14/10](worklog/2026-10-14-DAQuan.md) |
+| 15/10 | DAQuan | Video demo v9: khoảng lặng trước còi L3, tường 20 trạng thái HUD; pitch deck bản 15/10 | 180,0 giây trên YouTube (<https://youtu.be/3y0aOBudGyk>), QR slide 14 trỏ link mới | | [15/10](worklog/2026-10-15-DAQuan.md) |
 
 ## 2. Lịch sử commit
 

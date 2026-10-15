@@ -17,6 +17,17 @@ Tư liệu nằm ở `presentation/demo-clips/3-phut/` (chưa đưa vào git, nh
 | `xem-truoc-3-phut-motion.mp4` | Bản dựng bằng HyperFrames: slide có chuyển động, hình có zoom, vòng khoanh và dải chú thích, có chuyển cảnh giữa các chương |
 | `dung-hf/` | Project HyperFrames của bản có chuyển động: `index.html` chứa cả 180 giây (mục cuối) |
 
+## Bản v9 (15/10): khoảng lặng trước còi L3, tường trạng thái HUD
+
+`demo-3-phut-co-loi-v9-tuong-hud.mp4`, 180,0 giây, dựng từ `dung-hf/` (composition v8 lưu ở
+`nguon/index-truoc-v9.html`). Lời đọc, caption và zoom giữ như v8, không cần thu lại câu nào. Khác v8:
+
+| Giây | Thay đổi |
+|---|---|
+| 1:17,6–1:22,8 | Câu 09 tách hai: "Nhắm mắt quá một giây rưỡi" · 0,5 giây im, còi kêu một mình · "mức ba. Đỏ toàn màn hình, còi kêu tới khi mở mắt." |
+| 2:39,9–2:43,6 | Tường 20 trạng thái HUD (khung hình thật), dòng "Mỗi tình huống, một lời nhắc rõ ràng.", không lời |
+| 2:43,6 | Slide kết lùi 3,5 giây, giữ 1,05 giây sau chữ cuối (v8: 1,95) |
+
 ## Bản hiện tại (13/10, sau góp ý): thứ tự và ba câu cần thu
 
 Bản có chuyển động `demo-3-phut-co-loi.mp4` (171,4 giây) không còn theo đúng bảng dựng bên dưới. Thứ tự mới:
