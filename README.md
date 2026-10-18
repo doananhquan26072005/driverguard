@@ -1,7 +1,7 @@
 # DriverGuard: Hệ thống cảnh báo buồn ngủ & mất tập trung on-device
 
 [![YouTube Demo](https://img.shields.io/badge/YouTube-Demo-red?logo=youtube)](https://youtu.be/3y0aOBudGyk)
-[![Slides](https://img.shields.io/badge/Slides-Pitch%20Deck-blue?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1VNYH5vyYWtoQZ7DCL692djIVx1een3Yv/view?usp=sharing)
+[![Slides](https://img.shields.io/badge/Slides-Pitch%20Deck-blue?logo=googledrive&logoColor=white)](https://drive.google.com/file/d/1XmgzGui3X50ziVS2bM_sLm5gUvPAjCOj/view?usp=sharing)
 [![Live](https://img.shields.io/badge/Live-c4--app--135.up.railway.app-brightgreen?logo=railway)](https://c4-app-135.up.railway.app)
 
 <p align="center">

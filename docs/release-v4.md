@@ -1163,6 +1163,11 @@ chuyển động; hình vẫn là clip quay thật, lời đọc giữ nguyên, 
   lại (số liệu tai nạn viết gọn, tiêu đề slide 5, "Tài xế bấm “báo sai”" ở slide 8). Badge Slides trong README trỏ bản Google Drive mới.
 - **Sửa** badge Slides trong README trỏ bản Google Drive mới (`1VNYH5vy…`) thay `1Vhwiv5e…`.
 
+### 3.54 Badge Slides trỏ link Google Drive mới (18/10)
+
+- **Sửa** badge Slides trong README trỏ <https://drive.google.com/file/d/1XmgzGui3X50ziVS2bM_sLm5gUvPAjCOj/view>
+  thay `1VNYH5vy…`.
+
 ## 4. Tương thích khi nâng cấp từ v3
 
 - **M85:** 31 khoá mới trong `thresholds.yaml` (danh sách ở [roadmap M85](roadmap.md#m85)). File YAML cũ thiếu
